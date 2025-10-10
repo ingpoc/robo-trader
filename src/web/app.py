@@ -19,8 +19,8 @@ import uvicorn
 import time
 
 from ..config import load_config
-from ..core.orchestrator import initialize_orchestrator, RoboTraderOrchestrator
-from ..core.state import StateManager
+from ..core.di import initialize_container, cleanup_container, DependencyContainer
+from ..core.database_state import DatabaseStateManager
 from .chat_api import router as chat_router
 
 
@@ -80,7 +80,7 @@ app.include_router(chat_router)
 
 # Global variables
 config = None
-orchestrator = None
+container: Optional[DependencyContainer] = None
 connection_manager = None
 
 
@@ -140,6 +140,10 @@ class TradeRequest(BaseModel):
 
 async def get_dashboard_data() -> Dict[str, Any]:
     """Get dashboard data for display."""
+    if not container:
+        return {"error": "System not initialized"}
+
+    orchestrator = await container.get_orchestrator()
     if not orchestrator or not orchestrator.state_manager:
         return {"error": "System not initialized"}
 
@@ -178,7 +182,7 @@ async def get_dashboard_data() -> Dict[str, Any]:
 @app.on_event("startup")
 async def startup_event():
     """Initialize the system on startup."""
-    global config, orchestrator, connection_manager
+    global config, container, connection_manager
 
     config = load_config()
 
@@ -188,8 +192,12 @@ async def startup_event():
     log_level = os.getenv('LOG_LEVEL', 'INFO')
     setup_logging(config.logs_dir, log_level)
 
-    orchestrator = await initialize_orchestrator(config)
+    # Initialize dependency injection container
+    container = await initialize_container(config)
     connection_manager = ConnectionManager()
+
+    # Get orchestrator from container
+    orchestrator = await container.get_orchestrator()
 
     # Wire up WebSocket broadcasting
     async def broadcast_to_ui_impl(message: Dict[str, Any]):
@@ -217,14 +225,26 @@ async def startup_event():
         except Exception as exc:
             logger.warning(f"Initial strategy review failed: {exc}")
 
-    async def safe_bootstrap():
-        """Wrapper to catch any unhandled exceptions in bootstrap_state."""
-        try:
-            await bootstrap_state()
-        except Exception as exc:
-            logger.error(f"Bootstrap state failed with unhandled exception: {exc}", exc_info=True)
+    # Run bootstrap synchronously after orchestrator is fully initialized
+    try:
+        await bootstrap_state()
+    except Exception as exc:
+        logger.error(f"Bootstrap state failed with unhandled exception: {exc}", exc_info=True)
 
-    asyncio.create_task(safe_bootstrap())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup resources on shutdown."""
+    global container
+    logger.info("Application shutdown initiated - cleaning up resources")
+
+    try:
+        # Cleanup dependency injection container (handles all services)
+        await cleanup_container()
+    except Exception as e:
+        logger.error(f"Error during container cleanup: {e}")
+
+    logger.info("Application shutdown complete")
 
 
 @app.get("/")
@@ -256,10 +276,11 @@ async def api_dashboard():
 @app.post("/api/portfolio-scan")
 async def portfolio_scan(background_tasks: BackgroundTasks):
     """Trigger portfolio scan."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         background_tasks.add_task(orchestrator.run_portfolio_scan)
         return {"status": "Portfolio scan started"}
     except Exception as e:
@@ -269,10 +290,11 @@ async def portfolio_scan(background_tasks: BackgroundTasks):
 @app.post("/api/market-screening")
 async def market_screening(background_tasks: BackgroundTasks):
     """Trigger market screening."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         background_tasks.add_task(orchestrator.run_market_screening)
         return {"status": "Market screening started"}
     except Exception as e:
@@ -282,10 +304,11 @@ async def market_screening(background_tasks: BackgroundTasks):
 @app.post("/api/manual-trade")
 async def manual_trade(trade: TradeRequest):
     """Execute manual trade."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         # Create intent
         intent = await orchestrator.state_manager.create_intent(trade.symbol)
 
@@ -319,10 +342,11 @@ async def manual_trade(trade: TradeRequest):
 @app.get("/api/claude-status")
 async def get_claude_status():
     """Get Claude API connection status."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         status = await orchestrator.get_claude_status()
         return status.to_dict()
     except Exception as e:
@@ -333,9 +357,10 @@ async def get_claude_status():
 @app.post("/api/ai/plan-daily")
 async def plan_daily(background_tasks: BackgroundTasks):
     """Trigger AI to create today's work plan."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
+    orchestrator = await container.get_orchestrator()
     background_tasks.add_task(orchestrator.ai_planner.create_daily_plan)
     return {"status": "AI planning started"}
 
@@ -343,9 +368,10 @@ async def plan_daily(background_tasks: BackgroundTasks):
 @app.post("/api/ai/plan-weekly")
 async def plan_weekly(background_tasks: BackgroundTasks):
     """Trigger AI to create weekly work distribution."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
+    orchestrator = await container.get_orchestrator()
     background_tasks.add_task(orchestrator.ai_planner.optimize_weekly_distribution)
     return {"status": "Weekly planning started"}
 
@@ -353,18 +379,20 @@ async def plan_weekly(background_tasks: BackgroundTasks):
 @app.get("/api/ai/status")
 async def get_ai_status():
     """Get current AI activity status."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
+    orchestrator = await container.get_orchestrator()
     return await orchestrator.get_ai_status()
 
 
 @app.get("/api/ai/recommendations")
 async def get_recommendations():
     """Get AI-generated recommendations."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
+    orchestrator = await container.get_orchestrator()
     recommendations = await orchestrator.state_manager.get_pending_approvals()
     return {"recommendations": recommendations}
 
@@ -372,10 +400,11 @@ async def get_recommendations():
 @app.post("/api/recommendations/approve/{rec_id}")
 async def approve_recommendation(rec_id: str, background_tasks: BackgroundTasks):
     """Approve a recommendation and execute it."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         success = await orchestrator.state_manager.update_approval_status(rec_id, "approved")
 
         if not success:
@@ -393,10 +422,11 @@ async def approve_recommendation(rec_id: str, background_tasks: BackgroundTasks)
 @app.post("/api/recommendations/reject/{rec_id}")
 async def reject_recommendation(rec_id: str):
     """Reject a recommendation."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         success = await orchestrator.state_manager.update_approval_status(rec_id, "rejected")
 
         if not success:
@@ -414,10 +444,11 @@ async def reject_recommendation(rec_id: str):
 @app.post("/api/recommendations/discuss/{rec_id}")
 async def discuss_recommendation(rec_id: str):
     """Mark recommendation for discussion (defer decision)."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         success = await orchestrator.state_manager.update_approval_status(rec_id, "discussing")
 
         if not success:
@@ -436,10 +467,11 @@ async def discuss_recommendation(rec_id: str):
 @app.get("/api/monitoring/status")
 async def get_system_status():
     """Get comprehensive system status for monitoring."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         status = await orchestrator.get_system_status()
         return status
     except Exception as e:
@@ -449,10 +481,11 @@ async def get_system_status():
 @app.get("/api/monitoring/scheduler")
 async def get_scheduler_status():
     """Get background scheduler status."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         status = await orchestrator.background_scheduler.get_scheduler_status()
         return status
     except Exception as e:
@@ -462,10 +495,11 @@ async def get_scheduler_status():
 @app.post("/api/monitoring/trigger-event")
 async def trigger_market_event(event_data: Dict[str, Any]):
     """Trigger a market event for testing autonomous responses."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         event_type = event_data.get("event_type", "")
         event_payload = event_data.get("data", {})
 
@@ -478,10 +512,11 @@ async def trigger_market_event(event_data: Dict[str, Any]):
 @app.post("/api/emergency/stop")
 async def emergency_stop():
     """Emergency stop all autonomous operations."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         await orchestrator.emergency_stop()
         return {"status": "Emergency stop activated"}
     except Exception as e:
@@ -491,10 +526,11 @@ async def emergency_stop():
 @app.post("/api/emergency/resume")
 async def resume_operations():
     """Resume autonomous operations."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         await orchestrator.resume_operations()
         return {"status": "Operations resumed"}
     except Exception as e:
@@ -504,10 +540,11 @@ async def resume_operations():
 @app.get("/api/alerts/active")
 async def get_active_alerts():
     """Get currently active alerts."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         alerts = await orchestrator.state_manager.alert_manager.get_active_alerts()
         return {"alerts": [alert.to_dict() for alert in alerts]}
     except Exception as e:
@@ -518,10 +555,11 @@ async def get_active_alerts():
 @app.post("/api/alerts/{alert_id}/action")
 async def handle_alert_action(alert_id: str, action_data: Dict[str, Any]):
     """Handle alert actions (acknowledge, dismiss, etc.)."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         action = action_data.get("action", "acknowledge")
 
         if action == "acknowledge":
@@ -548,10 +586,11 @@ async def handle_alert_action(alert_id: str, action_data: Dict[str, Any]):
 @app.get("/api/agents/status")
 async def get_agents_status():
     """Get status of all agents."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         agents_status = await orchestrator.get_agents_status()
 
         # Enhance with additional mock data for missing agents
@@ -631,7 +670,7 @@ async def get_agents_status():
 @app.get("/api/agents/{agent_name}/tools")
 async def get_agent_tools(agent_name: str):
     """Get available tools for specific agent."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
@@ -656,7 +695,7 @@ async def get_agent_tools(agent_name: str):
 @app.get("/api/agents/{agent_name}/config")
 async def get_agent_config(agent_name: str):
     """Get configuration for specific agent."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
@@ -731,7 +770,7 @@ async def get_agent_config(agent_name: str):
 @app.post("/api/agents/{agent_name}/config")
 async def update_agent_config(agent_name: str, config_data: Dict[str, Any]):
     """Update configuration for specific agent."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
@@ -847,8 +886,10 @@ async def update_agent_feature(feature_name: str, feature_data: Dict[str, Any]):
         config_path = Path.cwd() / "config" / "config.json"
         config.save(config_path)
 
-        if orchestrator and orchestrator.background_scheduler:
-            await orchestrator.background_scheduler.reload_config(config)
+        if container:
+            orchestrator = await container.get_orchestrator()
+            if orchestrator and orchestrator.background_scheduler:
+                await orchestrator.background_scheduler.reload_config(config)
 
         logger.info(f"Agent feature '{feature_name}' updated: {feature_data}")
 
@@ -866,51 +907,102 @@ async def update_agent_feature(feature_name: str, feature_data: Dict[str, Any]):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates with differential updates."""
+    connection_id = f"ws_{id(websocket)}"
+    logger.info(f"WebSocket connection established: {connection_id}")
+
     await connection_manager.connect(websocket)
     last_data_hash = None
+    heartbeat_task = None
 
     try:
+        # Start heartbeat task for connection health monitoring
+        async def send_heartbeat():
+            while True:
+                try:
+                    await websocket.send_json({
+                        "type": "heartbeat",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+                    await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+                except Exception as e:
+                    logger.debug(f"Heartbeat failed for {connection_id}: {e}")
+                    break
+
+        heartbeat_task = asyncio.create_task(send_heartbeat())
+
         while True:
-            data = await get_dashboard_data()
+            try:
+                # Add timeout to prevent hanging on data retrieval
+                data = await asyncio.wait_for(get_dashboard_data(), timeout=10.0)
 
-            if orchestrator:
-                ai_status = await orchestrator.get_ai_status()
-                data["ai_status"] = ai_status
-                recommendations = await orchestrator.state_manager.get_pending_approvals()
-                data["recommendations"] = recommendations
+                if container:
+                    try:
+                        orchestrator = await container.get_orchestrator()
+                        ai_status = await asyncio.wait_for(orchestrator.get_ai_status(), timeout=5.0)
+                        data["ai_status"] = ai_status
+                        recommendations = await asyncio.wait_for(
+                            orchestrator.state_manager.get_pending_approvals(), timeout=5.0
+                        )
+                        data["recommendations"] = recommendations
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout retrieving AI status for {connection_id}")
+                        data["ai_status"] = {"status": "timeout"}
+                        data["recommendations"] = []
 
-            # Calculate hash for change detection
-            data_str = json.dumps(data, sort_keys=True, default=str)
-            current_hash = hash(data_str)
+                # Calculate hash for change detection
+                data_str = json.dumps(data, sort_keys=True, default=str)
+                current_hash = hash(data_str)
 
-            if current_hash != last_data_hash:
+                if current_hash != last_data_hash:
+                    await asyncio.wait_for(
+                        websocket.send_json({
+                            "type": "full_update",
+                            "data": data,
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        }),
+                        timeout=5.0
+                    )
+                    last_data_hash = current_hash
+
+                await asyncio.sleep(5)
+
+            except asyncio.TimeoutError:
+                logger.warning(f"Data retrieval timeout for {connection_id}")
                 await websocket.send_json({
-                    "type": "full_update",
-                    "data": data,
+                    "type": "error",
+                    "message": "Data retrieval timeout",
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 })
-                last_data_hash = current_hash
-            else:
+            except Exception as e:
+                logger.error(f"Error during WebSocket data processing for {connection_id}: {e}")
                 await websocket.send_json({
-                    "type": "heartbeat",
+                    "type": "error",
+                    "message": "Data processing error",
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 })
-
-            await asyncio.sleep(5)
 
     except WebSocketDisconnect:
-        logger.debug("WebSocket client disconnected")
-        await connection_manager.disconnect(websocket)
+        logger.info(f"WebSocket client disconnected: {connection_id}")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}", exc_info=True)
+        logger.error(f"WebSocket connection error for {connection_id}: {e}", exc_info=True)
+    finally:
+        # Ensure proper cleanup
+        if heartbeat_task and not heartbeat_task.done():
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
         await connection_manager.disconnect(websocket)
+        logger.info(f"WebSocket connection cleaned up: {connection_id}")
 
 
 # Chat API endpoint for AI assistant
 @app.post("/api/chat/query")
 async def chat_query(query_data: Dict[str, Any]):
     """Handle AI chat queries."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
@@ -966,10 +1058,11 @@ async def chat_query(query_data: Dict[str, Any]):
 @app.get("/api/analytics/portfolio-deep")
 async def portfolio_deep_analytics():
     """Comprehensive portfolio analytics."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         performance = await orchestrator.learning_engine.analyze_performance("30d")
         return performance
     except Exception as e:
@@ -979,10 +1072,11 @@ async def portfolio_deep_analytics():
 @app.get("/api/analytics/performance/{period}")
 async def get_performance_analytics(period: str = "30d"):
     """Get performance analytics for specified period."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         performance = await orchestrator.learning_engine.analyze_performance(period)
         return performance
     except Exception as e:
@@ -992,10 +1086,11 @@ async def get_performance_analytics(period: str = "30d"):
 @app.post("/api/analytics/optimize-strategy")
 async def optimize_strategy(strategy_name: str):
     """Optimize a specific trading strategy."""
-    if not orchestrator:
+    if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
+        orchestrator = await container.get_orchestrator()
         optimization = await orchestrator.learning_engine.optimize_strategy(strategy_name)
         return optimization
     except Exception as e:

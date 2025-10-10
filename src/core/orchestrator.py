@@ -19,7 +19,8 @@ from claude_agent_sdk import (
     tool,
     AssistantMessage,
     TextBlock,
-    ToolUseBlock
+    ToolUseBlock,
+    ToolResultBlock
 )
 from loguru import logger
 
@@ -35,7 +36,7 @@ from ..services.analytics import (
     run_market_screening as analytics_run_market_screening,
     run_strategy_analysis,
 )
-from ..auth.claude_auth import validate_claude_api, ClaudeAuthStatus
+from ..auth.claude_auth import ClaudeAuthStatus
 
 
 class RoboTraderOrchestrator:
@@ -70,22 +71,14 @@ class RoboTraderOrchestrator:
         """Initialize the orchestrator with MCP servers and hooks."""
         logger.info("Initializing Robo Trader Orchestrator")
 
-        # Check Claude API access (informational only - SDK handles actual auth)
-        logger.info("Checking Claude authentication...")
-        self.claude_status = await validate_claude_api(self.config.integration.anthropic_api_key)
-        
-        if self.claude_status.is_valid:
-            auth_method = self.claude_status.account_info.get("auth_method", "unknown")
-            logger.info(f"✓ Claude authenticated via {auth_method}")
-        else:
-            logger.info(f"ℹ️  Claude API pre-check: {self.claude_status.error}")
-            logger.info("ℹ️  System will use Claude Agent SDK authentication (Claude Pro subscription)")
-            # Create a status indicating SDK will handle auth
-            self.claude_status = ClaudeAuthStatus(
-                is_valid=True,  # Assume SDK will handle it
-                api_key_present=False,
-                account_info={"auth_method": "claude_agent_sdk", "note": "Using SDK built-in authentication"}
-            )
+        # Claude Agent SDK handles authentication through Claude Code CLI
+        # No pre-validation needed - SDK will use authenticated CLI session
+        logger.info("Claude Agent SDK will authenticate via Claude Code CLI")
+        self.claude_status = ClaudeAuthStatus(
+            is_valid=True,
+            api_key_present=False,
+            account_info={"auth_method": "claude_code_cli", "note": "SDK handles authentication"}
+        )
         
         # Create MCP servers
         broker_server = await create_broker_mcp_server(self.config)
@@ -273,35 +266,60 @@ Use the available tools to coordinate between agents. Maintain state and create 
 
         Returns structured response with thinking, tool usage, and results.
         """
-        if not self.client:
-            raise RuntimeError("Session not started. Call start_session() first.")
+        try:
+            if not self.client:
+                raise RuntimeError("Session not started. Call start_session() first.")
 
-        await self.client.query(query)
+            await self.client.query(query)
 
-        thinking_content = []
-        tool_uses = []
-        results = []
+            thinking_content = []
+            tool_uses = []
+            results = []
 
-        async for message in self.client.receive_response():
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        thinking_content.append(block.text)
-                        # Broadcast thinking to UI (would need WebSocket integration)
-                        logger.info(f"AI Thinking: {block.text[:100]}...")
-                    elif isinstance(block, ToolUseBlock):
-                        tool_uses.append({
-                            "id": block.id,
-                            "name": block.name,
-                            "status": "executing"
-                        })
-                        logger.info(f"Tool Use: {block.name}")
+            async for message in self.client.receive_response():
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            thinking_content.append(block.text)
+                            # Broadcast thinking to UI (would need WebSocket integration)
+                            logger.info(f"AI Thinking: {block.text[:100]}...")
+                        elif isinstance(block, ToolUseBlock):
+                            tool_uses.append({
+                                "id": block.id,
+                                "name": block.name,
+                                "status": "executing"
+                            })
+                            logger.info(f"Tool Use: {block.name}")
+                        elif isinstance(block, ToolResultBlock):
+                            # Update tool status and add result
+                            tool_uses.append({
+                                "id": block.tool_use_id,
+                                "name": "tool_result",
+                                "status": "completed",
+                                "result": block.content,
+                                "is_error": block.is_error
+                            })
+                            results.append({
+                                "tool_use_id": block.tool_use_id,
+                                "content": block.content,
+                                "is_error": block.is_error
+                            })
+                            logger.info(f"Tool Result: {block.tool_use_id} - {'error' if block.is_error else 'success'}")
 
-        return {
-            "thinking": thinking_content,
-            "tool_uses": tool_uses,
-            "results": results
-        }
+            return {
+                "thinking": thinking_content,
+                "tool_uses": tool_uses,
+                "results": results
+            }
+
+        except Exception as e:
+            logger.error(f"Error in enhanced query processing: {e}", exc_info=True)
+            return {
+                "thinking": [],
+                "tool_uses": [],
+                "results": [],
+                "error": f"Query processing failed: {str(e)}"
+            }
 
     # NEW: AI Status for UI
     async def get_ai_status(self) -> Dict[str, Any]:
@@ -577,25 +595,5 @@ Use the available tools to coordinate between agents. Maintain state and create 
 
     async def get_claude_status(self) -> ClaudeAuthStatus:
         """Get current Claude API status."""
-        if self.claude_status is None:
-            self.claude_status = await validate_claude_api(self.config.integration.anthropic_api_key)
         return self.claude_status
 
-
-# Global orchestrator instance
-_orchestrator: Optional[RoboTraderOrchestrator] = None
-
-
-def get_orchestrator(config: Config) -> RoboTraderOrchestrator:
-    """Get the global orchestrator instance."""
-    global _orchestrator
-    if _orchestrator is None:
-        _orchestrator = RoboTraderOrchestrator(config)
-    return _orchestrator
-
-
-async def initialize_orchestrator(config: Config) -> RoboTraderOrchestrator:
-    """Initialize and return the orchestrator."""
-    orchestrator = get_orchestrator(config)
-    await orchestrator.initialize()
-    return orchestrator

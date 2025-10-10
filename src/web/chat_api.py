@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from loguru import logger
 
-from ..core.orchestrator import get_orchestrator
+from ..core.di import get_container
 from ..core.conversation_manager import ConversationManager
 
 
@@ -47,14 +47,16 @@ async def initialize_chat_manager():
     """Initialize the global conversation manager."""
     global conversation_manager
     if conversation_manager is None:
-        orchestrator = get_orchestrator()
-        if orchestrator:
-            conversation_manager = ConversationManager(
-                orchestrator.config,
-                orchestrator.state_manager
-            )
-            await conversation_manager.initialize()
-            logger.info("Chat API conversation manager initialized")
+        container = await get_container()
+        if container:
+            orchestrator = await container.get_orchestrator()
+            if orchestrator:
+                conversation_manager = ConversationManager(
+                    orchestrator.config,
+                    orchestrator.state_manager
+                )
+                await conversation_manager.initialize()
+                logger.info("Chat API conversation manager initialized")
 
 
 @router.post("/query", response_model=ChatResponse)
@@ -139,7 +141,8 @@ async def approve_recommendation(request: ApprovalRequest):
     if not conversation_manager:
         await initialize_chat_manager()
 
-    orchestrator = get_orchestrator()
+    container = await get_container()
+    orchestrator = await container.get_orchestrator() if container else None
     if not orchestrator:
         raise HTTPException(status_code=500, detail="System not initialized")
 
@@ -258,31 +261,43 @@ async def process_detected_intents(session_id: str, intents: List[str], actions:
     without blocking the chat response.
     """
     try:
-        orchestrator = get_orchestrator()
+        container = await get_container()
+        orchestrator = await container.get_orchestrator() if container else None
         if not orchestrator:
+            logger.warning("Orchestrator not available for intent processing")
             return
 
-        # Process intents
+        # Process intents with proper error handling
         for intent in intents:
-            if intent == "portfolio_analysis":
-                # Trigger portfolio scan
-                asyncio.create_task(orchestrator.run_portfolio_scan())
+            try:
+                if intent == "portfolio_analysis":
+                    # Trigger portfolio scan
+                    task = asyncio.create_task(orchestrator.run_portfolio_scan())
+                    task.add_done_callback(lambda t: logger.info(f"Portfolio scan completed for session {session_id}") if not t.exception() else logger.error(f"Portfolio scan failed: {t.exception()}"))
 
-            elif intent == "market_screening":
-                # Trigger market screening
-                asyncio.create_task(orchestrator.run_market_screening())
+                elif intent == "market_screening":
+                    # Trigger market screening
+                    task = asyncio.create_task(orchestrator.run_market_screening())
+                    task.add_done_callback(lambda t: logger.info(f"Market screening completed for session {session_id}") if not t.exception() else logger.error(f"Market screening failed: {t.exception()}"))
 
-            elif intent == "strategy_review":
-                # Trigger strategy analysis
-                asyncio.create_task(orchestrator.run_strategy_review())
+                elif intent == "strategy_review":
+                    # Trigger strategy analysis
+                    task = asyncio.create_task(orchestrator.run_strategy_review())
+                    task.add_done_callback(lambda t: logger.info(f"Strategy review completed for session {session_id}") if not t.exception() else logger.error(f"Strategy review failed: {t.exception()}"))
+
+            except Exception as e:
+                logger.error(f"Failed to process intent '{intent}': {e}")
 
         # Process actions (these would trigger specific agent actions)
         for action in actions:
-            logger.info(f"Processing detected action: {action}")
-            # Additional action processing would go here
+            try:
+                logger.info(f"Processing detected action: {action}")
+                # Additional action processing would go here
+            except Exception as e:
+                logger.error(f"Failed to process action '{action}': {e}")
 
     except Exception as e:
-        logger.error(f"Error processing detected intents: {e}")
+        logger.error(f"Error processing detected intents: {e}", exc_info=True)
 
 
 async def execute_recommendation(orchestrator, recommendation: Dict[str, Any]):

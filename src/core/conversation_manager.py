@@ -17,7 +17,6 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from ..config import Config
 from ..core.state import StateManager
-from ..auth.claude_auth import validate_claude_api
 
 
 class ConversationMessage:
@@ -128,11 +127,6 @@ class ConversationManager:
         """Initialize the conversation manager."""
         logger.info("Initializing Conversation Manager")
 
-        # Validate Claude access for conversations
-        auth_status = await validate_claude_api(self.config.integration.anthropic_api_key)
-        if not auth_status.is_valid:
-            logger.warning("Claude API not available for conversations - using fallback responses")
-            return
 
         # Create Claude client for conversations
         options = ClaudeAgentOptions(

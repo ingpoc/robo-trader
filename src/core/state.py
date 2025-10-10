@@ -11,6 +11,8 @@ Handles persistent storage of:
 
 import json
 import asyncio
+import tempfile
+import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -178,7 +180,7 @@ class Intent:
 
 
 class StateManager:
-    """Manages persistent state storage."""
+    """Manages persistent state storage with atomic file operations and proper locking."""
 
     def __init__(self, state_dir: Path):
         self.state_dir = state_dir
@@ -214,45 +216,151 @@ class StateManager:
         self._priority_queue: List[Dict] = []
         self._approval_queue: List[Dict] = []
         self._weekly_plan: Optional[Dict] = None
-        self._lock = asyncio.Lock()
+
+        # Thread-safe locks for different operations
+        self._memory_lock = asyncio.Lock()  # Protects in-memory state
+        self._file_locks: Dict[Path, asyncio.Lock] = {}  # Per-file locks
 
         # Alert manager
         self.alert_manager = AlertManager(state_dir)
 
-        # Load initial state
-        self._load_portfolio()
-        self._load_intents()
-        self._load_screening()
-        self._load_strategy()
-        self._load_priority_queue()
-        self._load_approval_queue()
-        self._load_weekly_plan()
+        # Load initial state (synchronous for __init__)
+        self._load_portfolio_sync()
+        self._load_intents_sync()
+        self._load_screening_sync()
+        self._load_strategy_sync()
+        self._load_priority_queue_sync()
+        self._load_approval_queue_sync()
+        self._load_weekly_plan_sync()
+
+    def _get_file_lock(self, file_path: Path) -> asyncio.Lock:
+        """Get or create a file-specific lock."""
+        if file_path not in self._file_locks:
+            self._file_locks[file_path] = asyncio.Lock()
+        return self._file_locks[file_path]
+
+    async def _read_json_atomic(self, file_path: Path, lock_timeout: float = 10.0) -> Optional[Any]:
+        """Atomically read JSON file with proper error handling and lock timeout."""
+        if not file_path.exists():
+            return None
+
+        lock = self._get_file_lock(file_path)
+
+        try:
+            # Acquire lock with timeout to prevent deadlocks
+            await asyncio.wait_for(lock.acquire(), timeout=lock_timeout)
+
+            try:
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    return json.loads(content)
+            except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Failed to read {file_path}: {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Unexpected error reading {file_path}: {e}")
+                return None
+            finally:
+                lock.release()
+
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout acquiring lock for {file_path} after {lock_timeout}s")
+            return None
+
+    async def _write_json_atomic(self, file_path: Path, data: Any, lock_timeout: float = 10.0) -> bool:
+        """Atomically write JSON file using temporary file + rename with lock timeout."""
+        lock = self._get_file_lock(file_path)
+
+        try:
+            # Acquire lock with timeout to prevent deadlocks
+            await asyncio.wait_for(lock.acquire(), timeout=lock_timeout)
+
+            try:
+                # Create temporary file in same directory for atomic rename
+                temp_fd, temp_path = tempfile.mkstemp(
+                    suffix='.tmp',
+                    prefix=file_path.stem + '_',
+                    dir=file_path.parent
+                )
+
+                try:
+                    # Write to temporary file
+                    with os.fdopen(temp_fd, 'w', encoding='utf-8') as temp_file:
+                        json.dump(data, temp_file, indent=2, ensure_ascii=False)
+
+                    # Atomic rename (works across filesystems on POSIX)
+                    os.rename(temp_path, file_path)
+                    return True
+
+                except Exception as e:
+                    # Clean up temp file on error
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
+                    raise e
+
+            except Exception as e:
+                logger.error(f"Failed to write {file_path}: {e}")
+                return False
+            finally:
+                lock.release()
+
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout acquiring lock for {file_path} after {lock_timeout}s")
+            return False
+
+    async def _read_modify_write_atomic(self, file_path: Path, modifier_func) -> bool:
+        """Atomically read-modify-write a JSON file."""
+        async with self._get_file_lock(file_path):
+            try:
+                # Read current data
+                current_data = []
+                if file_path.exists():
+                    async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                        content = await f.read()
+                        current_data = json.loads(content)
+                        if not isinstance(current_data, list):
+                            current_data = [current_data]
+
+                # Apply modification
+                modified_data = modifier_func(current_data)
+
+                # Write atomically
+                return await self._write_json_atomic(file_path, modified_data)
+
+            except Exception as e:
+                logger.error(f"Failed to read-modify-write {file_path}: {e}")
+                return False
 
     async def get_portfolio(self) -> Optional[PortfolioState]:
         """Get current portfolio state."""
-        async with self._lock:
+        async with self._memory_lock:
             return self._portfolio
 
     async def update_portfolio(self, portfolio: PortfolioState) -> None:
         """Update portfolio state."""
-        async with self._lock:
+        async with self._memory_lock:
             self._portfolio = portfolio
-            await self._save_portfolio()
-            logger.info(f"Portfolio updated as of {portfolio.as_of}")
+            success = await self._write_json_atomic(self.portfolio_file, portfolio.to_dict())
+            if success:
+                logger.info(f"Portfolio updated as of {portfolio.as_of}")
+            else:
+                logger.error("Failed to save portfolio to disk")
 
     async def get_intent(self, intent_id: str) -> Optional[Intent]:
         """Get intent by ID."""
-        async with self._lock:
+        async with self._memory_lock:
             return self._intents.get(intent_id)
 
     async def get_all_intents(self) -> List[Intent]:
         """Get all intents."""
-        async with self._lock:
+        async with self._memory_lock:
             return list(self._intents.values())
 
     async def create_intent(self, symbol: str, signal: Optional[Signal] = None, source: str = "system") -> Intent:
         """Create new trading intent."""
-        async with self._lock:
+        async with self._memory_lock:
             intent_id = f"intent_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{symbol}"
             intent = Intent(
                 id=intent_id,
@@ -261,105 +369,114 @@ class StateManager:
                 source=source
             )
             self._intents[intent_id] = intent
-            await self._save_intents()
-            logger.info(f"Created intent {intent_id} for {symbol}")
+            success = await self._write_json_atomic(self.intents_file, {k: v.to_dict() for k, v in self._intents.items()})
+            if success:
+                logger.info(f"Created intent {intent_id} for {symbol}")
+            else:
+                logger.error(f"Failed to save intent {intent_id} to disk")
             return intent
 
     async def update_intent(self, intent: Intent) -> None:
         """Update existing intent."""
-        async with self._lock:
+        async with self._memory_lock:
             self._intents[intent.id] = intent
-            await self._save_intents()
-            logger.info(f"Updated intent {intent.id}")
+            success = await self._write_json_atomic(self.intents_file, {k: v.to_dict() for k, v in self._intents.items()})
+            if success:
+                logger.info(f"Updated intent {intent.id}")
+            else:
+                logger.error(f"Failed to save intent {intent.id} to disk")
 
     async def update_screening_results(self, results: Optional[Dict[str, Any]]) -> None:
-        async with self._lock:
+        async with self._memory_lock:
             self._screening_results = results
-            await self._save_screening()
+            success = await self._write_json_atomic(self.screening_file, results)
+            if not success:
+                logger.error("Failed to save screening results to disk")
 
     async def get_screening_results(self) -> Optional[Dict[str, Any]]:
-        async with self._lock:
+        async with self._memory_lock:
             return self._screening_results
 
     async def update_strategy_results(self, results: Optional[Dict[str, Any]]) -> None:
-        async with self._lock:
+        async with self._memory_lock:
             self._strategy_results = results
-            await self._save_strategy()
+            success = await self._write_json_atomic(self.strategy_file, results)
+            if not success:
+                logger.error("Failed to save strategy results to disk")
 
     async def get_strategy_results(self) -> Optional[Dict[str, Any]]:
-        async with self._lock:
+        async with self._memory_lock:
             return self._strategy_results
 
     # NEW: AI Planning methods
     async def save_daily_plan(self, plan: Dict) -> None:
         """Save AI-generated daily work plan."""
         plan_file = self.daily_plans_dir / f"{plan['date']}.json"
-        async with self._lock:
-            async with aiofiles.open(plan_file, 'w') as f:
-                await f.write(json.dumps(plan, indent=2))
+        success = await self._write_json_atomic(plan_file, plan)
+        if success:
+            logger.debug(f"Saved daily plan for {plan['date']}")
+        else:
+            logger.error(f"Failed to save daily plan for {plan['date']}")
 
     async def load_daily_plan(self, date: str) -> Optional[Dict]:
         """Load daily plan for specific date."""
         plan_file = self.daily_plans_dir / f"{date}.json"
-        if plan_file.exists():
-            async with self._lock:
-                with open(plan_file, 'r') as f:
-                    return json.load(f)
-        return None
+        return await self._read_json_atomic(plan_file)
 
     # NEW: Analysis history tracking
     async def save_analysis_history(self, symbol: str, analysis: Dict) -> None:
-        """Save detailed analysis history per stock."""
+        """Save detailed analysis history per stock with atomic operations."""
         history_file = self.analysis_history_dir / f"{symbol}.json"
-        async with self._lock:
-            # Load existing history
-            history = []
-            if history_file.exists():
-                async with aiofiles.open(history_file, 'r') as f:
-                    content = await f.read()
-                    history = json.loads(content)
+
+        def modify_history(current_history):
+            # Ensure current_history is a list
+            if not isinstance(current_history, list):
+                current_history = []
 
             # Add new analysis
-            history.append({
+            current_history.append({
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "analysis": analysis
             })
 
             # Keep last 30 days
             cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-            history = [h for h in history if h["timestamp"] > cutoff.isoformat()]
+            return [h for h in current_history if h["timestamp"] > cutoff.isoformat()]
 
-            async with aiofiles.open(history_file, 'w') as f:
-                await f.write(json.dumps(history, indent=2))
+        success = await self._read_modify_write_atomic(history_file, modify_history)
+        if success:
+            logger.debug(f"Saved analysis history for {symbol}")
+        else:
+            logger.error(f"Failed to save analysis history for {symbol}")
 
     # NEW: Priority queue for urgent events
     async def add_priority_item(self, symbol: str, reason: str, priority: str) -> None:
         """Add item to priority queue for urgent analysis."""
-        async with self._lock:
-            queue = self._load_priority_queue()
-            queue.append({
+        async with self._memory_lock:
+            self._priority_queue.append({
                 "symbol": symbol,
                 "reason": reason,
                 "priority": priority,
                 "added_at": datetime.now(timezone.utc).isoformat()
             })
-            self._save_priority_queue(queue)
+            success = await self._write_json_atomic(self.priority_queue_file, self._priority_queue)
+            if not success:
+                logger.error("Failed to save priority queue to disk")
 
     async def get_priority_items(self) -> List[Dict]:
         """Get items needing urgent attention."""
-        async with self._lock:
+        async with self._memory_lock:
             return self._priority_queue.copy()
 
     # NEW: Approval queue management
     async def add_to_approval_queue(self, recommendation: Dict) -> None:
         """Add AI recommendation to user approval queue with deduplication."""
-        async with self._lock:
-            queue = self._load_approval_queue()
-
+        async with self._memory_lock:
             symbol = recommendation.get("symbol", "")
             action = recommendation.get("action", "")
 
-            for existing in queue:
+            # Check for duplicates in memory
+            for existing in self._approval_queue:
                 existing_rec = existing.get("recommendation", {})
                 if (existing.get("status") == "pending" and
                     existing_rec.get("symbol") == symbol and
@@ -367,87 +484,91 @@ class StateManager:
                     logger.debug(f"Skipping duplicate recommendation for {symbol} {action}")
                     return
 
-            queue.append({
+            # Add new recommendation
+            new_item = {
                 "id": f"rec_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{symbol}_{action}",
                 "recommendation": recommendation,
                 "status": "pending",
                 "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            self._save_approval_queue(queue)
+            }
+            self._approval_queue.append(new_item)
+
+            success = await self._write_json_atomic(self.approval_queue_file, self._approval_queue)
+            if not success:
+                logger.error("Failed to save approval queue to disk")
 
     async def get_pending_approvals(self) -> List[Dict]:
         """Get recommendations awaiting user approval."""
-        async with self._lock:
-            queue = self._load_approval_queue()
-
+        async with self._memory_lock:
             # If no recommendations exist, add some sample ones for demo
-            if not queue:
+            if not self._approval_queue:
                 sample_recommendations = self._get_sample_recommendations()
                 for rec in sample_recommendations:
                     await self.add_to_approval_queue(rec)
-                queue = self._load_approval_queue()
 
-            return [item for item in queue if item["status"] == "pending"]
+            return [item for item in self._approval_queue if item["status"] == "pending"]
 
     async def update_approval_status(self, recommendation_id: str, status: str, user_feedback: Optional[str] = None) -> bool:
         """Update approval status for a recommendation."""
-        async with self._lock:
-            queue = self._load_approval_queue()
-            for item in queue:
+        async with self._memory_lock:
+            for item in self._approval_queue:
                 if item["id"] == recommendation_id:
                     item["status"] = status
                     item["updated_at"] = datetime.now(timezone.utc).isoformat()
                     if user_feedback:
                         item["user_feedback"] = user_feedback
-                    self._save_approval_queue(queue)
-                    return True
+
+                    success = await self._write_json_atomic(self.approval_queue_file, self._approval_queue)
+                    if not success:
+                        logger.error(f"Failed to save approval queue update for {recommendation_id}")
+                    return success
             return False
 
     # NEW: Weekly plan management
     async def save_weekly_plan(self, plan: Dict) -> None:
         """Save AI-generated weekly work distribution plan."""
-        async with self._lock:
-            async with aiofiles.open(self.weekly_plan_file, 'w') as f:
-                await f.write(json.dumps(plan, indent=2))
-            self._weekly_plan = plan
+        async with self._memory_lock:
+            success = await self._write_json_atomic(self.weekly_plan_file, plan)
+            if success:
+                self._weekly_plan = plan
+                logger.debug("Saved weekly plan")
+            else:
+                logger.error("Failed to save weekly plan to disk")
 
     async def load_weekly_plan(self) -> Optional[Dict]:
         """Load current weekly plan."""
-        async with self._lock:
+        async with self._memory_lock:
             return self._weekly_plan.copy() if self._weekly_plan else None
 
     # NEW: Learning insights storage
     async def save_learning_insights(self, insights: Dict) -> None:
         """Save AI learning insights from recommendation outcomes."""
-        async with self._lock:
-            # Load existing insights
-            existing = []
-            if self.learning_insights_file.exists():
-                async with aiofiles.open(self.learning_insights_file, 'r') as f:
-                    content = await f.read()
-                    existing = json.loads(content)
+        def modify_insights(current_insights):
+            if not isinstance(current_insights, list):
+                current_insights = []
 
             # Add new insights
-            existing.append(insights)
+            current_insights.append(insights)
 
             # Keep last 50 insights
-            existing = existing[-50:]
+            return current_insights[-50:]
 
-            async with aiofiles.open(self.learning_insights_file, 'w') as f:
-                await f.write(json.dumps(existing, indent=2))
+        success = await self._read_modify_write_atomic(self.learning_insights_file, modify_insights)
+        if success:
+            logger.debug("Saved learning insights")
+        else:
+            logger.error("Failed to save learning insights")
 
     async def get_learning_insights(self, limit: int = 10) -> List[Dict]:
         """Get recent learning insights."""
-        async with self._lock:
-            if self.learning_insights_file.exists():
-                with open(self.learning_insights_file, 'r') as f:
-                    insights = json.load(f)
-                    return insights[-limit:]
-            return []
+        insights = await self._read_json_atomic(self.learning_insights_file)
+        if insights and isinstance(insights, list):
+            return insights[-limit:]
+        return []
 
     async def create_checkpoint(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Create a checkpoint of current state."""
-        async with self._lock:
+        async with self._memory_lock:
             timestamp = datetime.now(timezone.utc).isoformat()
             checkpoint_id = f"checkpoint_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
 
@@ -461,23 +582,22 @@ class StateManager:
             }
 
             checkpoint_file = self.checkpoints_dir / f"{checkpoint_id}.json"
-            async with aiofiles.open(checkpoint_file, 'w') as f:
-                await f.write(json.dumps(checkpoint_data, indent=2))
-
-            logger.info(f"Created checkpoint {checkpoint_id}: {name}")
-            return checkpoint_id
+            success = await self._write_json_atomic(checkpoint_file, checkpoint_data)
+            if success:
+                logger.info(f"Created checkpoint {checkpoint_id}: {name}")
+                return checkpoint_id
+            else:
+                logger.error(f"Failed to create checkpoint {checkpoint_id}")
+                raise RuntimeError(f"Failed to create checkpoint {checkpoint_id}")
 
     async def restore_checkpoint(self, checkpoint_id: str) -> bool:
         """Restore state from checkpoint."""
-        async with self._lock:
+        async with self._memory_lock:
             checkpoint_file = self.checkpoints_dir / f"{checkpoint_id}.json"
-            if not checkpoint_file.exists():
+            data = await self._read_json_atomic(checkpoint_file)
+            if not data:
                 logger.error(f"Checkpoint {checkpoint_id} not found")
                 return False
-
-            async with aiofiles.open(checkpoint_file, 'r') as f:
-                content = await f.read()
-                data = json.loads(content)
 
             # Restore portfolio
             if data.get('portfolio'):
@@ -488,134 +608,98 @@ class StateManager:
             for intent_id, intent_data in data.get('intents', {}).items():
                 self._intents[intent_id] = Intent.from_dict(intent_data)
 
-            await self._save_portfolio()
-            await self._save_intents()
+            # Save restored state
+            portfolio_success = await self._write_json_atomic(self.portfolio_file, self._portfolio.to_dict() if self._portfolio else None)
+            intents_success = await self._write_json_atomic(self.intents_file, {k: v.to_dict() for k, v in self._intents.items()})
 
-            logger.info(f"Restored checkpoint {checkpoint_id}")
-            return True
+            if portfolio_success and intents_success:
+                logger.info(f"Restored checkpoint {checkpoint_id}")
+                return True
+            else:
+                logger.error(f"Failed to save restored checkpoint {checkpoint_id}")
+                return False
 
-    def _load_portfolio(self) -> None:
-        """Load portfolio from file."""
-        if self.portfolio_file.exists():
-            try:
-                with open(self.portfolio_file, 'r') as f:
-                    data = json.load(f)
+    def _load_portfolio_sync(self) -> None:
+        """Load portfolio from file synchronously for __init__."""
+        try:
+            data = self._read_json_sync(self.portfolio_file)
+            if data:
                 self._portfolio = PortfolioState.from_dict(data)
                 logger.info("Portfolio loaded from file")
-            except Exception as e:
-                logger.error(f"Failed to load portfolio: {e}")
+            else:
                 self._portfolio = None
+        except Exception as e:
+            logger.error(f"Failed to load portfolio: {e}")
+            self._portfolio = None
 
-    async def _save_portfolio(self) -> None:
-        """Save portfolio to file."""
-        if self._portfolio:
-            try:
-                async with aiofiles.open(self.portfolio_file, 'w') as f:
-                    await f.write(json.dumps(self._portfolio.to_dict(), indent=2))
-            except Exception as e:
-                logger.error(f"Failed to save portfolio: {e}")
+    def _read_json_sync(self, file_path: Path) -> Optional[Any]:
+        """Synchronous JSON read for initialization."""
+        if not file_path.exists():
+            return None
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to read {file_path}: {e}")
+            return None
 
-    def _load_intents(self) -> None:
-        """Load intents from file."""
-        if self.intents_file.exists():
-            try:
-                with open(self.intents_file, 'r') as f:
-                    data = json.load(f)
+    def _load_intents_sync(self) -> None:
+        """Load intents from file synchronously for __init__."""
+        try:
+            data = self._read_json_sync(self.intents_file)
+            if data:
                 self._intents = {}
                 for intent_id, intent_data in data.items():
                     self._intents[intent_id] = Intent.from_dict(intent_data)
                 logger.info(f"Loaded {len(self._intents)} intents from file")
-            except Exception as e:
-                logger.error(f"Failed to load intents: {e}")
+            else:
                 self._intents = {}
-
-    async def _save_intents(self) -> None:
-        """Save intents to file."""
-        try:
-            data = {k: v.to_dict() for k, v in self._intents.items()}
-            async with aiofiles.open(self.intents_file, 'w') as f:
-                await f.write(json.dumps(data, indent=2))
         except Exception as e:
-            logger.error(f"Failed to save intents: {e}")
+            logger.error(f"Failed to load intents: {e}")
+            self._intents = {}
 
-    def _load_screening(self) -> None:
-        if self.screening_file.exists():
-            try:
-                with open(self.screening_file, 'r') as f:
-                    self._screening_results = json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load screening results: {e}")
-                self._screening_results = None
-
-    def _save_screening(self) -> None:
+    def _load_screening_sync(self) -> None:
+        """Load screening results synchronously for __init__."""
         try:
-            with open(self.screening_file, 'w') as f:
-                json.dump(self._screening_results, f, indent=2)
+            self._screening_results = self._read_json_sync(self.screening_file)
         except Exception as e:
-            logger.error(f"Failed to save screening results: {e}")
+            logger.error(f"Failed to load screening results: {e}")
+            self._screening_results = None
 
-    def _load_strategy(self) -> None:
-        if self.strategy_file.exists():
-            try:
-                with open(self.strategy_file, 'r') as f:
-                    self._strategy_results = json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load strategy analysis: {e}")
-                self._strategy_results = None
-
-    def _save_strategy(self) -> None:
+    def _load_strategy_sync(self) -> None:
+        """Load strategy results synchronously for __init__."""
         try:
-            with open(self.strategy_file, 'w') as f:
-                json.dump(self._strategy_results, f, indent=2)
+            self._strategy_results = self._read_json_sync(self.strategy_file)
         except Exception as e:
-            logger.error(f"Failed to save strategy analysis: {e}")
+            logger.error(f"Failed to load strategy analysis: {e}")
+            self._strategy_results = None
 
     # NEW: AI State management methods
-    def _load_priority_queue(self) -> List[Dict]:
-        """Load priority queue from file."""
-        if self.priority_queue_file.exists():
-            try:
-                with open(self.priority_queue_file, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load priority queue: {e}")
-        return []
-
-    def _save_priority_queue(self, queue: List[Dict]) -> None:
-        """Save priority queue to file."""
+    def _load_priority_queue_sync(self) -> None:
+        """Load priority queue from file synchronously for __init__."""
         try:
-            with open(self.priority_queue_file, 'w') as f:
-                json.dump(queue, f, indent=2)
+            data = self._read_json_sync(self.priority_queue_file)
+            self._priority_queue = data if data else []
         except Exception as e:
-            logger.error(f"Failed to save priority queue: {e}")
+            logger.error(f"Failed to load priority queue: {e}")
+            self._priority_queue = []
 
-    def _load_approval_queue(self) -> List[Dict]:
-        """Load approval queue from file."""
-        if self.approval_queue_file.exists():
-            try:
-                with open(self.approval_queue_file, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load approval queue: {e}")
-        return []
-
-    def _save_approval_queue(self, queue: List[Dict]) -> None:
-        """Save approval queue to file."""
+    def _load_approval_queue_sync(self) -> None:
+        """Load approval queue from file synchronously for __init__."""
         try:
-            with open(self.approval_queue_file, 'w') as f:
-                json.dump(queue, f, indent=2)
+            data = self._read_json_sync(self.approval_queue_file)
+            self._approval_queue = data if data else []
         except Exception as e:
-            logger.error(f"Failed to save approval queue: {e}")
+            logger.error(f"Failed to load approval queue: {e}")
+            self._approval_queue = []
 
-    def _load_weekly_plan(self) -> None:
-        """Load weekly plan from file."""
-        if self.weekly_plan_file.exists():
-            try:
-                with open(self.weekly_plan_file, 'r') as f:
-                    self._weekly_plan = json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load weekly plan: {e}")
-                self._weekly_plan = None
+    def _load_weekly_plan_sync(self) -> None:
+        """Load weekly plan from file synchronously for __init__."""
+        try:
+            self._weekly_plan = self._read_json_sync(self.weekly_plan_file)
+        except Exception as e:
+            logger.error(f"Failed to load weekly plan: {e}")
+            self._weekly_plan = None
 
     def _get_sample_recommendations(self) -> List[Dict]:
         """Get sample AI recommendations for demo purposes."""

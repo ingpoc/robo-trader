@@ -103,7 +103,7 @@ async def get_login_url_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to get login URL: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to generate login URL. Please check API configuration."}
             ],
             "is_error": True
         }
@@ -125,7 +125,7 @@ async def set_access_token_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to set access token: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to authenticate with Zerodha. Please check your request token and API credentials."}
             ],
             "is_error": True
         }
@@ -159,7 +159,7 @@ async def get_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to get portfolio: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to retrieve portfolio data. Please check your authentication and try again."}
             ],
             "is_error": True
         }
@@ -188,7 +188,7 @@ async def get_orders_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to get orders: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to retrieve order history. Please check your authentication and try again."}
             ],
             "is_error": True
         }
@@ -239,7 +239,7 @@ async def place_order_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to place order: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to place order. Please check your order parameters and try again."}
             ],
             "is_error": True
         }
@@ -284,7 +284,7 @@ async def modify_order_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to modify order: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to modify order. Please check your order parameters and try again."}
             ],
             "is_error": True
         }
@@ -319,7 +319,7 @@ async def cancel_order_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to cancel order: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to cancel order. Please check your order parameters and try again."}
             ],
             "is_error": True
         }
@@ -354,7 +354,7 @@ async def get_instruments_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to get instruments: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to retrieve instrument data. Please check your authentication and try again."}
             ],
             "is_error": True
         }
@@ -385,7 +385,7 @@ async def quote_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Failed to get quotes: {e}")
         return {
             "content": [
-                {"type": "text", "text": f"Error: {str(e)}"}
+                {"type": "text", "text": "Failed to retrieve quote data. Please check your authentication and try again."}
             ],
             "is_error": True
         }
@@ -435,9 +435,9 @@ async def create_broker_mcp_server(config: Config):
 
     # Inject config into tools (hacky but works for demo)
     for tool_func in [get_login_url_tool, set_access_token_tool, get_portfolio_tool,
-                     get_orders_tool, place_order_tool, modify_order_tool, cancel_order_tool,
-                     get_instruments_tool, quote_tool, ticker_subscribe_tool,
-                     ticker_unsubscribe_tool, ticker_set_mode_tool]:
+                      get_orders_tool, place_order_tool, modify_order_tool, cancel_order_tool,
+                      get_instruments_tool, quote_tool, ticker_subscribe_tool,
+                      ticker_unsubscribe_tool, ticker_set_mode_tool]:
         tool_func._config = config
 
     return create_sdk_mcp_server(
@@ -458,3 +458,29 @@ async def create_broker_mcp_server(config: Config):
             ticker_set_mode_tool,
         ]
     )
+
+
+async def cleanup_broker():
+    """Cleanup the global broker instance."""
+    global _broker
+    if _broker is not None:
+        try:
+            # Close any active connections or resources
+            if hasattr(_broker, 'ticker') and _broker.ticker:
+                # Close ticker connection if it exists
+                try:
+                    _broker.ticker.close()
+                except Exception as e:
+                    logger.warning(f"Error closing ticker connection: {e}")
+
+            logger.info("Global broker instance cleaned up")
+        except Exception as e:
+            logger.error(f"Error during broker cleanup: {e}")
+        finally:
+            _broker = None
+
+
+def reset_broker():
+    """Reset the global broker instance (for testing)."""
+    global _broker
+    _broker = None

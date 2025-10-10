@@ -17,7 +17,6 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from ..config import Config
 from ..core.state import StateManager
-from ..auth.claude_auth import validate_claude_api
 
 
 @dataclass
@@ -121,11 +120,8 @@ class AIPlanner:
         """Initialize the AI planner."""
         logger.info("Initializing AI Planner")
 
-        # Validate Claude access for planning
-        auth_status = await validate_claude_api(self.config.integration.anthropic_api_key)
-        if not auth_status.is_valid:
-            logger.warning("Claude API not available for planning - using fallback logic")
-            return
+        # Claude Agent SDK handles authentication through Claude Code CLI
+        # No pre-validation needed - SDK will use authenticated CLI session
 
         # Create Claude client for planning operations
         options = ClaudeAgentOptions(

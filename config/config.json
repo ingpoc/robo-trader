@@ -4,6 +4,13 @@
   "state_dir": "state",
   "logs_dir": "logs",
   "max_turns": 50,
+  "database": {
+    "enabled": true,
+    "path": "robo_trader.db",
+    "backup_enabled": true,
+    "backup_interval_hours": 24,
+    "max_backup_files": 7
+  },
   "risk": {
     "max_position_size_percent": 5.0,
     "max_portfolio_risk_percent": 10.0,

@@ -201,6 +201,15 @@ class AgentsConfig(BaseModel):
         }
 
 
+class DatabaseConfig(BaseModel):
+    """Database configuration."""
+    enabled: bool = Field(default=False, description="Enable database-backed state management")
+    path: Optional[str] = Field(default=None, description="Database file path (relative to state_dir)")
+    backup_enabled: bool = Field(default=True, description="Enable automatic database backups")
+    backup_interval_hours: int = Field(default=24, description="Backup interval in hours")
+    max_backup_files: int = Field(default=7, description="Maximum number of backup files to keep")
+
+
 class SchedulingConfig(BaseModel):
     """Scheduling configuration."""
     portfolio_scan_interval_minutes: int = Field(default=60, description="Portfolio scan interval")
@@ -217,6 +226,7 @@ class Config(BaseModel):
     logs_dir: Path = Field(default=Path.cwd() / "logs", description="Logs directory")
     max_turns: int = Field(default=50, description="Maximum conversation turns")
 
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     technical: TechnicalConfig = Field(default_factory=TechnicalConfig)
     screening: ScreeningConfig = Field(default_factory=ScreeningConfig)
@@ -289,21 +299,30 @@ class Config(BaseModel):
         """Validate that required API keys are set for the current environment."""
         from loguru import logger
 
-        if self.environment == 'live':
-            if not self.integration.zerodha_api_key or not self.integration.zerodha_api_secret:
+        # Validate Zerodha API keys for all environments that need them
+        if self.environment in ['live', 'paper']:
+            if not self.integration.zerodha_api_key:
                 raise ValueError(
-                    "ZERODHA_API_KEY and ZERODHA_API_SECRET required for live trading. "
-                    "Set them in .env file or environment variables."
+                    f"ZERODHA_API_KEY required for {self.environment} trading. "
+                    "Set it in .env file or environment variables."
                 )
-            logger.info("✓ Live trading credentials configured")
+            if not self.integration.zerodha_api_secret:
+                raise ValueError(
+                    f"ZERODHA_API_SECRET required for {self.environment} trading. "
+                    "Set it in .env file or environment variables."
+                )
+            logger.info(f"✓ {self.environment.title()} trading credentials configured")
 
-        if not self.integration.anthropic_api_key:
-            logger.warning(
-                "⚠ ANTHROPIC_API_KEY not set - Claude Agent SDK will use built-in authentication. "
-                "For API key authentication, set ANTHROPIC_API_KEY in .env file."
-            )
-        else:
-            logger.info("✓ Anthropic API key configured")
+        elif self.environment == 'dry-run':
+            # Dry-run mode doesn't require real API keys but warn if missing
+            if not self.integration.zerodha_api_key:
+                logger.warning("ZERODHA_API_KEY not set - dry-run mode will use mock data")
+            if not self.integration.zerodha_api_secret:
+                logger.warning("ZERODHA_API_SECRET not set - dry-run mode will use mock data")
+
+        # Claude Agent SDK handles authentication through Claude Code CLI
+        # No API key configuration needed - SDK uses authenticated CLI session
+        logger.info("✓ Claude Agent SDK authentication configured")
 
 
 def load_config(config_path: Optional[Path] = None) -> Config:
