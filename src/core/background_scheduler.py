@@ -101,6 +101,12 @@ class BackgroundScheduler:
         self.config = config
         self.state_manager = state_manager
         self.orchestrator = orchestrator
+
+        # Callback functions to avoid circular imports
+        self._run_portfolio_scan = None
+        self._run_market_screening = None
+        self._ai_planner_create_plan = None
+        self._orchestrator_get_claude_status = None
         self.tasks: Dict[str, BackgroundTask] = {}
         self.running_tasks: Dict[str, asyncio.Task] = {}
         self.is_running = False
@@ -352,17 +358,22 @@ class BackgroundScheduler:
 
     async def _run_task_with_timeout(self, task: BackgroundTask) -> None:
         """Run a task with timeout handling."""
+        execution_task = None
         try:
-            # Create timeout task
             task_coro = self._execute_task_logic(task)
             execution_task = asyncio.create_task(task_coro)
 
-            # Wait with timeout
             await asyncio.wait_for(execution_task, timeout=self.task_timeout_seconds)
 
             logger.info(f"Completed task: {task.task_id}")
 
         except asyncio.TimeoutError:
+            if execution_task and not execution_task.done():
+                execution_task.cancel()
+                try:
+                    await asyncio.wait_for(execution_task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
             logger.error(f"Task timeout: {task.task_id}")
             await self._handle_task_failure(task, "timeout")
 
@@ -371,39 +382,43 @@ class BackgroundScheduler:
             await self._handle_task_failure(task, str(e))
 
         finally:
-            # Clean up running task
             if task.task_id in self.running_tasks:
                 del self.running_tasks[task.task_id]
 
     async def _execute_task_logic(self, task: BackgroundTask) -> None:
         """Execute the actual task logic."""
-        if not self.orchestrator:
-            raise RuntimeError("Orchestrator not available")
-        orchestrator = self.orchestrator
-
         if task.task_type == TaskType.MARKET_MONITORING:
-            await self._execute_market_monitoring(orchestrator, task.metadata)
+            await self._execute_market_monitoring(task.metadata)
 
         elif task.task_type == TaskType.EARNINGS_CHECK:
-            await self._execute_earnings_check(orchestrator, task.metadata)
+            await self._execute_earnings_check(task.metadata)
 
         elif task.task_type == TaskType.STOP_LOSS_MONITOR:
-            await self._execute_stop_loss_monitor(orchestrator, task.metadata)
+            await self._execute_stop_loss_monitor(task.metadata)
 
         elif task.task_type == TaskType.NEWS_MONITORING:
-            await self._execute_news_monitoring(orchestrator, task.metadata)
+            await self._execute_news_monitoring(task.metadata)
 
         elif task.task_type == TaskType.HEALTH_CHECK:
-            await self._execute_health_check(orchestrator, task.metadata)
+            await self._execute_health_check(task.metadata)
 
         elif task.task_type == TaskType.PORTFOLIO_SCAN:
-            await orchestrator.run_portfolio_scan()
+            if self._run_portfolio_scan:
+                await self._run_portfolio_scan()
+            else:
+                logger.warning("Portfolio scan callback not set")
 
         elif task.task_type == TaskType.MARKET_SCREENING:
-            await orchestrator.run_market_screening()
+            if self._run_market_screening:
+                await self._run_market_screening()
+            else:
+                logger.warning("Market screening callback not set")
 
         elif task.task_type == TaskType.AI_PLANNING:
-            await orchestrator.ai_planner.create_daily_plan()
+            if self._ai_planner_create_plan:
+                await self._ai_planner_create_plan()
+            else:
+                logger.warning("AI planning callback not set")
 
         else:
             logger.warning(f"Unknown task type: {task.task_type}")
@@ -572,9 +587,9 @@ class BackgroundScheduler:
                 await self._save_task(task)
 
     # Task execution implementations
-    async def _execute_market_monitoring(self, orchestrator, metadata: Dict[str, Any]) -> None:
+    async def _execute_market_monitoring(self, metadata: Dict[str, Any]) -> None:
         """Execute market monitoring task - detect significant price movements."""
-        portfolio = await orchestrator.state_manager.get_portfolio()
+        portfolio = await self.state_manager.get_portfolio()
         if not portfolio or not portfolio.holdings:
             return
 
@@ -612,7 +627,7 @@ class BackgroundScheduler:
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }
 
-                    await orchestrator.state_manager.add_alert(alert_data)
+                    await self.state_manager.add_alert(alert_data)
                     alerts_created += 1
                     logger.info(f"Price movement alert for {symbol}: {pnl_percent:.2f}%")
 
@@ -622,7 +637,7 @@ class BackgroundScheduler:
         if alerts_created > 0:
             logger.info(f"Market monitoring: created {alerts_created} alerts")
 
-    async def _execute_earnings_check(self, orchestrator, metadata: Dict[str, Any]) -> None:
+    async def _execute_earnings_check(self, metadata: Dict[str, Any]) -> None:
         """Execute earnings check task - placeholder for earnings calendar integration."""
         logger.debug("Earnings check executed (no external API integrated yet)")
 
@@ -639,13 +654,13 @@ class BackgroundScheduler:
         # 4. Flag positions that might be affected
 
         # For now, just log that the check ran
-        portfolio = await orchestrator.state_manager.get_portfolio()
+        portfolio = await self.state_manager.get_portfolio()
         if portfolio and portfolio.holdings:
             logger.debug(f"Checked {len(portfolio.holdings)} holdings for earnings (API integration pending)")
 
-    async def _execute_stop_loss_monitor(self, orchestrator, metadata: Dict[str, Any]) -> None:
+    async def _execute_stop_loss_monitor(self, metadata: Dict[str, Any]) -> None:
         """Execute stop loss monitoring task."""
-        portfolio = await orchestrator.state_manager.get_portfolio()
+        portfolio = await self.state_manager.get_portfolio()
         if not portfolio or not portfolio.holdings:
             return
 
@@ -688,7 +703,7 @@ class BackgroundScheduler:
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }
 
-                    await orchestrator.state_manager.add_alert(alert_data)
+                    await self.state_manager.add_alert(alert_data)
                     alerts_created += 1
                     logger.warning(f"Stop loss breached for {symbol}: {last_price:.2f} <= {stop_loss_price:.2f}")
 
@@ -698,7 +713,7 @@ class BackgroundScheduler:
         if alerts_created > 0:
             logger.info(f"Stop loss monitor: created {alerts_created} alerts")
 
-    async def _execute_news_monitoring(self, orchestrator, metadata: Dict[str, Any]) -> None:
+    async def _execute_news_monitoring(self, metadata: Dict[str, Any]) -> None:
         """Execute news monitoring task using Perplexity API with automatic failover."""
         try:
             perplexity_api_keys = self.config.integration.perplexity_api_keys
@@ -825,12 +840,15 @@ Assessment: <assessment>"""
         except Exception as e:
             logger.error(f"News monitoring task failed: {e}")
 
-    async def _execute_health_check(self, orchestrator, metadata: Dict[str, Any]) -> None:
+    async def _execute_health_check(self, metadata: Dict[str, Any]) -> None:
         """Execute system health check."""
         # Check API connectivity, database health, etc.
         try:
             # Test Claude API
-            claude_status = await orchestrator.get_claude_status()
+            if self._orchestrator_get_claude_status:
+                claude_status = await self._orchestrator_get_claude_status()
+            else:
+                logger.warning("Claude status callback not set")
 
             # Test broker connection
             # Test database connectivity
@@ -843,10 +861,12 @@ Assessment: <assessment>"""
     async def _load_tasks(self) -> None:
         """Load tasks from persistent storage."""
         try:
+            import aiofiles
             tasks_file = self.state_manager.state_dir / "scheduler_tasks.json"
             if tasks_file.exists():
-                with open(tasks_file, 'r') as f:
-                    tasks_data = json.load(f)
+                async with aiofiles.open(tasks_file, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    tasks_data = json.loads(content)
 
                 for task_data in tasks_data:
                     task = BackgroundTask(
@@ -874,6 +894,7 @@ Assessment: <assessment>"""
     async def _save_task(self, task: BackgroundTask) -> None:
         """Save task to persistent storage."""
         try:
+            import aiofiles
             tasks_file = self.state_manager.state_dir / "scheduler_tasks.json"
 
             # Load all tasks
@@ -900,9 +921,9 @@ Assessment: <assessment>"""
 
                 tasks_data.append(task_dict)
 
-            # Write to file
-            with open(tasks_file, 'w') as f:
-                json.dump(tasks_data, f, indent=2)
+            # Write to file asynchronously
+            async with aiofiles.open(tasks_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(tasks_data, indent=2, ensure_ascii=False))
 
         except Exception as e:
             logger.error(f"Failed to save task {task.task_id}: {e}")

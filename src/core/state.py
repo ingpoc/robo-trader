@@ -423,10 +423,11 @@ class StateManager:
         plan_file = self.daily_plans_dir / f"{date}.json"
         return await self._read_json_atomic(plan_file)
 
-    # NEW: Analysis history tracking
+    # NEW: Analysis history tracking with size-based rotation and compression
     async def save_analysis_history(self, symbol: str, analysis: Dict) -> None:
-        """Save detailed analysis history per stock with atomic operations."""
+        """Save detailed analysis history per stock with size-based rotation and compression."""
         history_file = self.analysis_history_dir / f"{symbol}.json"
+        compressed_file = self.analysis_history_dir / f"{symbol}_compressed.json"
 
         def modify_history(current_history):
             # Ensure current_history is a list
@@ -434,12 +435,33 @@ class StateManager:
                 current_history = []
 
             # Add new analysis
-            current_history.append({
+            new_entry = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "analysis": analysis
-            })
+            }
+            current_history.append(new_entry)
 
-            # Keep last 30 days
+            # Size-based rotation: keep max 1000 recent entries
+            if len(current_history) > 1000:
+                # Compress older entries (keep last 500, compress first 500)
+                recent_entries = current_history[-500:]
+                older_entries = current_history[:-500]
+
+                # Compress older entries by removing detailed analysis data
+                compressed_entries = []
+                for entry in older_entries:
+                    compressed_entries.append({
+                        "timestamp": entry["timestamp"],
+                        "compressed": True,
+                        "summary": self._compress_analysis(entry["analysis"])
+                    })
+
+                # Save compressed data to separate file
+                asyncio.create_task(self._save_compressed_history(compressed_file, compressed_entries))
+
+                return recent_entries
+
+            # Time-based cleanup: keep last 30 days for recent entries
             cutoff = datetime.now(timezone.utc) - timedelta(days=30)
             return [h for h in current_history if h["timestamp"] > cutoff.isoformat()]
 
@@ -565,6 +587,58 @@ class StateManager:
         if insights and isinstance(insights, list):
             return insights[-limit:]
         return []
+
+    # NEW: Analysis history compression methods
+    def _compress_analysis(self, analysis: Dict) -> Dict:
+        """Compress analysis data by removing detailed fields."""
+        compressed = {
+            "type": analysis.get("analysis_type", "unknown"),
+            "action": analysis.get("action"),
+            "confidence": analysis.get("confidence"),
+            "risk_level": analysis.get("risk_level"),
+            "timestamp": analysis.get("timestamp")
+        }
+
+        # Keep only essential fields, remove verbose content
+        if "reasoning" in analysis:
+            # Truncate reasoning to first 100 characters
+            compressed["reasoning_summary"] = analysis["reasoning"][:100] + "..." if len(analysis["reasoning"]) > 100 else analysis["reasoning"]
+
+        return compressed
+
+    async def _save_compressed_history(self, compressed_file: Path, compressed_entries: List[Dict]) -> None:
+        """Save compressed analysis history to separate file."""
+        try:
+            success = await self._write_json_atomic(compressed_file, compressed_entries)
+            if success:
+                logger.debug(f"Saved compressed history to {compressed_file}")
+            else:
+                logger.warning(f"Failed to save compressed history to {compressed_file}")
+        except Exception as e:
+            logger.error(f"Error saving compressed history: {e}")
+
+    async def get_analysis_history(self, symbol: str, include_compressed: bool = False, limit: int = 100) -> List[Dict]:
+        """Get analysis history for a symbol, optionally including compressed data."""
+        history_file = self.analysis_history_dir / f"{symbol}.json"
+        compressed_file = self.analysis_history_dir / f"{symbol}_compressed.json"
+
+        # Get recent history
+        recent_history = await self._read_json_atomic(history_file)
+        if not recent_history:
+            recent_history = []
+
+        result = recent_history[-limit:] if len(recent_history) > limit else recent_history
+
+        # Optionally include compressed history
+        if include_compressed:
+            compressed_history = await self._read_json_atomic(compressed_file)
+            if compressed_history and isinstance(compressed_history, list):
+                # Add compressed entries (they're already limited)
+                result.extend(compressed_history)
+
+        # Sort by timestamp
+        result.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        return result[:limit]
 
     async def create_checkpoint(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Create a checkpoint of current state."""

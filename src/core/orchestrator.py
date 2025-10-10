@@ -140,6 +140,12 @@ class RoboTraderOrchestrator:
         # Initialize learning engine
         await self.learning_engine.initialize()
 
+        # Set callback functions on background scheduler to avoid circular imports
+        self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
+        self.background_scheduler._run_market_screening = self.run_market_screening
+        self.background_scheduler._ai_planner_create_plan = self.ai_planner.create_daily_plan
+        self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
+
         # Initialize background scheduler and track tasks for lifecycle management
         self.background_tasks = await self.background_scheduler.start()
 

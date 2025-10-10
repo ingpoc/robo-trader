@@ -15,10 +15,12 @@ from .orchestrator import RoboTraderOrchestrator
 from ..mcp.broker import ZerodhaBroker
 from .database_state import DatabaseStateManager
 from .state import StateManager
+from .state_coordinator import StateCoordinator
 from .background_scheduler import BackgroundScheduler
 from .conversation_manager import ConversationManager
 from .learning_engine import LearningEngine
 from .ai_planner import AIPlanner
+from .resource_manager import ResourceManager
 
 T = TypeVar('T')
 
@@ -46,12 +48,21 @@ class DependencyContainer:
     async def _register_core_services(self) -> None:
         """Register all core services with the container."""
 
+        # Resource Manager - singleton (initialized first for cleanup tracking)
+        async def create_resource_manager():
+            return ResourceManager()
+
+        self._register_singleton("resource_manager", create_resource_manager)
+
         # State Manager - singleton
         async def create_state_manager():
             if self.config.database.enabled:
                 # Use database-backed state manager
                 from .database_state import DatabaseStateManager
                 return DatabaseStateManager(self.config)
+            elif hasattr(self.config, 'use_coordinator') and self.config.use_coordinator:
+                # Use new StateCoordinator with focused stores
+                return StateCoordinator(self.config.state_dir)
             else:
                 # Use file-based state manager (legacy)
                 return StateManager(self.config.state_dir)
@@ -145,6 +156,10 @@ class DependencyContainer:
         """Get the state manager instance."""
         return await self.get("state_manager")
 
+    async def get_resource_manager(self) -> ResourceManager:
+        """Get the resource manager instance."""
+        return await self.get("resource_manager")
+
     async def cleanup(self) -> None:
         """Cleanup all services."""
         logger.info("Cleaning up dependency container")
@@ -161,47 +176,119 @@ class DependencyContainer:
         try:
             broker = self._singletons.get("broker")
             if broker:
-                # Broker cleanup if needed
                 pass
         except Exception as e:
             logger.warning(f"Error during broker cleanup: {e}")
+
+        # Cleanup resource manager last
+        try:
+            resource_manager = self._singletons.get("resource_manager")
+            if resource_manager:
+                await resource_manager.cleanup()
+        except Exception as e:
+            logger.warning(f"Error during resource manager cleanup: {e}")
 
         # Clear all instances
         self._singletons.clear()
         logger.info("Dependency container cleanup complete")
 
 
-# Global container instance
-_container: Optional[DependencyContainer] = None
+@asynccontextmanager
+async def dependency_container(config: Config):
+    """
+    Context manager for dependency injection container.
+
+    Provides proper resource management and eliminates global state.
+    Usage:
+        async with dependency_container(config) as container:
+            orchestrator = await container.get_orchestrator()
+            # Use services...
+    """
+    container = DependencyContainer()
+    try:
+        await container.initialize(config)
+        yield container
+    finally:
+        await container.cleanup()
 
 
-async def get_container(config: Optional[Config] = None) -> DependencyContainer:
-    """Get the global dependency container."""
-    global _container
-    if _container is None:
-        _container = DependencyContainer()
-        if config:
-            await _container.initialize(config)
-    return _container
+class ServiceProvider:
+    """
+    Service provider for accessing services without global state.
+
+    Use this instead of global functions for better testability and maintainability.
+    """
+
+    def __init__(self, config: Config):
+        self.config = config
+        self._container: Optional[DependencyContainer] = None
+
+    async def __aenter__(self):
+        self._container = DependencyContainer()
+        await self._container.initialize(self.config)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._container:
+            await self._container.cleanup()
+            self._container = None
+
+    async def get_orchestrator(self) -> RoboTraderOrchestrator:
+        """Get the orchestrator instance."""
+        if not self._container:
+            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+        return await self._container.get_orchestrator()
+
+    async def get_broker(self) -> ZerodhaBroker:
+        """Get the broker instance."""
+        if not self._container:
+            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+        return await self._container.get_broker()
+
+    async def get_state_manager(self) -> StateManager:
+        """Get the state manager instance."""
+        if not self._container:
+            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+        return await self._container.get_state_manager()
 
 
+# Global container instance for backward compatibility
+_global_container: Optional[DependencyContainer] = None
+
+
+async def get_container() -> Optional[DependencyContainer]:
+    """Get the global container instance."""
+    global _global_container
+    return _global_container
+
+
+async def set_container(container: DependencyContainer) -> None:
+    """Set the global container instance."""
+    global _global_container
+    _global_container = container
+
+
+# Legacy functions for backward compatibility (deprecated)
+# These will be removed in a future version
 async def initialize_container(config: Config) -> DependencyContainer:
-    """Initialize and return the dependency container."""
-    container = await get_container(config)
+    """DEPRECATED: Use ServiceProvider or dependency_container context manager instead."""
+    global _global_container
+    if _global_container:
+        logger.warning("Container already initialized, returning existing instance")
+        return _global_container
+
+    container = DependencyContainer()
     await container.initialize(config)
+    _global_container = container
     return container
 
 
 async def cleanup_container():
-    """Cleanup the global dependency container."""
-    global _container
-    if _container is not None:
-        try:
-            await _container.cleanup()
-        except Exception as e:
-            logger.error(f"Error during container cleanup: {e}")
-        finally:
-            _container = None
+    """DEPRECATED: Cleanup is now handled by context managers."""
+    global _global_container
+    if _global_container:
+        await _global_container.cleanup()
+        _global_container = None
 
 
 # Import logger at the end to avoid circular imports

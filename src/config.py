@@ -299,26 +299,30 @@ class Config(BaseModel):
         """Validate that required API keys are set for the current environment."""
         from loguru import logger
 
-        # Validate Zerodha API keys for all environments that need them
-        if self.environment in ['live', 'paper']:
+        # Validate Zerodha API keys based on environment requirements
+        if self.environment == 'live':
+            # Live trading requires real API credentials
             if not self.integration.zerodha_api_key:
                 raise ValueError(
-                    f"ZERODHA_API_KEY required for {self.environment} trading. "
+                    "ZERODHA_API_KEY required for live trading. "
                     "Set it in .env file or environment variables."
                 )
             if not self.integration.zerodha_api_secret:
                 raise ValueError(
-                    f"ZERODHA_API_SECRET required for {self.environment} trading. "
+                    "ZERODHA_API_SECRET required for live trading. "
                     "Set it in .env file or environment variables."
                 )
-            logger.info(f"✓ {self.environment.title()} trading credentials configured")
+            logger.info("✓ Live trading credentials configured")
 
-        elif self.environment == 'dry-run':
-            # Dry-run mode doesn't require real API keys but warn if missing
-            if not self.integration.zerodha_api_key:
-                logger.warning("ZERODHA_API_KEY not set - dry-run mode will use mock data")
-            if not self.integration.zerodha_api_secret:
-                logger.warning("ZERODHA_API_SECRET not set - dry-run mode will use mock data")
+        elif self.environment in ['paper', 'dry-run']:
+            # Paper and dry-run modes allow missing credentials for demo purposes
+            if not self.integration.zerodha_api_key or not self.integration.zerodha_api_secret:
+                logger.info(f"✓ {self.environment.title()} mode - using mock/demo data (no real API credentials needed)")
+            else:
+                logger.info(f"✓ {self.environment.title()} mode with API credentials configured")
+
+        else:
+            raise ValueError(f"Unknown environment: {self.environment}. Must be 'live', 'paper', or 'dry-run'")
 
         # Claude Agent SDK handles authentication through Claude Code CLI
         # No API key configuration needed - SDK uses authenticated CLI session

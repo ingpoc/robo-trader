@@ -63,9 +63,10 @@ class AlertManager:
     async def _save_alerts(self) -> None:
         """Save alerts to file."""
         try:
-            with open(self.alerts_file, 'w') as f:
-                data = {k: v.to_dict() for k, v in self._alerts.items()}
-                json.dump(data, f, indent=2)
+            import aiofiles
+            data = {k: v.to_dict() for k, v in self._alerts.items()}
+            async with aiofiles.open(self.alerts_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(data, indent=2, ensure_ascii=False))
         except Exception as e:
             logger.error(f"Failed to save alerts: {e}")
 
@@ -150,3 +151,7 @@ class AlertManager:
                 logger.info(f"Cleared {len(to_remove)} acknowledged alerts")
 
             return len(to_remove)
+
+    async def cleanup(self) -> None:
+        """Cleanup resources (for consistency with other stores)."""
+        logger.debug("Alert manager cleanup completed")

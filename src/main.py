@@ -11,7 +11,8 @@ from pathlib import Path
 from loguru import logger
 
 from .config import load_config
-from .core.orchestrator import initialize_orchestrator, RoboTraderOrchestrator
+from .core.di import initialize_container, cleanup_container
+from .core.orchestrator import RoboTraderOrchestrator
 
 
 def main():
@@ -49,10 +50,13 @@ def main():
 
 async def async_main(args, config):
     """Async main for CLI commands."""
-    # Initialize orchestrator for CLI mode
-    orchestrator = await initialize_orchestrator(config)
+    # Initialize DI container
+    container = await initialize_container(config)
 
     try:
+        # Get orchestrator from container
+        orchestrator = await container.get_orchestrator()
+
         if args.command == "scan":
             await run_portfolio_scan(orchestrator)
         elif args.command == "screen":
@@ -64,7 +68,7 @@ async def async_main(args, config):
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
-        await orchestrator.end_session()
+        await cleanup_container()
 
 
 async def run_portfolio_scan(orchestrator: RoboTraderOrchestrator):

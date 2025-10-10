@@ -6,6 +6,8 @@ FastAPI application providing a web interface for the trading system.
 
 import asyncio
 import json
+import signal
+import sys
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from pathlib import Path
@@ -21,7 +23,9 @@ import time
 from ..config import load_config
 from ..core.di import initialize_container, cleanup_container, DependencyContainer
 from ..core.database_state import DatabaseStateManager
+from ..core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
+from .websocket_differ import WebSocketDiffer
 
 
 app = FastAPI(
@@ -44,6 +48,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def error_handling_middleware(request: Request, call_next):
+    """Centralized error handling middleware."""
+    try:
+        response = await call_next(request)
+        return response
+    except TradingError as e:
+        logger.error(f"Trading error: {e.context.message}", extra={
+            "category": e.context.category.value,
+            "severity": e.context.severity.value,
+            "code": e.context.code
+        })
+        return JSONResponse(
+            status_code=500 if e.context.severity.value in ["critical", "high"] else 400,
+            content=e.to_dict()
+        )
+    except Exception as e:
+        error_context = ErrorHandler.handle_error(e)
+        logger.error(f"Unhandled error: {error_context.message}", extra={
+            "category": error_context.category.value,
+            "severity": error_context.severity.value
+        })
+        return JSONResponse(
+            status_code=500,
+            content=ErrorHandler.format_error_response(e)
+        )
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -82,6 +113,9 @@ app.include_router(chat_router)
 config = None
 container: Optional[DependencyContainer] = None
 connection_manager = None
+
+# Shutdown event for graceful shutdown coordination
+shutdown_event = asyncio.Event()
 
 
 class ConnectionManager:
@@ -235,14 +269,37 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup resources on shutdown."""
-    global container
+    global container, connection_manager
     logger.info("Application shutdown initiated - cleaning up resources")
 
+    # Signal shutdown to all components
+    shutdown_event.set()
+
     try:
+        # Close all WebSocket connections gracefully
+        if connection_manager:
+            logger.info("Closing WebSocket connections...")
+            # Broadcast shutdown message to all clients
+            await connection_manager.broadcast({
+                "type": "shutdown",
+                "message": "Server is shutting down",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+
         # Cleanup dependency injection container (handles all services)
         await cleanup_container()
+
+        # Additional cleanup for any remaining resources
+        if connection_manager:
+            # Force close any remaining connections
+            async with connection_manager._lock:
+                remaining_connections = len(connection_manager.active_connections)
+                if remaining_connections > 0:
+                    logger.warning(f"Forcing close of {remaining_connections} remaining WebSocket connections")
+                    # Note: FastAPI handles WebSocket cleanup, but we log it
+
     except Exception as e:
-        logger.error(f"Error during container cleanup: {e}")
+        logger.error(f"Error during application shutdown: {e}", exc_info=True)
 
     logger.info("Application shutdown complete")
 
@@ -911,8 +968,9 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info(f"WebSocket connection established: {connection_id}")
 
     await connection_manager.connect(websocket)
-    last_data_hash = None
+    last_data = None
     heartbeat_task = None
+    differ = WebSocketDiffer()
 
     try:
         # Start heartbeat task for connection health monitoring
@@ -923,7 +981,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "type": "heartbeat",
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     })
-                    await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+                    await asyncio.sleep(30)
                 except Exception as e:
                     logger.debug(f"Heartbeat failed for {connection_id}: {e}")
                     break
@@ -931,8 +989,16 @@ async def websocket_endpoint(websocket: WebSocket):
         heartbeat_task = asyncio.create_task(send_heartbeat())
 
         while True:
+            if shutdown_event.is_set():
+                logger.info(f"Shutdown signal received, closing WebSocket connection {connection_id}")
+                await websocket.send_json({
+                    "type": "shutdown",
+                    "message": "Server is shutting down",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+                break
+
             try:
-                # Add timeout to prevent hanging on data retrieval
                 data = await asyncio.wait_for(get_dashboard_data(), timeout=10.0)
 
                 if container:
@@ -949,22 +1015,23 @@ async def websocket_endpoint(websocket: WebSocket):
                         data["ai_status"] = {"status": "timeout"}
                         data["recommendations"] = []
 
-                # Calculate hash for change detection
-                data_str = json.dumps(data, sort_keys=True, default=str)
-                current_hash = hash(data_str)
+                diff_update = differ.compute_diff(last_data, data)
 
-                if current_hash != last_data_hash:
+                if diff_update:
                     await asyncio.wait_for(
-                        websocket.send_json({
-                            "type": "full_update",
-                            "data": data,
-                            "timestamp": datetime.now(timezone.utc).isoformat()
-                        }),
+                        websocket.send_json(diff_update),
                         timeout=5.0
                     )
-                    last_data_hash = current_hash
+                    last_data = data
 
-                await asyncio.sleep(5)
+                # Wait with shutdown check
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                    # If we get here, shutdown was signaled
+                    break
+                except asyncio.TimeoutError:
+                    # Normal timeout, continue with next iteration
+                    pass
 
             except asyncio.TimeoutError:
                 logger.warning(f"Data retrieval timeout for {connection_id}")
@@ -990,8 +1057,8 @@ async def websocket_endpoint(websocket: WebSocket):
         if heartbeat_task and not heartbeat_task.done():
             heartbeat_task.cancel()
             try:
-                await heartbeat_task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(heartbeat_task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
 
         await connection_manager.disconnect(websocket)
@@ -1175,9 +1242,53 @@ async def log_frontend_error(error: ErrorLog):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def setup_signal_handlers():
+    """Setup signal handlers for graceful shutdown."""
+    def signal_handler(signum, frame):
+        """Handle shutdown signals."""
+        signal_name = signal.Signals(signum).name
+        logger.info(f"Received {signal_name} signal, initiating graceful shutdown...")
+
+        # Set shutdown event
+        shutdown_event.set()
+
+        # For SIGTERM/SIGINT, let uvicorn handle the shutdown
+        # For other signals, we might need custom handling
+
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)  # Docker/Kubernetes termination
+    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+    signal.signal(signal.SIGHUP, signal_handler)   # Terminal closed
+
+    logger.info("Signal handlers configured for graceful shutdown")
+
+
 def run_web_server(host: str = "0.0.0.0", port: int = 8000):
-    """Run the web server."""
-    uvicorn.run(app, host=host, port=port)
+    """Run the web server with graceful shutdown support."""
+    # Setup signal handlers before starting server
+    setup_signal_handlers()
+
+    logger.info(f"Starting Robo Trader web server on {host}:{port}")
+    logger.info("Press Ctrl+C to stop the server gracefully")
+
+    try:
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            # Enable graceful shutdown
+            access_log=True,
+            log_level="info",
+            # Allow up to 30 seconds for graceful shutdown
+            timeout_graceful_shutdown=30
+        )
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested via keyboard interrupt")
+    except Exception as e:
+        logger.error(f"Server error: {e}", exc_info=True)
+        raise
+    finally:
+        logger.info("Web server shutdown complete")
 
 
 if __name__ == "__main__":

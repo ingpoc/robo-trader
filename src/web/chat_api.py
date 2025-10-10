@@ -20,6 +20,58 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # Global conversation manager instance
 conversation_manager: Optional[ConversationManager] = None
 
+# Background task manager for intent processing
+class IntentTaskManager:
+    """Manages background tasks for intent processing with timeout protection."""
+
+    def __init__(self):
+        self._tasks: Dict[str, asyncio.Task] = {}
+        self._lock = asyncio.Lock()
+
+    async def run_with_timeout(self, name: str, coro, timeout: int = 300):
+        """Run a coroutine with timeout protection and error handling."""
+        task = None
+        try:
+            task = asyncio.create_task(coro)
+            async with self._lock:
+                self._tasks[name] = task
+
+            await asyncio.wait_for(task, timeout=timeout)
+            logger.info(f"Intent task '{name}' completed successfully")
+
+        except asyncio.TimeoutError:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+            logger.error(f"Intent task '{name}' timed out after {timeout}s")
+
+        except Exception as e:
+            logger.error(f"Intent task '{name}' failed: {e}", exc_info=True)
+
+        finally:
+            async with self._lock:
+                if name in self._tasks:
+                    del self._tasks[name]
+
+    async def cleanup(self):
+        """Cancel all running tasks."""
+        async with self._lock:
+            tasks = list(self._tasks.values())
+            self._tasks.clear()
+
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+
+intent_task_manager = IntentTaskManager()
+
 
 class ChatRequest(BaseModel):
     """Request model for chat messages."""
@@ -267,23 +319,31 @@ async def process_detected_intents(session_id: str, intents: List[str], actions:
             logger.warning("Orchestrator not available for intent processing")
             return
 
-        # Process intents with proper error handling
+        # Process intents with proper task management and timeout protection
         for intent in intents:
             try:
+                task_name = f"{session_id}_{intent}"
+
                 if intent == "portfolio_analysis":
-                    # Trigger portfolio scan
-                    task = asyncio.create_task(orchestrator.run_portfolio_scan())
-                    task.add_done_callback(lambda t: logger.info(f"Portfolio scan completed for session {session_id}") if not t.exception() else logger.error(f"Portfolio scan failed: {t.exception()}"))
+                    await intent_task_manager.run_with_timeout(
+                        task_name,
+                        orchestrator.run_portfolio_scan(),
+                        timeout=300
+                    )
 
                 elif intent == "market_screening":
-                    # Trigger market screening
-                    task = asyncio.create_task(orchestrator.run_market_screening())
-                    task.add_done_callback(lambda t: logger.info(f"Market screening completed for session {session_id}") if not t.exception() else logger.error(f"Market screening failed: {t.exception()}"))
+                    await intent_task_manager.run_with_timeout(
+                        task_name,
+                        orchestrator.run_market_screening(),
+                        timeout=300
+                    )
 
                 elif intent == "strategy_review":
-                    # Trigger strategy analysis
-                    task = asyncio.create_task(orchestrator.run_strategy_review())
-                    task.add_done_callback(lambda t: logger.info(f"Strategy review completed for session {session_id}") if not t.exception() else logger.error(f"Strategy review failed: {t.exception()}"))
+                    await intent_task_manager.run_with_timeout(
+                        task_name,
+                        orchestrator.run_strategy_review(),
+                        timeout=300
+                    )
 
             except Exception as e:
                 logger.error(f"Failed to process intent '{intent}': {e}")
