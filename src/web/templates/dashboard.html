@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robo Trader – Intelligent Trading Platform</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link href="/static/css/style.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Navigation Sidebar -->
+        <nav class="sidebar" role="navigation" aria-label="Main navigation">
+            <div class="sidebar-header">
+                <img src="/static/favicon.svg" alt="Robo Trader Logo" class="logo">
+                <div class="logo-text">
+                    <h2>Robo Trader</h2>
+                    <span>AI-Powered Trading</span>
+                </div>
+            </div>
+
+            <div class="sidebar-menu" role="menubar">
+                <a href="/" class="menu-item active" role="menuitem" aria-current="page">
+                    <i class="fas fa-tachometer-alt" aria-hidden="true"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/agents" class="menu-item" role="menuitem">
+                    <i class="fas fa-robot" aria-hidden="true"></i>
+                    <span>AI Agents</span>
+                </a>
+                <a href="/trading" class="menu-item" role="menuitem">
+                    <i class="fas fa-exchange-alt" aria-hidden="true"></i>
+                    <span>Trading</span>
+                </a>
+                <a href="/config" class="menu-item" role="menuitem">
+                    <i class="fas fa-cog" aria-hidden="true"></i>
+                    <span>Settings</span>
+                </a>
+                <a href="/logs" class="menu-item" role="menuitem">
+                    <i class="fas fa-file-alt" aria-hidden="true"></i>
+                    <span>Logs</span>
+                </a>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="status-indicators">
+                    <div class="status-item">
+                        <div class="status-dot connected" id="connectionStatus"></div>
+                        <span>Connected</span>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-dot" id="marketStatus"></div>
+                        <span id="marketStatusText">Market Closed</span>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-dot active" id="aiStatus"></div>
+                        <span>AI Active</span>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content" role="main">
+            <!-- Top Header Bar -->
+            <header class="top-header" role="banner">
+                <div class="header-left">
+                    <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation menu" aria-expanded="false">
+                        <i class="fas fa-bars" aria-hidden="true"></i>
+                    </button>
+                    <h1 class="page-title">Trading Dashboard</h1>
+                </div>
+
+                <div class="header-right">
+                    <div class="header-notifications">
+                        <button class="notification-btn" id="notificationBtn" aria-label="View notifications" aria-describedby="notification-count">
+                            <i class="fas fa-bell" aria-hidden="true"></i>
+                            <span class="notification-badge" id="notificationBadge" style="display: none;" role="status" aria-live="polite" id="notification-count">0</span>
+                        </button>
+                    </div>
+
+                    <div class="user-menu">
+                        <button class="user-btn" id="userBtn" aria-label="User menu" aria-haspopup="true" aria-expanded="false">
+                            <div class="user-avatar" role="img" aria-label="User avatar">
+                                <i class="fas fa-user" aria-hidden="true"></i>
+                            </div>
+                            <span class="user-name">{{ config.environment.upper() }}</span>
+                            <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard Content -->
+            <div class="dashboard-container">
+                <!-- Welcome Section -->
+                <section class="welcome-section">
+                    <div class="welcome-content">
+                        <h2>Welcome back!</h2>
+                        <p>Here's what's happening with your portfolio today.</p>
+                    </div>
+                    <div class="quick-actions">
+                        <button class="btn btn-primary" onclick="dashboard.portfolioScan()">
+                            <i class="fas fa-search"></i>
+                            Scan Portfolio
+                        </button>
+                        <button class="btn btn-secondary" onclick="dashboard.marketScreening()">
+                            <i class="fas fa-chart-line"></i>
+                            Market Screening
+                        </button>
+                        <button class="btn btn-secondary" onclick="dashboard.startAIPlanning()">
+                            <i class="fas fa-brain"></i>
+                            AI Planning
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Key Metrics Row -->
+                <section class="metrics-section" role="region" aria-labelledby="metrics-heading">
+                    <h2 id="metrics-heading" class="sr-only">Portfolio Metrics</h2>
+                    <div class="metrics-grid">
+                        <div class="metric-card" role="group" aria-labelledby="cash-label">
+                            <div class="metric-icon" role="img" aria-label="Cash wallet icon">
+                                <i class="fas fa-wallet" aria-hidden="true"></i>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-value" id="availableCash" role="text" aria-label="Available cash amount">
+                                    {% if portfolio %}
+                                        ₹{{ "%.2f"|format(portfolio.cash.free) }}
+                                    {% else %}
+                                        ₹0.00
+                                    {% endif %}
+                                </div>
+                                <div class="metric-label" id="cash-label">Available Cash</div>
+                                <div class="metric-change positive" role="text" aria-label="Cash change percentage">
+                                    <i class="fas fa-arrow-up" aria-hidden="true"></i>
+                                    +2.5%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card" role="group" aria-labelledby="exposure-label">
+                            <div class="metric-icon" role="img" aria-label="Portfolio pie chart icon">
+                                <i class="fas fa-chart-pie" aria-hidden="true"></i>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-value" id="totalExposure" role="text" aria-label="Total portfolio exposure">
+                                    {% if portfolio %}
+                                        ₹{{ "%.2f"|format(portfolio.exposure_total) }}
+                                    {% else %}
+                                        ₹0.00
+                                    {% endif %}
+                                </div>
+                                <div class="metric-label" id="exposure-label">Total Exposure</div>
+                                <div class="metric-change positive" role="text" aria-label="Exposure change percentage">
+                                    <i class="fas fa-arrow-up" aria-hidden="true"></i>
+                                    +1.8%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card" role="group" aria-labelledby="positions-label">
+                            <div class="metric-icon" role="img" aria-label="Positions list icon">
+                                <i class="fas fa-list" aria-hidden="true"></i>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-value" id="activePositions" role="text" aria-label="Number of active positions">
+                                    {% if portfolio %}
+                                        {{ portfolio.holdings|length }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </div>
+                                <div class="metric-label" id="positions-label">Active Positions</div>
+                                <div class="metric-change neutral" role="text" aria-label="Positions monitoring status">
+                                    <i class="fas fa-minus" aria-hidden="true"></i>
+                                    Monitored
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card" role="group" aria-labelledby="risk-label">
+                            <div class="metric-icon" role="img" aria-label="Risk shield icon">
+                                <i class="fas fa-shield-alt" aria-hidden="true"></i>
+                            </div>
+                            <div class="metric-content">
+                                {% set portfolio_metrics = portfolio.risk_aggregates.portfolio if portfolio and portfolio.risk_aggregates and portfolio.risk_aggregates.portfolio is defined else {} %}
+                                {% set concentration = portfolio_metrics.concentration_risk if portfolio_metrics and portfolio_metrics.concentration_risk is defined else 0 %}
+                                {% set dominant_sector = portfolio_metrics.dominant_sector if portfolio_metrics and portfolio_metrics.dominant_sector is defined else "N/A" %}
+                                <div class="metric-value" id="riskScore" role="text" aria-label="Portfolio risk score">{{ "%.1f"|format(concentration) }}%</div>
+                                <div class="metric-label" id="risk-label">Risk Score</div>
+                                <div class="metric-change neutral" role="text" aria-label="Risk sector information">
+                                    <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                    {{ dominant_sector }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Charts and Analytics Row -->
+                <section class="charts-section">
+                    <div class="charts-grid">
+                        <!-- Portfolio Performance Chart -->
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Portfolio Performance</h3>
+                                <div class="chart-controls">
+                                    <select class="chart-period-select">
+                                        <option value="7d">7 Days</option>
+                                        <option value="30d" selected>30 Days</option>
+                                        <option value="90d">90 Days</option>
+                                        <option value="1y">1 Year</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="performanceChart" width="400" height="200"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Asset Allocation Chart -->
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Asset Allocation</h3>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="allocationChart" width="400" height="200"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Risk Distribution Chart -->
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Risk Distribution</h3>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="riskChart" width="400" height="200"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Sector Exposure Chart -->
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Sector Exposure</h3>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="sectorChart" width="400" height="200"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- AI Insights and Recommendations -->
+                <section class="insights-section">
+                    <div class="insights-grid">
+                        <!-- AI Insights Panel -->
+                        <div class="insight-card">
+                            <div class="card-header">
+                                <h3>
+                                    <i class="fas fa-robot"></i>
+                                    AI Insights
+                                </h3>
+                            </div>
+                            <div class="card-content">
+                                <div class="insight-list" id="aiInsights">
+                                    <div class="insight-item">
+                                        <div class="insight-icon">
+                                            <i class="fas fa-chart-line"></i>
+                                        </div>
+                                        <div class="insight-content">
+                                            <div class="insight-title">Portfolio Health</div>
+                                            <div class="insight-text" id="portfolioHealth">Analyzing market conditions...</div>
+                                        </div>
+                                    </div>
+                                    <div class="insight-item">
+                                        <div class="insight-icon">
+                                            <i class="fas fa-target"></i>
+                                        </div>
+                                        <div class="insight-content">
+                                            <div class="insight-title">Today's Focus</div>
+                                            <div class="insight-text" id="todaysFocus">Planning analysis...</div>
+                                        </div>
+                                    </div>
+                                    <div class="insight-item">
+                                        <div class="insight-icon">
+                                            <i class="fas fa-bolt"></i>
+                                        </div>
+                                        <div class="insight-content">
+                                            <div class="insight-title">API Usage</div>
+                                            <div class="insight-text" id="apiUsage">23/25 calls today</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI Recommendations -->
+                        <div class="recommendation-card">
+                            <div class="card-header">
+                                <h3>
+                                    <i class="fas fa-lightbulb"></i>
+                                    AI Recommendations
+                                </h3>
+                                <button class="btn btn-sm btn-outline" onclick="dashboard.viewAnalytics()">
+                                    View All
+                                </button>
+                            </div>
+                            <div class="card-content">
+                                <div id="recommendationsQueue" class="recommendations-list">
+                                    <div class="no-recommendations">
+                                        <i class="fas fa-inbox"></i>
+                                        <p>No pending recommendations</p>
+                                        <span>Run a portfolio scan to get started</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Holdings Table -->
+                {% if portfolio and portfolio.holdings %}
+                <section class="holdings-section">
+                    <div class="section-header">
+                        <h3>Portfolio Holdings</h3>
+                        <div class="section-actions">
+                            <button class="btn btn-sm btn-outline">
+                                <i class="fas fa-filter"></i>
+                                Filter
+                            </button>
+                            <button class="btn btn-sm btn-outline">
+                                <i class="fas fa-download"></i>
+                                Export
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Quantity</th>
+                                    <th>Avg Price</th>
+                                    <th>Current Price</th>
+                                    <th>P&L</th>
+                                    <th>Allocation</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for holding in portfolio.holdings[:10] %}
+                                <tr>
+                                    <td>
+                                        <div class="symbol-cell">
+                                            <strong>{{ holding.symbol }}</strong>
+                                            <span class="symbol-badge">{{ holding.risk_tags[1] if holding.risk_tags else 'Equity' }}</span>
+                                        </div>
+                                    </td>
+                                    <td>{{ holding.qty }}</td>
+                                    <td>₹{{ "%.2f"|format(holding.avg_price) }}</td>
+                                    <td>₹{{ "%.2f"|format(holding.last_price) }}</td>
+                                    <td>
+                                        <div class="pnl-cell {{ 'positive' if holding.pnl_abs > 0 else 'negative' if holding.pnl_abs < 0 else 'neutral' }}">
+                                            <div>₹{{ "%.0f"|format(holding.pnl_abs) }}</div>
+                                            <div class="pnl-percent">{{ "%.1f"|format(holding.pnl_pct) }}%</div>
+                                        </div>
+                                    </td>
+                                    <td>{{ "%.1f"|format((holding.exposure / portfolio.exposure_total) * 100 if portfolio.exposure_total > 0 else 0) }}%</td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="btn btn-xs btn-outline" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            <button class="btn btn-xs btn-outline" title="Trade">
+                                                <i class="fas fa-exchange-alt"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                {% endif %}
+
+                <!-- Quick Trade Panel -->
+                <section class="trade-section" role="region" aria-labelledby="trading-heading">
+                    <div class="trade-card">
+                        <div class="card-header">
+                            <h3 id="trading-heading">
+                                <i class="fas fa-exchange-alt" aria-hidden="true"></i>
+                                Quick Trade
+                            </h3>
+                        </div>
+                        <div class="card-content">
+                            <form id="quickTradeForm" class="trade-form" role="form" aria-label="Quick trade execution form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label" for="symbolInput">Symbol</label>
+                                        <input type="text"
+                                               class="form-input"
+                                               placeholder="RELIANCE"
+                                               id="symbolInput"
+                                               style="text-transform: uppercase;"
+                                               required
+                                               aria-describedby="symbol-help symbol-error"
+                                               autocomplete="off">
+                                        <div id="symbol-help" class="sr-only">Enter NSE stock symbol, e.g., RELIANCE</div>
+                                        <div id="symbol-error" class="form-error" role="alert" aria-live="polite"></div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="sideSelect">Side</label>
+                                        <select class="form-input" id="sideSelect" required aria-required="true" aria-describedby="side-error">
+                                            <option value="">Select side</option>
+                                            <option value="BUY">Buy</option>
+                                            <option value="SELL">Sell</option>
+                                        </select>
+                                        <div id="side-error" class="form-error" role="alert" aria-live="polite"></div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="quantityInput">Quantity</label>
+                                        <input type="number"
+                                               class="form-input"
+                                               placeholder="100"
+                                               id="quantityInput"
+                                               min="1"
+                                               required
+                                               aria-describedby="quantity-help quantity-error">
+                                        <div id="quantity-help" class="sr-only">Number of shares to trade</div>
+                                        <div id="quantity-error" class="form-error" role="alert" aria-live="polite"></div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="orderTypeSelect">Order Type</label>
+                                        <select class="form-input" id="orderTypeSelect" required aria-required="true" aria-describedby="orderType-error">
+                                            <option value="">Select order type</option>
+                                            <option value="MARKET">Market</option>
+                                            <option value="LIMIT">Limit</option>
+                                        </select>
+                                        <div id="orderType-error" class="form-error" role="alert" aria-live="polite"></div>
+                                    </div>
+                                    <div class="form-group" id="priceGroup" style="display: none;" role="group" aria-labelledby="price-label">
+                                        <label class="form-label" id="price-label" for="priceInput">Price</label>
+                                        <input type="number"
+                                               class="form-input"
+                                               placeholder="0.00"
+                                               id="priceInput"
+                                               step="0.01"
+                                               min="0.01"
+                                               aria-describedby="price-help price-error">
+                                        <div id="price-help" class="sr-only">Limit price for the order</div>
+                                        <div id="price-error" class="form-error" role="alert" aria-live="polite"></div>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit"
+                                            class="btn btn-primary"
+                                            aria-describedby="submit-help">
+                                        <i class="fas fa-paper-plane" aria-hidden="true"></i>
+                                        Execute Trade
+                                    </button>
+                                    <div id="submit-help" class="sr-only">Submit the trade for execution</div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer"></div>
+
+    <!-- AI Chat Interface -->
+    {% include "components/ai_chat.html" %}
+
+    <!-- AI Recommendations Modal -->
+    {% include "components/recommendations.html" %}
+
+    <!-- Agent Controls Modal -->
+    {% include "components/agent_controls.html" %}
+
+    <!-- Analytics Dashboard Modal -->
+    {% include "components/analytics_dashboard.html" %}
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

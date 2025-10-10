@@ -1,0 +1,133 @@
+{
+  "environment": "paper",
+  "project_dir": ".",
+  "state_dir": "state",
+  "logs_dir": "logs",
+  "max_turns": 50,
+  "risk": {
+    "max_position_size_percent": 5.0,
+    "max_portfolio_risk_percent": 10.0,
+    "max_single_symbol_exposure_percent": 15.0,
+    "stop_loss_percent": 2.0,
+    "take_profit_percent": 5.0,
+    "max_daily_trades": 10,
+    "max_daily_loss_percent": 3.0
+  },
+  "technical": {
+    "indicators": [
+      "rsi",
+      "macd",
+      "bollinger",
+      "ema"
+    ],
+    "timeframes": [
+      "5m",
+      "15m",
+      "1h"
+    ],
+    "rsi_period": 14,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "bollinger_period": 20,
+    "bollinger_std": 2.0,
+    "ema_periods": [
+      9,
+      21,
+      50
+    ]
+  },
+  "screening": {
+    "min_market_cap": 1000000000,
+    "max_pe_ratio": 25.0,
+    "min_roe_percent": 10.0,
+    "max_debt_equity": 0.5,
+    "sectors_allowed": [],
+    "symbols_blacklist": []
+  },
+  "execution": {
+    "default_order_type": "MARKET",
+    "default_product": "CNC",
+    "default_variety": "REGULAR",
+    "slippage_percent": 0.5,
+    "time_in_force": "DAY",
+    "auto_approve_paper": true,
+    "require_manual_approval_live": true
+  },
+  "integration": {
+    "zerodha_api_key": null,
+    "zerodha_api_secret": null,
+    "zerodha_access_token": null,
+    "zerodha_request_token": null,
+    "anthropic_api_key": null,
+    "perplexity_api_keys": []
+  },
+  "scheduling": {
+    "portfolio_scan_interval_minutes": 60,
+    "market_screening_interval_minutes": 240,
+    "market_hours_start": "09:15",
+    "market_hours_end": "15:30"
+  },
+  "agents": {
+    "chat_interface": {
+      "enabled": false,
+      "use_claude": true,
+      "frequency_seconds": 0,
+      "priority": "high"
+    },
+    "portfolio_scan": {
+      "enabled": false,
+      "use_claude": false,
+      "frequency_seconds": 3600,
+      "priority": "medium"
+    },
+    "market_screening": {
+      "enabled": false,
+      "use_claude": true,
+      "frequency_seconds": 14400,
+      "priority": "high"
+    },
+    "market_monitoring": {
+      "enabled": false,
+      "use_claude": true,
+      "frequency_seconds": 60,
+      "priority": "medium"
+    },
+    "stop_loss_monitor": {
+      "enabled": false,
+      "use_claude": false,
+      "frequency_seconds": 15,
+      "priority": "high"
+    },
+    "earnings_check": {
+      "enabled": false,
+      "use_claude": true,
+      "frequency_seconds": 900,
+      "priority": "medium"
+    },
+    "news_monitoring": {
+      "enabled": false,
+      "use_claude": true,
+      "frequency_seconds": 300,
+      "priority": "medium"
+    },
+    "ai_daily_planning": {
+      "enabled": false,
+      "use_claude": true,
+      "frequency_seconds": 86400,
+      "priority": "high"
+    },
+    "health_check": {
+      "enabled": false,
+      "use_claude": false,
+      "frequency_seconds": 300,
+      "priority": "low"
+    },
+    "trade_execution": {
+      "enabled": false,
+      "use_claude": true,
+      "frequency_seconds": 0,
+      "priority": "high"
+    }
+  }
+}

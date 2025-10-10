@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-gray-50: 250 250 250;
+    --color-gray-100: 245 245 245;
+    --color-gray-200: 229 229 229;
+    --color-gray-300: 212 212 212;
+    --color-gray-400: 163 163 163;
+    --color-gray-500: 115 115 115;
+    --color-gray-600: 82 82 82;
+    --color-gray-700: 64 64 64;
+    --color-gray-800: 38 38 38;
+    --color-gray-900: 23 23 23;
+    --color-gray-950: 10 10 10;
+
+    --color-accent: 37 99 235;
+    --color-accent-light: 59 130 246;
+    --color-accent-dark: 29 78 216;
+
+    --space-1: 8px;
+    --space-2: 16px;
+    --space-3: 24px;
+    --space-4: 32px;
+    --space-5: 40px;
+    --space-6: 48px;
+    --space-7: 56px;
+    --space-8: 64px;
+  }
+
+  * {
+    @apply border-gray-200;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  button {
+    @apply transition-opacity duration-150;
+  }
+
+  button:active {
+    @apply opacity-80;
+  }
+
+  input,
+  select,
+  textarea {
+    @apply transition-colors duration-150;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .rolling-number {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+@keyframes roll-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-roll-in {
+  animation: roll-in 200ms ease-out;
+}
+
+*:focus-visible {
+  @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-gray-50;
+}

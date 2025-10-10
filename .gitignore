@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Logs
+logs/*.log
+*.log
+
+# Environment
+.env
+.env.local
+.env.example
+
+# Frontend
+ui/node_modules/
+ui/dist/
+ui/.env
+
+# State and data
+state/
+holdings/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NEW: AI and Development Tools (currently untracked)
+.claude/
+.docs/
+.kilocode/
+.kilocodemodes
+.mcp.json
+.playwright-mcp/
+
+# NEW: Test and Demo Files
+test_demo.html
+test_ui.js
+
+# NEW: Verification Scripts
+verify_setup.sh
+
+# NEW: Documentation builds
+*.md.html
+docs/_build/
