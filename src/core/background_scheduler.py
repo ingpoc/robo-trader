@@ -723,7 +723,7 @@ class BackgroundScheduler:
 
             use_claude = self.config.agents.news_monitoring.use_claude if hasattr(self.config, 'agents') else True
 
-            portfolio = await orchestrator.state_manager.get_portfolio()
+            portfolio = await self.state_manager.get_portfolio()
             if not portfolio or not portfolio.holdings:
                 logger.info("No portfolio holdings to monitor for news")
                 return
@@ -788,7 +788,7 @@ class BackgroundScheduler:
                 sentiment = "neutral"
                 alert_priority = "medium"
 
-                if use_claude and orchestrator.claude_client:
+                if use_claude and self.orchestrator and self.orchestrator.claude_client:
                     sentiment_prompt = f"""Analyze this news summary for {symbol} and provide:
 1. Sentiment (positive/negative/neutral)
 2. Priority (critical/high/medium/low) based on market impact
@@ -802,7 +802,7 @@ Priority: <priority>
 Assessment: <assessment>"""
 
                     try:
-                        sentiment_response = await orchestrator.claude_client.messages.create(
+                        sentiment_response = await self.orchestrator.claude_client.messages.create(
                             model="claude-3-5-sonnet-20241022",
                             max_tokens=200,
                             messages=[{"role": "user", "content": sentiment_prompt}]
@@ -828,7 +828,7 @@ Assessment: <assessment>"""
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
 
-                await orchestrator.state_manager.add_alert(alert_data)
+                await self.state_manager.add_alert(alert_data)
                 alerts_created += 1
                 logger.info(f"Created news alert for {symbol} (sentiment: {sentiment}, priority: {alert_priority})")
 
@@ -862,7 +862,7 @@ Assessment: <assessment>"""
         """Load tasks from persistent storage."""
         try:
             import aiofiles
-            tasks_file = self.state_manager.state_dir / "scheduler_tasks.json"
+            tasks_file = self.config.state_dir / "scheduler_tasks.json"
             if tasks_file.exists():
                 async with aiofiles.open(tasks_file, 'r', encoding='utf-8') as f:
                     content = await f.read()
@@ -895,7 +895,7 @@ Assessment: <assessment>"""
         """Save task to persistent storage."""
         try:
             import aiofiles
-            tasks_file = self.state_manager.state_dir / "scheduler_tasks.json"
+            tasks_file = self.config.state_dir / "scheduler_tasks.json"
 
             # Load all tasks
             all_tasks = list(self.tasks.values())

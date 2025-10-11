@@ -43,14 +43,18 @@ class AlertManager:
         self.alerts_file = state_dir / "alerts.json"
         self._alerts: Dict[str, Alert] = {}
         self._lock = asyncio.Lock()
-        self._load_alerts()
+        self._loaded = False
 
-    def _load_alerts(self) -> None:
-        """Load alerts from file."""
+    async def _ensure_loaded(self) -> None:
+        """Load alerts on first access (non-blocking)."""
+        if self._loaded:
+            return
         if self.alerts_file.exists():
             try:
-                with open(self.alerts_file, 'r') as f:
-                    data = json.load(f)
+                import aiofiles
+                async with aiofiles.open(self.alerts_file, 'r') as f:
+                    content = await f.read()
+                    data = json.loads(content)
                 self._alerts = {
                     alert_id: Alert.from_dict(alert_data)
                     for alert_id, alert_data in data.items()
@@ -59,6 +63,7 @@ class AlertManager:
             except Exception as e:
                 logger.error(f"Failed to load alerts: {e}")
                 self._alerts = {}
+        self._loaded = True
 
     async def _save_alerts(self) -> None:
         """Save alerts to file."""
@@ -81,6 +86,7 @@ class AlertManager:
         persistent: bool = False
     ) -> Alert:
         """Create a new alert."""
+        await self._ensure_loaded()
         async with self._lock:
             timestamp = datetime.now(timezone.utc).isoformat()
             alert_id = f"alert_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{symbol}"
@@ -104,6 +110,7 @@ class AlertManager:
 
     async def get_active_alerts(self) -> List[Alert]:
         """Get all active (non-acknowledged or persistent) alerts."""
+        await self._ensure_loaded()
         async with self._lock:
             return [
                 alert for alert in self._alerts.values()
@@ -112,11 +119,13 @@ class AlertManager:
 
     async def get_alert(self, alert_id: str) -> Optional[Alert]:
         """Get alert by ID."""
+        await self._ensure_loaded()
         async with self._lock:
             return self._alerts.get(alert_id)
 
     async def acknowledge_alert(self, alert_id: str) -> bool:
         """Acknowledge an alert."""
+        await self._ensure_loaded()
         async with self._lock:
             if alert_id in self._alerts:
                 self._alerts[alert_id].acknowledged = True
@@ -128,6 +137,7 @@ class AlertManager:
 
     async def dismiss_alert(self, alert_id: str) -> bool:
         """Dismiss (delete) an alert."""
+        await self._ensure_loaded()
         async with self._lock:
             if alert_id in self._alerts:
                 del self._alerts[alert_id]
@@ -138,6 +148,7 @@ class AlertManager:
 
     async def clear_acknowledged_alerts(self) -> int:
         """Clear all acknowledged non-persistent alerts."""
+        await self._ensure_loaded()
         async with self._lock:
             to_remove = [
                 alert_id for alert_id, alert in self._alerts.items()

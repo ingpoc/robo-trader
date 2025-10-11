@@ -233,8 +233,9 @@ class DatabaseStateManager:
         CREATE INDEX IF NOT EXISTS idx_approval_queue_status ON approval_queue(status);
         """
 
-        async with self._connection_pool.executescript(schema):
-            pass
+        await self._connection_pool.executescript(schema)
+        await self._connection_pool.commit()
+        logger.info("Database tables and indexes created")
 
     async def _load_initial_state(self) -> None:
         """Load initial state from database into memory."""

@@ -87,25 +87,26 @@ def create_portfolio_analyzer_tool(config: Config, state_manager: DatabaseStateM
 
 async def _get_portfolio_from_csv() -> Dict[str, Any]:
     """Get portfolio data from CSV file."""
+    import aiofiles
     holdings_dir = Path("holdings")
     csv_files = list(holdings_dir.glob("*.csv"))
 
     if not csv_files:
         raise Exception("No CSV files found in holdings directory")
 
-    # Use the first CSV file found
     csv_file = csv_files[0]
     logger.info(f"Reading portfolio data from {csv_file}")
 
     processed_holdings = []
     total_exposure = 0
 
-    with open(csv_file, 'r', encoding='utf-8') as f:
-        reader = csv.reader(f)
-        headers = next(reader)  # Skip header row
+    async with aiofiles.open(csv_file, 'r', encoding='utf-8') as f:
+        content = await f.read()
+        reader = csv.reader(content.splitlines())
+        headers = next(reader)
 
         for row in reader:
-            if len(row) < 9:  # Ensure we have enough columns
+            if len(row) < 9:
                 continue
 
             try:
@@ -118,8 +119,7 @@ async def _get_portfolio_from_csv() -> Dict[str, Any]:
 
                 exposure = qty * last_price
 
-                # Determine risk tags based on symbol
-                risk_tags = ["equity"]  # Default
+                risk_tags = ["equity"]
                 if any(bank in symbol for bank in ["BANK", "HDFC", "ICICI", "KOTAK", "PNB", "CANBK", "UNIONBANK", "IDBI", "KARURVYSYA"]):
                     risk_tags.append("banking")
                 elif any(it in symbol for it in ["TCS", "INFY", "HCLTECH"]):

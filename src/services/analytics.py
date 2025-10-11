@@ -76,10 +76,12 @@ def _find_holdings_csv(config: Config) -> Path:
     return csv_files[0]
 
 
-def _load_holdings_rows(csv_path: Path) -> List[Dict[str, Any]]:
+async def _load_holdings_rows(csv_path: Path) -> List[Dict[str, Any]]:
+    import aiofiles
     holdings: List[Dict[str, Any]] = []
-    with open(csv_path, newline="", encoding="utf-8-sig") as csvfile:
-        reader = csv.DictReader(csvfile)
+    async with aiofiles.open(csv_path, mode='r', newline="", encoding="utf-8-sig") as csvfile:
+        content = await csvfile.read()
+        reader = csv.DictReader(content.splitlines())
         for row in reader:
             raw_symbol = row.get("Instrument", "").strip().strip('"')
             if not raw_symbol:
@@ -396,7 +398,7 @@ async def run_portfolio_scan(
     # Fallback to CSV data
     try:
         csv_path = _find_holdings_csv(config)
-        holdings = _load_holdings_rows(csv_path)
+        holdings = await _load_holdings_rows(csv_path)
         portfolio_state, analytics = _build_portfolio_state(holdings, config)
 
         await state_manager.update_portfolio(portfolio_state)
@@ -444,7 +446,7 @@ async def run_market_screening(
     # Fallback to CSV
     try:
         csv_path = _find_holdings_csv(config)
-        holdings = _load_holdings_rows(csv_path)
+        holdings = await _load_holdings_rows(csv_path)
         report = _generate_screening_report(holdings)
         await state_manager.update_screening_results(report)
         return {"source": "csv_fallback", "screening": report}
@@ -487,7 +489,7 @@ async def run_strategy_analysis(
     # Fallback to CSV
     try:
         csv_path = _find_holdings_csv(config)
-        holdings = _load_holdings_rows(csv_path)
+        holdings = await _load_holdings_rows(csv_path)
         portfolio_state, analytics = _build_portfolio_state(holdings, config)
         analysis = _generate_strategy_analysis(holdings, analytics)
         await state_manager.update_strategy_results(analysis)
@@ -518,7 +520,7 @@ async def run_technical_snapshot(
     config: Config, timeframe: str = "1d"
 ) -> Dict[str, Any]:
     csv_path = _find_holdings_csv(config)
-    holdings = _load_holdings_rows(csv_path)
+    holdings = await _load_holdings_rows(csv_path)
     signals = _generate_technical_signals(holdings, timeframe)
     signals["source"] = str(csv_path)
     return signals

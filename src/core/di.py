@@ -80,10 +80,12 @@ class DependencyContainer:
 
         # State Manager - singleton (Database-backed only)
         async def create_state_manager():
-            # Use database-backed state manager (Phase 1 migration complete)
             from .database_state import DatabaseStateManager
+            logger.info("Creating DatabaseStateManager instance...")
             manager = DatabaseStateManager(self.config)
-            await manager.initialize()  # Initialize database and load state
+            logger.info("DatabaseStateManager instance created, starting initialization...")
+            await manager.initialize()
+            logger.info("DatabaseStateManager initialized successfully")
             return manager
 
         self._register_singleton("state_manager", create_state_manager)
@@ -211,16 +213,27 @@ class DependencyContainer:
 
     async def get(self, name: str) -> Any:
         """Get a service instance."""
+        logger.info(f"DI.get() called for '{name}'")
+
         async with self._lock:
             if name in self._singletons:
+                logger.info(f"DI.get() returning existing singleton for '{name}'")
                 return self._singletons[name]
 
-            if name in self._factories:
-                instance = await self._factories[name]()
-                self._singletons[name] = instance
-                return instance
+        if name in self._factories:
+            logger.info(f"DI.get() creating new instance for '{name}' (no lock)")
+            instance = await self._factories[name]()
 
-            raise ValueError(f"Service '{name}' not registered")
+            async with self._lock:
+                if name not in self._singletons:
+                    self._singletons[name] = instance
+                    logger.info(f"DI.get() instance created and stored for '{name}'")
+                    return instance
+                else:
+                    logger.info(f"DI.get() another task already created '{name}', using that")
+                    return self._singletons[name]
+
+        raise ValueError(f"Service '{name}' not registered")
 
     async def get_orchestrator(self) -> RoboTraderOrchestrator:
         """Get the orchestrator instance."""
