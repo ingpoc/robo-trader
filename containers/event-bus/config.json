@@ -1,0 +1,34 @@
+{
+  "service": {
+    "name": "event-bus",
+    "port": 8000,
+    "host": "0.0.0.0",
+    "health_check": "/health"
+  },
+  "database": {
+    "path": "/shared/db/event_bus.db",
+    "connection_pool_size": 10,
+    "timeout": 30
+  },
+  "event_processing": {
+    "max_concurrent_events": 50,
+    "event_ttl_days": 30,
+    "dead_letter_max_retries": 3,
+    "cleanup_interval_hours": 24
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "/shared/logs/event-bus.log",
+    "max_size": "50MB",
+    "backup_count": 10
+  },
+  "performance": {
+    "max_connections": 100,
+    "request_timeout": 30,
+    "rate_limit_per_minute": 1000
+  },
+  "replay": {
+    "max_replay_events": 1000,
+    "replay_batch_size": 100
+  }
+}

@@ -1,0 +1,25 @@
+FROM localhost/robo-trader-base:latest
+
+# Install Celery and Redis (for broker)
+RUN pip install --no-cache-dir celery[redis] redis
+
+# Copy service-specific code
+COPY containers/job-queue-service/run.sh /app/run.sh
+COPY containers/job-queue-service/celeryconfig.py /app/celeryconfig.py
+COPY containers/job-queue-service/tasks.py /app/tasks.py
+COPY containers/job-queue-service/config.json /app/config/service-config.json
+
+# Set service-specific environment
+ENV SERVICE_NAME=job-queue-service
+ENV CELERY_BROKER_URL=redis://redis-cache:6379/1
+ENV CELERY_RESULT_BACKEND=redis://redis-cache:6379/2
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Health check for job queue
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD celery -A tasks inspect active || exit 1
+
+# Run the job queue service
+CMD ["/app/run.sh"]

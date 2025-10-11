@@ -1,0 +1,77 @@
+{
+  "service": {
+    "name": "job-queue-service",
+    "host": "0.0.0.0",
+    "health_check": "/health"
+  },
+  "celery": {
+    "broker_url": "redis://redis-cache:6379/1",
+    "result_backend": "redis://redis-cache:6379/2",
+    "task_serializer": "json",
+    "result_serializer": "json",
+    "accept_content": ["json"],
+    "timezone": "UTC",
+    "enable_utc": true,
+    "worker_prefetch_multiplier": 1,
+    "worker_max_tasks_per_child": 1000,
+    "task_time_limit": 300,
+    "task_soft_time_limit": 240,
+    "result_expires": 3600
+  },
+  "queues": {
+    "portfolio": {
+      "name": "portfolio",
+      "priority": "medium",
+      "concurrency": 2
+    },
+    "risk": {
+      "name": "risk",
+      "priority": "high",
+      "concurrency": 3
+    },
+    "analytics": {
+      "name": "analytics",
+      "priority": "medium",
+      "concurrency": 2
+    },
+    "market_data": {
+      "name": "market_data",
+      "priority": "high",
+      "concurrency": 4
+    },
+    "critical": {
+      "name": "critical",
+      "priority": "critical",
+      "concurrency": 1
+    }
+  },
+  "scheduled_tasks": {
+    "market_data_sync": {
+      "task": "tasks.market_data_tasks.sync_market_data",
+      "schedule": 60,
+      "enabled": true
+    },
+    "portfolio_rebalancing_check": {
+      "task": "tasks.portfolio_tasks.check_rebalancing",
+      "schedule": 300,
+      "enabled": true
+    },
+    "risk_limits_monitoring": {
+      "task": "tasks.risk_tasks.monitor_limits",
+      "schedule": 120,
+      "enabled": true
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "/shared/logs/job-queue-service.log",
+    "max_size": "100MB",
+    "backup_count": 7
+  },
+  "performance": {
+    "max_workers": 4,
+    "worker_timeout": 300,
+    "retry_attempts": 3,
+    "retry_delay": 60
+  }
+}

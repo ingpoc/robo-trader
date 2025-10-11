@@ -1,0 +1,28 @@
+FROM grafana/grafana:latest
+
+# Copy provisioning configuration
+COPY containers/grafana/provisioning /etc/grafana/provisioning
+
+# Copy custom dashboards
+COPY containers/grafana/dashboards /var/lib/grafana/dashboards
+
+# Create data directory
+RUN mkdir -p /var/lib/grafana
+
+# Set permissions
+RUN chown -R grafana:grafana /var/lib/grafana
+
+# Environment variables
+ENV GF_SECURITY_ADMIN_PASSWORD=admin
+ENV GF_USERS_ALLOW_SIGN_UP=false
+ENV GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+
+# Expose Grafana port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+# Run Grafana
+CMD ["grafana-server", "--homepath=/usr/share/grafana", "--config=/etc/grafana/grafana.ini"]

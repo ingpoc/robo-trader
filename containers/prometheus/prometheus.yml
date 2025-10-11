@@ -1,0 +1,106 @@
+# Prometheus configuration for Robo Trader observability
+# Comprehensive metrics collection for all services
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # Add Alertmanager target when implemented
+
+# Load alert rules
+rule_files:
+  - "alert_rules.yml"
+
+# Scrape configurations for all services
+scrape_configs:
+  # Event Bus Service
+  - job_name: 'event-bus'
+    static_configs:
+      - targets: ['event-bus:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Portfolio Service
+  - job_name: 'portfolio-service'
+    static_configs:
+      - targets: ['portfolio-service:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Risk Service
+  - job_name: 'risk-service'
+    static_configs:
+      - targets: ['risk-service:8002']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Execution Service
+  - job_name: 'execution-service'
+    static_configs:
+      - targets: ['execution-service:8003']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Analytics Service
+  - job_name: 'analytics-service'
+    static_configs:
+      - targets: ['analytics-service:8004']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Learning Service
+  - job_name: 'learning-service'
+    static_configs:
+      - targets: ['learning-service:8005']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Safety Layer
+  - job_name: 'safety-layer'
+    static_configs:
+      - targets: ['safety-layer:8006']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Job Queue Service (Celery)
+  - job_name: 'job-queue-service'
+    static_configs:
+      - targets: ['job-queue-service:8007']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Redis Cache
+  - job_name: 'redis-cache'
+    static_configs:
+      - targets: ['redis-cache:6379']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # TimescaleDB (PostgreSQL)
+  - job_name: 'timescale-db'
+    static_configs:
+      - targets: ['timescale-db:5432']
+    scrape_interval: 30s
+    params:
+      auth_module: [basic_auth]
+    basic_auth:
+      username: 'postgres'
+      password: 'secure_password_change_in_production'
+
+  # Node Exporter (if running on host)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+    scrape_interval: 30s
+
+  # Container metrics (cAdvisor)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+    scrape_interval: 30s
+    metrics_path: '/metrics'

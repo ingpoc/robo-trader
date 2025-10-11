@@ -1,0 +1,19 @@
+FROM localhost/robo-trader-base:latest
+
+# Copy service-specific code
+COPY containers/event-bus/run.sh /app/run.sh
+COPY containers/event-bus/config.json /app/config/service-config.json
+
+# Set service-specific environment
+ENV SERVICE_NAME=event-bus
+ENV SERVICE_PORT=8000
+
+# Expose port for event bus API
+EXPOSE 8000
+
+# Health check for event bus
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the event bus service
+CMD ["/app/run.sh"]

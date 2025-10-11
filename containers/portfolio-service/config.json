@@ -1,0 +1,30 @@
+{
+  "service": {
+    "name": "portfolio-service",
+    "port": 8001,
+    "host": "0.0.0.0",
+    "health_check": "/health"
+  },
+  "database": {
+    "path": "/shared/db/portfolio.db",
+    "connection_pool_size": 5,
+    "timeout": 30
+  },
+  "event_bus": {
+    "host": "event-bus",
+    "port": 8000,
+    "reconnect_interval": 5,
+    "max_retries": 10
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "/shared/logs/portfolio-service.log",
+    "max_size": "10MB",
+    "backup_count": 5
+  },
+  "performance": {
+    "max_concurrent_requests": 10,
+    "request_timeout": 30,
+    "cache_ttl": 300
+  }
+}

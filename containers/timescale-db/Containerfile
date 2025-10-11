@@ -1,0 +1,29 @@
+FROM timescale/timescaledb:latest-pg15
+
+# Copy initialization scripts
+COPY containers/timescale-db/init.sql /docker-entrypoint-initdb.d/
+
+# Copy custom PostgreSQL configuration
+COPY containers/timescale-db/postgresql.conf /etc/postgresql/postgresql.conf
+
+# Create data directory
+RUN mkdir -p /var/lib/postgresql/data
+
+# Set permissions
+RUN chown -R postgres:postgres /var/lib/postgresql/data
+
+# Expose PostgreSQL port
+EXPOSE 5432
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD pg_isready -U postgres -d robo_trader || exit 1
+
+# Environment variables for TimescaleDB
+ENV POSTGRES_DB=robo_trader
+ENV POSTGRES_USER=robo_trader
+ENV POSTGRES_PASSWORD=secure_password_change_in_production
+ENV POSTGRES_HOST_AUTH_METHOD=trust
+
+# Run PostgreSQL with TimescaleDB
+CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
