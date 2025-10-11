@@ -28,5 +28,8 @@ prometheus-client>=0.17.0
 # HTTP client for service communication
 aiohttp>=3.8.0
 
+# Rate limiting
+slowapi==0.1.9
+
 # Additional utilities
 structlog>=23.1.0

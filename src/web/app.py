@@ -17,6 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 import uvicorn
 import time
 
@@ -35,6 +38,36 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Setup rate limiting with configurable limits and load balancer support
+import os
+
+def get_rate_limit_key(request):
+    """Get rate limiting key, handling load balancers/CDNs."""
+    # Try X-Forwarded-For header first (for load balancers)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # Take the first IP if there are multiple
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        # Fall back to direct client IP
+        client_ip = request.client.host if request.client else "unknown"
+
+    # Add user identifier if available (for future auth)
+    user_id = getattr(request.state, 'user_id', None) if hasattr(request, 'state') else None
+    if user_id:
+        return f"{user_id}:{client_ip}"
+    return client_ip
+
+# Configurable rate limits via environment variables
+dashboard_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
+trade_limit = os.getenv("RATE_LIMIT_TRADES", "10/minute")
+agents_limit = os.getenv("RATE_LIMIT_AGENTS", "20/minute")
+
+limiter = Limiter(key_func=get_rate_limit_key)
+app.state.limiter = limiter
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -149,8 +182,12 @@ class ConnectionManager:
         dead_connections = []
         for connection in connections:
             try:
-                await connection.send_json(message)
-            except Exception:
+                # Use shorter timeout for real-time updates (2 seconds instead of 5)
+                await asyncio.wait_for(
+                    connection.send_json(message),
+                    timeout=2.0
+                )
+            except (asyncio.TimeoutError, Exception):
                 # Mark for removal instead of removing during iteration
                 dead_connections.append(connection)
 
@@ -293,7 +330,7 @@ async def startup_event():
 
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_handler():
     """Cleanup resources on shutdown."""
     global container, connection_manager
     logger.info("Application shutdown initiated - cleaning up resources")

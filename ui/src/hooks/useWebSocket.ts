@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { wsClient } from '@/api/websocket'
 import { useDashboardStore } from '@/store/dashboardStore'
 import type { DashboardData } from '@/types/api'
@@ -8,8 +8,14 @@ export function useWebSocket() {
   const setConnected = useDashboardStore((state) => state.setConnected)
   const setBackendStatus = useDashboardStore((state) => state.setBackendStatus)
   const addToast = useDashboardStore((state) => state.addToast)
+  const hasConnected = useRef(false)
 
   useEffect(() => {
+    if (hasConnected.current) {
+      return
+    }
+
+    hasConnected.current = true
     setBackendStatus('connecting')
     wsClient.connect()
 
@@ -32,8 +38,6 @@ export function useWebSocket() {
     return () => {
       unsubscribe()
       unsubscribeError()
-      wsClient.disconnect()
-      setBackendStatus('disconnected')
     }
   }, [setDashboardData, setConnected, setBackendStatus, addToast])
 

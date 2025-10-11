@@ -213,24 +213,18 @@ class DependencyContainer:
 
     async def get(self, name: str) -> Any:
         """Get a service instance."""
-        logger.info(f"DI.get() called for '{name}'")
-
         async with self._lock:
             if name in self._singletons:
-                logger.info(f"DI.get() returning existing singleton for '{name}'")
                 return self._singletons[name]
 
         if name in self._factories:
-            logger.info(f"DI.get() creating new instance for '{name}' (no lock)")
             instance = await self._factories[name]()
 
             async with self._lock:
                 if name not in self._singletons:
                     self._singletons[name] = instance
-                    logger.info(f"DI.get() instance created and stored for '{name}'")
                     return instance
                 else:
-                    logger.info(f"DI.get() another task already created '{name}', using that")
                     return self._singletons[name]
 
         raise ValueError(f"Service '{name}' not registered")
