@@ -16,9 +16,13 @@
     --color-gray-900: 23 23 23;
     --color-gray-950: 10 10 10;
 
-    --color-accent: 37 99 235;
-    --color-accent-light: 59 130 246;
-    --color-accent-dark: 29 78 216;
+    --color-accent: 23 23 23;
+    --color-accent-light: 64 64 64;
+    --color-accent-dark: 10 10 10;
+
+    --color-success: 16 185 129;
+    --color-success-light: 52 211 153;
+    --color-success-dark: 5 150 105;
 
     --space-1: 8px;
     --space-2: 16px;
@@ -61,6 +65,79 @@
 
   .rolling-number {
     font-variant-numeric: tabular-nums;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .text-11 {
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.01em;
+  }
+
+  .text-13 {
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .text-32 {
+    font-size: 32px;
+    line-height: 40px;
+    letter-spacing: -0.02em;
+  }
+
+  .card-shadow {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: box-shadow 150ms ease-in-out, transform 150ms ease-in-out;
+  }
+
+  .card-shadow:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
+  }
+
+  .metric-pulse {
+    animation: metric-update 300ms ease-out;
+  }
+
+  @keyframes metric-update {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      #f5f5f5 0%,
+      #fafafa 50%,
+      #f5f5f5 100%
+    );
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  .text-success {
+    color: rgb(16 185 129);
+  }
+
+  .text-success-light {
+    color: rgb(52 211 153);
+  }
+
+  .text-success-dark {
+    color: rgb(5 150 105);
+  }
+
+  .bg-success {
+    background-color: rgb(16 185 129);
   }
 }
 

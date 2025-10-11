@@ -54,13 +54,15 @@ export function MetricCard({
   }
 
   return (
-    <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 rounded">
-      <div className="text-2xl font-semibold text-gray-900 rolling-number">
+    <div className="flex flex-col gap-1 p-4 bg-gray-50 border border-gray-200 card-shadow">
+      <div className="text-11 font-medium text-gray-500 uppercase tracking-wider leading-none">
+        {label}
+      </div>
+      <div className="text-32 font-light text-gray-900 tabular-nums leading-none mt-2">
         {formatValue(displayValue)}
       </div>
-      <div className="text-sm text-gray-600">{label}</div>
       {change !== undefined && (
-        <div className="text-xs text-gray-500">
+        <div className="text-11 text-gray-500 tabular-nums mt-1">
           {changeLabel || `${change >= 0 ? '+' : ''}${formatNumber(change, 1)}%`}
         </div>
       )}

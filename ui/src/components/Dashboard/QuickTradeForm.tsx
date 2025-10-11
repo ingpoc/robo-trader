@@ -98,13 +98,13 @@ export function QuickTradeForm() {
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4 bg-white border border-gray-200 rounded">
-      <h3 className="text-lg font-semibold text-gray-900">Quick Trade</h3>
+    <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 card-shadow">
+      <div className="text-xs font-medium text-gray-600 uppercase tracking-wider">Quick Trade</div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor="symbol" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="symbol" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
               Symbol
             </label>
             <Input
@@ -116,7 +116,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="side" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="side" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
               Side
             </label>
             <Select id="side" {...register('side')} error={errors.side?.message}>
@@ -127,7 +127,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="quantity" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
               Quantity
             </label>
             <Input
@@ -140,7 +140,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="order_type" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="order_type" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
               Order Type
             </label>
             <Select
@@ -156,7 +156,7 @@ export function QuickTradeForm() {
 
           {orderType === 'LIMIT' && (
             <div className="col-span-2">
-              <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="price" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
                 Price
               </label>
               <Input

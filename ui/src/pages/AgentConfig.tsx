@@ -2,6 +2,23 @@ import { useState, useEffect } from 'react'
 import { apiRequest } from '@/api/client'
 import type { AgentFeaturesConfig, AgentFeatureConfig } from '@/types/api'
 
+// Frequency mapping utilities
+const FREQUENCY_OPTIONS = [
+  { label: 'Daily', value: 86400 },
+  { label: 'Weekly', value: 604800 },
+  { label: 'Monthly', value: 2592000 },
+] as const
+
+const getFrequencyLabel = (seconds: number): string => {
+  const option = FREQUENCY_OPTIONS.find(opt => opt.value === seconds)
+  return option ? option.label : `${seconds}s`
+}
+
+const getFrequencySeconds = (label: string): number => {
+  const option = FREQUENCY_OPTIONS.find(opt => opt.label === label)
+  return option ? option.value : 86400 // default to daily
+}
+
 export function AgentConfig() {
   const [features, setFeatures] = useState<AgentFeaturesConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -88,14 +105,32 @@ function FeatureCard({ featureName, config, onUpdate }: {
 
         <div>
           <label>
-            <span className="block mb-1">Frequency (seconds)</span>
-            <input
-              type="number"
-              value={config.frequency_seconds}
-              onChange={(e) => onUpdate({ frequency_seconds: parseInt(e.target.value) })}
-              disabled={!config.enabled}
-              className="w-full border rounded px-2 py-1"
-            />
+            <span className="block mb-1">
+              Frequency {['portfolio_scan', 'market_screening', 'earnings_check', 'news_monitoring', 'ai_daily_planning'].includes(featureName) ? '' : '(seconds)'}
+            </span>
+            {['portfolio_scan', 'market_screening', 'earnings_check', 'news_monitoring', 'ai_daily_planning'].includes(featureName) ? (
+              <select
+                value={getFrequencyLabel(config.frequency_seconds)}
+                onChange={(e) => onUpdate({ frequency_seconds: getFrequencySeconds(e.target.value) })}
+                disabled={!config.enabled}
+                className="w-full border rounded px-2 py-1"
+              >
+                {FREQUENCY_OPTIONS.map(option => (
+                  <option key={option.value} value={option.label}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="number"
+                value={config.frequency_seconds}
+                onChange={(e) => onUpdate({ frequency_seconds: parseInt(e.target.value) })}
+                disabled={!config.enabled}
+                className="w-full border rounded px-2 py-1"
+                placeholder="seconds"
+              />
+            )}
           </label>
         </div>
 

@@ -17,9 +17,14 @@ export default {
           950: '#0a0a0a',
         },
         accent: {
-          DEFAULT: '#2563eb',
-          light: '#3b82f6',
-          dark: '#1d4ed8',
+          DEFAULT: '#171717',
+          light: '#404040',
+          dark: '#0a0a0a',
+        },
+        success: {
+          DEFAULT: '#10b981',
+          light: '#34d399',
+          dark: '#059669',
         },
       },
       fontFamily: {
@@ -49,6 +54,9 @@ export default {
         '2xl': ['1.5rem', { lineHeight: '2rem', letterSpacing: '-0.02em' }],
         '3xl': ['1.875rem', { lineHeight: '2.25rem', letterSpacing: '-0.02em' }],
         '4xl': ['2.25rem', { lineHeight: '2.5rem', letterSpacing: '-0.03em' }],
+        '11': ['0.6875rem', { lineHeight: '1rem', letterSpacing: '0.01em' }],
+        '13': ['0.8125rem', { lineHeight: '1.25rem', letterSpacing: '0' }],
+        '32': ['2rem', { lineHeight: '2.5rem', letterSpacing: '-0.02em' }],
       },
       spacing: {
         '1': '8px',
@@ -85,6 +93,9 @@ export default {
       },
       transitionDuration: {
         DEFAULT: '150ms',
+      },
+      scale: {
+        '1.005': '1.005',
       },
     },
   },

@@ -17,8 +17,13 @@ export function Dashboard() {
 
   if (isLoading || isAnalyticsLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-lg text-gray-600">Loading dashboard...</div>
+      <div className="flex flex-col gap-4 p-6">
+        <div className="h-8 bg-gray-100 w-1/4 skeleton-shimmer" />
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-24 bg-gray-100 skeleton-shimmer" />
+          ))}
+        </div>
       </div>
     )
   }
@@ -39,14 +44,9 @@ export function Dashboard() {
   ]
 
   return (
-    <div className="flex flex-col gap-6 p-6 overflow-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Trading Dashboard</h1>
-          <p className="text-sm text-gray-600">
-            Here's what's happening with your portfolio today
-          </p>
-        </div>
+    <div className="flex flex-col gap-8 p-6 overflow-auto">
+      <div className="flex items-center justify-between h-10">
+        <h1 className="text-lg font-semibold text-gray-900">Overview</h1>
         <div className="flex gap-2">
           <Button
             variant="secondary"
@@ -54,7 +54,7 @@ export function Dashboard() {
             onClick={() => portfolioScan()}
             disabled={isScanning}
           >
-            Scan Portfolio
+            Scan
           </Button>
           <Button
             variant="secondary"
@@ -62,7 +62,7 @@ export function Dashboard() {
             onClick={() => marketScreening()}
             disabled={isScanning}
           >
-            Market Screening
+            Screen
           </Button>
         </div>
       </div>
@@ -92,8 +92,8 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <ChartCard title="Portfolio Performance" type="line" data={chartData} />
-        <ChartCard title="Asset Allocation" type="pie" data={allocationData} />
+        <ChartCard title="Performance" type="line" data={chartData} />
+        <ChartCard title="Allocation" type="pie" data={allocationData} />
       </div>
 
       <div className="grid grid-cols-3 gap-4">
