@@ -227,6 +227,10 @@ class BackgroundScheduler:
         if hasattr(new_config, 'agents'):
             agents_config = new_config.agents
 
+            # Track which task types are currently scheduled
+            scheduled_types = {task.task_type for task in self.tasks.values()}
+
+            # Update existing tasks
             for task_id, task in self.tasks.items():
                 if task.task_type == TaskType.MARKET_MONITORING:
                     task.interval_seconds = agents_config.market_monitoring.frequency_seconds
@@ -254,6 +258,63 @@ class BackgroundScheduler:
                     task.is_active = agents_config.market_screening.enabled
 
                 await self._save_task(task)
+
+            # Schedule any newly enabled tasks that weren't previously scheduled
+            if agents_config.market_monitoring.enabled and TaskType.MARKET_MONITORING not in scheduled_types:
+                await self.schedule_task(
+                    TaskType.MARKET_MONITORING,
+                    TaskPriority.MEDIUM,
+                    delay_seconds=60,
+                    interval_seconds=agents_config.market_monitoring.frequency_seconds
+                )
+
+            if agents_config.stop_loss_monitor.enabled and TaskType.STOP_LOSS_MONITOR not in scheduled_types:
+                await self.schedule_task(
+                    TaskType.STOP_LOSS_MONITOR,
+                    TaskPriority.HIGH,
+                    delay_seconds=30,
+                    interval_seconds=agents_config.stop_loss_monitor.frequency_seconds
+                )
+
+            if agents_config.earnings_check.enabled and TaskType.EARNINGS_CHECK not in scheduled_types:
+                await self.schedule_task(
+                    TaskType.EARNINGS_CHECK,
+                    TaskPriority.MEDIUM,
+                    interval_seconds=agents_config.earnings_check.frequency_seconds
+                )
+
+            if agents_config.news_monitoring.enabled and TaskType.NEWS_MONITORING not in scheduled_types:
+                await self.schedule_task(
+                    TaskType.NEWS_MONITORING,
+                    TaskPriority.MEDIUM,
+                    interval_seconds=agents_config.news_monitoring.frequency_seconds
+                )
+
+            if agents_config.health_check.enabled and TaskType.HEALTH_CHECK not in scheduled_types:
+                await self.schedule_task(
+                    TaskType.HEALTH_CHECK,
+                    TaskPriority.LOW,
+                    interval_seconds=agents_config.health_check.frequency_seconds
+                )
+
+            if agents_config.ai_daily_planning.enabled and TaskType.AI_PLANNING not in scheduled_types:
+                now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+                target_time = now_ist.replace(hour=8, minute=30, second=0, microsecond=0)
+
+                if now_ist.time() > time(8, 30):
+                    target_time += timedelta(days=1)
+
+                delay_seconds = int((target_time - now_ist).total_seconds())
+
+                await self.schedule_task(
+                    TaskType.AI_PLANNING,
+                    TaskPriority.HIGH,
+                    delay_seconds=delay_seconds,
+                    interval_seconds=agents_config.ai_daily_planning.frequency_seconds,
+                    metadata={"planning_type": "daily"}
+                )
+
+                logger.info(f"Scheduled newly enabled AI planning for {target_time} IST")
 
         logger.info("Scheduler config reloaded successfully")
 
@@ -348,7 +409,7 @@ class BackgroundScheduler:
 
         # Update task status
         task.last_executed = datetime.now(timezone.utc)
-        if task.interval_seconds:
+        if task.interval_seconds and task.is_active:
             task.next_execution = task.last_executed + timedelta(seconds=task.interval_seconds)
             task.execute_at = task.next_execution
 
@@ -460,62 +521,80 @@ class BackgroundScheduler:
             await self.trigger_event("market_close", {})
 
     async def _schedule_default_tasks(self) -> None:
-        """Schedule default background tasks."""
-        # Health check every 5 minutes
-        await self.schedule_task(
-            TaskType.HEALTH_CHECK,
-            TaskPriority.LOW,
-            interval_seconds=300
-        )
+        """Schedule default background tasks based on configuration."""
+        # Get agent configurations
+        agents_config = getattr(self.config, 'agents', None)
+        if not agents_config:
+            logger.warning("No agents configuration found, using defaults")
+            return
 
-        # Market monitoring during market hours (every 30 seconds)
-        await self.schedule_task(
-            TaskType.MARKET_MONITORING,
-            TaskPriority.MEDIUM,
-            delay_seconds=60,
-            interval_seconds=30
-        )
+        # Health check every 5 minutes (only if enabled)
+        health_enabled = agents_config.health_check.enabled if hasattr(agents_config, 'health_check') else True
+        if health_enabled:
+            await self.schedule_task(
+                TaskType.HEALTH_CHECK,
+                TaskPriority.LOW,
+                interval_seconds=300
+            )
 
-        # Stop loss monitoring (every 15 seconds during market hours)
-        await self.schedule_task(
-            TaskType.STOP_LOSS_MONITOR,
-            TaskPriority.HIGH,
-            delay_seconds=30,
-            interval_seconds=15
-        )
+        # Market monitoring during market hours (every 30 seconds, only if enabled)
+        market_monitoring_enabled = agents_config.market_monitoring.enabled if hasattr(agents_config, 'market_monitoring') else False
+        if market_monitoring_enabled:
+            await self.schedule_task(
+                TaskType.MARKET_MONITORING,
+                TaskPriority.MEDIUM,
+                delay_seconds=60,
+                interval_seconds=30
+            )
 
-        # Earnings check (every 15 minutes)
-        await self.schedule_task(
-            TaskType.EARNINGS_CHECK,
-            TaskPriority.MEDIUM,
-            interval_seconds=900
-        )
+        # Stop loss monitoring (every 15 seconds during market hours, only if enabled)
+        stop_loss_enabled = agents_config.stop_loss_monitor.enabled if hasattr(agents_config, 'stop_loss_monitor') else False
+        if stop_loss_enabled:
+            await self.schedule_task(
+                TaskType.STOP_LOSS_MONITOR,
+                TaskPriority.HIGH,
+                delay_seconds=30,
+                interval_seconds=15
+            )
 
-        # News monitoring (every 5 minutes)
-        await self.schedule_task(
-            TaskType.NEWS_MONITORING,
-            TaskPriority.MEDIUM,
-            interval_seconds=300
-        )
+        # Earnings check (every 15 minutes, only if enabled)
+        earnings_enabled = agents_config.earnings_check.enabled if hasattr(agents_config, 'earnings_check') else False
+        if earnings_enabled:
+            await self.schedule_task(
+                TaskType.EARNINGS_CHECK,
+                TaskPriority.MEDIUM,
+                interval_seconds=900
+            )
 
-        # AI Daily Planning (every morning at 8:30 AM IST)
-        now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-        target_time = now_ist.replace(hour=8, minute=30, second=0, microsecond=0)
+        # News monitoring (every 5 minutes, only if enabled)
+        news_enabled = agents_config.news_monitoring.enabled if hasattr(agents_config, 'news_monitoring') else False
+        if news_enabled:
+            await self.schedule_task(
+                TaskType.NEWS_MONITORING,
+                TaskPriority.MEDIUM,
+                interval_seconds=300
+            )
 
-        if now_ist.time() > time(8, 30):
-            target_time += timedelta(days=1)
+        # AI Daily Planning (every morning at 8:30 AM IST, only if enabled)
+        ai_planning_enabled = agents_config.ai_daily_planning.enabled if hasattr(agents_config, 'ai_daily_planning') else False
+        if ai_planning_enabled:
+            now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+            target_time = now_ist.replace(hour=8, minute=30, second=0, microsecond=0)
 
-        delay_seconds = int((target_time - now_ist).total_seconds())
+            if now_ist.time() > time(8, 30):
+                target_time += timedelta(days=1)
 
-        await self.schedule_task(
-            TaskType.AI_PLANNING,
-            TaskPriority.HIGH,
-            delay_seconds=delay_seconds,
-            interval_seconds=86400,
-            metadata={"planning_type": "daily"}
-        )
+            delay_seconds = int((target_time - now_ist).total_seconds())
 
-        logger.info(f"Scheduled daily AI planning for {target_time} IST")
+            await self.schedule_task(
+                TaskType.AI_PLANNING,
+                TaskPriority.HIGH,
+                delay_seconds=delay_seconds,
+                interval_seconds=86400,
+                metadata={"planning_type": "daily"}
+            )
+
+            logger.info(f"Scheduled daily AI planning for {target_time} IST")
 
     # Event handlers
     async def _handle_earnings_event(self, event_data: Dict[str, Any]) -> None:

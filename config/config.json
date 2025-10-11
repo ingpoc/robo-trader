@@ -6,7 +6,6 @@
   "max_turns": 50,
   "database": {
     "enabled": true,
-    "mode": "sqlite",
     "path": "robo_trader.db",
     "backup_enabled": true,
     "backup_interval_hours": 24,
@@ -63,12 +62,15 @@
     "require_manual_approval_live": true
   },
   "integration": {
-    "zerodha_api_key": null,
-    "zerodha_api_secret": null,
+    "zerodha_api_key": "your_api_key_here",
+    "zerodha_api_secret": "your_api_secret_here",
     "zerodha_access_token": null,
     "zerodha_request_token": null,
-    "anthropic_api_key": null,
-    "perplexity_api_keys": []
+    "anthropic_api_key": "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",
+    "perplexity_api_keys": [
+      "pplx-your-first-api-key-here",
+      "pplx-your-second-api-key-here"
+    ]
   },
   "scheduling": {
     "portfolio_scan_interval_minutes": 60,
@@ -97,7 +99,7 @@
     },
     "market_monitoring": {
       "enabled": false,
-      "use_claude": true,
+      "use_claude": false,
       "frequency_seconds": 60,
       "priority": "medium"
     },

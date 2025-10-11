@@ -114,28 +114,32 @@ async def log_requests(request: Request, call_next):
     """Structured request/response logging middleware."""
     start_time = time.time()
 
-    logger.info(
-        "Request started",
-        extra={
-            "method": request.method,
-            "path": request.url.path,
-            "client": request.client.host if request.client else None,
-            "user_agent": request.headers.get("user-agent", "unknown")
-        }
-    )
+    # Removed verbose request start/completion logging for cleaner logs
+    # Uncomment below for debugging if needed:
+    # logger.info(
+    #     "Request started",
+    #     extra={
+    #         "method": request.method,
+    #         "path": request.url.path,
+    #         "client": request.client.host if request.client else None,
+    #         "user_agent": request.headers.get("user-agent", "unknown")
+    #     }
+    # )
 
     response = await call_next(request)
 
     duration = time.time() - start_time
-    logger.info(
-        "Request completed",
-        extra={
-            "method": request.method,
-            "path": request.url.path,
-            "status_code": response.status_code,
-            "duration_ms": round(duration * 1000, 2)
-        }
-    )
+    # Removed verbose request completion logging for cleaner logs
+    # Uncomment below for debugging if needed:
+    # logger.info(
+    #     "Request completed",
+    #     extra={
+    #         "method": request.method,
+    #         "path": request.url.path,
+    #         "status_code": response.status_code,
+    #         "duration_ms": round(duration * 1000, 2)
+    #     }
+    # )
 
     return response
 
@@ -187,8 +191,19 @@ class ConnectionManager:
                     connection.send_json(message),
                     timeout=2.0
                 )
-            except (asyncio.TimeoutError, Exception):
-                # Mark for removal instead of removing during iteration
+            except (asyncio.TimeoutError, Exception) as e:
+                # Check if this is a normal connection closure (page refresh, etc.)
+                error_msg = str(e).lower()
+                if ("close message has been sent" in error_msg or
+                    "connection is closed" in error_msg or
+                    "websocket is closed" in error_msg):
+                    # Normal browser refresh/page navigation - don't log as error
+                    logger.debug(f"WebSocket connection closed normally: {e}")
+                else:
+                    # Unexpected error - log it
+                    logger.warning(f"WebSocket send failed: {e}")
+
+                # Mark for removal regardless of error type
                 dead_connections.append(connection)
 
         # Remove dead connections
@@ -1098,18 +1113,34 @@ async def websocket_endpoint(websocket: WebSocket):
 
             except asyncio.TimeoutError:
                 logger.warning(f"Data retrieval timeout for {connection_id}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Data retrieval timeout",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
+                try:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Data retrieval timeout",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+                except Exception:
+                    # Connection might be closed, ignore
+                    pass
             except Exception as e:
-                logger.error(f"Error during WebSocket data processing for {connection_id}: {e}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Data processing error",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
+                error_msg = str(e).lower()
+                if ("close message has been sent" in error_msg or
+                    "connection is closed" in error_msg or
+                    "websocket is closed" in error_msg):
+                    # Normal browser refresh/page navigation - don't log as error
+                    logger.debug(f"WebSocket connection closed during data processing for {connection_id}: {e}")
+                else:
+                    # Unexpected error - log it
+                    logger.error(f"Error during WebSocket data processing for {connection_id}: {e}")
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Data processing error",
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        })
+                    except Exception:
+                        # Connection might be closed, ignore
+                        pass
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected: {connection_id}")
