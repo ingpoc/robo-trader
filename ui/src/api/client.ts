@@ -48,6 +48,15 @@ export async function apiRequest<T>(
       throw error
     }
 
+    // Handle network errors (connection refused, etc.)
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new APIError(
+        0,
+        'Connection Failed',
+        'Unable to connect to the server. Please check if the backend is running.'
+      )
+    }
+
     throw new Error(
       error instanceof Error ? error.message : 'Network request failed'
     )

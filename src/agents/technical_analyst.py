@@ -12,10 +12,11 @@ from claude_agent_sdk import tool
 from loguru import logger
 
 from ..config import Config
-from ..core.state import StateManager, Signal
+from ..core.database_state import DatabaseStateManager
+from ..core.state_models import Signal
 
 
-def create_technical_analyst_tool(config: Config, state_manager: StateManager):
+def create_technical_analyst_tool(config: Config, state_manager: DatabaseStateManager):
     """Create technical analyst tool with dependencies via closure."""
     
     @tool("technical_analysis", "Perform technical analysis on symbols", {"symbols": List[str], "timeframe": str})

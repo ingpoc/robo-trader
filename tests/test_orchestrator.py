@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.config import Config
 from src.core.orchestrator import RoboTraderOrchestrator
-from src.core.state import StateManager
+from src.core.database_state import DatabaseStateManager
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def config():
 @pytest.fixture
 def state_manager(config):
     """Test state manager."""
-    return StateManager(config.state_dir)
+    return DatabaseStateManager(config)
 
 
 @pytest.mark.asyncio

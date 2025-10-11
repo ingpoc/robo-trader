@@ -6,6 +6,7 @@
   "max_turns": 50,
   "database": {
     "enabled": true,
+    "mode": "sqlite",
     "path": "robo_trader.db",
     "backup_enabled": true,
     "backup_interval_hours": 24,

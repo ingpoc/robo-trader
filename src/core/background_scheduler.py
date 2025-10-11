@@ -19,7 +19,7 @@ from enum import Enum
 
 from loguru import logger
 from ..config import Config
-from ..core.state import StateManager
+from ..core.database_state import DatabaseStateManager
 
 
 class TaskType(Enum):
@@ -97,7 +97,7 @@ class BackgroundScheduler:
     - Real-time status reporting
     """
 
-    def __init__(self, config: Config, state_manager: StateManager, orchestrator=None):
+    def __init__(self, config: Config, state_manager: DatabaseStateManager, orchestrator=None):
         self.config = config
         self.state_manager = state_manager
         self.orchestrator = orchestrator

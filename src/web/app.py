@@ -107,7 +107,8 @@ async def log_requests(request: Request, call_next):
     return response
 
 # Include chat API router
-app.include_router(chat_router)
+# TEMPORARILY DISABLED FOR DEBUGGING
+# app.include_router(chat_router)
 
 # Global variables
 config = None
@@ -218,52 +219,77 @@ async def startup_event():
     """Initialize the system on startup."""
     global config, container, connection_manager
 
-    config = load_config()
+    logger.info("=== STARTUP EVENT STARTED ===")
 
-    # Setup logging to both console and files
-    from ..core.logging_config import setup_logging
-    import os
-    log_level = os.getenv('LOG_LEVEL', 'INFO')
-    setup_logging(config.logs_dir, log_level)
+    config = load_config()
+    logger.info("Config loaded successfully")
 
     # Initialize dependency injection container
+    logger.info("Initializing DI container...")
     container = await initialize_container(config)
+    logger.info("DI container initialized")
+
     connection_manager = ConnectionManager()
+    logger.info("ConnectionManager created")
 
     # Get orchestrator from container
+    logger.info("Getting orchestrator from container...")
     orchestrator = await container.get_orchestrator()
+    logger.info("Orchestrator retrieved from container")
 
     # Wire up WebSocket broadcasting
+    logger.info("Wiring up WebSocket broadcasting...")
     async def broadcast_to_ui_impl(message: Dict[str, Any]):
         await connection_manager.broadcast(message)
 
     orchestrator.broadcast_to_ui = broadcast_to_ui_impl
+    logger.info("WebSocket broadcasting wired up")
 
-    # Start the orchestrator session
-    await orchestrator.start_session()
+    async def initialize_orchestrator():
+        """Initialize orchestrator in background."""
+        try:
+            logger.info("Starting orchestrator initialization in background...")
+            await asyncio.wait_for(orchestrator.initialize(), timeout=60.0)
+            logger.info("Orchestrator initialized successfully")
+
+            await orchestrator.start_session()
+            logger.info("Orchestrator session started")
+        except asyncio.TimeoutError:
+            logger.error("Orchestrator initialization timed out after 60 seconds")
+        except Exception as exc:
+            logger.error(f"Orchestrator initialization failed: {exc}", exc_info=True)
 
     async def bootstrap_state() -> None:
         """Prime initial analytics so UI renders with real data."""
         if not orchestrator:
             return
         try:
-            await orchestrator.run_portfolio_scan()
+            await asyncio.wait_for(orchestrator.run_portfolio_scan(), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.warning("Initial portfolio scan timed out during startup")
         except Exception as exc:
             logger.warning(f"Initial portfolio scan failed: {exc}")
         try:
-            await orchestrator.run_market_screening()
+            await asyncio.wait_for(orchestrator.run_market_screening(), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.warning("Initial market screening timed out during startup")
         except Exception as exc:
             logger.warning(f"Initial market screening failed: {exc}")
         try:
-            await orchestrator.run_strategy_review()
+            await asyncio.wait_for(orchestrator.run_strategy_review(), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.warning("Initial strategy review timed out during startup")
         except Exception as exc:
             logger.warning(f"Initial strategy review failed: {exc}")
 
-    # Run bootstrap synchronously after orchestrator is fully initialized
+    # Initialize orchestrator and bootstrap in background
     try:
-        await bootstrap_state()
-    except Exception as exc:
-        logger.error(f"Bootstrap state failed with unhandled exception: {exc}", exc_info=True)
+        logger.info("Creating background tasks for orchestrator initialization and bootstrap")
+        orchestrator_task = asyncio.create_task(initialize_orchestrator())
+        bootstrap_task = asyncio.create_task(bootstrap_state())
+        logger.info("Background tasks created successfully")
+    except Exception as e:
+        logger.error(f"Failed to create background tasks: {e}", exc_info=True)
 
 
 @app.on_event("shutdown")

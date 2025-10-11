@@ -86,27 +86,29 @@ def get_broker(config: Config) -> ZerodhaBroker:
     return _broker
 
 
-# Tool definitions
+# Tool factory functions using closure pattern
 
-@tool("get_login_url", "Get Zerodha login URL for authentication", {})
-async def get_login_url_tool(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Get login URL for Zerodha authentication."""
-    try:
-        broker = get_broker(None)  # Config injected at server creation
-        url = broker.get_login_url()
-        return {
-            "content": [
-                {"type": "text", "text": f"Login URL: {url}"}
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Failed to get login URL: {e}")
-        return {
-            "content": [
-                {"type": "text", "text": "Failed to generate login URL. Please check API configuration."}
-            ],
-            "is_error": True
-        }
+def create_get_login_url_tool(broker: ZerodhaBroker):
+    """Factory function for get_login_url tool using closure."""
+    @tool("get_login_url", "Get Zerodha login URL for authentication", {})
+    async def get_login_url_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get login URL for Zerodha authentication."""
+        try:
+            url = broker.get_login_url()
+            return {
+                "content": [
+                    {"type": "text", "text": f"Login URL: {url}"}
+                ]
+            }
+        except Exception as e:
+            logger.error(f"Failed to get login URL: {e}")
+            return {
+                "content": [
+                    {"type": "text", "text": "Failed to generate login URL. Please check API configuration."}
+                ],
+                "is_error": True
+            }
+    return get_login_url_tool
 
 
 @tool("set_access_token", "Set access token from request token", {"request_token": str})
@@ -433,18 +435,11 @@ async def create_broker_mcp_server(config: Config):
     global _broker
     _broker = ZerodhaBroker(config)
 
-    # Inject config into tools (hacky but works for demo)
-    for tool_func in [get_login_url_tool, set_access_token_tool, get_portfolio_tool,
-                      get_orders_tool, place_order_tool, modify_order_tool, cancel_order_tool,
-                      get_instruments_tool, quote_tool, ticker_subscribe_tool,
-                      ticker_unsubscribe_tool, ticker_set_mode_tool]:
-        tool_func._config = config
-
     return create_sdk_mcp_server(
         name="broker",
         version="1.0.0",
         tools=[
-            get_login_url_tool,
+            create_get_login_url_tool(_broker),
             set_access_token_tool,
             get_portfolio_tool,
             get_orders_tool,

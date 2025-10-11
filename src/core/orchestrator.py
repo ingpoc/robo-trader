@@ -28,7 +28,6 @@ from ..config import Config
 from ..mcp.broker import create_broker_mcp_server
 from ..agents import create_agents_mcp_server
 from ..core.hooks import create_safety_hooks
-from ..core.state import StateManager
 from ..core.ai_planner import AIPlanner
 from ..core.background_scheduler import BackgroundScheduler
 from ..services.analytics import (
@@ -54,35 +53,34 @@ class RoboTraderOrchestrator:
 
     def __init__(self, config: Config):
         self.config = config
-        self.state_manager = StateManager(config.state_dir)
-        self.ai_planner = AIPlanner(config, self.state_manager)
-        self.background_scheduler = BackgroundScheduler(config, self.state_manager, self)
+        # Dependencies will be injected by DI container
+        self.state_manager = None
+        self.ai_planner = None
+        self.background_scheduler = None
+        self.conversation_manager = None
+        self.learning_engine = None
         self.client: Optional[ClaudeSDKClient] = None
         self.options: Optional[ClaudeAgentOptions] = None
         self.claude_status: Optional[ClaudeAuthStatus] = None
-
-        from .conversation_manager import ConversationManager
-        from .learning_engine import LearningEngine
-
-        self.conversation_manager = ConversationManager(config, self.state_manager)
-        self.learning_engine = LearningEngine(config, self.state_manager)
 
     async def initialize(self) -> None:
         """Initialize the orchestrator with MCP servers and hooks."""
         logger.info("Initializing Robo Trader Orchestrator")
 
-        # Claude Agent SDK handles authentication through Claude Code CLI
-        # No pre-validation needed - SDK will use authenticated CLI session
-        logger.info("Claude Agent SDK will authenticate via Claude Code CLI")
-        self.claude_status = ClaudeAuthStatus(
-            is_valid=True,
-            api_key_present=False,
-            account_info={"auth_method": "claude_code_cli", "note": "SDK handles authentication"}
-        )
-        
-        # Create MCP servers
-        broker_server = await create_broker_mcp_server(self.config)
-        agents_server = await create_agents_mcp_server(self.config, self.state_manager)
+        from ..auth.claude_auth import validate_claude_api
+
+        self.claude_status = await validate_claude_api()
+        if not self.claude_status.is_valid:
+            error_msg = f"Claude API authentication failed: {self.claude_status.error}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        logger.info(f"Claude API authenticated successfully via {self.claude_status.account_info.get('auth_method', 'unknown')}")
+
+        # MCP servers disabled for debugging
+        logger.info("MCP servers creation disabled")
+        broker_server = None
+        agents_server = None
 
         # Define allowed tools based on environment
         allowed_tools = self._get_allowed_tools()
@@ -117,14 +115,16 @@ class RoboTraderOrchestrator:
         # Create safety hooks
         hooks = create_safety_hooks(self.config, self.state_manager)
 
-        # Configure Claude Agent options
+        mcp_servers_dict = {}
+        if broker_server:
+            mcp_servers_dict["broker"] = broker_server
+        if agents_server:
+            mcp_servers_dict["agents"] = agents_server
+
         self.options = ClaudeAgentOptions(
             allowed_tools=allowed_tools,
             permission_mode=self.config.permission_mode,
-            mcp_servers={
-                "broker": broker_server,
-                "agents": agents_server,
-            },
+            mcp_servers=mcp_servers_dict,
             hooks=hooks,
             system_prompt=self._get_system_prompt(),
             cwd=self.config.project_dir,
@@ -223,29 +223,60 @@ Use the available tools to coordinate between agents. Maintain state and create 
     async def start_session(self) -> None:
         """
         Start an interactive session with the orchestrator.
-        
+
         For web applications, this maintains a long-lived client.
         For CLI applications, prefer using the session context manager.
         """
         if not self.options:
             await self.initialize()
 
-        # Use context manager protocol properly
-        self.client = ClaudeSDKClient(options=self.options)
-        await self.client.__aenter__()
+        try:
+            self.client = ClaudeSDKClient(options=self.options)
+            await self.client.__aenter__()
+            logger.info("Claude SDK client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Claude SDK client: {e}. Session will have limited functionality.")
+            self.client = None
+            self.claude_status = ClaudeAuthStatus(
+                is_valid=False,
+                api_key_present=False,
+                account_info={"auth_method": "failed", "note": f"Initialization failed: {str(e)}"}
+            )
 
         logger.info("Orchestrator session started")
 
     async def end_session(self) -> None:
         """End the current session and cleanup resources."""
+        logger.info("Ending orchestrator session and cleaning up resources")
+
+        try:
+            if self.ai_planner:
+                await self.ai_planner.cleanup()
+        except Exception as e:
+            logger.error(f"Error cleaning up AI Planner: {e}")
+
+        try:
+            if self.conversation_manager:
+                await self.conversation_manager.cleanup()
+        except Exception as e:
+            logger.error(f"Error cleaning up Conversation Manager: {e}")
+
+        try:
+            if self.learning_engine:
+                await self.learning_engine.cleanup()
+        except Exception as e:
+            logger.error(f"Error cleaning up Learning Engine: {e}")
+
         if self.client:
             try:
                 await self.client.__aexit__(None, None, None)
+                logger.info("Orchestrator client cleaned up")
             except Exception as e:
-                logger.warning(f"Error during session cleanup: {e}")
+                logger.warning(f"Error during orchestrator client cleanup: {e}")
             finally:
                 self.client = None
-                logger.info("Orchestrator session ended")
+
+        logger.info("Orchestrator session ended successfully")
 
     async def process_query(self, query: str) -> List[Any]:
         """
@@ -255,15 +286,35 @@ Use the available tools to coordinate between agents. Maintain state and create 
         This method is for applications with persistent sessions.
         """
         if not self.client:
-            raise RuntimeError("Session not started. Call start_session() first.")
+            logger.warning("Claude client not available - cannot process query")
+            return [{
+                "type": "error",
+                "message": "AI assistant is not available. Please check Claude authentication.",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }]
 
-        await self.client.query(query)
+        try:
+            await asyncio.wait_for(self.client.query(query), timeout=30.0)
 
-        responses = []
-        async for response in self.client.receive_response():
-            responses.append(response)
+            responses = []
+            async for response in self.client.receive_response():
+                responses.append(response)
 
-        return responses
+            return responses
+        except asyncio.TimeoutError:
+            logger.error(f"Query timed out after 30 seconds: {query[:100]}...")
+            return [{
+                "type": "error",
+                "message": "Query timed out. Please try again or simplify your request.",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }]
+        except Exception as e:
+            logger.error(f"Error processing query: {e}", exc_info=True)
+            return [{
+                "type": "error",
+                "message": f"Failed to process query: {str(e)}",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }]
 
     # NEW: Enhanced streaming intelligence processing
     async def process_query_enhanced(self, query: str):
@@ -274,7 +325,13 @@ Use the available tools to coordinate between agents. Maintain state and create 
         """
         try:
             if not self.client:
-                raise RuntimeError("Session not started. Call start_session() first.")
+                logger.warning("Claude client not available - cannot process enhanced query")
+                return {
+                    "thinking": [],
+                    "tool_uses": [],
+                    "results": [],
+                    "error": "AI assistant is not available. Please check Claude authentication."
+                }
 
             await self.client.query(query)
 

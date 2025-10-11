@@ -1,6 +1,14 @@
 #!/bin/bash
 # Robo Trader - Start Backend + Frontend
 
+# Load environment variables from .env file if it exists
+if [ -f ".env" ]; then
+    echo "📄 Loading environment variables from .env file..."
+    set -a
+    source .env
+    set +a
+fi
+
 echo "🚀 Starting Robo Trader (Backend + Frontend)..."
 echo ""
 

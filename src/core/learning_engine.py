@@ -16,7 +16,7 @@ from loguru import logger
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from ..config import Config
-from ..core.state import StateManager
+from ..core.database_state import DatabaseStateManager
 
 
 @dataclass
@@ -100,7 +100,7 @@ class LearningEngine:
     - Self-improvement recommendations
     """
 
-    def __init__(self, config: Config, state_manager: StateManager):
+    def __init__(self, config: Config, state_manager: DatabaseStateManager):
         self.config = config
         self.state_manager = state_manager
         self.client: Optional[ClaudeSDKClient] = None
@@ -113,19 +113,30 @@ class LearningEngine:
     async def initialize(self) -> None:
         """Initialize the learning engine."""
         logger.info("Initializing Learning Engine")
+        logger.info("Learning Engine initialized successfully (Claude client will initialize on demand)")
 
+    async def _ensure_client(self) -> None:
+        """Lazy initialization of Claude SDK client."""
+        if self.client is None:
+            options = ClaudeAgentOptions(
+                allowed_tools=[],
+                system_prompt=self._get_learning_prompt(),
+                max_turns=20
+            )
+            self.client = ClaudeSDKClient(options=options)
+            await self.client.__aenter__()
+            logger.info("Learning Engine Claude client initialized")
 
-        # Create Claude client for advanced learning
-        options = ClaudeAgentOptions(
-            allowed_tools=[],  # Learning uses analysis, not external tools
-            system_prompt=self._get_learning_prompt(),
-            max_turns=20  # Allow complex analysis
-        )
-
-        self.client = ClaudeSDKClient(options=options)
-        await self.client.__aenter__()
-
-        logger.info("Learning Engine initialized successfully")
+    async def cleanup(self) -> None:
+        """Cleanup learning engine resources."""
+        if self.client:
+            try:
+                await self.client.__aexit__(None, None, None)
+                logger.info("Learning Engine client cleaned up")
+            except Exception as e:
+                logger.warning(f"Error cleaning up Learning Engine client: {e}")
+            finally:
+                self.client = None
 
     async def analyze_performance(self, time_period: str = "30d") -> Dict[str, Any]:
         """
@@ -224,6 +235,9 @@ class LearningEngine:
                 }
 
             # Generate optimization recommendations
+            if self.client is None:
+                await self._ensure_client()
+
             if self.client:
                 optimization = await self._generate_strategy_optimization(strategy_name, strategy_insights)
             else:
@@ -403,6 +417,9 @@ class LearningEngine:
             ))
 
         # Use Claude for advanced insights if available
+        if self.client is None:
+            await self._ensure_client()
+
         if self.client and len(insights) < 3:
             try:
                 advanced_insights = await self._generate_advanced_insights(
@@ -444,7 +461,11 @@ class LearningEngine:
         Focus on patterns that can be systematically improved.
         """
 
-        await self.client.query(query)
+        try:
+            await asyncio.wait_for(self.client.query(query), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.error("Advanced insights query timed out")
+            return []
 
         insights = []
         async for message in self.client.receive_response():
@@ -486,7 +507,16 @@ class LearningEngine:
         Return as JSON with "parameter_changes", "new_filters", "risk_adjustments", "expected_impact"
         """
 
-        await self.client.query(query)
+        try:
+            await asyncio.wait_for(self.client.query(query), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.error(f"Strategy optimization query timed out for {strategy_name}")
+            return {
+                "parameter_changes": {"confidence_threshold": 0.75},
+                "new_filters": ["Add volume confirmation"],
+                "risk_adjustments": ["Reduce position size by 15%"],
+                "expected_impact": "Improve win rate by 5-10%"
+            }
 
         async for message in self.client.receive_response():
             if hasattr(message, 'content'):

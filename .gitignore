@@ -18,7 +18,6 @@ logs/*.log
 # Environment
 .env
 .env.local
-.env.example
 
 # Frontend
 ui/node_modules/
@@ -57,3 +56,5 @@ verify_setup.sh
 # NEW: Documentation builds
 *.md.html
 docs/_build/
+ui/playwright-report/
+ui/test-results/

@@ -8,7 +8,8 @@ from typing import Any, Dict, Iterable, List, Tuple, Optional
 from loguru import logger
 
 from ..config import Config
-from ..core.state import PortfolioState, StateManager
+from ..core.state_models import PortfolioState
+from ..core.database_state import DatabaseStateManager
 from .broker_data import get_live_portfolio_data, is_broker_connected
 
 SECTOR_KEYWORDS: Dict[str, Iterable[str]] = {
@@ -360,7 +361,7 @@ def _generate_strategy_analysis(
 
 
 async def run_portfolio_scan(
-    config: Config, state_manager: StateManager
+    config: Config, state_manager: DatabaseStateManager
 ) -> Dict[str, Any]:
     """
     Run portfolio scan using live data from broker if available,
@@ -423,7 +424,7 @@ async def run_portfolio_scan(
 
 
 async def run_market_screening(
-    config: Config, state_manager: StateManager
+    config: Config, state_manager: DatabaseStateManager
 ) -> Dict[str, Any]:
     """
     Run market screening using live data if available.
@@ -460,7 +461,7 @@ async def run_market_screening(
 
 
 async def run_strategy_analysis(
-    config: Config, state_manager: StateManager
+    config: Config, state_manager: DatabaseStateManager
 ) -> Dict[str, Any]:
     """
     Run strategy analysis using live data if available.

@@ -1,0 +1,19 @@
+FROM localhost/robo-trader-base:latest
+
+# Copy service-specific code
+COPY containers/portfolio-service/run.sh /app/run.sh
+COPY containers/portfolio-service/config.json /app/config/service-config.json
+
+# Set service-specific environment
+ENV SERVICE_NAME=portfolio-service
+ENV SERVICE_PORT=8001
+
+# Expose port
+EXPOSE 8001
+
+# Health check for portfolio service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# Run the portfolio service
+CMD ["/app/run.sh"]

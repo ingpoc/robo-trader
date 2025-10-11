@@ -95,8 +95,8 @@ class ResourceManager:
                 if not task.done():
                     task.cancel()
                     try:
-                        await task
-                    except asyncio.CancelledError:
+                        await asyncio.wait_for(task, timeout=5.0)
+                    except (asyncio.CancelledError, asyncio.TimeoutError):
                         pass
                     except Exception as e:
                         logger.error(f"Task cleanup error: {e}")

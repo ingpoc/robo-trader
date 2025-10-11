@@ -13,10 +13,11 @@ from claude_agent_sdk import tool
 from loguru import logger
 
 from ..config import Config
-from ..core.state import StateManager, PortfolioState, Signal, RiskDecision
+from ..core.database_state import DatabaseStateManager
+from ..core.state_models import PortfolioState, Signal, RiskDecision
 
 
-def create_educational_tools(config: Config, state_manager: StateManager) -> List:
+def create_educational_tools(config: Config, state_manager: DatabaseStateManager) -> List:
     """Create educational tools with dependencies via closure."""
     
     @tool("explain_concept", "Explain a trading concept or indicator", {

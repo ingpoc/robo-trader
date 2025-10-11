@@ -11,10 +11,11 @@ from claude_agent_sdk import tool
 from loguru import logger
 
 from ..config import Config
-from ..core.state import StateManager, OrderCommand, ExecutionReport, Intent
+from ..core.database_state import DatabaseStateManager
+from ..core.state_models import OrderCommand, ExecutionReport, Intent
 
 
-def create_execution_agent_tool(config: Config, state_manager: StateManager):
+def create_execution_agent_tool(config: Config, state_manager: DatabaseStateManager):
     """Create execution agent tool with dependencies via closure."""
     
     @tool("execute_trade", "Execute approved trading intent", {"intent_id": str})

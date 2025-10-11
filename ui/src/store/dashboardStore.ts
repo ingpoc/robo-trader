@@ -26,6 +26,9 @@ interface DashboardStore {
   isConnected: boolean
   setConnected: (connected: boolean) => void
 
+  backendStatus: 'unknown' | 'connecting' | 'connected' | 'disconnected' | 'error'
+  setBackendStatus: (status: DashboardStore['backendStatus']) => void
+
   selectedRecommendation: Recommendation | null
   setSelectedRecommendation: (recommendation: Recommendation | null) => void
 
@@ -57,6 +60,9 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
 
   isConnected: false,
   setConnected: (connected) => set({ isConnected: connected }),
+
+  backendStatus: 'unknown',
+  setBackendStatus: (status) => set({ backendStatus: status }),
 
   selectedRecommendation: null,
   setSelectedRecommendation: (recommendation) =>

@@ -16,7 +16,7 @@ from loguru import logger
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from ..config import Config
-from ..core.state import StateManager
+from ..core.database_state import DatabaseStateManager
 
 
 class ConversationMessage:
@@ -112,10 +112,11 @@ class ConversationManager:
     - Educational explanations
     """
 
-    def __init__(self, config: Config, state_manager: StateManager):
+    def __init__(self, config: Config, state_manager: DatabaseStateManager):
         self.config = config
         self.state_manager = state_manager
         self.client: Optional[ClaudeSDKClient] = None
+        self._client_initialized = False
         self.active_sessions: Dict[str, ConversationSession] = {}
 
         # Conversation settings
@@ -127,21 +128,35 @@ class ConversationManager:
         """Initialize the conversation manager."""
         logger.info("Initializing Conversation Manager")
 
-
-        # Create Claude client for conversations
-        options = ClaudeAgentOptions(
-            allowed_tools=[],  # Conversations use natural language, not tools
-            system_prompt=self._get_conversation_prompt(),
-            max_turns=50  # Allow longer conversations
-        )
-
-        self.client = ClaudeSDKClient(options=options)
-        await self.client.__aenter__()
-
         # Load existing sessions
         await self._load_active_sessions()
 
-        logger.info("Conversation Manager initialized successfully")
+        logger.info("Conversation Manager initialized successfully (Claude client will initialize on demand)")
+
+    async def _ensure_client(self) -> None:
+        """Lazy initialization of Claude SDK client."""
+        if self.client is None:
+            options = ClaudeAgentOptions(
+                allowed_tools=[],
+                system_prompt=self._get_conversation_prompt(),
+                max_turns=50
+            )
+            self.client = ClaudeSDKClient(options=options)
+            await self.client.__aenter__()
+            self._client_initialized = True
+            logger.info("Conversation Manager Claude client initialized")
+
+    async def cleanup(self) -> None:
+        """Cleanup conversation manager resources."""
+        if self.client and self._client_initialized:
+            try:
+                await self.client.__aexit__(None, None, None)
+                logger.info("Conversation Manager client cleaned up")
+            except Exception as e:
+                logger.warning(f"Error cleaning up Conversation Manager client: {e}")
+            finally:
+                self.client = None
+                self._client_initialized = False
 
     async def start_conversation(self, user_id: Optional[str] = None) -> str:
         """Start a new conversation session."""
@@ -179,9 +194,12 @@ class ConversationManager:
         detected_intents = []
         suggested_actions = []
 
+        if self.client is None:
+            await self._ensure_client()
+
         if self.client:
             try:
-                await self.client.query(conversation_prompt)
+                await asyncio.wait_for(self.client.query(conversation_prompt), timeout=30.0)
 
                 async for response_msg in self.client.receive_response():
                     if hasattr(response_msg, 'content'):
@@ -205,8 +223,11 @@ class ConversationManager:
                                 except (json.JSONDecodeError, KeyError):
                                     pass  # Not structured data, continue
 
+            except asyncio.TimeoutError:
+                logger.error(f"Conversation query timed out: {message[:100]}...")
+                response_content = "I apologize, but my response is taking longer than expected. Please try again."
             except Exception as e:
-                logger.error(f"Error in Claude conversation: {e}")
+                logger.error(f"Error in Claude conversation: {e}", exc_info=True)
                 response_content = "I apologize, but I'm having trouble processing your request right now. Please try again."
         else:
             # Fallback response when Claude is unavailable

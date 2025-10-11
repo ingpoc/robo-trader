@@ -56,3 +56,20 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO"):
 
     logger.info(f"Logging configured: level={log_level}, logs_dir={logs_dir}")
     logger.info("Logs are being written to both console and files")
+
+
+def ensure_logging_setup(logs_dir: Path = None, log_level: str = "INFO"):
+    """
+    Ensure logging is set up, using default logs directory if not provided.
+
+    This is a convenience function for scripts and tests that need logging
+    but don't want to worry about configuration details.
+    """
+    if logs_dir is None:
+        # Use default logs directory
+        logs_dir = Path.cwd() / "logs"
+
+    # Create logs directory if it doesn't exist
+    logs_dir.mkdir(exist_ok=True)
+
+    setup_logging(logs_dir, log_level)

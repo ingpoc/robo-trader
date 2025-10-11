@@ -14,7 +14,7 @@ from claude_agent_sdk import tool
 from loguru import logger
 
 from ..config import Config
-from ..core.state import StateManager
+from ..core.database_state import DatabaseStateManager
 
 
 @dataclass
@@ -56,7 +56,7 @@ class BacktestResult:
             self.created_at = datetime.now(timezone.utc).isoformat()
 
 
-def create_strategy_tools(config: Config, state_manager: StateManager) -> List:
+def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -> List:
     """Create strategy tools with dependencies via closure."""
     
     @tool("list_strategies", "List available trading strategies", {})

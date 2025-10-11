@@ -15,7 +15,8 @@ from claude_agent_sdk import HookMatcher
 from loguru import logger
 
 from ..config import Config
-from ..core.state import StateManager, Intent, RiskDecision
+from ..core.database_state import DatabaseStateManager
+from ..core.state_models import Intent, RiskDecision
 
 
 async def pre_tool_use_hook(input_data: Dict[str, Any], tool_use_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,7 +28,7 @@ async def pre_tool_use_hook(input_data: Dict[str, Any], tool_use_id: str, contex
 
     # Get config and state from context (injected by orchestrator)
     config: Config = context.get("config")
-    state_manager: StateManager = context.get("state_manager")
+    state_manager: DatabaseStateManager = context.get("state_manager")
 
     if not config or not state_manager:
         return {"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "Missing context"}}
@@ -42,7 +43,7 @@ async def pre_tool_use_hook(input_data: Dict[str, Any], tool_use_id: str, contex
         return {}
 
 
-async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], config: Config, state_manager: StateManager) -> Dict[str, Any]:
+async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], config: Config, state_manager: DatabaseStateManager) -> Dict[str, Any]:
     """Validate broker-related tools (orders, portfolio, etc.)."""
 
     # In dry-run mode, deny all execution tools
@@ -107,7 +108,7 @@ async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], conf
     return {}
 
 
-async def _validate_agent_tool(tool_name: str, tool_input: Dict[str, Any], config: Config, state_manager: StateManager) -> Dict[str, Any]:
+async def _validate_agent_tool(tool_name: str, tool_input: Dict[str, Any], config: Config, state_manager: DatabaseStateManager) -> Dict[str, Any]:
     """Validate agent-related tools."""
 
     # Validate execution agent calls
@@ -135,7 +136,7 @@ async def _validate_agent_tool(tool_name: str, tool_input: Dict[str, Any], confi
     return {}
 
 
-async def _validate_order_parameters(tool_input: Dict[str, Any], config: Config, state_manager: StateManager) -> Dict[str, bool]:
+async def _validate_order_parameters(tool_input: Dict[str, Any], config: Config, state_manager: DatabaseStateManager) -> Dict[str, bool]:
     """Validate order parameters against risk limits."""
 
     symbol = tool_input.get("symbol", "")
@@ -232,7 +233,7 @@ def _is_market_open() -> bool:
     return market_open <= current_time <= market_close
 
 
-def create_safety_hooks(config: Config, state_manager: StateManager) -> Dict[str, List[HookMatcher]]:
+def create_safety_hooks(config: Config, state_manager: DatabaseStateManager) -> Dict[str, List[HookMatcher]]:
     """Create safety hooks configuration."""
 
     # Inject context into hook function

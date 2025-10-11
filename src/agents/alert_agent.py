@@ -13,7 +13,8 @@ from claude_agent_sdk import tool
 from loguru import logger
 
 from ..config import Config
-from ..core.state import StateManager, PortfolioState
+from ..core.database_state import DatabaseStateManager
+from ..core.state_models import PortfolioState
 
 
 @dataclass
@@ -33,7 +34,7 @@ class AlertRule:
             self.created_at = datetime.now(timezone.utc).isoformat()
 
 
-def create_alert_tools(config: Config, state_manager: StateManager) -> List:
+def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> List:
     """Create alert tools with dependencies via closure."""
     
     @tool("create_alert_rule", "Create a custom alert rule", {
@@ -147,7 +148,7 @@ def create_alert_tools(config: Config, state_manager: StateManager) -> List:
     return [create_alert_rule_tool, list_alert_rules_tool, check_alerts_tool, delete_alert_rule_tool]
 
 
-async def _evaluate_alert_rule(rule: AlertRule, state_manager: StateManager) -> bool:
+async def _evaluate_alert_rule(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
     """Evaluate if an alert rule condition is met."""
 
     try:
@@ -166,7 +167,7 @@ async def _evaluate_alert_rule(rule: AlertRule, state_manager: StateManager) -> 
         return False
 
 
-async def _check_price_alert(rule: AlertRule, state_manager: StateManager) -> bool:
+async def _check_price_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
     """Check price-based alert conditions."""
 
     symbol = rule.symbol
@@ -188,7 +189,7 @@ async def _check_price_alert(rule: AlertRule, state_manager: StateManager) -> bo
     return False
 
 
-async def _check_portfolio_alert(rule: AlertRule, state_manager: StateManager) -> bool:
+async def _check_portfolio_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
     """Check portfolio-based alert conditions."""
 
     portfolio = await state_manager.get_portfolio()
@@ -210,7 +211,7 @@ async def _check_portfolio_alert(rule: AlertRule, state_manager: StateManager) -
     return False
 
 
-async def _check_technical_alert(rule: AlertRule, state_manager: StateManager) -> bool:
+async def _check_technical_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
     """Check technical indicator-based alert conditions."""
 
     # This would check technical indicators against thresholds

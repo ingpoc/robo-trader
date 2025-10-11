@@ -11,10 +11,10 @@ from claude_agent_sdk import tool
 from loguru import logger
 
 from ..config import Config
-from ..core.state import StateManager
+from ..core.database_state import DatabaseStateManager
 
 
-def create_market_monitor_tool(config: Config, state_manager: StateManager):
+def create_market_monitor_tool(config: Config, state_manager: DatabaseStateManager):
     """Create market monitor tool with dependencies via closure."""
     
     @tool("monitor_market", "Monitor market for alerts and triggers", {"symbols": List[str]})

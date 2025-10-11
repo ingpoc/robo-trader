@@ -16,7 +16,7 @@ from loguru import logger
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from ..config import Config
-from ..core.state import StateManager
+from ..core.database_state import DatabaseStateManager
 
 
 @dataclass
@@ -107,7 +107,7 @@ class AIPlanner:
     - Track API usage and budget
     """
 
-    def __init__(self, config: Config, state_manager: StateManager):
+    def __init__(self, config: Config, state_manager: DatabaseStateManager):
         self.config = config
         self.state_manager = state_manager
         self.client: Optional[ClaudeSDKClient] = None
@@ -119,21 +119,30 @@ class AIPlanner:
     async def initialize(self) -> None:
         """Initialize the AI planner."""
         logger.info("Initializing AI Planner")
+        logger.info("AI Planner initialized successfully (Claude client will initialize on demand)")
 
-        # Claude Agent SDK handles authentication through Claude Code CLI
-        # No pre-validation needed - SDK will use authenticated CLI session
+    async def _ensure_client(self) -> None:
+        """Lazy initialization of Claude SDK client."""
+        if self.client is None:
+            options = ClaudeAgentOptions(
+                allowed_tools=[],
+                system_prompt=self._get_planning_prompt(),
+                max_turns=10
+            )
+            self.client = ClaudeSDKClient(options=options)
+            await self.client.__aenter__()
+            logger.info("AI Planner Claude client initialized")
 
-        # Create Claude client for planning operations
-        options = ClaudeAgentOptions(
-            allowed_tools=[],  # Planning doesn't need external tools
-            system_prompt=self._get_planning_prompt(),
-            max_turns=10
-        )
-
-        self.client = ClaudeSDKClient(options=options)
-        await self.client.__aenter__()
-
-        logger.info("AI Planner initialized successfully")
+    async def cleanup(self) -> None:
+        """Cleanup AI planner resources."""
+        if self.client:
+            try:
+                await self.client.__aexit__(None, None, None)
+                logger.info("AI Planner client cleaned up")
+            except Exception as e:
+                logger.warning(f"Error cleaning up AI Planner client: {e}")
+            finally:
+                self.client = None
 
     async def create_daily_plan(self) -> Optional[DailyPlan]:
         """
@@ -160,11 +169,14 @@ class AIPlanner:
             )
 
             if not self.client:
-                # Fallback planning without Claude
-                return await self._create_fallback_daily_plan(today, priority_items)
+                await self._ensure_client()
 
-            # Use Claude for intelligent planning
-            await self.client.query(planning_query)
+            # Use Claude for intelligent planning with timeout
+            try:
+                await asyncio.wait_for(self.client.query(planning_query), timeout=30.0)
+            except asyncio.TimeoutError:
+                logger.error("Daily planning query timed out")
+                return await self._create_fallback_daily_plan(today, priority_items)
 
             plan_data = None
             async for message in self.client.receive_response():
@@ -220,10 +232,14 @@ class AIPlanner:
             planning_query = self._build_weekly_planning_query(sector_weights)
 
             if not self.client:
-                return await self._create_fallback_weekly_plan(sector_weights)
+                await self._ensure_client()
 
-            # Use Claude for strategic planning
-            await self.client.query(planning_query)
+            # Use Claude for strategic planning with timeout
+            try:
+                await asyncio.wait_for(self.client.query(planning_query), timeout=30.0)
+            except asyncio.TimeoutError:
+                logger.error("Weekly planning query timed out")
+                return await self._create_fallback_weekly_plan(sector_weights)
 
             plan_data = None
             async for message in self.client.receive_response():
@@ -322,8 +338,7 @@ class AIPlanner:
             learning_query = self._build_learning_query(recent_outcomes)
 
             if not self.client:
-                logger.warning("Cannot learn without Claude client")
-                return
+                await self._ensure_client()
 
             # Use Claude for analysis and learning
             await self.client.query(learning_query)

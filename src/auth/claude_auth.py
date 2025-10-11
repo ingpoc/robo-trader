@@ -46,157 +46,139 @@ class ClaudeAuthStatus:
 
 async def validate_claude_api(api_key: Optional[str] = None) -> ClaudeAuthStatus:
     """
-    Validate Claude API access via API key OR Claude Pro subscription.
-    
-    The Claude Agent SDK uses Claude Code CLI which supports two auth methods:
-    1. API key (ANTHROPIC_API_KEY environment variable)
-    2. Claude Pro/Team subscription (browser session auth via Claude Code CLI)
-    
+    Validate Claude authentication for the Claude Agent SDK.
+
+    IMPORTANT: The Claude Agent SDK uses Claude Code CLI, NOT direct API calls.
+    The SDK communicates with the 'claude' CLI command, which handles auth internally.
+
+    Authentication method:
+    - Claude Code CLI authentication (uses Claude subscription or OAuth)
+
     Args:
-        api_key: Optional API key. If not provided, reads from environment.
-    
+        api_key: Ignored - SDK does not use API keys directly.
+
     Returns:
         ClaudeAuthStatus with validation results
     """
-    # Get API key from parameter or environment
-    api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-    
-    # If no API key, check if Claude Code CLI is authenticated via subscription
-    if not api_key:
-        logger.debug("No ANTHROPIC_API_KEY found, checking Claude Code CLI subscription auth...")
+    cli_status = await check_claude_code_cli_auth()
+    if cli_status["authenticated"]:
+        auth_method = cli_status.get("auth_method", "subscription")
+        logger.info(f"✓ Claude Agent SDK will use Claude Code CLI auth via {auth_method}")
+        rate_limit_info = cli_status.get("rate_limit_info", {})
 
-        # Check if Claude Code CLI is installed and authenticated
-        cli_status = await check_claude_code_cli_auth()
-        if cli_status["authenticated"]:
-            logger.info("✓ Claude Code CLI authenticated via subscription")
-            rate_limit_info = cli_status.get("rate_limit_info", {})
-            return ClaudeAuthStatus(
-                is_valid=True,
-                api_key_present=False,
-                account_info={
-                    "auth_method": "claude_code_cli",
-                    "subscription": "active",
-                    **cli_status
-                },
-                rate_limit_info=rate_limit_info
-            )
-        else:
-            logger.debug("Neither API key nor Claude Code CLI subscription found")
-            return ClaudeAuthStatus(
-                is_valid=False,
-                api_key_present=False,
-                error="No Claude authentication found. Either set ANTHROPIC_API_KEY or ensure Claude Code CLI is authenticated with your Pro subscription."
-            )
-    
-    # Validate API key
-    logger.info("Validating Claude API key...")
-    
-    # Check if key format is valid (basic check)
-    if not api_key.startswith("sk-ant-"):
-        logger.error("Invalid Claude API key format")
-        return ClaudeAuthStatus(
-            is_valid=False,
-            api_key_present=True,
-            error="Invalid API key format. Must start with 'sk-ant-'"
-        )
-    
-    # Validate by making a minimal API call
-    try:
-        client = Anthropic(api_key=api_key)
-        
-        # Test with a minimal request
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=10,
-            messages=[{"role": "user", "content": "Hi"}]
-        )
-        
-        logger.info("✓ Claude API key validated successfully")
-        
-        # Extract account info from response metadata if available
-        account_info = {
-            "auth_method": "api_key",
-            "model": response.model,
-            "usage": {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens
-            }
-        }
-        
         return ClaudeAuthStatus(
             is_valid=True,
-            api_key_present=True,
-            account_info=account_info
+            api_key_present=False,
+            account_info={
+                "auth_method": f"claude_code_cli_{auth_method}",
+                "subscription": "active" if auth_method == "subscription" else "oauth",
+                "note": "SDK uses CLI authentication",
+                **cli_status
+            },
+            rate_limit_info=rate_limit_info
         )
-        
-    except AuthenticationError as e:
-        logger.error(f"Claude API authentication failed: {e}")
-        return ClaudeAuthStatus(
-            is_valid=False,
-            api_key_present=True,
-            error=f"Authentication failed: {str(e)}. Check your API key."
+
+    logger.error("Claude Code CLI not authenticated")
+    return ClaudeAuthStatus(
+        is_valid=False,
+        api_key_present=False,
+        error=(
+            "Claude Code CLI not authenticated. To use your Claude subscription:\n"
+            "1. Run: claude auth login\n"
+            "2. Follow browser authentication flow\n"
+            "3. Restart the application"
         )
-    
-    except APIError as e:
-        logger.error(f"Claude API error: {e}")
-        return ClaudeAuthStatus(
-            is_valid=False,
-            api_key_present=True,
-            error=f"API error: {str(e)}"
-        )
-    
-    except Exception as e:
-        logger.error(f"Unexpected error validating Claude API: {e}")
-        return ClaudeAuthStatus(
-            is_valid=False,
-            api_key_present=True,
-            error=f"Unexpected error: {str(e)}"
-        )
+    )
 
 
 async def check_claude_code_cli_auth() -> Dict[str, Any]:
     """
     Check if Claude Code CLI is installed and authenticated.
-    
+
     The Claude Agent SDK runs through Claude Code CLI, which can be
-    authenticated via Claude Pro subscription.
-    
+    authenticated via Claude Pro subscription or OAuth token.
+
     Returns:
         {
             "authenticated": bool,
             "cli_installed": bool,
             "version": str | None,
-            "user": str | None
+            "user": str | None,
+            "auth_method": str | None
         }
     """
-    import subprocess
-    
+    import asyncio
+    import os
+
+    # Check if ANTHROPIC_API_KEY with OAuth token is set
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if api_key.startswith("sk-ant-oat"):
+        logger.debug("OAuth token (sk-ant-oat*) found in ANTHROPIC_API_KEY")
+        return {
+            "authenticated": True,
+            "cli_installed": True,
+            "version": "oauth_token",
+            "user": "oauth_user",
+            "auth_method": "oauth_token",
+            "rate_limit_info": {"limited": False}
+        }
+
     try:
-        # Check if claude CLI is installed and authenticated
+        # Check if claude CLI is installed and authenticated (non-blocking)
         # The correct command is 'claude', not 'claude-code'
-        result = subprocess.run(
-            ["claude", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=2
+        process = await asyncio.create_subprocess_exec(
+            "claude", "--version",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        
-        if result.returncode == 0:
-            version = result.stdout.strip()
+
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
+            result_code = process.returncode
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            logger.debug("Claude CLI version check timed out")
+            return {
+                "authenticated": False,
+                "cli_installed": True,
+                "version": None,
+                "user": None,
+                "auth_method": None
+            }
+
+        if result_code == 0:
+            version = stdout.decode().strip()
             logger.debug(f"Claude CLI version: {version}")
-            
+
             # Test if authentication is working by attempting a minimal query
-            test_result = subprocess.run(
-                ["claude", "--print", "test"],
-                capture_output=True,
-                text=True,
-                timeout=3
+            # Use asyncio subprocess for non-blocking execution
+            test_process = await asyncio.create_subprocess_exec(
+                "claude", "--print", "test",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            
+
+            try:
+                test_stdout, test_stderr = await asyncio.wait_for(test_process.communicate(), timeout=5.0)
+                test_result_code = test_process.returncode
+            except asyncio.TimeoutError:
+                test_process.kill()
+                await test_process.wait()
+                logger.debug("Claude CLI auth test timed out")
+                return {
+                    "authenticated": False,
+                    "cli_installed": True,
+                    "version": version,
+                    "user": None,
+                    "auth_method": None,
+                    "rate_limit_info": {}
+                }
+
             # Parse the output for rate limit information
-            output = test_result.stdout + test_result.stderr
+            output = test_stdout.decode() + test_stderr.decode()
             rate_limit_info = {}
-            
+
             if "limit" in output.lower():
                 # Extract rate limit details
                 if "weekly limit reached" in output.lower():
@@ -215,28 +197,31 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                     rate_limit_info["type"] = "unknown"
             else:
                 rate_limit_info["limited"] = False
-            
+
             # Check if we got a response (even if it's a rate limit error)
             # Rate limit errors mean authentication is working
-            if test_result.returncode == 0 or "limit" in output.lower():
-                logger.debug("Claude CLI authenticated successfully")
+            if test_result_code == 0 or "limit" in output.lower():
+                auth_method = "subscription"
+                logger.debug(f"Claude CLI authenticated successfully via {auth_method}")
                 return {
                     "authenticated": True,
                     "cli_installed": True,
                     "version": version,
-                    "user": "claude_subscriber",
+                    "user": "claude_user",
+                    "auth_method": auth_method,
                     "rate_limit_info": rate_limit_info
                 }
             else:
-                logger.debug(f"Claude CLI not authenticated: {test_result.stderr}")
+                logger.debug(f"Claude CLI not authenticated: {test_stderr.decode()}")
                 return {
                     "authenticated": False,
                     "cli_installed": True,
                     "version": version,
                     "user": None,
+                    "auth_method": None,
                     "rate_limit_info": {}
                 }
-            
+
     except FileNotFoundError:
         # claude CLI not found in PATH
         logger.debug("Claude CLI not found in PATH")
@@ -244,15 +229,8 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             "authenticated": False,
             "cli_installed": False,
             "version": None,
-            "user": None
-        }
-    except subprocess.TimeoutExpired:
-        logger.debug("Claude Code CLI check timed out")
-        return {
-            "authenticated": False,
-            "cli_installed": True,
-            "version": None,
-            "user": None
+            "user": None,
+            "auth_method": None
         }
     except Exception as e:
         logger.debug(f"Claude Code CLI check failed: {e}")
@@ -260,7 +238,8 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             "authenticated": False,
             "cli_installed": False,
             "version": None,
-            "user": None
+            "user": None,
+            "auth_method": None
         }
 
 
@@ -276,23 +255,21 @@ async def get_claude_status() -> ClaudeAuthStatus:
 
 def require_claude_api(func):
     """
-    Decorator to require valid Claude API before function execution.
-    
+    Decorator to require valid Claude authentication before function execution.
+
     Usage:
         @require_claude_api
         async def my_function():
-            # Will only execute if Claude API is valid
             pass
     """
     async def wrapper(*args, **kwargs):
         status = await get_claude_status()
         if not status.is_valid:
             raise RuntimeError(
-                f"Claude API not available: {status.error}. "
-                "Set ANTHROPIC_API_KEY environment variable."
+                f"Claude authentication failed: {status.error}"
             )
         return await func(*args, **kwargs)
-    
+
     return wrapper
 
 

@@ -16,10 +16,11 @@ import aiosqlite
 from loguru import logger
 
 from ..config import Config
-from .state import (
+from .state_models import (
     PortfolioState, Signal, RiskDecision, OrderCommand,
-    ExecutionReport, Intent, AlertManager
+    ExecutionReport, Intent
 )
+from .alerts import AlertManager
 
 
 class DatabaseStateManager:
@@ -49,13 +50,69 @@ class DatabaseStateManager:
         # Alert manager
         self.alert_manager = AlertManager(config.state_dir)
 
+    async def _perform_operation_with_timeout(self, coro, timeout: float, operation_name: str):
+        """Perform an async operation with timeout and proper task cancellation."""
+        task = None
+        try:
+            task = asyncio.create_task(coro)
+            return await asyncio.wait_for(task, timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.error(f"{operation_name} timed out after {timeout} seconds")
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+            raise
+        except Exception:
+            # Re-raise other exceptions without cancellation
+            raise
+
     async def initialize(self) -> None:
         """Initialize database and create tables."""
         async with self._lock:
-            self._connection_pool = await aiosqlite.connect(str(self.db_path))
-            await self._create_tables()
-            await self._load_initial_state()
-            logger.info("Database state manager initialized")
+            try:
+                # Add timeout to database connection
+                logger.info(f"Connecting to database at {self.db_path}")
+                self._connection_pool = await asyncio.wait_for(
+                    aiosqlite.connect(str(self.db_path)),
+                    timeout=10.0
+                )
+                logger.info("Database connection established")
+
+                # Add timeout to table creation
+                await self._perform_operation_with_timeout(
+                    self._create_tables(),
+                    timeout=15.0,
+                    operation_name="Table creation"
+                )
+                logger.info("Database tables created")
+
+                # Add timeout to initial state loading
+                await self._perform_operation_with_timeout(
+                    self._load_initial_state(),
+                    timeout=20.0,
+                    operation_name="Initial state loading"
+                )
+                logger.info("Initial state loaded from database")
+
+                logger.info("Database state manager initialized successfully")
+
+            except asyncio.TimeoutError as e:
+                logger.error(f"Database initialization timed out: {e}")
+                # Close connection if it was established
+                if self._connection_pool:
+                    await self._connection_pool.close()
+                    self._connection_pool = None
+                raise
+            except Exception as e:
+                logger.error(f"Database initialization failed: {e}")
+                # Close connection if it was established
+                if self._connection_pool:
+                    await self._connection_pool.close()
+                    self._connection_pool = None
+                raise
 
     async def _create_tables(self) -> None:
         """Create all database tables."""
