@@ -8,92 +8,195 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
+  Area,
+  AreaChart,
 } from 'recharts'
 
 interface ChartCardProps {
   title: string
-  type: 'line' | 'pie'
-  data: Array<{ name: string; value: number }>
+  type: 'line' | 'pie' | 'area'
+  data: Array<{ name: string; value: number; [key: string]: any }>
   height?: number
+  showLegend?: boolean
+  className?: string
 }
 
-const COLORS = ['#171717', '#404040', '#737373', '#a3a3a3', '#d4d4d4']
+const COLORS = [
+  '#2563eb', // accent
+  '#22c55e', // success
+  '#f59e0b', // warning
+  '#ef4444', // error
+  '#8b5cf6', // purple
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#f97316', // orange
+]
 
-export function ChartCard({ title, type, data, height = 240 }: ChartCardProps) {
-  return (
-    <div className="flex flex-col p-4 bg-white border border-gray-200 card-shadow">
-      <div className="text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
-        {title}
+// Custom tooltip component
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg p-3">
+        <p className="text-sm font-medium text-gray-900 mb-1">{label}</p>
+        {payload.map((entry: any, index: number) => (
+          <div key={index} className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span className="text-sm text-gray-700">
+              {entry.name}: <span className="font-semibold">{entry.value}</span>
+            </span>
+          </div>
+        ))}
       </div>
-      <div className="flex-1" style={{ minHeight: `${height}px` }}>
+    )
+  }
+  return null
+}
+
+export function ChartCard({
+  title,
+  type,
+  data,
+  height = 240,
+  showLegend = false,
+  className
+}: ChartCardProps) {
+  const isPositive = data.length > 1 && data[data.length - 1]?.value > data[0]?.value
+
+  return (
+    <div className={`flex flex-col p-6 bg-white/80 backdrop-blur-sm border border-gray-200/50 card-shadow rounded-lg ${className || ''}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+            {title}
+          </h3>
+        </div>
+        {type === 'line' && data.length > 1 && (
+          <div className={`flex items-center gap-1 text-xs font-medium ${
+            isPositive ? 'text-success' : 'text-error'
+          }`}>
+            {isPositive ? (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+              </svg>
+            )}
+            <span>
+              {isPositive ? '+' : ''}
+              {((data[data.length - 1].value - data[0].value) / data[0].value * 100).toFixed(1)}%
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div
+        className="flex-1"
+        style={{ minHeight: `${height}px` }}
+        role="img"
+        aria-label={`${title} chart`}
+      >
         <ResponsiveContainer width="100%" height="100%">
           {type === 'line' ? (
-            <LineChart data={data}>
+            <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <defs>
                 <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#171717" stopOpacity={0.1} />
-                  <stop offset="100%" stopColor="#171717" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#2563eb" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="#2563eb" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="name"
-                tick={{ fill: '#737373', fontSize: 11 }}
-                axisLine={{ stroke: '#e5e5e5' }}
+                tick={{ fill: '#6b7280', fontSize: 12 }}
+                axisLine={{ stroke: '#e5e7eb' }}
+                tickLine={{ stroke: '#e5e7eb' }}
               />
               <YAxis
-                tick={{ fill: '#737373', fontSize: 11 }}
-                axisLine={{ stroke: '#e5e5e5' }}
+                tick={{ fill: '#6b7280', fontSize: 12 }}
+                axisLine={{ stroke: '#e5e7eb' }}
+                tickLine={{ stroke: '#e5e7eb' }}
               />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #d4d4d4',
-                  borderRadius: '2px',
-                  fontSize: '13px',
-                }}
-              />
+              <Tooltip content={<CustomTooltip />} />
+              {showLegend && <Legend />}
               <Line
                 type="monotone"
                 dataKey="value"
-                stroke="#171717"
-                strokeWidth={1.5}
-                dot={false}
-                fill="url(#lineGradient)"
-                fillOpacity={1}
+                stroke="#2563eb"
+                strokeWidth={2.5}
+                dot={{ fill: '#2563eb', strokeWidth: 2, r: 4 }}
                 activeDot={{
-                  r: 4,
-                  stroke: '#171717',
+                  r: 6,
+                  stroke: '#2563eb',
                   strokeWidth: 2,
                   fill: '#ffffff',
+                  style: { filter: 'drop-shadow(0 2px 4px rgba(37, 99, 235, 0.2))' }
                 }}
+                fill="url(#lineGradient)"
+                fillOpacity={1}
               />
             </LineChart>
+          ) : type === 'area' ? (
+            <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <defs>
+                <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#22c55e" stopOpacity={0.1} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="name"
+                tick={{ fill: '#6b7280', fontSize: 12 }}
+                axisLine={{ stroke: '#e5e7eb' }}
+                tickLine={{ stroke: '#e5e7eb' }}
+              />
+              <YAxis
+                tick={{ fill: '#6b7280', fontSize: 12 }}
+                axisLine={{ stroke: '#e5e7eb' }}
+                tickLine={{ stroke: '#e5e7eb' }}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              {showLegend && <Legend />}
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke="#22c55e"
+                strokeWidth={2}
+                fill="url(#areaGradient)"
+                fillOpacity={1}
+              />
+            </AreaChart>
           ) : (
-            <PieChart>
+            <PieChart margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <Pie
                 data={data}
                 dataKey="value"
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                innerRadius={60}
+                innerRadius={50}
                 outerRadius={80}
-                paddingAngle={2}
-                label={(entry) => `${entry.value.toFixed(0)}%`}
-                labelStyle={{ fontSize: '11px', fill: '#525252' }}
+                paddingAngle={3}
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                labelStyle={{ fontSize: '12px', fill: '#374151', fontWeight: '500' }}
               >
                 {data.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={COLORS[index % COLORS.length]}
+                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))' }}
+                  />
                 ))}
               </Pie>
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #d4d4d4',
-                  borderRadius: '2px',
-                  fontSize: '13px',
-                }}
-              />
+              <Tooltip content={<CustomTooltip />} />
+              {showLegend && <Legend />}
             </PieChart>
           )}
         </ResponsiveContainer>

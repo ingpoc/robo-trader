@@ -1,14 +1,16 @@
 import type { DashboardData } from '@/types/api'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
+const WS_URL = 'ws://localhost:8000/ws'
 
 type WebSocketCallback = (data: DashboardData) => void
 type ErrorCallback = (error: Event) => void
+type ConnectionCallback = () => void
 
 export class WebSocketClient {
   private ws: WebSocket | null = null
   private callbacks: Set<WebSocketCallback> = new Set()
   private errorCallbacks: Set<ErrorCallback> = new Set()
+  private connectionCallbacks: Set<ConnectionCallback> = new Set()
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
   private reconnectDelay = 1000
@@ -29,7 +31,6 @@ export class WebSocketClient {
     this.isConnecting = true
 
     try {
-      console.log(`[${this.connectionId}] Connecting to WebSocket...`)
       this.ws = new WebSocket(WS_URL)
 
       // Store bound handlers to ensure proper cleanup
@@ -46,20 +47,20 @@ export class WebSocketClient {
   }
 
   private handleOpen = () => {
-    console.log(`[${this.connectionId}] WebSocket connection established`)
     this.isConnecting = false
     this.reconnectAttempts = 0
     this.reconnectDelay = 1000
+    // Notify connection callbacks that connection is successful
+    this.connectionCallbacks.forEach((callback) => callback())
   }
 
   private handleMessage = (event: MessageEvent) => {
     try {
-      const data = JSON.parse(event.data) as DashboardData
-      this.callbacks.forEach((callback) => callback(data))
+      const message = JSON.parse(event.data)
+      // Any message received means we're connected - pass data to callbacks
+      this.callbacks.forEach((callback) => callback(message as DashboardData))
     } catch (error) {
-      console.error(`[${this.connectionId}] Failed to parse WebSocket message:`, error)
-      // Send error to error callbacks for user notification
-      this.errorCallbacks.forEach((callback) => callback(new Event('parse_error')))
+      console.error(`Failed to parse WebSocket message:`, error)
     }
   }
 
@@ -143,6 +144,11 @@ export class WebSocketClient {
     return () => this.errorCallbacks.delete(callback)
   }
 
+  onConnect(callback: ConnectionCallback) {
+    this.connectionCallbacks.add(callback)
+    return () => this.connectionCallbacks.delete(callback)
+  }
+
   disconnect() {
     console.log(`[${this.connectionId}] Disconnecting WebSocket client`)
     this.shouldReconnect = false
@@ -162,7 +168,7 @@ export class WebSocketClient {
 
     this.callbacks.clear()
     this.errorCallbacks.clear()
-    console.log(`[${this.connectionId}] WebSocket client disconnected and cleaned up`)
+    this.connectionCallbacks.clear()
   }
 
   isConnected(): boolean {

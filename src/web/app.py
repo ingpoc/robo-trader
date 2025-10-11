@@ -1051,6 +1051,13 @@ async def websocket_endpoint(websocket: WebSocket):
     differ = WebSocketDiffer()
 
     try:
+        # Send initial connected message
+        await websocket.send_json({
+            "type": "connected",
+            "message": "WebSocket connection established",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+
         # Start heartbeat task for connection health monitoring
         async def send_heartbeat():
             while True:

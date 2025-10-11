@@ -3,17 +3,19 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/utils/format'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center font-medium transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]',
+  'inline-flex items-center justify-center font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-ring rounded-md',
   {
     variants: {
       variant: {
-        primary: 'bg-gray-900 text-white border border-gray-900 hover:bg-gray-800',
-        secondary: 'bg-white text-gray-900 border border-gray-300 hover:border-gray-400',
-        outline: 'bg-transparent text-gray-900 border border-gray-300 hover:bg-gray-50',
-        ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 active:bg-gray-200',
+        primary: 'bg-accent text-white border border-accent hover:bg-accent-dark hover:shadow-lg hover:shadow-accent/25',
+        secondary: 'bg-white text-gray-900 border border-gray-300 hover:border-accent hover:bg-gray-50 hover:shadow-md',
+        outline: 'bg-transparent text-accent border border-accent hover:bg-accent hover:text-white hover:shadow-md',
+        ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 hover:text-accent active:bg-gray-200',
+        success: 'bg-success text-white border border-success hover:bg-success-dark hover:shadow-lg hover:shadow-success/25',
+        danger: 'bg-error text-white border border-error hover:bg-error-dark hover:shadow-lg hover:shadow-error/25',
       },
       size: {
-        sm: 'h-8 px-3 text-13',
+        sm: 'h-8 px-3 text-xs',
         md: 'h-10 px-4 text-sm',
         lg: 'h-12 px-6 text-base',
       },
