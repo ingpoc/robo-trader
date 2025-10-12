@@ -598,19 +598,23 @@ class BackgroundScheduler:
             await self.trigger_event("market_close", {})
 
     async def _schedule_default_tasks(self) -> None:
-        """Schedule default background tasks based on configuration."""
+        """Schedule default background tasks based on configuration with staggered startup."""
         # Get agent configurations
         agents_config = getattr(self.config, 'agents', None)
         if not agents_config:
             logger.warning("No agents configuration found, using defaults")
             return
 
-        # Health check every 5 minutes (only if enabled)
+        # Staggered startup delays to prevent simultaneous API calls
+        base_delay = 0
+
+        # Health check every 5 minutes (only if enabled) - start immediately
         health_enabled = agents_config.health_check.enabled if hasattr(agents_config, 'health_check') else True
         if health_enabled:
             await self.schedule_task(
                 TaskType.HEALTH_CHECK,
                 TaskPriority.LOW,
+                delay_seconds=base_delay,
                 interval_seconds=300
             )
 
@@ -620,7 +624,7 @@ class BackgroundScheduler:
             await self.schedule_task(
                 TaskType.MARKET_MONITORING,
                 TaskPriority.MEDIUM,
-                delay_seconds=60,
+                delay_seconds=base_delay + 60,  # 1 minute after health check
                 interval_seconds=30
             )
 
@@ -630,7 +634,7 @@ class BackgroundScheduler:
             await self.schedule_task(
                 TaskType.STOP_LOSS_MONITOR,
                 TaskPriority.HIGH,
-                delay_seconds=30,
+                delay_seconds=base_delay + 90,  # 1.5 minutes after health check
                 interval_seconds=15
             )
 
@@ -640,6 +644,7 @@ class BackgroundScheduler:
             await self.schedule_task(
                 TaskType.EARNINGS_CHECK,
                 TaskPriority.MEDIUM,
+                delay_seconds=base_delay + 120,  # 2 minutes after health check
                 interval_seconds=900
             )
 
@@ -650,15 +655,17 @@ class BackgroundScheduler:
             await self.schedule_task(
                 TaskType.EARNINGS_SCHEDULER,
                 TaskPriority.MEDIUM,
+                delay_seconds=base_delay + 180,  # 3 minutes after health check
                 interval_seconds=earnings_scheduler_config.get('frequency_seconds', 3600)
             )
 
-        # News monitoring (every 5 minutes, only if enabled)
+        # News monitoring (every 5 minutes, only if enabled) - start last to avoid immediate API load
         news_enabled = agents_config.news_monitoring.enabled if hasattr(agents_config, 'news_monitoring') else False
         if news_enabled:
             await self.schedule_task(
                 TaskType.NEWS_MONITORING,
                 TaskPriority.MEDIUM,
+                delay_seconds=base_delay + 300,  # 5 minutes after health check
                 interval_seconds=300
             )
 
@@ -941,6 +948,11 @@ class BackgroundScheduler:
     async def _execute_news_monitoring(self, metadata: Dict[str, Any]) -> None:
         """Execute news and earnings monitoring task using Perplexity API with batch processing."""
         try:
+            # Check if market is open before proceeding with API calls
+            if not self.market_open:
+                logger.info("Market is closed, skipping news monitoring to avoid off-hours API usage")
+                return
+
             # Load API keys from environment variables for security
             import os
             perplexity_api_keys = [
@@ -970,8 +982,8 @@ class BackgroundScheduler:
                 logger.info("No valid symbols found in portfolio")
                 return
 
-            # Get configuration values
-            batch_size = getattr(self.config, 'news_monitoring', {}).get('batch_size', 5)
+            # Get configuration values with reduced defaults for better rate limiting
+            batch_size = getattr(self.config, 'news_monitoring', {}).get('batch_size', 3)  # Reduced from 5
             api_timeout = getattr(self.config, 'news_monitoring', {}).get('api_timeout_seconds', 45)
             max_concurrent_batches = getattr(self.config, 'news_monitoring', {}).get('max_concurrent_batches', 1)
             perplexity_model = getattr(self.config, 'news_monitoring', {}).get('perplexity_model', 'sonar-pro')
@@ -981,8 +993,9 @@ class BackgroundScheduler:
             news_items_saved = 0
             earnings_reports_saved = 0
 
-            # Implement round-robin rotation for API keys
+            # Implement round-robin rotation for API keys with rate limiting
             current_key_index = getattr(self, '_perplexity_key_index', 0)
+            rate_limit_delay = getattr(self.config, 'news_monitoring', {}).get('rate_limit_delay_seconds', 3)
 
             for i in range(0, len(symbols), batch_size):
                 batch_symbols = symbols[i:i + batch_size]
@@ -1002,9 +1015,10 @@ Return structured data for each stock."""
 
                 news_content = None
                 api_call_succeeded = False
+                max_retries = 3
 
-                # Try with different API keys using round-robin rotation
-                for attempt in range(len(perplexity_api_keys)):
+                # Try with different API keys using round-robin rotation and exponential backoff
+                for attempt in range(max_retries):
                     try:
                         api_key = perplexity_api_keys[current_key_index]
 
@@ -1055,22 +1069,33 @@ Return structured data for each stock."""
                     except Exception as e:
                         error_str = str(e).lower()
                         if "rate limit" in error_str or "quota" in error_str or "limit exceeded" in error_str:
-                            logger.warning(f"Perplexity API key {current_key_index + 1} limit exceeded, trying next key")
+                            logger.warning(f"Perplexity API key {current_key_index + 1} rate limited, trying next key")
+                            current_key_index = (current_key_index + 1) % len(perplexity_api_keys)
+                            # Exponential backoff delay
+                            backoff_delay = min(30, 2 ** attempt)  # Max 30 seconds
+                            logger.info(f"Rate limited, waiting {backoff_delay} seconds before retry")
+                            await asyncio.sleep(backoff_delay)
+                            continue
+                        elif "401" in error_str or "authorization" in error_str:
+                            logger.warning(f"Perplexity API key {current_key_index + 1} unauthorized, trying next key")
                             current_key_index = (current_key_index + 1) % len(perplexity_api_keys)
                             continue
                         else:
-                            logger.error(f"Failed to fetch data for batch {batch_symbols}: {e}")
+                            logger.error(f"Failed to fetch data for batch {batch_symbols} (attempt {attempt + 1}/{max_retries}): {e}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(1)  # Brief delay before retry
+                                continue
                             break
 
                 if not api_call_succeeded or not news_content:
-                    logger.warning(f"Skipping batch {batch_symbols} due to API failure")
+                    logger.warning(f"Skipping batch {batch_symbols} due to API failure after {max_retries} attempts")
                     continue
 
                 # Parse the structured response and save data
                 await self._parse_and_save_batch_data(news_content, batch_symbols, use_claude)
 
-                # Small delay between batches to avoid overwhelming the API
-                await asyncio.sleep(2)
+                # Rate limiting delay between batches to prevent overwhelming the API
+                await asyncio.sleep(rate_limit_delay)
 
             # After processing news and earnings, also fetch fundamental data
             logger.info("Fetching comprehensive fundamental data for portfolio symbols")
@@ -1444,10 +1469,13 @@ Only include information that is genuinely new and significant."""
                 if news_content and news_content.lower() not in ["no recent news", "no news", "none", ""]:
                     # Extract title from news (first sentence or first 100 chars)
                     title = news_content.split(".")[0][:100] if "." in news_content else news_content[:100]
+                    # Use first 500 chars as summary for database
+                    summary = news_content[:500] if len(news_content) > 500 else news_content
 
                     await self.state_manager.save_news_item(
                         symbol=symbol,
                         title=title,
+                        summary=summary,
                         content=news_content,
                         source="Perplexity AI",
                         sentiment=sentiment

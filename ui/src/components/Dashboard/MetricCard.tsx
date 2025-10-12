@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatCurrency, formatNumber } from '@/utils/format'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 interface MetricCardProps {
   label: string
@@ -7,6 +8,7 @@ interface MetricCardProps {
   format?: 'currency' | 'number' | 'percent'
   change?: number
   changeLabel?: string
+  tooltip?: string
 }
 
 export function MetricCard({
@@ -15,6 +17,7 @@ export function MetricCard({
   format = 'number',
   change,
   changeLabel,
+  tooltip,
 }: MetricCardProps) {
   const [displayValue, setDisplayValue] = useState(value)
   const previousValueRef = useRef(value)
@@ -53,7 +56,7 @@ export function MetricCard({
     }
   }
 
-  return (
+  const cardContent = (
     <div
       className="flex flex-col gap-2 p-6 bg-white/80 backdrop-blur-sm border border-gray-200/50 card-shadow rounded-lg relative overflow-hidden group"
       role="region"
@@ -95,4 +98,19 @@ export function MetricCard({
       <div className="absolute top-4 right-4 w-8 h-8 bg-accent/5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
     </div>
   )
+
+  if (tooltip) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {cardContent}
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return cardContent
 }

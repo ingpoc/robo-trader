@@ -4,7 +4,7 @@ import { agentsAPI } from '@/api/endpoints'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { useDashboardStore } from '@/store/dashboardStore'
+import { useToast } from '@/hooks/use-toast'
 import type { AgentConfig } from '@/types/api'
 
 interface AgentConfigPanelProps {
@@ -14,7 +14,7 @@ interface AgentConfigPanelProps {
 
 export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) {
   const queryClient = useQueryClient()
-  const addToast = useDashboardStore((state) => state.addToast)
+  const { toast } = useToast()
 
   const { data: configData, isLoading } = useQuery({
     queryKey: ['agent-config', agentName],
@@ -35,7 +35,7 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
   const updateConfig = useMutation({
     mutationFn: (newConfig: AgentConfig) => agentsAPI.updateConfig(agentName, newConfig),
     onSuccess: () => {
-      addToast({
+      toast({
         title: 'Configuration Updated',
         description: `${agentName} settings saved successfully`,
         variant: 'success',
@@ -45,10 +45,10 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
       onClose?.()
     },
     onError: (error) => {
-      addToast({
+      toast({
         title: 'Update Failed',
         description: error instanceof Error ? error.message : 'Failed to update configuration',
-        variant: 'error',
+        variant: 'destructive',
       })
     },
   })

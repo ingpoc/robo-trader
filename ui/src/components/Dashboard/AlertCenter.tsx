@@ -1,83 +1,52 @@
 import { useAlerts } from '@/hooks/useAlerts'
-import { Button } from '@/components/ui/Button'
-import { formatDateTime } from '@/utils/format'
+import { AlertItem } from './AlertItem'
+import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 
 export function AlertCenter() {
   const { alerts, isLoading, handleAction, isHandlingAction } = useAlerts()
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 card-shadow">
+      <div className="flex flex-col gap-4 p-4 bg-white border border-gray-200 card-shadow rounded-lg">
         <div className="text-xs font-medium text-gray-600 uppercase tracking-wider">Active Alerts</div>
-        <div className="h-16 bg-gray-100 skeleton-shimmer" />
+        <div className="flex flex-col gap-3">
+          <div className="h-20 bg-gray-100 skeleton-shimmer rounded-lg" />
+          <div className="h-16 bg-gray-100 skeleton-shimmer rounded-lg" />
+          <div className="h-24 bg-gray-100 skeleton-shimmer rounded-lg" />
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-2 p-4 bg-white border border-gray-200 card-shadow">
-      <div className="text-xs font-medium text-gray-600 uppercase tracking-wider">Active Alerts</div>
+    <div className="flex flex-col gap-4 p-3 sm:p-4 bg-white border border-gray-200 card-shadow rounded-lg">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium text-gray-600 uppercase tracking-wider">Active Alerts</div>
+        {alerts.length > 0 && (
+          <div className="text-xs text-gray-500 hidden sm:block">
+            {alerts.length} active
+          </div>
+        )}
+      </div>
 
       {alerts.length === 0 ? (
-        <div className="py-8 text-center text-13 text-gray-400">
-          No alerts
+        <div className="py-8 sm:py-12 text-center">
+          <div className="text-gray-400 mb-2">
+            <svg className="w-6 h-6 sm:w-8 sm:h-8 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="text-xs sm:text-sm text-gray-500">No active alerts</div>
         </div>
       ) : (
-        <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
+        <div className="flex flex-col gap-2 sm:gap-3 max-h-80 sm:max-h-96 overflow-y-auto">
           {alerts.map((alert) => (
-            <div
+            <AlertItem
               key={alert.id}
-              className="p-3 border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div
-                  className={`text-11 font-medium uppercase tracking-wider ${
-                    alert.severity === 'critical'
-                      ? 'text-gray-900 font-semibold'
-                      : alert.severity === 'high'
-                        ? 'text-gray-700'
-                        : alert.severity === 'medium'
-                          ? 'text-gray-600'
-                          : 'text-gray-500'
-                  }`}
-                >
-                  {alert.severity}
-                </div>
-                <div className="text-sm font-medium text-gray-900">{alert.title}</div>
-                <div className="ml-auto text-11 text-gray-500">
-                  {formatDateTime(alert.timestamp)}
-                </div>
-              </div>
-
-              <div className="text-13 text-gray-700 leading-relaxed">{alert.message}</div>
-
-              {alert.symbol && (
-                <div className="text-11 text-gray-500 mt-1 uppercase tracking-wider">
-                  {alert.symbol}
-                </div>
-              )}
-
-              {alert.actionable && (
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleAction({ alertId: alert.id, action: 'acknowledge' })}
-                    disabled={isHandlingAction}
-                  >
-                    Acknowledge
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleAction({ alertId: alert.id, action: 'dismiss' })}
-                    disabled={isHandlingAction}
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-              )}
-            </div>
+              alert={alert}
+              onAction={handleAction}
+              isHandlingAction={isHandlingAction}
+            />
           ))}
         </div>
       )}

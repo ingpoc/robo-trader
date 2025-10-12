@@ -125,3 +125,43 @@ export function SkeletonCard({ className, showAvatar = false, lines = 3 }: Skele
     </div>
   )
 }
+
+interface SkeletonTableProps {
+  rows: number
+  columns: number
+  className?: string
+}
+
+export function SkeletonTable({ rows, columns, className }: SkeletonTableProps) {
+  return (
+    <div className={cn('space-y-3 p-4', className)}>
+      {/* Table Header */}
+      <div className="flex space-x-4 pb-3 border-b border-gray-200">
+        {Array.from({ length: columns }).map((_, colIndex) => (
+          <SkeletonLoader
+            key={`header-${colIndex}`}
+            className={cn(
+              'h-4',
+              colIndex === 0 ? 'w-20' : colIndex === columns - 1 ? 'w-16' : 'w-24'
+            )}
+          />
+        ))}
+      </div>
+
+      {/* Table Rows */}
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <div key={rowIndex} className="flex space-x-4 py-2">
+          {Array.from({ length: columns }).map((_, colIndex) => (
+            <SkeletonLoader
+              key={`cell-${rowIndex}-${colIndex}`}
+              className={cn(
+                'h-4',
+                colIndex === 0 ? 'w-20' : colIndex === columns - 1 ? 'w-16' : 'w-24'
+              )}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}

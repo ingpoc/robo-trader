@@ -1,12 +1,13 @@
-import { forwardRef, type SelectHTMLAttributes } from 'react'
-import { cn } from '@/utils/format'
+import { forwardRef, SelectHTMLAttributes } from 'react'
+import { cn } from '@/utils/cn'
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   error?: string
+  options?: { value: string; label: string }[]
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, error, children, ...props }, ref) => {
+  ({ className, error, options, children, ...props }, ref) => {
     return (
       <div className="w-full">
         <select
@@ -20,6 +21,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           )}
           {...props}
         >
+          {options?.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
           {children}
         </select>
         {error && (

@@ -8,7 +8,8 @@ import { formatDate, formatDateTime, formatRelativeTime } from '@/utils/format'
 import { newsEarningsAPI } from '@/api/endpoints'
 import { api } from '@/api/client'
 import { useRecommendations } from '@/hooks/useRecommendations'
-import { ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, ExternalLink, Calendar, BarChart3, Target, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, ExternalLink, Calendar, BarChart3, Target, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 
 interface NewsItem {
   symbol: string
@@ -43,10 +44,9 @@ interface EarningsReport {
 
 
 export function NewsEarnings() {
-   const [selectedSymbol, setSelectedSymbol] = useState<string>('')
-   const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([])
-   const [expandedNews, setExpandedNews] = useState<Set<number>>(new Set())
-   const [activeTab, setActiveTab] = useState<'news' | 'earnings' | 'recommendations'>('news')
+    const [selectedSymbol, setSelectedSymbol] = useState<string>('')
+    const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([])
+    const [activeTab, setActiveTab] = useState<'news' | 'earnings' | 'recommendations'>('news')
 
    const { recommendations, isLoading: recommendationsLoading, approve, reject, discuss } = useRecommendations()
 
@@ -110,15 +110,6 @@ export function NewsEarnings() {
     }
   }
 
-  const toggleNewsExpansion = (index: number) => {
-    const newExpanded = new Set(expandedNews)
-    if (newExpanded.has(index)) {
-      newExpanded.delete(index)
-    } else {
-      newExpanded.add(index)
-    }
-    setExpandedNews(newExpanded)
-  }
 
   const getRiskColor = (surprise?: number) => {
     if (!surprise) return 'text-slate-500'
@@ -300,75 +291,62 @@ export function NewsEarnings() {
                     </div>
                   </div>
                 ) : (newsEarningsData?.news && newsEarningsData.news.length > 0) ? (
-                  <div className="space-y-4">
+                  <Accordion type="multiple" className="space-y-4">
                     {newsEarningsData.news.map((item: NewsItem, index: number) => (
-                      <div
+                      <AccordionItem
                         key={index}
-                        className="group border border-slate-200 dark:border-slate-700 rounded-xl p-6 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+                        value={`news-${index}`}
+                        className="group border border-slate-200 dark:border-slate-700 rounded-xl hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
                       >
-                        <div className="flex items-start justify-between mb-4">
-                          <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 flex-1 leading-tight pr-4">
-                            {item.title}
-                          </h3>
-                          <div className={`px-3 py-2 rounded-full text-sm font-semibold border-2 flex items-center gap-2 transition-all duration-200 ${getSentimentColor(item.sentiment)}`}>
-                            {getSentimentIcon(item.sentiment)}
-                            <span className="capitalize">{item.sentiment}</span>
-                          </div>
-                        </div>
-
-                        <p className="text-slate-700 dark:text-slate-300 mb-4 leading-relaxed">
-                          {expandedNews.has(index) ? item.content || item.summary : item.summary}
-                        </p>
-
-                        {(item.content && item.content !== item.summary) && (
-                          <button
-                            onClick={() => toggleNewsExpansion(index)}
-                            className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium mb-4 transition-colors"
-                          >
-                            {expandedNews.has(index) ? (
-                              <>
-                                <ChevronUp className="w-4 h-4" />
-                                Show less
-                              </>
-                            ) : (
-                              <>
-                                <ChevronDown className="w-4 h-4" />
-                                Read full article
-                              </>
-                            )}
-                          </button>
-                        )}
-
-                        <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
-                          <div className="flex items-center gap-6 text-sm text-slate-500 dark:text-slate-400">
-                            {item.source && (
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">Source:</span>
-                                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{item.source}</span>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4" />
-                              <span>{formatDateTime(item.published_at)}</span>
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline">
+                          <div className="flex items-start justify-between w-full mr-4">
+                            <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 flex-1 leading-tight text-left">
+                              {item.title}
+                            </h3>
+                            <div className={`px-3 py-2 rounded-full text-sm font-semibold border-2 flex items-center gap-2 transition-all duration-200 ml-4 ${getSentimentColor(item.sentiment)}`}>
+                              {getSentimentIcon(item.sentiment)}
+                              <span className="capitalize">{item.sentiment}</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-4">
-                            <div className="text-right">
-                              <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Relevance</div>
-                              <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                                {(item.relevance_score * 100).toFixed(0)}%
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-4">
+                          <div className="space-y-4">
+                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                              {item.content || item.summary}
+                            </p>
+
+                            <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
+                              <div className="flex items-center gap-6 text-sm text-slate-500 dark:text-slate-400">
+                                {item.source && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">Source:</span>
+                                    <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{item.source}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4" />
+                                  <span>{formatDateTime(item.published_at)}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Relevance</div>
+                                  <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                                    {(item.relevance_score * 100).toFixed(0)}%
+                                  </div>
+                                </div>
+                                {item.citations && item.citations.length > 0 && (
+                                  <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700">
+                                    <ExternalLink className="w-4 h-4" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
-                            {item.citations && item.citations.length > 0 && (
-                              <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700">
-                                <ExternalLink className="w-4 h-4" />
-                              </Button>
-                            )}
                           </div>
-                        </div>
-                      </div>
+                        </AccordionContent>
+                      </AccordionItem>
                     ))}
-                  </div>
+                  </Accordion>
                 ) : (
                   <div className="text-center py-12">
                     <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
@@ -413,19 +391,21 @@ export function NewsEarnings() {
                       </div>
                     </div>
                   ) : (newsEarningsData?.earnings && newsEarningsData.earnings.length > 0) ? (
-                    <div className="space-y-6">
+                    <Accordion type="multiple" className="space-y-6">
                       {newsEarningsData.earnings.map((report: EarningsReport, index: number) => (
-                        <div
+                        <AccordionItem
                           key={index}
-                          className="border border-slate-200 dark:border-slate-700 rounded-xl p-6 bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-lg transition-all duration-300"
+                          value={`earnings-${index}`}
+                          className="border border-slate-200 dark:border-slate-700 rounded-xl bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-lg transition-all duration-300"
                         >
-                          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                            {/* Period Info */}
-                            <div className="lg:col-span-1">
-                              <h4 className="font-bold text-xl text-slate-900 dark:text-slate-100 mb-2">{report.fiscal_period}</h4>
-                              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 mb-3">
-                                <Calendar className="w-4 h-4" />
-                                <span className="text-sm">{formatDate(report.report_date)}</span>
+                          <AccordionTrigger className="px-6 py-4 hover:no-underline">
+                            <div className="flex items-center justify-between w-full">
+                              <div className="flex items-center gap-4">
+                                <h4 className="font-bold text-xl text-slate-900 dark:text-slate-100">{report.fiscal_period}</h4>
+                                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                  <Calendar className="w-4 h-4" />
+                                  <span className="text-sm">{formatDate(report.report_date)}</span>
+                                </div>
                               </div>
                               {report.surprise_pct !== undefined && report.surprise_pct !== null && (
                                 <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold ${
@@ -438,69 +418,72 @@ export function NewsEarnings() {
                                 </div>
                               )}
                             </div>
-
-                            {/* EPS Data */}
-                            <div className="space-y-3">
-                              <h5 className="font-semibold text-slate-900 dark:text-slate-100">EPS Performance</h5>
-                              <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
-                                <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
-                                  {report.eps_actual ? `$${report.eps_actual.toFixed(2)}` : 'N/A'}
-                                </div>
-                                {report.eps_estimated && (
-                                  <div className="text-sm text-slate-600 dark:text-slate-400">
-                                    Est: ${report.eps_estimated.toFixed(2)}
+                          </AccordionTrigger>
+                          <AccordionContent className="px-6 pb-4">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                              {/* EPS Data */}
+                              <div className="space-y-3">
+                                <h5 className="font-semibold text-slate-900 dark:text-slate-100">EPS Performance</h5>
+                                <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                                  <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
+                                    {report.eps_actual ? `$${report.eps_actual.toFixed(2)}` : 'N/A'}
                                   </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Revenue Data */}
-                            <div className="space-y-3">
-                              <h5 className="font-semibold text-slate-900 dark:text-slate-100">Revenue</h5>
-                              <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
-                                {report.revenue_actual ? (
-                                  <>
-                                    <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
-                                      ${(report.revenue_actual / 1000000).toFixed(0)}M
+                                  {report.eps_estimated && (
+                                    <div className="text-sm text-slate-600 dark:text-slate-400">
+                                      Est: ${report.eps_estimated.toFixed(2)}
                                     </div>
-                                    {report.revenue_estimated && (
-                                      <div className="text-sm text-slate-600 dark:text-slate-400">
-                                        Est: ${(report.revenue_estimated / 1000000).toFixed(0)}M
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Revenue Data */}
+                              <div className="space-y-3">
+                                <h5 className="font-semibold text-slate-900 dark:text-slate-100">Revenue</h5>
+                                <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                                  {report.revenue_actual ? (
+                                    <>
+                                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
+                                        ${(report.revenue_actual / 1000000).toFixed(0)}M
                                       </div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <div className="text-slate-500 dark:text-slate-400">N/A</div>
-                                )}
+                                      {report.revenue_estimated && (
+                                        <div className="text-sm text-slate-600 dark:text-slate-400">
+                                          Est: ${(report.revenue_estimated / 1000000).toFixed(0)}M
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="text-slate-500 dark:text-slate-400">N/A</div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Next Earnings */}
+                              <div className="space-y-3">
+                                <h5 className="font-semibold text-slate-900 dark:text-slate-100">Next Report</h5>
+                                <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                                  {report.next_earnings_date ? (
+                                    <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                                      {formatDate(report.next_earnings_date)}
+                                    </div>
+                                  ) : (
+                                    <div className="text-slate-500 dark:text-slate-400">TBD</div>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
-                            {/* Next Earnings */}
-                            <div className="space-y-3">
-                              <h5 className="font-semibold text-slate-900 dark:text-slate-100">Next Report</h5>
-                              <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
-                                {report.next_earnings_date ? (
-                                  <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                                    {formatDate(report.next_earnings_date)}
-                                  </div>
-                                ) : (
-                                  <div className="text-slate-500 dark:text-slate-400">TBD</div>
-                                )}
+                            {report.guidance && (
+                              <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                                <h5 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Management Guidance</h5>
+                                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                                  <p className="text-blue-900 dark:text-blue-100">{report.guidance}</p>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-
-                          {report.guidance && (
-                            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-                              <h5 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Management Guidance</h5>
-                              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                                <p className="text-blue-900 dark:text-blue-100">{report.guidance}</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
                       ))}
-                    </div>
+                    </Accordion>
                   ) : (
                     <div className="text-center py-12">
                       <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
@@ -532,44 +515,93 @@ export function NewsEarnings() {
                       </div>
                     </div>
                   ) : upcomingEarningsData?.upcoming_earnings && upcomingEarningsData.upcoming_earnings.length > 0 ? (
-                    <div className="space-y-4">
-                      {upcomingEarningsData.upcoming_earnings
+                    (() => {
+                      const portfolioEarnings = upcomingEarningsData.upcoming_earnings
                         .filter(earnings => portfolioSymbols.includes(earnings.symbol))
-                        .sort((a, b) => new Date(a.next_earnings_date).getTime() - new Date(b.next_earnings_date).getTime())
-                        .map((earnings, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-md transition-all duration-200"
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className="bg-blue-100 dark:bg-blue-900 rounded-full w-12 h-12 flex items-center justify-center">
-                                <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-lg text-slate-900 dark:text-slate-100">
-                                  {earnings.symbol}
-                                </h4>
-                                <p className="text-sm text-slate-600 dark:text-slate-400">
-                                  {earnings.fiscal_period}
-                                </p>
-                                {earnings.guidance && (
-                                  <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 max-w-md truncate">
-                                    {earnings.guidance}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                                {formatDate(earnings.next_earnings_date)}
-                              </div>
-                              <div className="text-sm text-slate-600 dark:text-slate-400">
-                                {Math.ceil((new Date(earnings.next_earnings_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      {upcomingEarningsData.upcoming_earnings.filter(earnings => portfolioSymbols.includes(earnings.symbol)).length === 0 && (
+                        .sort((a, b) => new Date(a.next_earnings_date).getTime() - new Date(b.next_earnings_date).getTime());
+
+                      // Group by weeks
+                      const groupedEarnings = portfolioEarnings.reduce((groups, earnings) => {
+                        const date = new Date(earnings.next_earnings_date);
+                        const weekStart = new Date(date);
+                        weekStart.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
+                        const weekKey = weekStart.toISOString().split('T')[0];
+
+                        if (!groups[weekKey]) {
+                          groups[weekKey] = [];
+                        }
+                        groups[weekKey].push(earnings);
+                        return groups;
+                      }, {} as Record<string, typeof portfolioEarnings>);
+
+                      return portfolioEarnings.length > 0 ? (
+                        <Accordion type="multiple" className="space-y-4">
+                          {Object.entries(groupedEarnings)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([weekKey, earnings]) => {
+                              const weekStart = new Date(weekKey);
+                              const weekEnd = new Date(weekStart);
+                              weekEnd.setDate(weekStart.getDate() + 6);
+                              const weekLabel = `${formatDate(weekStart.toISOString())} - ${formatDate(weekEnd.toISOString())}`;
+
+                              return (
+                                <AccordionItem
+                                  key={weekKey}
+                                  value={`week-${weekKey}`}
+                                  className="border border-slate-200 dark:border-slate-700 rounded-lg bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-md transition-all duration-200"
+                                >
+                                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                                    <div className="flex items-center gap-3">
+                                      <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                        {weekLabel} ({earnings.length} report{earnings.length !== 1 ? 's' : ''})
+                                      </span>
+                                    </div>
+                                  </AccordionTrigger>
+                                  <AccordionContent className="px-4 pb-3">
+                                    <div className="space-y-3">
+                                      {earnings.map((earning, index) => (
+                                        <div
+                                          key={index}
+                                          className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800/50"
+                                        >
+                                          <div className="flex items-center gap-4">
+                                            <div className="bg-blue-100 dark:bg-blue-900 rounded-full w-10 h-10 flex items-center justify-center">
+                                              <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                                                {earning.symbol.slice(0, 2)}
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <h4 className="font-bold text-lg text-slate-900 dark:text-slate-100">
+                                                {earning.symbol}
+                                              </h4>
+                                              <p className="text-sm text-slate-600 dark:text-slate-400">
+                                                {earning.fiscal_period}
+                                              </p>
+                                              {earning.guidance && (
+                                                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 max-w-md truncate">
+                                                  {earning.guidance}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                                              {formatDate(earning.next_earnings_date)}
+                                            </div>
+                                            <div className="text-sm text-slate-600 dark:text-slate-400">
+                                              {Math.ceil((new Date(earning.next_earnings_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </AccordionContent>
+                                </AccordionItem>
+                              );
+                            })}
+                        </Accordion>
+                      ) : (
                         <div className="text-center py-8">
                           <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                             <span className="text-2xl">📅</span>
@@ -577,8 +609,8 @@ export function NewsEarnings() {
                           <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">No Upcoming Earnings</h3>
                           <p className="text-slate-600 dark:text-slate-400">No earnings reports scheduled for your portfolio stocks in the next 60 days.</p>
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()
                   ) : (
                     <div className="text-center py-8">
                       <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">

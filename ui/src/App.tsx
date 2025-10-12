@@ -8,13 +8,14 @@ import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBounda
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { Dashboard } from '@/pages/Dashboard'
-import { NewsEarnings } from '@/pages/NewsEarnings'
+import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
 import { Agents } from '@/pages/Agents'
 import { Trading } from '@/pages/Trading'
 import { Config } from '@/pages/Config'
 import { Logs } from '@/pages/Logs'
 import { AgentConfig } from '@/pages/AgentConfig'
 import { Button } from '@/components/ui/Button'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -122,13 +123,13 @@ function AppContent() {
             aria-label="Main content"
           >
             <Routes>
-              <Route path="/" element={<DashboardErrorBoundary><Dashboard /></DashboardErrorBoundary>} />
-              <Route path="/news-earnings" element={<NewsEarnings />} />
-              <Route path="/agents" element={<Agents />} />
-              <Route path="/trading" element={<Trading />} />
-              <Route path="/config" element={<Config />} />
-              <Route path="/agent-config" element={<AgentConfig />} />
-              <Route path="/logs" element={<Logs />} />
+               <Route path="/" element={<DashboardErrorBoundary><Dashboard /></DashboardErrorBoundary>} />
+               <Route path="/news-earnings" element={<NewsEarningsFeature />} />
+               <Route path="/agents" element={<Agents />} />
+               <Route path="/trading" element={<Trading />} />
+               <Route path="/config" element={<Config />} />
+               <Route path="/agent-config" element={<AgentConfig />} />
+               <Route path="/logs" element={<Logs />} />
             </Routes>
           </main>
         </div>
@@ -144,7 +145,9 @@ export function App() {
     <GlobalErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <AppContent />
+          <TooltipProvider>
+            <AppContent />
+          </TooltipProvider>
         </BrowserRouter>
       </QueryClientProvider>
     </GlobalErrorBoundary>

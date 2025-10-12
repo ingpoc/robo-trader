@@ -207,3 +207,8 @@ export const newsEarningsAPI = {
       guidance?: string
     }> }>(`/api/earnings/upcoming?days_ahead=${daysAhead}`),
 }
+
+export const symbolsAPI = {
+  searchSymbols: (query: string, limit: number = 20) =>
+    api.get<{ symbols: SymbolData[], total: number }>(`/api/symbols/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+}

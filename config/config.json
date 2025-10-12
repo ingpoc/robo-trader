@@ -66,7 +66,7 @@
     "zerodha_api_secret": "your_api_secret_here",
     "zerodha_access_token": null,
     "zerodha_request_token": null,
-    "anthropic_api_key": "your_anthropic_api_key_here",
+   "anthropic_api_key": "your_anthropic_api_key_here",
     "perplexity_api_keys": []
   },
   "scheduling": {
@@ -75,87 +75,15 @@
     "market_hours_start": "09:15",
     "market_hours_end": "15:30"
   },
-  "news_monitoring": {
-    "batch_size": 5,
-    "api_timeout_seconds": 45,
-    "max_concurrent_batches": 1,
-    "news_retention_days": 90,
-    "earnings_retention_days": 365,
-    "max_news_per_symbol": 1000,
-    "perplexity_model": "sonar-pro",
-    "search_recency_filter": "day",
-    "max_search_results": 10
-  },
-  "news_daily_scheduler": {
-    "enabled": true,
-    "execution_time_ist": "09:00",
-    "batch_size": 5,
-    "min_relevance_score": 0.3,
-    "focus_significant_news": true,
-    "api_timeout_seconds": 45,
-    "max_concurrent_batches": 1
-  },
-  "news_daily_scheduler": {
-    "enabled": true,
-    "execution_time_ist": "09:00",
-    "batch_size": 5,
-    "max_concurrent_batches": 1,
-    "api_timeout_seconds": 45,
-    "perplexity_model": "sonar-pro",
-    "search_recency_filter": "day",
-    "max_search_results": 10,
-    "min_relevance_score": 0.6,
-    "focus_significant_news": true,
-    "retry_attempts": 3,
-    "retry_delay_seconds": 300
-  },
-  "earnings_scheduler": {
-    "enabled": true,
-    "n_plus_one_days": 1,
-    "earnings_grace_period_hours": 4,
-    "surprise_threshold_percent": 5.0,
-    "immediate_reanalysis": true,
-    "business_day_only": true,
-    "frequency_seconds": 3600,
-    "batch_size": 10,
-    "api_timeout_seconds": 60,
-    "perplexity_model": "sonar-pro",
-    "search_recency_filter": "week",
-    "max_search_results": 15
-  },
-  "recommendation_engine": {
-    "enabled": true,
-    "claude_model": "claude-3-5-sonnet-20241022",
-    "scoring_weights": {
-      "fundamental_score": 0.35,
-      "valuation_score": 0.25,
-      "growth_score": 0.20,
-      "risk_score": 0.15,
-      "qualitative_score": 0.05
-    },
-    "thresholds": {
-      "buy": {"min_overall": 75, "min_fundamental": 70, "max_risk": 30, "min_growth": 65},
-      "hold": {"min_overall": 45, "max_overall": 74},
-      "sell": {"max_overall": 44, "max_fundamental": 40, "min_risk": 70}
-    },
-    "confidence_levels": {
-      "high": {"min_score": 80, "max_score": 100},
-      "medium": {"min_score": 60, "max_score": 79},
-      "low": {"min_score": 40, "max_score": 59}
-    },
-    "update_frequency_days": 1,
-    "max_concurrent_recommendations": 5,
-    "alert_on_new_recommendations": true
-  },
   "agents": {
     "chat_interface": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": true,
       "frequency_seconds": 0,
       "priority": "high"
     },
     "portfolio_scan": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": false,
       "frequency_seconds": 300,
       "priority": "medium"
@@ -190,12 +118,6 @@
       "frequency_seconds": 86400,
       "priority": "medium"
     },
-    "recommendation_generation": {
-      "enabled": true,
-      "use_claude": true,
-      "frequency_seconds": 86400,
-      "priority": "high"
-    },
     "ai_daily_planning": {
       "enabled": true,
       "use_claude": true,
@@ -213,6 +135,12 @@
       "use_claude": true,
       "frequency_seconds": 0,
       "priority": "high"
+    },
+    "fundamental_monitoring": {
+      "enabled": true,
+      "use_claude": false,
+      "frequency_seconds": 86400,
+      "priority": "medium"
     }
   }
 }

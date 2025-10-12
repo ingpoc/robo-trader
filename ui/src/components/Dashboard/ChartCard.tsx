@@ -12,6 +12,8 @@ import {
   Area,
   AreaChart,
 } from 'recharts'
+import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { Tooltip as UITooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 interface ChartCardProps {
   title: string
@@ -66,7 +68,7 @@ export function ChartCard({
 }: ChartCardProps) {
   const isPositive = data.length > 1 && data[data.length - 1]?.value > data[0]?.value
 
-  return (
+  const chartContent = (
     <div className={`flex flex-col p-6 bg-white/80 backdrop-blur-sm border border-gray-200/50 card-shadow rounded-lg ${className || ''}`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -185,7 +187,6 @@ export function ChartCard({
                 outerRadius={80}
                 paddingAngle={3}
                 label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                labelStyle={{ fontSize: '12px', fill: '#374151', fontWeight: '500' }}
               >
                 {data.map((_, index) => (
                   <Cell
@@ -202,5 +203,16 @@ export function ChartCard({
         </ResponsiveContainer>
       </div>
     </div>
+  )
+
+  return (
+    <UITooltip>
+      <TooltipTrigger asChild>
+        {chartContent}
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>Interactive chart showing {title.toLowerCase()}. Hover over data points for detailed information.</p>
+      </TooltipContent>
+    </UITooltip>
   )
 }

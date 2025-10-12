@@ -5,6 +5,7 @@ export const tradeSchema = z.object({
     .string()
     .min(1, 'Symbol is required')
     .max(20, 'Symbol too long')
+    .regex(/^[A-Z0-9]+$/, 'Symbol must contain only uppercase letters and numbers')
     .transform((val) => val.toUpperCase()),
   side: z.enum(['BUY', 'SELL'], {
     required_error: 'Please select buy or sell',
@@ -12,11 +13,21 @@ export const tradeSchema = z.object({
   quantity: z
     .number({ required_error: 'Quantity is required' })
     .int('Must be a whole number')
-    .positive('Must be greater than 0'),
+    .positive('Must be greater than 0')
+    .max(1000000, 'Quantity too large'),
   order_type: z.enum(['MARKET', 'LIMIT'], {
     required_error: 'Please select order type',
   }),
-  price: z.number().positive().optional(),
+  price: z.number().positive('Price must be greater than 0').optional(),
+}).refine((data) => {
+  // If order type is LIMIT, price is required
+  if (data.order_type === 'LIMIT') {
+    return data.price !== undefined && data.price > 0
+  }
+  return true
+}, {
+  message: 'Price is required for limit orders',
+  path: ['price'],
 })
 
 export type TradeFormData = z.infer<typeof tradeSchema>

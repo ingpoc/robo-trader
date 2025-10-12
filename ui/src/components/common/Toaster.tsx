@@ -1,39 +1,34 @@
-import { useEffect } from 'react'
+"use client"
+
 import {
-  ToastProvider,
-  ToastViewport,
   Toast,
-  ToastTitle,
-  ToastDescription,
   ToastClose,
-} from '@/components/ui/Toast'
-import { useDashboardStore } from '@/store/dashboardStore'
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "@/components/ui/toast"
+import { useToast } from "@/hooks/use-toast"
 
 export function Toaster() {
-  const toasts = useDashboardStore((state) => state.toasts)
-  const removeToast = useDashboardStore((state) => state.removeToast)
-
-  useEffect(() => {
-    toasts.forEach((toast) => {
-      const timer = setTimeout(() => {
-        removeToast(toast.id)
-      }, 5000)
-
-      return () => clearTimeout(timer)
-    })
-  }, [toasts, removeToast])
+  const { toasts } = useToast()
 
   return (
     <ToastProvider>
-      {toasts.map((toast) => (
-        <Toast key={toast.id} variant={toast.variant} onOpenChange={() => removeToast(toast.id)}>
-          <div className="flex-1">
-            <ToastTitle>{toast.title}</ToastTitle>
-            {toast.description && <ToastDescription>{toast.description}</ToastDescription>}
-          </div>
-          <ToastClose />
-        </Toast>
-      ))}
+      {toasts.map(function ({ id, title, description, action, ...props }) {
+        return (
+          <Toast key={id} {...props}>
+            <div className="grid gap-1">
+              {title && <ToastTitle>{title}</ToastTitle>}
+              {description && (
+                <ToastDescription>{description}</ToastDescription>
+              )}
+            </div>
+            {action}
+            <ToastClose />
+          </Toast>
+        )
+      })}
       <ToastViewport />
     </ToastProvider>
   )
