@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 
 const menuItems = [
   { path: '/', label: 'Overview' },
+  { path: '/news-earnings', label: 'News & Earnings' },
   { path: '/agents', label: 'Agents' },
   { path: '/trading', label: 'Trading' },
   { path: '/config', label: 'Config' },

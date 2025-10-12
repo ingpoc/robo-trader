@@ -18,7 +18,8 @@ from loguru import logger
 from ..config import Config
 from .state_models import (
     PortfolioState, Signal, RiskDecision, OrderCommand,
-    ExecutionReport, Intent
+    ExecutionReport, Intent, FundamentalAnalysis, Recommendation,
+    MarketConditions, AnalysisPerformance
 )
 from .alerts import AlertManager
 
@@ -214,6 +215,169 @@ class DatabaseStateManager:
             created_at TEXT NOT NULL
         );
 
+        -- News and earnings data
+        CREATE TABLE IF NOT EXISTS news_items (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            content TEXT,
+            source TEXT,
+            sentiment TEXT NOT NULL,
+            relevance_score REAL DEFAULT 0.5,
+            published_at TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            citations TEXT,  -- JSON
+            created_at TEXT NOT NULL
+        );
+
+        -- News fetch tracking per symbol
+        CREATE TABLE IF NOT EXISTS news_fetch_tracking (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL UNIQUE,
+            last_news_fetch TEXT,
+            last_earnings_fetch TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS earnings_reports (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            fiscal_period TEXT NOT NULL,
+            fiscal_year INTEGER,
+            fiscal_quarter INTEGER,
+            report_date TEXT NOT NULL,
+            eps_actual REAL,
+            eps_estimated REAL,
+            revenue_actual REAL,
+            revenue_estimated REAL,
+            surprise_pct REAL,
+            guidance TEXT,
+            next_earnings_date TEXT,
+            fetched_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(symbol, fiscal_period)
+        );
+
+        -- Indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_news_symbol ON news_items(symbol);
+        CREATE INDEX IF NOT EXISTS idx_news_published_at ON news_items(published_at);
+        CREATE INDEX IF NOT EXISTS idx_news_sentiment ON news_items(sentiment);
+        CREATE INDEX IF NOT EXISTS idx_news_symbol_date ON news_items(symbol, published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_news_relevance ON news_items(relevance_score DESC, published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_earnings_symbol ON earnings_reports(symbol);
+        CREATE INDEX IF NOT EXISTS idx_earnings_date ON earnings_reports(report_date);
+        CREATE INDEX IF NOT EXISTS idx_earnings_symbol_date ON earnings_reports(symbol, report_date DESC);
+
+        -- News items
+        CREATE TABLE IF NOT EXISTS news_items (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            source TEXT,
+            url TEXT,
+            sentiment TEXT,
+            published_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Earnings reports
+        CREATE TABLE IF NOT EXISTS earnings_reports (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            fiscal_period TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            eps_actual REAL,
+            eps_estimated REAL,
+            revenue_actual REAL,
+            revenue_estimated REAL,
+            surprise_pct REAL,
+            guidance TEXT,
+            next_earnings_date TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- Fundamental Analysis Results
+        CREATE TABLE IF NOT EXISTS fundamental_analysis (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            analysis_date TEXT NOT NULL,
+            pe_ratio REAL,
+            pb_ratio REAL,
+            roe REAL,
+            roa REAL,
+            debt_to_equity REAL,
+            current_ratio REAL,
+            profit_margins REAL,
+            revenue_growth REAL,
+            earnings_growth REAL,
+            dividend_yield REAL,
+            market_cap REAL,
+            sector_pe REAL,
+            industry_rank INTEGER,
+            overall_score REAL,
+            recommendation TEXT,
+            analysis_data TEXT,  -- JSON for additional metrics
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(symbol, analysis_date)
+        );
+
+        -- Trading Recommendations
+        CREATE TABLE IF NOT EXISTS recommendations (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            recommendation_type TEXT NOT NULL,  -- BUY/SELL/HOLD
+            confidence_score REAL,
+            target_price REAL,
+            stop_loss REAL,
+            quantity INTEGER,
+            reasoning TEXT,
+            analysis_type TEXT,
+            time_horizon TEXT,
+            risk_level TEXT,
+            potential_impact TEXT,
+            alternative_suggestions TEXT,  -- JSON array
+            created_at TEXT NOT NULL,
+            executed_at TEXT,
+            outcome TEXT,
+            actual_return REAL
+        );
+
+        -- Market Conditions Tracking
+        CREATE TABLE IF NOT EXISTS market_conditions (
+            id INTEGER PRIMARY KEY,
+            date TEXT NOT NULL UNIQUE,
+            vix_index REAL,
+            nifty_50_level REAL,
+            market_sentiment TEXT,
+            interest_rates REAL,
+            inflation_rate REAL,
+            gdp_growth REAL,
+            sector_performance TEXT,  -- JSON
+            global_events TEXT,  -- JSON
+            created_at TEXT NOT NULL
+        );
+
+        -- Analysis Performance Tracking
+        CREATE TABLE IF NOT EXISTS analysis_performance (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            recommendation_id INTEGER,
+            prediction_date TEXT NOT NULL,
+            execution_date TEXT,
+            predicted_direction TEXT,
+            actual_direction TEXT,
+            predicted_return REAL,
+            actual_return REAL,
+            accuracy_score REAL,
+            model_version TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (recommendation_id) REFERENCES recommendations(id)
+        );
+
         -- Checkpoints
         CREATE TABLE IF NOT EXISTS checkpoints (
             id TEXT PRIMARY KEY,
@@ -231,6 +395,25 @@ class DatabaseStateManager:
         CREATE INDEX IF NOT EXISTS idx_daily_plans_date ON daily_plans(date);
         CREATE INDEX IF NOT EXISTS idx_priority_queue_status ON priority_queue(status);
         CREATE INDEX IF NOT EXISTS idx_approval_queue_status ON approval_queue(status);
+        CREATE INDEX IF NOT EXISTS idx_news_items_symbol ON news_items(symbol);
+        CREATE INDEX IF NOT EXISTS idx_news_items_published_at ON news_items(published_at);
+        CREATE INDEX IF NOT EXISTS idx_earnings_reports_symbol ON earnings_reports(symbol);
+        CREATE INDEX IF NOT EXISTS idx_earnings_reports_report_date ON earnings_reports(report_date);
+
+        -- Indexes for new analysis tables
+        CREATE INDEX IF NOT EXISTS idx_fundamental_analysis_symbol ON fundamental_analysis(symbol);
+        CREATE INDEX IF NOT EXISTS idx_fundamental_analysis_date ON fundamental_analysis(analysis_date);
+        CREATE INDEX IF NOT EXISTS idx_fundamental_analysis_symbol_date ON fundamental_analysis(symbol, analysis_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_fundamental_analysis_score ON fundamental_analysis(overall_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_recommendations_symbol ON recommendations(symbol);
+        CREATE INDEX IF NOT EXISTS idx_recommendations_type ON recommendations(recommendation_type);
+        CREATE INDEX IF NOT EXISTS idx_recommendations_created ON recommendations(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_recommendations_symbol_type ON recommendations(symbol, recommendation_type);
+        CREATE INDEX IF NOT EXISTS idx_market_conditions_date ON market_conditions(date);
+        CREATE INDEX IF NOT EXISTS idx_analysis_performance_symbol ON analysis_performance(symbol);
+        CREATE INDEX IF NOT EXISTS idx_analysis_performance_recommendation ON analysis_performance(recommendation_id);
+        CREATE INDEX IF NOT EXISTS idx_analysis_performance_accuracy ON analysis_performance(accuracy_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_analysis_performance_symbol_date ON analysis_performance(symbol, prediction_date DESC);
         """
 
         await self._connection_pool.executescript(schema)
@@ -628,6 +811,241 @@ class DatabaseStateManager:
         """, (limit,)) as cursor:
             return [json.loads(row[0]) async for row in cursor]
 
+    # News and earnings data methods
+    async def save_news_item(self, symbol: str, title: str, summary: str, content: str = None,
+                           source: str = None, sentiment: str = "neutral", relevance_score: float = 0.5,
+                           published_at: str = None, citations: List[str] = None) -> None:
+        """Save news item to database."""
+        now = datetime.now(timezone.utc).isoformat()
+        published_at = published_at or now
+
+        async with self._connection_pool.execute("""
+            INSERT INTO news_items
+            (symbol, title, summary, content, source, sentiment, relevance_score, published_at, fetched_at, citations, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            symbol, title, summary, content, source, sentiment, relevance_score,
+            published_at, now, json.dumps(citations) if citations else None, now
+        )):
+            await self._connection_pool.commit()
+
+        logger.debug(f"Saved news item for {symbol}: {title}")
+
+    async def save_earnings_report(self, symbol: str, fiscal_period: str, report_date: str,
+                                 eps_actual: float = None, eps_estimated: float = None,
+                                 revenue_actual: float = None, revenue_estimated: float = None,
+                                 guidance: str = None, next_earnings_date: str = None) -> None:
+        """Save earnings report to database."""
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Calculate surprise percentage if both actual and estimated are available
+        surprise_pct = None
+        if eps_actual is not None and eps_estimated is not None and eps_estimated != 0:
+            surprise_pct = ((eps_actual - eps_estimated) / abs(eps_estimated)) * 100
+
+        async with self._connection_pool.execute("""
+            INSERT OR REPLACE INTO earnings_reports
+            (symbol, fiscal_period, fiscal_year, fiscal_quarter, report_date, eps_actual, eps_estimated,
+             revenue_actual, revenue_estimated, surprise_pct, guidance, next_earnings_date, fetched_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            symbol, fiscal_period,
+            None, None,  # fiscal_year, fiscal_quarter (could be parsed from fiscal_period)
+            report_date, eps_actual, eps_estimated, revenue_actual, revenue_estimated,
+            surprise_pct, guidance, next_earnings_date, now, now
+        )):
+            await self._connection_pool.commit()
+
+        logger.debug(f"Saved earnings report for {symbol}: {fiscal_period}")
+
+    async def get_news_for_symbol(self, symbol: str, limit: int = 20) -> List[Dict]:
+        """Get recent news for a specific symbol."""
+        async with self._connection_pool.execute("""
+            SELECT symbol, title, summary, content, source, sentiment, relevance_score,
+                   published_at, fetched_at, citations, created_at
+            FROM news_items
+            WHERE symbol = ?
+            ORDER BY published_at DESC
+            LIMIT ?
+        """, (symbol, limit)) as cursor:
+            news_items = []
+            async for row in cursor:
+                item = {
+                    "symbol": row[0],
+                    "title": row[1],
+                    "summary": row[2],
+                    "content": row[3],
+                    "source": row[4],
+                    "sentiment": row[5],
+                    "relevance_score": row[6],
+                    "published_at": row[7],
+                    "fetched_at": row[8],
+                    "citations": json.loads(row[9]) if row[9] else None,
+                    "created_at": row[10]
+                }
+                news_items.append(item)
+            return news_items
+
+    async def get_earnings_for_symbol(self, symbol: str, limit: int = 10) -> List[Dict]:
+        """Get earnings reports for a specific symbol."""
+        async with self._connection_pool.execute("""
+            SELECT symbol, fiscal_period, fiscal_year, fiscal_quarter, report_date,
+                   eps_actual, eps_estimated, revenue_actual, revenue_estimated,
+                   surprise_pct, guidance, next_earnings_date, fetched_at, created_at
+            FROM earnings_reports
+            WHERE symbol = ?
+            ORDER BY report_date DESC
+            LIMIT ?
+        """, (symbol, limit)) as cursor:
+            earnings_reports = []
+            async for row in cursor:
+                report = {
+                    "symbol": row[0],
+                    "fiscal_period": row[1],
+                    "fiscal_year": row[2],
+                    "fiscal_quarter": row[3],
+                    "report_date": row[4],
+                    "eps_actual": row[5],
+                    "eps_estimated": row[6],
+                    "revenue_actual": row[7],
+                    "revenue_estimated": row[8],
+                    "surprise_pct": row[9],
+                    "guidance": row[10],
+                    "next_earnings_date": row[11],
+                    "fetched_at": row[12],
+                    "created_at": row[13]
+                }
+                earnings_reports.append(report)
+            return earnings_reports
+
+    async def get_upcoming_earnings(self, days_ahead: int = 30) -> List[Dict]:
+        """Get upcoming earnings reports within specified days."""
+        cutoff_date = (datetime.now(timezone.utc) + timedelta(days=days_ahead)).isoformat()
+
+        async with self._connection_pool.execute("""
+            SELECT symbol, fiscal_period, next_earnings_date, guidance
+            FROM earnings_reports
+            WHERE next_earnings_date IS NOT NULL
+              AND next_earnings_date <= ?
+              AND next_earnings_date >= ?
+            ORDER BY next_earnings_date ASC
+        """, (cutoff_date, datetime.now(timezone.utc).isoformat())) as cursor:
+            upcoming = []
+            async for row in cursor:
+                upcoming.append({
+                    "symbol": row[0],
+                    "fiscal_period": row[1],
+                    "next_earnings_date": row[2],
+                    "guidance": row[3]
+                })
+            return upcoming
+
+    # News fetch tracking methods
+    async def get_last_news_fetch(self, symbol: str) -> Optional[str]:
+        """Get the last news fetch timestamp for a symbol."""
+        async with self._connection_pool.execute("""
+            SELECT last_news_fetch FROM news_fetch_tracking WHERE symbol = ?
+        """, (symbol,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else None
+
+    async def update_last_news_fetch(self, symbol: str, fetch_time: Optional[str] = None) -> None:
+        """Update the last news fetch timestamp for a symbol."""
+        if fetch_time is None:
+            fetch_time = datetime.now(timezone.utc).isoformat()
+
+        now = datetime.now(timezone.utc).isoformat()
+        async with self._connection_pool.execute("""
+            INSERT OR REPLACE INTO news_fetch_tracking (symbol, last_news_fetch, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+        """, (symbol, fetch_time, now, now)):
+            await self._connection_pool.commit()
+
+    async def get_last_earnings_fetch(self, symbol: str) -> Optional[str]:
+        """Get the last earnings fetch timestamp for a symbol."""
+        async with self._connection_pool.execute("""
+            SELECT last_earnings_fetch FROM news_fetch_tracking WHERE symbol = ?
+        """, (symbol,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else None
+
+    async def update_last_earnings_fetch(self, symbol: str, fetch_time: Optional[str] = None) -> None:
+        """Update the last earnings fetch timestamp for a symbol."""
+        if fetch_time is None:
+            fetch_time = datetime.now(timezone.utc).isoformat()
+
+        now = datetime.now(timezone.utc).isoformat()
+        async with self._connection_pool.execute("""
+            INSERT OR REPLACE INTO news_fetch_tracking (symbol, last_earnings_fetch, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+        """, (symbol, fetch_time, now, now)):
+            await self._connection_pool.execute("""
+                UPDATE news_fetch_tracking SET last_earnings_fetch = ?, updated_at = ? WHERE symbol = ?
+            """, (fetch_time, now, symbol))
+            await self._connection_pool.commit()
+
+    async def get_last_news_fetch(self, symbol: str) -> Optional[str]:
+        """Get the last news fetch timestamp for a symbol."""
+        async with self._connection_pool.execute("""
+            SELECT last_news_fetch FROM news_fetch_tracking WHERE symbol = ?
+        """, (symbol,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else None
+
+    async def update_last_news_fetch(self, symbol: str, fetch_time: Optional[str] = None) -> None:
+        """Update the last news fetch timestamp for a symbol."""
+        now = datetime.now(timezone.utc).isoformat()
+        fetch_time = fetch_time or now
+
+        async with self._connection_pool.execute("""
+            INSERT OR REPLACE INTO news_fetch_tracking
+            (symbol, last_news_fetch, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+        """, (symbol, fetch_time, now, now)):
+            await self._connection_pool.commit()
+
+    async def get_last_earnings_fetch(self, symbol: str) -> Optional[str]:
+        """Get the last earnings fetch timestamp for a symbol."""
+        async with self._connection_pool.execute("""
+            SELECT last_earnings_fetch FROM news_fetch_tracking WHERE symbol = ?
+        """, (symbol,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else None
+
+    async def update_last_earnings_fetch(self, symbol: str, fetch_time: Optional[str] = None) -> None:
+        """Update the last earnings fetch timestamp for a symbol."""
+        now = datetime.now(timezone.utc).isoformat()
+        fetch_time = fetch_time or now
+
+        async with self._connection_pool.execute("""
+            INSERT OR REPLACE INTO news_fetch_tracking
+            (symbol, last_earnings_fetch, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+        """, (symbol, fetch_time, now, now)):
+            await self._connection_pool.commit()
+
+    # Data cleanup methods
+    async def cleanup_old_data(self) -> None:
+        """Clean up old news and earnings data."""
+        now = datetime.now(timezone.utc)
+        news_cutoff = (now - timedelta(days=90)).isoformat()  # Keep 90 days of news
+        earnings_cutoff = (now - timedelta(days=365)).isoformat()  # Keep 1 year of earnings
+
+        # Clean up old news
+        async with self._connection_pool.execute("""
+            DELETE FROM news_items WHERE published_at < ?
+        """, (news_cutoff,)):
+            news_deleted = self._connection_pool.total_changes
+
+        # Clean up old earnings
+        async with self._connection_pool.execute("""
+            DELETE FROM earnings_reports WHERE report_date < ?
+        """, (earnings_cutoff,)):
+            earnings_deleted = self._connection_pool.total_changes
+
+        if news_deleted > 0 or earnings_deleted > 0:
+            logger.info(f"Cleaned up {news_deleted} old news items and {earnings_deleted} old earnings reports")
+
     # Checkpoints
     async def create_checkpoint(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Create a checkpoint of current state."""
@@ -689,6 +1107,282 @@ class DatabaseStateManager:
 
                 logger.info(f"Restored checkpoint {checkpoint_id}")
                 return True
+
+    # Fundamental Analysis methods
+    async def save_fundamental_analysis(self, analysis: FundamentalAnalysis) -> int:
+        """Save fundamental analysis results."""
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with self._connection_pool.execute("""
+            INSERT OR REPLACE INTO fundamental_analysis
+            (symbol, analysis_date, pe_ratio, pb_ratio, roe, roa, debt_to_equity, current_ratio,
+             profit_margins, revenue_growth, earnings_growth, dividend_yield, market_cap,
+             sector_pe, industry_rank, overall_score, recommendation, analysis_data, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            analysis.symbol, analysis.analysis_date, analysis.pe_ratio, analysis.pb_ratio,
+            analysis.roe, analysis.roa, analysis.debt_to_equity, analysis.current_ratio,
+            analysis.profit_margins, analysis.revenue_growth, analysis.earnings_growth,
+            analysis.dividend_yield, analysis.market_cap, analysis.sector_pe, analysis.industry_rank,
+            analysis.overall_score, analysis.recommendation,
+            json.dumps(analysis.analysis_data) if analysis.analysis_data else None,
+            now, now
+        )) as cursor:
+            await self._connection_pool.commit()
+            analysis_id = cursor.lastrowid
+            logger.debug(f"Saved fundamental analysis for {analysis.symbol}")
+            return analysis_id
+
+    async def get_fundamental_analysis(self, symbol: str, limit: int = 1) -> List[FundamentalAnalysis]:
+        """Get fundamental analysis for a symbol."""
+        async with self._connection_pool.execute("""
+            SELECT symbol, analysis_date, pe_ratio, pb_ratio, roe, roa, debt_to_equity, current_ratio,
+                   profit_margins, revenue_growth, earnings_growth, dividend_yield, market_cap,
+                   sector_pe, industry_rank, overall_score, recommendation, analysis_data
+            FROM fundamental_analysis
+            WHERE symbol = ?
+            ORDER BY analysis_date DESC
+            LIMIT ?
+        """, (symbol, limit)) as cursor:
+            analyses = []
+            async for row in cursor:
+                analysis_data = {
+                    "symbol": row[0],
+                    "analysis_date": row[1],
+                    "pe_ratio": row[2],
+                    "pb_ratio": row[3],
+                    "roe": row[4],
+                    "roa": row[5],
+                    "debt_to_equity": row[6],
+                    "current_ratio": row[7],
+                    "profit_margins": row[8],
+                    "revenue_growth": row[9],
+                    "earnings_growth": row[10],
+                    "dividend_yield": row[11],
+                    "market_cap": row[12],
+                    "sector_pe": row[13],
+                    "industry_rank": row[14],
+                    "overall_score": row[15],
+                    "recommendation": row[16],
+                    "analysis_data": json.loads(row[17]) if row[17] else None
+                }
+                analyses.append(FundamentalAnalysis.from_dict(analysis_data))
+            return analyses
+
+    # Recommendation methods
+    async def save_recommendation(self, recommendation: Recommendation) -> int:
+        """Save trading recommendation."""
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with self._connection_pool.execute("""
+            INSERT INTO recommendations
+            (symbol, recommendation_type, confidence_score, target_price, stop_loss, quantity,
+             reasoning, analysis_type, time_horizon, risk_level, potential_impact,
+             alternative_suggestions, created_at, executed_at, outcome, actual_return)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            recommendation.symbol, recommendation.recommendation_type, recommendation.confidence_score,
+            recommendation.target_price, recommendation.stop_loss, recommendation.quantity,
+            recommendation.reasoning, recommendation.analysis_type, recommendation.time_horizon,
+            recommendation.risk_level, recommendation.potential_impact,
+            json.dumps(recommendation.alternative_suggestions) if recommendation.alternative_suggestions else None,
+            now, recommendation.executed_at, recommendation.outcome, recommendation.actual_return
+        )) as cursor:
+            await self._connection_pool.commit()
+            rec_id = cursor.lastrowid
+            logger.debug(f"Saved recommendation for {recommendation.symbol}: {recommendation.recommendation_type}")
+            return rec_id
+
+    async def get_recommendations(self, symbol: Optional[str] = None, limit: int = 20) -> List[Recommendation]:
+        """Get recommendations, optionally filtered by symbol."""
+        query = """
+            SELECT id, symbol, recommendation_type, confidence_score, target_price, stop_loss, quantity,
+                   reasoning, analysis_type, time_horizon, risk_level, potential_impact,
+                   alternative_suggestions, created_at, executed_at, outcome, actual_return
+            FROM recommendations
+        """
+        params = []
+
+        if symbol:
+            query += " WHERE symbol = ?"
+            params.append(symbol)
+
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        async with self._connection_pool.execute(query, params) as cursor:
+            recommendations = []
+            async for row in cursor:
+                rec_data = {
+                    "recommendation_id": row[0],  # Include ID for tracking
+                    "symbol": row[1],
+                    "recommendation_type": row[2],
+                    "confidence_score": row[3],
+                    "target_price": row[4],
+                    "stop_loss": row[5],
+                    "quantity": row[6],
+                    "reasoning": row[7],
+                    "analysis_type": row[8],
+                    "time_horizon": row[9],
+                    "risk_level": row[10],
+                    "potential_impact": row[11],
+                    "alternative_suggestions": json.loads(row[12]) if row[12] else None,
+                    "executed_at": row[13],
+                    "outcome": row[14],
+                    "actual_return": row[15]
+                }
+                recommendations.append(Recommendation.from_dict(rec_data))
+            return recommendations
+
+    async def get_all_recommendations(self, limit: int = 100) -> List[Recommendation]:
+        """Get all recommendations across all symbols."""
+        return await self.get_recommendations(symbol=None, limit=limit)
+
+    async def update_recommendation_outcome(self, recommendation_id: int, outcome: str,
+                                          actual_return: Optional[float] = None) -> bool:
+        """Update recommendation outcome after execution."""
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with self._connection_pool.execute("""
+            UPDATE recommendations
+            SET executed_at = ?, outcome = ?, actual_return = ?
+            WHERE id = ?
+        """, (now, outcome, actual_return, recommendation_id)):
+            await self._connection_pool.commit()
+            return self._connection_pool.total_changes > 0
+
+    # Market Conditions methods
+    async def save_market_conditions(self, conditions: MarketConditions) -> int:
+        """Save market conditions data."""
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with self._connection_pool.execute("""
+            INSERT OR REPLACE INTO market_conditions
+            (date, vix_index, nifty_50_level, market_sentiment, interest_rates,
+             inflation_rate, gdp_growth, sector_performance, global_events, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            conditions.date, conditions.vix_index, conditions.nifty_50_level,
+            conditions.market_sentiment, conditions.interest_rates, conditions.inflation_rate,
+            conditions.gdp_growth,
+            json.dumps(conditions.sector_performance) if conditions.sector_performance else None,
+            json.dumps(conditions.global_events) if conditions.global_events else None,
+            now
+        )) as cursor:
+            await self._connection_pool.commit()
+            conditions_id = cursor.lastrowid
+            logger.debug(f"Saved market conditions for {conditions.date}")
+            return conditions_id
+
+    async def get_market_conditions(self, limit: int = 30) -> List[MarketConditions]:
+        """Get recent market conditions."""
+        async with self._connection_pool.execute("""
+            SELECT date, vix_index, nifty_50_level, market_sentiment, interest_rates,
+                   inflation_rate, gdp_growth, sector_performance, global_events
+            FROM market_conditions
+            ORDER BY date DESC
+            LIMIT ?
+        """, (limit,)) as cursor:
+            conditions = []
+            async for row in cursor:
+                cond_data = {
+                    "date": row[0],
+                    "vix_index": row[1],
+                    "nifty_50_level": row[2],
+                    "market_sentiment": row[3],
+                    "interest_rates": row[4],
+                    "inflation_rate": row[5],
+                    "gdp_growth": row[6],
+                    "sector_performance": json.loads(row[7]) if row[7] else None,
+                    "global_events": json.loads(row[8]) if row[8] else None
+                }
+                conditions.append(MarketConditions.from_dict(cond_data))
+            return conditions
+
+    # Analysis Performance methods
+    async def save_analysis_performance(self, performance: AnalysisPerformance) -> int:
+        """Save analysis performance tracking."""
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with self._connection_pool.execute("""
+            INSERT INTO analysis_performance
+            (symbol, recommendation_id, prediction_date, execution_date, predicted_direction,
+             actual_direction, predicted_return, actual_return, accuracy_score, model_version, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            performance.symbol, performance.recommendation_id, performance.prediction_date,
+            performance.execution_date, performance.predicted_direction, performance.actual_direction,
+            performance.predicted_return, performance.actual_return, performance.accuracy_score,
+            performance.model_version, now
+        )) as cursor:
+            await self._connection_pool.commit()
+            perf_id = cursor.lastrowid
+            logger.debug(f"Saved analysis performance for {performance.symbol}")
+            return perf_id
+
+    async def get_analysis_performance(self, symbol: Optional[str] = None, limit: int = 50) -> List[AnalysisPerformance]:
+        """Get analysis performance records."""
+        query = """
+            SELECT symbol, recommendation_id, prediction_date, execution_date, predicted_direction,
+                   actual_direction, predicted_return, actual_return, accuracy_score, model_version
+            FROM analysis_performance
+        """
+        params = []
+
+        if symbol:
+            query += " WHERE symbol = ?"
+            params.append(symbol)
+
+        query += " ORDER BY prediction_date DESC LIMIT ?"
+        params.append(limit)
+
+        async with self._connection_pool.execute(query, params) as cursor:
+            performances = []
+            async for row in cursor:
+                perf_data = {
+                    "symbol": row[0],
+                    "recommendation_id": row[1],
+                    "prediction_date": row[2],
+                    "execution_date": row[3],
+                    "predicted_direction": row[4],
+                    "actual_direction": row[5],
+                    "predicted_return": row[6],
+                    "actual_return": row[7],
+                    "accuracy_score": row[8],
+                    "model_version": row[9]
+                }
+                performances.append(AnalysisPerformance.from_dict(perf_data))
+            return performances
+
+    async def get_performance_stats(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+        """Get performance statistics."""
+        query = """
+            SELECT
+                COUNT(*) as total_predictions,
+                AVG(accuracy_score) as avg_accuracy,
+                SUM(CASE WHEN accuracy_score >= 0.7 THEN 1 ELSE 0 END) as accurate_predictions,
+                AVG(predicted_return) as avg_predicted_return,
+                AVG(actual_return) as avg_actual_return
+            FROM analysis_performance
+        """
+        params = []
+
+        if symbol:
+            query += " WHERE symbol = ?"
+            params.append(symbol)
+
+        async with self._connection_pool.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "total_predictions": row[0],
+                    "avg_accuracy": row[1],
+                    "accurate_predictions": row[2],
+                    "accuracy_rate": row[2] / row[0] if row[0] > 0 else 0,
+                    "avg_predicted_return": row[3],
+                    "avg_actual_return": row[4]
+                }
+            return {}
 
     async def close(self) -> None:
         """Close database connections."""

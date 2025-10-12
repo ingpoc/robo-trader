@@ -186,6 +186,16 @@ class AgentsConfig(BaseModel):
         description="Trade execution with AI risk assessment"
     )
 
+    fundamental_monitoring: AgentFeatureConfig = Field(
+        default_factory=lambda: AgentFeatureConfig(
+            enabled=True,
+            use_claude=False,  # Uses Perplexity AI instead
+            frequency_seconds=86400,  # Daily
+            priority="medium"
+        ),
+        description="Fundamental analysis data monitoring"
+    )
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "chat_interface": self.chat_interface.to_dict(),
@@ -195,6 +205,7 @@ class AgentsConfig(BaseModel):
             "stop_loss_monitor": self.stop_loss_monitor.to_dict(),
             "earnings_check": self.earnings_check.to_dict(),
             "news_monitoring": self.news_monitoring.to_dict(),
+            "fundamental_monitoring": self.fundamental_monitoring.to_dict(),
             "ai_daily_planning": self.ai_daily_planning.to_dict(),
             "health_check": self.health_check.to_dict(),
             "trade_execution": self.trade_execution.to_dict()

@@ -672,6 +672,29 @@ async def resume_operations():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/api/trigger-news-monitoring")
+async def trigger_news_monitoring():
+    """Manually trigger news monitoring task for testing."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        if orchestrator and orchestrator.background_scheduler:
+            # Schedule news monitoring task immediately
+            task_id = await orchestrator.background_scheduler.schedule_task(
+                orchestrator.background_scheduler.TaskType.NEWS_MONITORING,
+                orchestrator.background_scheduler.TaskPriority.HIGH,
+                delay_seconds=0
+            )
+            return {"status": "News monitoring triggered", "task_id": task_id}
+        else:
+            return JSONResponse({"error": "Scheduler not available"}, status_code=500)
+    except Exception as e:
+        logger.error(f"Failed to trigger news monitoring: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/alerts/active")
 async def get_active_alerts():
     """Get currently active alerts."""
@@ -1251,6 +1274,78 @@ async def get_performance_analytics(period: str = "30d"):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# News and Earnings endpoints
+@app.get("/api/news/{symbol}")
+async def get_news_for_symbol(symbol: str, limit: int = 20):
+    """Get news items for a specific symbol."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        news_items = await orchestrator.state_manager.get_news_for_symbol(symbol.upper(), limit)
+        return {"news": news_items}
+    except Exception as e:
+        logger.error(f"Failed to get news for {symbol}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/earnings/{symbol}")
+async def get_earnings_for_symbol(symbol: str, limit: int = 10):
+    """Get earnings reports for a specific symbol."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        earnings_reports = await orchestrator.state_manager.get_earnings_for_symbol(symbol.upper(), limit)
+        return {"earnings": earnings_reports}
+    except Exception as e:
+        logger.error(f"Failed to get earnings for {symbol}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/news-earnings/{symbol}")
+async def get_news_and_earnings_for_symbol(symbol: str, news_limit: int = 10, earnings_limit: int = 5):
+    """Get both news and earnings data for a specific symbol."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+
+        # Get data in parallel
+        news_task = orchestrator.state_manager.get_news_for_symbol(symbol.upper(), news_limit)
+        earnings_task = orchestrator.state_manager.get_earnings_for_symbol(symbol.upper(), earnings_limit)
+
+        news_items, earnings_reports = await asyncio.gather(news_task, earnings_task)
+
+        return {
+            "symbol": symbol.upper(),
+            "news": news_items,
+            "earnings": earnings_reports,
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get news and earnings for {symbol}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/earnings/upcoming")
+async def get_upcoming_earnings(days_ahead: int = 30):
+    """Get upcoming earnings reports within specified days."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        upcoming_earnings = await orchestrator.state_manager.get_upcoming_earnings(days_ahead)
+        return {"upcoming_earnings": upcoming_earnings}
+    except Exception as e:
+        logger.error(f"Failed to get upcoming earnings: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/api/analytics/optimize-strategy")
 async def optimize_strategy(strategy_name: str):
     """Optimize a specific trading strategy."""
@@ -1390,6 +1485,210 @@ def run_web_server(host: str = "0.0.0.0", port: int = 8000):
         raise
     finally:
         logger.info("Web server shutdown complete")
+
+
+@app.get("/health")
+async def health_check():
+    """Comprehensive health check endpoint for monitoring and load balancers."""
+    try:
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": "1.0.0",
+            "checks": {}
+        }
+
+        # Database health check
+        try:
+            if container:
+                state_manager = await container.get_state_manager()
+                # Simple database connectivity test
+                test_portfolio = await state_manager.get_portfolio()
+                health_status["checks"]["database"] = {
+                    "status": "healthy",
+                    "message": "Database connection successful"
+                }
+            else:
+                health_status["checks"]["database"] = {
+                    "status": "unhealthy",
+                    "message": "Container not initialized"
+                }
+        except Exception as e:
+            health_status["checks"]["database"] = {
+                "status": "unhealthy",
+                "message": f"Database check failed: {str(e)}"
+            }
+            health_status["status"] = "unhealthy"
+
+        # Orchestrator health check
+        try:
+            if container:
+                orchestrator = await container.get_orchestrator()
+                if orchestrator:
+                    system_status = await orchestrator.get_system_status()
+                    health_status["checks"]["orchestrator"] = {
+                        "status": "healthy",
+                        "message": "Orchestrator operational",
+                        "details": system_status
+                    }
+                else:
+                    health_status["checks"]["orchestrator"] = {
+                        "status": "unhealthy",
+                        "message": "Orchestrator not available"
+                    }
+                    health_status["status"] = "unhealthy"
+            else:
+                health_status["checks"]["orchestrator"] = {
+                    "status": "unhealthy",
+                    "message": "Container not initialized"
+                }
+                health_status["status"] = "unhealthy"
+        except Exception as e:
+            health_status["checks"]["orchestrator"] = {
+                "status": "unhealthy",
+                "message": f"Orchestrator check failed: {str(e)}"
+            }
+            health_status["status"] = "unhealthy"
+
+        # Claude API health check
+        try:
+            if container:
+                orchestrator = await container.get_orchestrator()
+                if orchestrator:
+                    claude_status = await orchestrator.get_claude_status()
+                    if claude_status and claude_status.status == "operational":
+                        health_status["checks"]["claude_api"] = {
+                            "status": "healthy",
+                            "message": "Claude API operational"
+                        }
+                    else:
+                        health_status["checks"]["claude_api"] = {
+                            "status": "degraded",
+                            "message": "Claude API status unknown or degraded"
+                        }
+                else:
+                    health_status["checks"]["claude_api"] = {
+                        "status": "unhealthy",
+                        "message": "Orchestrator not available"
+                    }
+            else:
+                health_status["checks"]["claude_api"] = {
+                    "status": "unhealthy",
+                    "message": "Container not initialized"
+                }
+        except Exception as e:
+            health_status["checks"]["claude_api"] = {
+                "status": "unhealthy",
+                "message": f"Claude API check failed: {str(e)}"
+            }
+
+        # Background scheduler health check
+        try:
+            if container:
+                orchestrator = await container.get_orchestrator()
+                if orchestrator and orchestrator.background_scheduler:
+                    scheduler_status = await orchestrator.background_scheduler.get_scheduler_status()
+                    health_status["checks"]["scheduler"] = {
+                        "status": "healthy",
+                        "message": "Background scheduler operational",
+                        "details": scheduler_status
+                    }
+                else:
+                    health_status["checks"]["scheduler"] = {
+                        "status": "unhealthy",
+                        "message": "Background scheduler not available"
+                    }
+            else:
+                health_status["checks"]["scheduler"] = {
+                    "status": "unhealthy",
+                    "message": "Container not initialized"
+                }
+        except Exception as e:
+            health_status["checks"]["scheduler"] = {
+                "status": "unhealthy",
+                "message": f"Scheduler check failed: {str(e)}"
+            }
+
+        # Memory and performance check
+        try:
+            import psutil
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            cpu_percent = process.cpu_percent(interval=0.1)
+
+            health_status["checks"]["system_resources"] = {
+                "status": "healthy" if memory_mb < 1000 else "warning",  # Warning if > 1GB
+                "message": f"Memory: {memory_mb:.1f}MB, CPU: {cpu_percent:.1f}%"
+            }
+        except Exception as e:
+            health_status["checks"]["system_resources"] = {
+                "status": "unknown",
+                "message": f"Resource check failed: {str(e)}"
+            }
+
+        # Return appropriate HTTP status
+        status_code = 200 if health_status["status"] == "healthy" else 503
+        return JSONResponse(health_status, status_code=status_code)
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        return JSONResponse({
+            "status": "unhealthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error": str(e)
+        }, status_code=503)
+
+
+@app.get("/api/health/detailed")
+async def detailed_health_check():
+    """Detailed health check with performance metrics."""
+    try:
+        basic_health = await health_check()
+
+        # Add performance metrics
+        detailed_status = json.loads(basic_health.body.decode())
+        detailed_status["performance"] = {}
+
+        # Response time measurement
+        import time
+        start_time = time.time()
+
+        # Add more detailed checks
+        try:
+            if container:
+                orchestrator = await container.get_orchestrator()
+                if orchestrator:
+                    # Get agent statuses
+                    agent_status = await orchestrator.get_agents_status()
+                    detailed_status["performance"]["active_agents"] = sum(
+                        1 for agent in agent_status.values()
+                        if isinstance(agent, dict) and agent.get("status") == "running"
+                    )
+
+                    # Get pending recommendations
+                    pending_recs = await orchestrator.state_manager.get_pending_approvals()
+                    detailed_status["performance"]["pending_recommendations"] = len(pending_recs)
+
+                    # Get recent alerts
+                    alerts = await orchestrator.state_manager.alert_manager.get_active_alerts()
+                    detailed_status["performance"]["active_alerts"] = len(alerts)
+
+        except Exception as e:
+            detailed_status["performance"]["error"] = str(e)
+
+        # Measure response time
+        response_time = time.time() - start_time
+        detailed_status["performance"]["response_time_seconds"] = round(response_time, 3)
+
+        return JSONResponse(detailed_status)
+
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {e}")
+        return JSONResponse({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }, status_code=503)
 
 
 if __name__ == "__main__":

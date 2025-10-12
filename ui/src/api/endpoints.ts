@@ -129,3 +129,81 @@ export const logsAPI = {
     stack_trace?: string
   }) => api.post<{ status: string; timestamp: string }>('/api/logs/errors', error),
 }
+
+export const newsEarningsAPI = {
+  getNews: (symbol: string, limit: number = 20) =>
+    api.get<{ news: Array<{
+      symbol: string
+      title: string
+      summary: string
+      content?: string
+      source?: string
+      sentiment: string
+      relevance_score: number
+      published_at: string
+      fetched_at: string
+      citations?: string[]
+      created_at: string
+    }> }>(`/api/news/${symbol}?limit=${limit}`),
+
+  getEarnings: (symbol: string, limit: number = 10) =>
+    api.get<{ earnings: Array<{
+      symbol: string
+      fiscal_period: string
+      fiscal_year?: number
+      fiscal_quarter?: number
+      report_date: string
+      eps_actual?: number
+      eps_estimated?: number
+      revenue_actual?: number
+      revenue_estimated?: number
+      surprise_pct?: number
+      guidance?: string
+      next_earnings_date?: string
+      fetched_at: string
+      created_at: string
+    }> }>(`/api/earnings/${symbol}?limit=${limit}`),
+
+  getNewsAndEarnings: (symbol: string, newsLimit: number = 10, earningsLimit: number = 5) =>
+    api.get<{
+      symbol: string
+      news: Array<{
+        symbol: string
+        title: string
+        summary: string
+        content?: string
+        source?: string
+        sentiment: string
+        relevance_score: number
+        published_at: string
+        fetched_at: string
+        citations?: string[]
+        created_at: string
+      }>
+      earnings: Array<{
+        symbol: string
+        fiscal_period: string
+        fiscal_year?: number
+        fiscal_quarter?: number
+        report_date: string
+        eps_actual?: number
+        eps_estimated?: number
+        revenue_actual?: number
+        revenue_estimated?: number
+        surprise_pct?: number
+        guidance?: string
+        next_earnings_date?: string
+        fetched_at: string
+        created_at: string
+      }>
+      last_updated: string
+    }>(`/api/news-earnings/${symbol}?news_limit=${newsLimit}&earnings_limit=${earningsLimit}`),
+
+  getUpcomingEarnings: (daysAhead: number = 30) =>
+    api.get<{ upcoming_earnings: Array<{
+      symbol: string
+      fiscal_period: string
+      next_earnings_date: string
+      guidance?: string
+    }> }>(`/api/earnings/upcoming?days_ahead=${daysAhead}`),
+}

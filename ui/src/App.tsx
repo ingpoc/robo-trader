@@ -8,6 +8,7 @@ import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBounda
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { Dashboard } from '@/pages/Dashboard'
+import { NewsEarnings } from '@/pages/NewsEarnings'
 import { Agents } from '@/pages/Agents'
 import { Trading } from '@/pages/Trading'
 import { Config } from '@/pages/Config'
@@ -122,6 +123,7 @@ function AppContent() {
           >
             <Routes>
               <Route path="/" element={<DashboardErrorBoundary><Dashboard /></DashboardErrorBoundary>} />
+              <Route path="/news-earnings" element={<NewsEarnings />} />
               <Route path="/agents" element={<Agents />} />
               <Route path="/trading" element={<Trading />} />
               <Route path="/config" element={<Config />} />

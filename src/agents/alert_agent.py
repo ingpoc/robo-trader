@@ -125,6 +125,50 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
                 "is_error": True
             }
 
+    @tool("create_recommendation_alert", "Create alert for new trading recommendations", {
+        "symbol": str,
+        "recommendation_types": List[str],
+        "confidence_levels": List[str]
+    })
+    async def create_recommendation_alert_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+        """Create an alert rule for new trading recommendations."""
+        try:
+            symbol = args["symbol"].upper()
+            recommendation_types = args.get("recommendation_types", ["BUY", "SELL"])
+            confidence_levels = args.get("confidence_levels", ["HIGH", "MEDIUM"])
+
+            # Create alert rule for recommendations
+            rule = AlertRule(
+                id=f"rec_alert_{symbol.lower()}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                name=f"{symbol} Recommendation Alert",
+                condition_type="recommendation",
+                symbol=symbol,
+                condition={
+                    "recommendation_types": recommendation_types,
+                    "confidence_levels": confidence_levels,
+                    "min_confidence_score": 60
+                },
+                notification_type="toast"
+            )
+
+            # Store the alert rule
+            await _store_alert_rule(rule)
+
+            return {
+                "content": [
+                    {"type": "text", "text": f"Recommendation alert created for {symbol}"},
+                    {"type": "text", "text": f"Will alert on: {', '.join(recommendation_types)} recommendations with {', '.join(confidence_levels)} confidence"},
+                    {"type": "text", "text": json.dumps(asdict(rule), indent=2)}
+                ]
+            }
+
+        except Exception as e:
+            logger.error(f"Recommendation alert creation failed: {e}")
+            return {
+                "content": [{"type": "text", "text": f"Error creating recommendation alert: {str(e)}"}],
+                "is_error": True
+            }
+
     @tool("delete_alert_rule", "Delete an alert rule", {"rule_id": str})
     async def delete_alert_rule_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Delete a specific alert rule."""
@@ -145,7 +189,7 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
                 "is_error": True
             }
     
-    return [create_alert_rule_tool, list_alert_rules_tool, check_alerts_tool, delete_alert_rule_tool]
+    return [create_alert_rule_tool, list_alert_rules_tool, check_alerts_tool, delete_alert_rule_tool, create_recommendation_alert_tool]
 
 
 async def _evaluate_alert_rule(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
@@ -158,6 +202,8 @@ async def _evaluate_alert_rule(rule: AlertRule, state_manager: DatabaseStateMana
             return await _check_portfolio_alert(rule, state_manager)
         elif rule.condition_type == "technical":
             return await _check_technical_alert(rule, state_manager)
+        elif rule.condition_type == "recommendation":
+            return await _check_recommendation_alert(rule, state_manager)
         else:
             logger.warning(f"Unknown alert condition type: {rule.condition_type}")
             return False
@@ -228,6 +274,39 @@ async def _check_technical_alert(rule: AlertRule, state_manager: DatabaseStateMa
         return True
 
     return False
+
+
+async def _check_recommendation_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
+    """Check recommendation-based alert conditions."""
+
+    symbol = rule.symbol
+    condition = rule.condition
+
+    # Get latest recommendation for the symbol
+    recommendations = await state_manager.get_recommendations(symbol, 1)
+
+    if not recommendations:
+        return False
+
+    latest_rec = recommendations[0]
+
+    # Check if recommendation type matches
+    target_types = condition.get("recommendation_types", [])
+    if target_types and latest_rec.recommendation_type not in target_types:
+        return False
+
+    # Check confidence level
+    confidence_map = {"HIGH": 80, "MEDIUM": 65, "LOW": 45}
+    min_confidence = condition.get("min_confidence_score", 0)
+    rec_confidence_score = latest_rec.confidence_score or confidence_map.get(latest_rec.recommendation_type, 50)
+
+    if rec_confidence_score < min_confidence:
+        return False
+
+    # Check if this is a new recommendation (within last hour)
+    # This would prevent repeated alerts for the same recommendation
+    # For now, always return True if conditions are met
+    return True
 
 
 async def _send_alert_notification(rule: AlertRule, trigger_data: Dict[str, Any]) -> None:

@@ -162,3 +162,103 @@ class Intent:
         data['order_commands'] = [cmd.to_dict() for cmd in self.order_commands]
         data['execution_reports'] = [rep.to_dict() for rep in self.execution_reports]
         return data
+
+
+@dataclass
+class FundamentalAnalysis:
+    """Fundamental analysis results for a stock."""
+    symbol: str
+    analysis_date: str
+    pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    roe: Optional[float] = None
+    roa: Optional[float] = None
+    debt_to_equity: Optional[float] = None
+    current_ratio: Optional[float] = None
+    profit_margins: Optional[float] = None
+    revenue_growth: Optional[float] = None
+    earnings_growth: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    market_cap: Optional[float] = None
+    sector_pe: Optional[float] = None
+    industry_rank: Optional[int] = None
+    overall_score: Optional[float] = None
+    recommendation: Optional[str] = None
+    analysis_data: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "FundamentalAnalysis":
+        return cls(**data)
+
+    def to_dict(self) -> Dict:
+        return asdict(self)
+
+
+@dataclass
+class Recommendation:
+    """Trading recommendation record."""
+    symbol: str
+    recommendation_type: str  # BUY/SELL/HOLD
+    confidence_score: Optional[float] = None
+    target_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    quantity: Optional[int] = None
+    reasoning: Optional[str] = None
+    analysis_type: Optional[str] = None
+    time_horizon: Optional[str] = None
+    risk_level: Optional[str] = None
+    potential_impact: Optional[str] = None
+    alternative_suggestions: Optional[List[str]] = None
+    executed_at: Optional[str] = None
+    outcome: Optional[str] = None
+    actual_return: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "Recommendation":
+        return cls(**data)
+
+    def to_dict(self) -> Dict:
+        return asdict(self)
+
+
+@dataclass
+class MarketConditions:
+    """Market conditions and macro factors."""
+    date: str
+    vix_index: Optional[float] = None
+    nifty_50_level: Optional[float] = None
+    market_sentiment: Optional[str] = None
+    interest_rates: Optional[float] = None
+    inflation_rate: Optional[float] = None
+    gdp_growth: Optional[float] = None
+    sector_performance: Optional[Dict[str, Any]] = None
+    global_events: Optional[List[Dict[str, Any]]] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "MarketConditions":
+        return cls(**data)
+
+    def to_dict(self) -> Dict:
+        return asdict(self)
+
+
+@dataclass
+class AnalysisPerformance:
+    """Performance tracking for analysis recommendations."""
+    symbol: str
+    prediction_date: str
+    recommendation_id: Optional[int] = None
+    execution_date: Optional[str] = None
+    predicted_direction: Optional[str] = None
+    actual_direction: Optional[str] = None
+    predicted_return: Optional[float] = None
+    actual_return: Optional[float] = None
+    accuracy_score: Optional[float] = None
+    model_version: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "AnalysisPerformance":
+        return cls(**data)
+
+    def to_dict(self) -> Dict:
+        return asdict(self)

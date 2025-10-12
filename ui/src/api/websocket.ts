@@ -25,10 +25,12 @@ export class WebSocketClient {
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+      console.log(`[${this.connectionId}] WebSocket already connected or connecting`)
       return
     }
 
     this.isConnecting = true
+    console.log(`[${this.connectionId}] Attempting to connect to ${WS_URL}`)
 
     try {
       this.ws = new WebSocket(WS_URL)
