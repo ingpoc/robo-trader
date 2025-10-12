@@ -24,7 +24,7 @@ export const SentimentBadge = memo<SentimentBadgeProps>(({
     }
   }
 
-  const colors = SENTIMENT_COLORS[sentiment]
+  const colors = SENTIMENT_COLORS[sentiment] || SENTIMENT_COLORS.neutral
 
   return (
     <Badge

@@ -97,9 +97,16 @@
     @apply box-border;
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* Professional typography and font loading */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 /* Custom animations */
 @keyframes fade-in {
@@ -111,15 +118,10 @@
   }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.3s ease-in-out;
-}
-
-/* Enhanced animations for better UX */
 @keyframes slide-in-up {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -130,7 +132,7 @@
 @keyframes slide-in-right {
   from {
     opacity: 0;
-    transform: translateX(-10px);
+    transform: translateX(-20px);
   }
   to {
     opacity: 1;
@@ -138,40 +140,97 @@
   }
 }
 
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
   }
-  50% {
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0);
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200px 0;
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
   }
-  100% {
-    background-position: calc(200px + 100%) 0;
+  50% {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
   }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out;
 }
 
 .animate-slide-in-up {
-  animation: slide-in-up 0.4s ease-out;
+  animation: slide-in-up 0.5s ease-out;
 }
 
 .animate-slide-in-right {
-  animation: slide-in-right 0.3s ease-out;
+  animation: slide-in-right 0.4s ease-out;
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s infinite;
+.animate-scale-in {
+  animation: scale-in 0.3s ease-out;
 }
 
-.animate-shimmer {
-  animation: shimmer 1.5s infinite linear;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-  background-size: 200px 100%;
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Professional card styles */
+.card-professional {
+  @apply bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl;
+}
+
+.card-professional-dark {
+  @apply bg-slate-800/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl;
+}
+
+/* Financial color coding */
+.text-profit {
+  @apply text-green-600 dark:text-green-400;
+}
+
+.text-loss {
+  @apply text-red-600 dark:text-red-400;
+}
+
+.text-neutral {
+  @apply text-gray-600 dark:text-gray-400;
+}
+
+/* Enhanced button styles */
+.btn-professional {
+  @apply px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105;
+}
+
+.btn-professional-secondary {
+  @apply px-6 py-3 bg-white/80 backdrop-blur-sm border border-gray-200 hover:bg-gray-50 text-gray-900 font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-300;
+}
+
+/* Professional input styles */
+.input-professional {
+  @apply bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300;
+}
+
+/* Status indicators */
+.status-online {
+  @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200;
+}
+
+.status-offline {
+  @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200;
+}
+
+.status-warning {
+  @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200;
+}
+
+.status-error {
+  @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200;
 }
 
 /* Metric pulse animation */
@@ -188,9 +247,48 @@
   animation: metric-pulse 3s ease-in-out infinite;
 }
 
-/* Focus ring utilities */
+/* Professional focus ring utilities */
 .focus-ring {
-  @apply focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white transition-all duration-200;
+}
+
+.focus-ring-inset {
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset transition-all duration-200;
+}
+
+/* Professional skeleton shimmer animation */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  background-size: 200px 100%;
+  animation: skeleton-shimmer 1.5s infinite linear;
+}
+
+/* Professional card shadows */
+.card-shadow {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+.card-shadow-hover {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* Professional button hover effects */
+.btn-hover-lift {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Scrollbar styling */
@@ -213,12 +311,3 @@
 }
 
 
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}

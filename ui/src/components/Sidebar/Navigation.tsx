@@ -31,19 +31,19 @@ export function Navigation({ onClose }: NavigationProps) {
 
   return (
     <nav
-      className="flex flex-col h-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-r border-gray-200/50 dark:border-slate-700/50 shadow-lg"
+      className="flex flex-col h-full bg-gradient-to-b from-white/95 to-gray-50/90 backdrop-blur-sm border-r border-gray-200/50 shadow-professional"
       aria-label="Main navigation"
       role="navigation"
     >
-      <div className="flex items-center justify-between h-14 px-4 border-b border-gray-200/50 dark:border-slate-700/50">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/50 bg-gradient-to-r from-white/80 to-gray-50/60">
+        <div className="flex items-center gap-3">
           <div
-            className="w-6 h-6 bg-accent rounded flex items-center justify-center shadow-sm"
+            className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-professional"
             aria-hidden="true"
           >
-            <span className="text-white text-sm font-bold">R</span>
+            <span className="text-white text-sm font-black">R</span>
           </div>
-          <span className="text-sm font-semibold text-gray-900 dark:text-white">Robo Trader</span>
+          <span className="text-lg font-bold text-gray-900 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Robo Trader</span>
         </div>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -110,10 +110,10 @@ export function Navigation({ onClose }: NavigationProps) {
               aria-current={({ isActive }) => isActive ? 'page' : undefined}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 relative group focus-ring',
+                  'flex items-center gap-4 px-4 py-3 text-sm font-bold rounded-xl transition-all duration-300 relative group focus-ring',
                   isActive
-                    ? 'bg-accent text-white shadow-md before:content-[""] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-6 before:bg-white before:rounded-r'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-accent hover:shadow-sm'
+                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-professional before:content-[""] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-8 before:bg-white before:rounded-r before:shadow-lg'
+                    : 'text-gray-700 hover:bg-gradient-to-r hover:from-gray-100 hover:to-gray-200 hover:text-blue-700 hover:shadow-md'
                 )
               }
             >
@@ -125,20 +125,20 @@ export function Navigation({ onClose }: NavigationProps) {
       </div>
 
       <div
-        className="flex items-center gap-3 h-14 px-4 border-t border-gray-200/50 dark:border-slate-700/50 bg-gray-50/50 dark:bg-slate-800/50 text-xs"
+        className="flex items-center gap-3 h-16 px-6 border-t border-gray-200/50 bg-gradient-to-r from-gray-50/80 to-gray-100/60 text-xs"
         role="status"
         aria-live="polite"
         aria-label="Connection status"
       >
         {isConnected ? (
-          <Wifi className="w-4 h-4 text-green-600" />
+          <Wifi className="w-5 h-5 text-green-600 animate-pulse" />
         ) : (
-          <WifiOff className="w-4 h-4 text-gray-400" />
+          <WifiOff className="w-5 h-5 text-gray-400" />
         )}
         <span
           className={cn(
-            'font-medium',
-            isConnected ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'
+            'font-bold',
+            isConnected ? 'text-green-700' : 'text-gray-500'
           )}
           id="connection-status"
         >

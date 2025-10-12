@@ -11,27 +11,27 @@ export function SkeletonLoader({
   variant = 'default',
   lines = 1
 }: SkeletonLoaderProps) {
-  const baseClasses = 'skeleton-shimmer bg-gray-200'
+  const baseClasses = 'skeleton-shimmer bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse'
 
   if (variant === 'card') {
     return (
-      <div className={cn('card-shadow rounded-lg p-4 bg-white', className)}>
-        <div className={cn('h-4 w-3/4 mb-3', baseClasses)} />
-        <div className={cn('h-8 w-1/2 mb-4', baseClasses)} />
-        <div className={cn('h-3 w-full mb-2', baseClasses)} />
-        <div className={cn('h-3 w-4/5', baseClasses)} />
+      <div className={cn('shadow-professional rounded-xl p-6 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm ring-1 ring-gray-200/50', className)}>
+        <div className={cn('h-5 w-3/4 mb-4 rounded-lg', baseClasses)} />
+        <div className={cn('h-8 w-1/2 mb-6 rounded-lg', baseClasses)} />
+        <div className={cn('h-4 w-full mb-3 rounded-lg', baseClasses)} />
+        <div className={cn('h-4 w-4/5 rounded-lg', baseClasses)} />
       </div>
     )
   }
 
   if (variant === 'text') {
     return (
-      <div className={cn('space-y-2', className)}>
+      <div className={cn('space-y-3', className)}>
         {Array.from({ length: lines }).map((_, i) => (
           <div
             key={i}
             className={cn(
-              'h-4',
+              'h-4 rounded-lg',
               i === lines - 1 ? 'w-3/4' : 'w-full',
               baseClasses
             )}
@@ -111,13 +111,13 @@ interface SkeletonCardProps {
 
 export function SkeletonCard({ className, showAvatar = false, lines = 3 }: SkeletonCardProps) {
   return (
-    <div className={cn('card-shadow rounded-lg p-4 bg-white', className)}>
+    <div className={cn('shadow-professional rounded-xl p-6 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm ring-1 ring-gray-200/50 animate-scale-in', className)}>
       {showAvatar && (
-        <div className="flex items-center space-x-3 mb-3">
-          <SkeletonLoader variant="circle" className="w-10 h-10" />
-          <div className="flex-1 space-y-2">
-            <SkeletonLoader className="h-4 w-1/2" />
-            <SkeletonLoader className="h-3 w-1/3" />
+        <div className="flex items-center space-x-4 mb-4">
+          <SkeletonLoader variant="circle" className="w-12 h-12" />
+          <div className="flex-1 space-y-3">
+            <SkeletonLoader className="h-5 w-1/2 rounded-lg" />
+            <SkeletonLoader className="h-4 w-1/3 rounded-lg" />
           </div>
         </div>
       )}
@@ -134,15 +134,15 @@ interface SkeletonTableProps {
 
 export function SkeletonTable({ rows, columns, className }: SkeletonTableProps) {
   return (
-    <div className={cn('space-y-3 p-4', className)}>
+    <div className={cn('space-y-4 p-6', className)}>
       {/* Table Header */}
-      <div className="flex space-x-4 pb-3 border-b border-gray-200">
+      <div className="flex space-x-6 pb-4 border-b border-gray-200/50">
         {Array.from({ length: columns }).map((_, colIndex) => (
           <SkeletonLoader
             key={`header-${colIndex}`}
             className={cn(
-              'h-4',
-              colIndex === 0 ? 'w-20' : colIndex === columns - 1 ? 'w-16' : 'w-24'
+              'h-5 rounded-lg',
+              colIndex === 0 ? 'w-24' : colIndex === columns - 1 ? 'w-20' : 'w-28'
             )}
           />
         ))}
@@ -150,13 +150,13 @@ export function SkeletonTable({ rows, columns, className }: SkeletonTableProps) 
 
       {/* Table Rows */}
       {Array.from({ length: rows }).map((_, rowIndex) => (
-        <div key={rowIndex} className="flex space-x-4 py-2">
+        <div key={rowIndex} className="flex space-x-6 py-4 border-b border-gray-100/50 last:border-b-0">
           {Array.from({ length: columns }).map((_, colIndex) => (
             <SkeletonLoader
               key={`cell-${rowIndex}-${colIndex}`}
               className={cn(
-                'h-4',
-                colIndex === 0 ? 'w-20' : colIndex === columns - 1 ? 'w-16' : 'w-24'
+                'h-5 rounded-lg',
+                colIndex === 0 ? 'w-24' : colIndex === columns - 1 ? 'w-20' : 'w-28'
               )}
             />
           ))}

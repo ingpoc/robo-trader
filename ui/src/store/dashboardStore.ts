@@ -35,11 +35,36 @@ interface DashboardStore {
   alerts: Alert[]
   addAlert: (alert: Alert) => void
   removeAlert: (id: string) => void
+
+  // Real-time data tracking
+  lastUpdateTimestamp: number | null
+  setLastUpdateTimestamp: (timestamp: number) => void
+
+  // Connection quality metrics
+  connectionQuality: 'excellent' | 'good' | 'poor' | 'offline'
+  setConnectionQuality: (quality: DashboardStore['connectionQuality']) => void
+
+  // Data freshness indicators
+  dataFreshness: {
+    portfolio: number | null
+    analytics: number | null
+    alerts: number | null
+  }
+  updateDataFreshness: (type: keyof DashboardStore['dataFreshness'], timestamp: number) => void
 }
 
 export const useDashboardStore = create<DashboardStore>((set) => ({
   dashboardData: null,
-  setDashboardData: (data) => set({ dashboardData: data }),
+  setDashboardData: (data) => set((state) => ({
+    dashboardData: data,
+    lastUpdateTimestamp: Date.now(),
+    dataFreshness: {
+      ...state.dataFreshness,
+      portfolio: Date.now(),
+      analytics: Date.now(),
+      alerts: Date.now(),
+    }
+  })),
 
   toasts: [],
   addToast: (toast) =>
@@ -59,7 +84,10 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
   closeModal: () => set({ activeModal: null }),
 
   isConnected: false,
-  setConnected: (connected) => set({ isConnected: connected }),
+  setConnected: (connected) => set({
+    isConnected: connected,
+    connectionQuality: connected ? 'excellent' : 'offline'
+  }),
 
   backendStatus: 'unknown',
   setBackendStatus: (status) => set({ backendStatus: status }),
@@ -72,4 +100,24 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
   addAlert: (alert) => set((state) => ({ alerts: [...state.alerts, alert] })),
   removeAlert: (id) =>
     set((state) => ({ alerts: state.alerts.filter((a) => a.id !== id) })),
+
+  // Real-time data tracking
+  lastUpdateTimestamp: null,
+  setLastUpdateTimestamp: (timestamp) => set({ lastUpdateTimestamp: timestamp }),
+
+  connectionQuality: 'offline',
+  setConnectionQuality: (quality) => set({ connectionQuality: quality }),
+
+  dataFreshness: {
+    portfolio: null,
+    analytics: null,
+    alerts: null,
+  },
+  updateDataFreshness: (type, timestamp) =>
+    set((state) => ({
+      dataFreshness: {
+        ...state.dataFreshness,
+        [type]: timestamp,
+      },
+    })),
 }))

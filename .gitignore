@@ -33,7 +33,7 @@ holdings/
 .idea/
 *.swp
 *.swo
-
+logs/
 # OS
 .DS_Store
 Thumbs.db

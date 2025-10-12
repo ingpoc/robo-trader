@@ -59,10 +59,19 @@ export class WebSocketClient {
   private handleMessage = (event: MessageEvent) => {
     try {
       const message = JSON.parse(event.data)
-      // Any message received means we're connected - pass data to callbacks
-      this.callbacks.forEach((callback) => callback(message as DashboardData))
+
+      // Log received message for debugging
+      console.log(`[${this.connectionId}] Received WebSocket message:`, message)
+
+      // Validate message structure
+      if (typeof message === 'object' && message !== null) {
+        // Any message received means we're connected - pass data to callbacks
+        this.callbacks.forEach((callback) => callback(message as DashboardData))
+      } else {
+        console.warn(`[${this.connectionId}] Received invalid message format:`, message)
+      }
     } catch (error) {
-      console.error(`Failed to parse WebSocket message:`, error)
+      console.error(`[${this.connectionId}] Failed to parse WebSocket message:`, error, 'Raw data:', event.data)
     }
   }
 

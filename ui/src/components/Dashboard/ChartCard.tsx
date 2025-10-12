@@ -69,34 +69,34 @@ export function ChartCard({
   const isPositive = data.length > 1 && data[data.length - 1]?.value > data[0]?.value
 
   const chartContent = (
-    <div className={`flex flex-col p-6 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl rounded-xl transition-all duration-300 ${className || ''}`}>
+    <div className={`flex flex-col p-6 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm border-0 shadow-professional hover:shadow-professional-hover rounded-xl transition-all duration-300 ring-1 ring-gray-200/50 animate-scale-in ${className || ''}`}>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl shadow-sm">
+            <svg className="w-5 h-5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </div>
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+          <h3 className="text-lg font-bold text-gray-900 uppercase tracking-wider">
             {title}
           </h3>
         </div>
         {type === 'line' && data.length > 1 && (
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold shadow-sm ${
             isPositive
-              ? 'bg-green-100 text-green-800 border border-green-200'
-              : 'bg-red-100 text-red-800 border border-red-200'
+              ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800 border border-green-300'
+              : 'bg-gradient-to-r from-red-100 to-red-200 text-red-800 border border-red-300'
           }`}>
             {isPositive ? (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
             ) : (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
               </svg>
             )}
-            <span>
+            <span className="tabular-nums">
               {isPositive ? '+' : ''}
               {((data[data.length - 1].value - data[0].value) / data[0].value * 100).toFixed(1)}%
             </span>

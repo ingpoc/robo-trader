@@ -42,12 +42,12 @@ export function Agents() {
       <div className="flex flex-col gap-4">
         <Breadcrumb />
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">AI Agents</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Monitor and control autonomous trading agents</p>
+          <h1 className="text-3xl font-bold text-gray-900">AI Agents</h1>
+          <p className="text-lg text-gray-600 mt-1">Monitor and control autonomous trading agents</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {Object.entries(agents).map(([name, status]) => (
           <Card key={name} className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">

@@ -91,8 +91,8 @@ export function Config() {
       <div className="flex flex-col gap-4">
         <Breadcrumb />
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Configure system parameters and preferences</p>
+          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+          <p className="text-lg text-gray-600 mt-1">Configure system parameters and preferences</p>
         </div>
       </div>
 

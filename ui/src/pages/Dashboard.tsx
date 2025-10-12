@@ -75,17 +75,17 @@ export function Dashboard() {
   ]
 
   return (
-    <div className="flex flex-col gap-8 p-6 lg:p-8 overflow-auto bg-gradient-to-br from-slate-50 to-gray-50 min-h-screen">
-      <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 min-h-screen">
+      <div className="flex flex-col gap-4 animate-fade-in">
         <Breadcrumb />
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-2">
-            <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-              Dashboard
+            <h1 className="text-3xl lg:text-4xl font-bold text-gray-900">
+              Trading Dashboard
             </h1>
-            <p className="text-lg text-gray-600">Monitor your portfolio performance and AI insights</p>
+            <p className="text-lg text-gray-600">Professional portfolio management with AI-powered insights</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-4">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -93,7 +93,7 @@ export function Dashboard() {
                   size="lg"
                   onClick={() => portfolioScan()}
                   disabled={isScanning}
-                  className="shadow-sm hover:shadow-md transition-all duration-200"
+                  className="btn-professional-secondary hover:scale-105 transition-all duration-200 font-semibold"
                   aria-label="Scan portfolio for updates"
                 >
                   <TrendingUp className="w-5 h-5 mr-2" />
@@ -111,7 +111,7 @@ export function Dashboard() {
                   size="lg"
                   onClick={() => marketScreening()}
                   disabled={isScanning}
-                  className="shadow-sm hover:shadow-md transition-all duration-200"
+                  className="btn-professional-secondary hover:scale-105 transition-all duration-200 font-semibold"
                   aria-label="Perform market screening"
                 >
                   <PieChart className="w-5 h-5 mr-2" />
@@ -127,16 +127,16 @@ export function Dashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-8 p-1 bg-gray-100/50 rounded-xl">
-          <TabsTrigger value="overview" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Overview</TabsTrigger>
-          <TabsTrigger value="holdings" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Holdings</TabsTrigger>
-          <TabsTrigger value="analytics" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Analytics</TabsTrigger>
-          <TabsTrigger value="recommendations" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Recommendations</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 mb-6 p-1 bg-gray-100 rounded-lg">
+          <TabsTrigger value="overview" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Overview</TabsTrigger>
+          <TabsTrigger value="holdings" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Holdings</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Analytics</TabsTrigger>
+          <TabsTrigger value="recommendations" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">AI Insights</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {/* Hero Metrics - Enhanced Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Hero Metrics - Professional Layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-slide-in-up">
             <MetricCard
               label="Available Cash"
               value={portfolio?.cash.free || 0}
@@ -178,20 +178,22 @@ export function Dashboard() {
             <ChartCard title="Asset Allocation" type="pie" data={allocationData} showLegend isLoading={isAnalyticsLoading} />
           </div>
 
-          {/* Enhanced Widgets Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+          {/* Professional Widgets Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 animate-slide-in-right">
             <AIInsights status={dashboardData?.ai_status} />
             <AlertCenter />
             <QuickTradeForm />
 
-            {/* System Monitoring Status - Enhanced */}
-            <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+            {/* System Monitoring Status - Professional */}
+            <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-blue-50/70 backdrop-blur-sm hover:shadow-professional-hover transition-all duration-300 ring-1 ring-blue-100/50">
               <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Activity className="w-5 h-5 text-blue-600" />
+                <CardTitle className="text-xl flex items-center gap-3 font-bold">
+                  <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl shadow-sm">
+                    <Activity className="w-6 h-6 text-blue-700" />
                   </div>
-                  System Status
+                  <span className="bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
+                    System Status
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -202,32 +204,32 @@ export function Dashboard() {
                     <SkeletonLoader className="h-4 w-1/2" />
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {Object.entries(agents).map(([agentName, agent]) => (
-                      <div key={agentName} className="flex items-center justify-between p-3 bg-gray-50/50 rounded-lg hover:bg-gray-100/50 transition-colors">
-                        <span className="text-sm font-medium capitalize text-gray-700">
+                      <div key={agentName} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50/80 to-gray-100/60 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200">
+                        <span className="text-sm font-bold capitalize text-gray-800">
                           {agentName.replace('_', ' ')}
                         </span>
                         <div className="flex items-center gap-3">
                           {agent.active ? (
                             agent.status === 'running' ? (
-                              <CheckCircle className="w-4 h-4 text-emerald-600 animate-pulse" />
+                              <CheckCircle className="w-5 h-5 text-emerald-600 animate-pulse" />
                             ) : agent.status === 'error' ? (
-                              <XCircle className="w-4 h-4 text-red-600" />
+                              <XCircle className="w-5 h-5 text-red-600" />
                             ) : (
-                              <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+                              <Clock className="w-5 h-5 text-amber-600 animate-pulse" />
                             )
                           ) : (
-                            <AlertTriangle className="w-4 h-4 text-slate-400" />
+                            <AlertTriangle className="w-5 h-5 text-slate-400" />
                           )}
-                          <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+                          <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
                             agent.active
                               ? agent.status === 'running'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+                                ? 'status-online'
                                 : agent.status === 'error'
-                                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
-                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                  ? 'status-error'
+                                  : 'status-warning'
+                                : 'status-offline'
                           }`}>
                             {agent.active ? agent.status : 'inactive'}
                           </span>
@@ -235,9 +237,9 @@ export function Dashboard() {
                       </div>
                     ))}
                     {Object.keys(agents).length === 0 && (
-                      <div className="text-center text-slate-500 dark:text-slate-400 py-8">
+                      <div className="text-center text-slate-500 py-8">
                         <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-sm font-medium">No agents configured</p>
+                        <p className="text-sm font-bold">No agents configured</p>
                         <p className="text-xs text-slate-400 mt-1">Configure agents to get started</p>
                       </div>
                     )}
@@ -259,16 +261,18 @@ export function Dashboard() {
               <SkeletonTable rows={5} columns={6} />
             </div>
           ) : portfolio && portfolio.holdings.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto animate-scale-in">
               <HoldingsTable holdings={portfolio.holdings} totalExposure={portfolio.exposure_total} />
             </div>
           ) : (
-            <Card className="shadow-lg border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <PieChart className="w-12 h-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Holdings Found</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
-                  You don't have any active positions in your portfolio yet.
+            <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm ring-1 ring-gray-200/50 animate-scale-in">
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <div className="p-4 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full mb-6">
+                  <PieChart className="w-12 h-12 text-gray-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">No Holdings Found</h3>
+                <p className="text-sm text-gray-600 text-center max-w-md leading-relaxed">
+                  You don't have any active positions in your portfolio yet. Start trading to see your holdings here.
                 </p>
               </CardContent>
             </Card>
@@ -319,18 +323,33 @@ export function Dashboard() {
             <QuickTradeForm />
           </div>
 
-          {/* Recommendations Section */}
-          <Card className="shadow-lg border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+          {/* AI Recommendations Section */}
+          <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-blue-50/70 backdrop-blur-sm ring-1 ring-blue-100/50 animate-scale-in">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-600" />
-                AI Recommendations
+              <CardTitle className="text-xl flex items-center gap-3 font-bold">
+                <div className="p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg">
+                  <TrendingUp className="w-6 h-6 text-blue-700" />
+                </div>
+                <span className="bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
+                  AI Recommendations
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                AI-powered recommendations will appear here based on your portfolio analysis and market conditions.
-              </p>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  AI-powered recommendations will appear here based on your portfolio analysis and market conditions.
+                </p>
+                <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-green-50/80 to-emerald-50/80 rounded-xl border border-green-200/50">
+                  <div className="p-2 bg-gradient-to-br from-green-100 to-green-200 rounded-lg">
+                    <Activity className="w-4 h-4 text-green-700" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-green-800">AI Analysis Active</div>
+                    <div className="text-xs text-green-600">Monitoring market conditions and portfolio performance</div>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

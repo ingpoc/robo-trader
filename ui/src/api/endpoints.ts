@@ -8,6 +8,7 @@ import type {
   AgentStatus,
   AgentConfig,
   PerformanceData,
+  SymbolData,
 } from '@/types/api'
 
 export const dashboardAPI = {

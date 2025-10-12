@@ -99,8 +99,8 @@ export function Logs() {
         <Breadcrumb />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">System Logs</h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Monitor system activity and events</p>
+            <h1 className="text-3xl font-bold text-gray-900">System Logs</h1>
+            <p className="text-lg text-gray-600 mt-1">Monitor system activity and events</p>
           </div>
           <Button
             onClick={() => refetch()}

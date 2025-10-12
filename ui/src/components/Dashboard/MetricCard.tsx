@@ -97,34 +97,42 @@ export function MetricCard({
   const cardContent = (
     <div
       className={cn(
-        "group relative overflow-hidden border-0 bg-gradient-to-br from-white to-gray-50/50 shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl",
-        variant === 'hero' && "from-blue-50 to-indigo-50/50 shadow-blue-100/50",
+        "group relative overflow-hidden border-0 bg-gradient-to-br from-white/90 to-gray-50/70 backdrop-blur-sm shadow-professional hover:shadow-professional-hover transition-all duration-300 rounded-xl animate-scale-in",
+        variant === 'hero' && "from-blue-50/90 to-indigo-50/70 shadow-blue-100/50 ring-1 ring-blue-100/50",
         variant === 'compact' && "p-4 rounded-lg"
       )}
       role="region"
       aria-labelledby={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}
     >
-      {/* Subtle gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      {/* Professional gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-professional opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+      {/* Animated border glow */}
+      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -m-px" />
 
       <div className="relative z-10 p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={cn(
-              "p-2 rounded-lg",
-              variant === 'hero' ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-600"
+              "p-3 rounded-xl shadow-sm",
+              variant === 'hero'
+                ? "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-700 shadow-blue-100/50"
+                : "bg-gradient-to-br from-gray-100 to-gray-200 text-gray-700 shadow-gray-100/50"
             )}>
               <Icon className="w-5 h-5" />
             </div>
             <div
               id={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}
-              className="text-sm font-semibold text-gray-700 uppercase tracking-wider leading-none"
+              className="text-sm font-bold text-gray-800 uppercase tracking-wider leading-none"
             >
               {label}
             </div>
           </div>
           {trend && (
-            <div className={cn("flex items-center gap-1 text-sm font-medium", getTrendColor())}>
+            <div className={cn("flex items-center gap-1 text-sm font-semibold px-2 py-1 rounded-full", getTrendColor(),
+              trend === 'up' ? 'bg-green-50 text-green-700' :
+              trend === 'down' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'
+            )}>
               <TrendIcon className="w-4 h-4" />
               <span className="sr-only">{trend} trend</span>
             </div>
@@ -133,9 +141,9 @@ export function MetricCard({
 
         <div
           className={cn(
-            "font-bold text-gray-900 tabular-nums leading-none mb-3 metric-pulse",
-            variant === 'hero' ? "text-4xl" : "text-3xl",
-            variant === 'compact' && "text-2xl"
+            "font-black text-gray-900 tabular-nums leading-none mb-3",
+            variant === 'hero' ? "text-5xl bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent" : "text-4xl",
+            variant === 'compact' && "text-3xl"
           )}
           aria-live="polite"
           aria-atomic="true"
@@ -145,23 +153,21 @@ export function MetricCard({
 
         {change !== undefined && (
           <div
-            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium tabular-nums ${
+            className={cn(
+              "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold tabular-nums shadow-sm",
               change >= 0
-                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-            }`}
+                ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800 border border-green-200'
+                : 'bg-gradient-to-r from-red-100 to-red-200 text-red-800 border border-red-200'
+            )}
             aria-label={`Change: ${change >= 0 ? 'positive' : 'negative'} ${Math.abs(change)} percent`}
           >
-            <div className={`w-2 h-2 rounded-full ${
+            <div className={cn("w-2 h-2 rounded-full animate-pulse",
               change >= 0 ? 'bg-green-500' : 'bg-red-500'
-            }`} />
+            )} />
             {changeLabel || `${change >= 0 ? '+' : ''}${formatNumber(change, 1)}%`}
           </div>
         )}
       </div>
-
-      {/* Decorative gradient border */}
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -m-px" />
     </div>
   )
 

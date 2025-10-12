@@ -10,7 +10,7 @@ export const API_ENDPOINTS = {
   dashboard: '/api/dashboard',
   newsEarnings: '/api/news-earnings',
   upcomingEarnings: '/api/upcoming-earnings',
-  recommendations: '/api/recommendations',
+  recommendations: '/api/ai/recommendations',
 } as const
 
 export const REFRESH_INTERVALS = {

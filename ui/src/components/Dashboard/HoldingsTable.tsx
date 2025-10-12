@@ -152,24 +152,24 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
   )
 
   return (
-    <div className="flex flex-col gap-4 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm border-0 shadow-lg rounded-xl overflow-hidden hover:shadow-xl transition-all duration-300">
+    <div className="flex flex-col gap-4 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm border-0 shadow-professional rounded-xl overflow-hidden hover:shadow-professional-hover transition-all duration-300 ring-1 ring-gray-200/50 animate-scale-in">
       {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-gray-200/30 bg-gradient-to-r from-gray-50/50 to-white/50">
+      <div className="flex items-center justify-between p-6 border-b border-gray-200/30 bg-gradient-to-r from-gray-50/80 to-white/60">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
+          <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl shadow-sm">
+            <TrendingUp className="w-6 h-6 text-blue-700" />
           </div>
           <div>
-            <div className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+            <div className="text-lg font-bold text-gray-900 uppercase tracking-wider">
               Holdings
             </div>
-            <div className="text-xs text-gray-500 mt-0.5">
+            <div className="text-sm text-gray-600 mt-0.5 font-medium">
               Portfolio positions and performance
             </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full border border-blue-200">
+          <div className="px-4 py-2 bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 text-sm font-bold rounded-full border border-blue-300 shadow-sm">
             {filteredHoldings.length} {filteredHoldings.length === 1 ? 'position' : 'positions'}
           </div>
         </div>
@@ -178,7 +178,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
       {/* Search */}
       <div className="px-6">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
           <Input
             type="text"
             placeholder="Search symbols..."
@@ -187,7 +187,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               setSearchTerm(e.target.value)
               setCurrentPage(1) // Reset to first page when searching
             }}
-            className="pl-12 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-lg shadow-sm"
+            className="pl-12 h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl shadow-sm bg-white/80 backdrop-blur-sm font-medium"
           />
         </div>
       </div>
@@ -195,12 +195,12 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
       {/* Table */}
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="bg-gradient-to-r from-gray-50/80 to-white/50 border-b border-gray-200/30">
+          <TableHeader className="bg-gradient-to-r from-gray-50/90 to-white/60 border-b border-gray-200/40">
             <TableRow>
               <SortableHeader field="symbol" className="text-left">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span>Symbol</span>
+                    <span className="font-bold text-gray-800">Symbol</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Stock ticker symbol (e.g., AAPL, GOOGL)</p>
@@ -210,7 +210,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="qty" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span>Quantity</span>
+                    <span className="font-bold text-gray-800">Quantity</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Number of shares you own</p>
@@ -220,7 +220,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="last_price" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span>Current Price</span>
+                    <span className="font-bold text-gray-800">Current Price</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Latest market price per share</p>
@@ -230,7 +230,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="exposure" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span>Market Value</span>
+                    <span className="font-bold text-gray-800">Market Value</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Total value of your position (price × quantity)</p>
@@ -240,7 +240,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="pnl_abs" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span>P&L</span>
+                    <span className="font-bold text-gray-800">P&L</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Profit and Loss in dollar amount</p>
@@ -250,17 +250,17 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="pnl_pct" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span>P&L %</span>
+                    <span className="font-bold text-gray-800">P&L %</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Profit and Loss as a percentage</p>
                   </TooltipContent>
                 </Tooltip>
               </SortableHeader>
-              <TableHead className="w-10">
+              <TableHead className="w-12">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span>Actions</span>
+                    <span className="font-bold text-gray-800">Actions</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Quick actions for this position</p>
@@ -269,67 +269,67 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody className="divide-y divide-gray-100/50">
+          <TableBody className="divide-y divide-gray-100/60">
             {paginatedHoldings.map((holding, index) => {
               const allocation = totalExposure > 0 ? (holding.exposure / totalExposure) * 100 : 0
 
               return (
-                <TableRow key={index} className="hover:bg-blue-50/30 transition-colors group">
-                  <TableCell className="font-medium">
+                <TableRow key={index} className="hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/30 transition-all duration-200 group border-b border-gray-50/50">
+                  <TableCell className="font-medium py-4">
                     <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-gray-900">
+                      <span className="text-base font-bold text-gray-900">
                         {holding.symbol}
                       </span>
                       {holding.risk_tags.length > 0 && (
-                        <span className="text-11 text-gray-500 uppercase tracking-wider mt-0.5">
+                        <span className="text-xs text-gray-600 uppercase tracking-wider mt-1 font-semibold bg-gray-100 px-2 py-0.5 rounded-full inline-block w-fit">
                           {holding.risk_tags[0]}
                         </span>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">
+                  <TableCell className="text-right tabular-nums font-bold text-gray-800 py-4">
                     {formatNumber(holding.qty, 0)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-right tabular-nums font-semibold text-gray-700 py-4">
                     {formatCurrency(holding.last_price)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">
+                  <TableCell className="text-right tabular-nums font-bold text-gray-900 py-4">
                     {formatCurrency(holding.exposure)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right py-4">
                     <div className="flex flex-col items-end gap-1">
                       <span
                         className={cn(
-                          "text-sm tabular-nums font-semibold",
+                          "text-base tabular-nums font-black",
                           holding.pnl_abs > 0
-                            ? 'text-success'
+                            ? 'text-profit'
                             : holding.pnl_abs < 0
-                              ? 'text-error'
-                              : 'text-gray-500'
+                              ? 'text-loss'
+                              : 'text-neutral'
                         )}
                       >
                         {formatCurrency(holding.pnl_abs)}
                       </span>
                       <span
                         className={cn(
-                          "text-11 tabular-nums",
-                          holding.pnl_abs > 0 ? 'text-success-dark' : 'text-gray-500'
+                          "text-sm tabular-nums font-semibold",
+                          holding.pnl_abs > 0 ? 'text-profit' : 'text-neutral'
                         )}
                       >
                         {formatPercent(holding.pnl_pct)}
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">
+                  <TableCell className="text-right tabular-nums font-bold text-gray-800 py-4">
                     {formatNumber(allocation, 1)}%
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right py-4">
                     <DropdownMenu>
                       <DropdownMenuTrigger
-                        className="h-8 w-8 p-0 hover:bg-gray-100 rounded-md transition-colors"
+                        className="h-10 w-10 p-0 hover:bg-gradient-to-r hover:from-gray-100 hover:to-gray-200 rounded-lg transition-all duration-200 shadow-sm border border-gray-200"
                         aria-label={`Actions for ${holding.symbol}`}
                       >
-                        <MoreHorizontal className="h-4 w-4 text-gray-500" />
+                        <MoreHorizontal className="h-5 w-5 text-gray-600" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40">
                         {onBuy && (
@@ -392,25 +392,25 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200/30 bg-gradient-to-r from-gray-50/30 to-white/30">
-          <div className="text-sm text-gray-600 font-medium">
+        <div className="flex items-center justify-between px-6 py-5 border-t border-gray-200/40 bg-gradient-to-r from-gray-50/60 to-white/40">
+          <div className="text-sm text-gray-700 font-bold">
             Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, sortedHoldings.length)} of {sortedHoldings.length} entries
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
-              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-200"
+              className="px-5 py-2.5 text-sm font-bold border border-gray-300 rounded-xl hover:bg-white hover:shadow-professional disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-200 bg-white/80"
             >
               Previous
             </button>
-            <span className="text-sm text-gray-700 font-semibold px-3 py-2 bg-white rounded-lg border border-gray-200">
+            <span className="text-sm text-gray-800 font-black px-4 py-2.5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200 shadow-sm">
               Page {currentPage} of {totalPages}
             </span>
             <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-200"
+              className="px-5 py-2.5 text-sm font-bold border border-gray-300 rounded-xl hover:bg-white hover:shadow-professional disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-200 bg-white/80"
             >
               Next
             </button>
@@ -420,14 +420,14 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
 
       {/* Empty State */}
       {filteredHoldings.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 px-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-sm">
-            <Search className="w-8 h-8 text-gray-500" />
+        <div className="flex flex-col items-center justify-center py-20 px-6 animate-scale-in">
+          <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-6 shadow-professional">
+            <Search className="w-10 h-10 text-gray-600" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-xl font-bold text-gray-900 mb-3">
             {searchTerm ? 'No matches found' : 'No holdings yet'}
           </h3>
-          <p className="text-sm text-gray-500 text-center max-w-sm">
+          <p className="text-base text-gray-600 text-center max-w-md leading-relaxed">
             {searchTerm
               ? `No holdings match "${searchTerm}". Try adjusting your search terms.`
               : 'Start building your portfolio by making your first trade.'

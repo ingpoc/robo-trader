@@ -56,8 +56,12 @@ export function AgentConfig() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Agent Configuration</h1>
+    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto">
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Agent Configuration</h1>
+        </div>
+      </div>
 
       {Object.entries(features).map(([featureName, config]) => (
         <FeatureCard

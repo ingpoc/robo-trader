@@ -205,33 +205,35 @@ export function QuickTradeForm() {
   }
 
   return (
-    <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+    <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-blue-50/70 backdrop-blur-sm hover:shadow-professional-hover transition-all duration-300 ring-1 ring-blue-100/50 animate-scale-in">
       <CardHeader className="pb-4">
-        <CardTitle className="text-lg flex items-center gap-3">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
+        <CardTitle className="text-xl flex items-center gap-3 font-bold">
+          <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl shadow-sm">
+            <TrendingUp className="w-6 h-6 text-blue-700" />
           </div>
-          Quick Trade
+          <span className="bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
+            Quick Trade
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
 
       {/* Trade Progress Indicator */}
       {executeTrade.isPending && tradeSteps.length > 0 && (
-        <div className="space-y-3 p-3 bg-gray-50 rounded-lg border">
+        <div className="space-y-4 p-4 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 rounded-xl border border-blue-200/50 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Trade Execution Progress</span>
-            <span className="text-sm text-gray-600">{tradeProgress}%</span>
+            <span className="text-sm font-bold text-blue-800">Trade Execution Progress</span>
+            <span className="text-sm font-semibold text-blue-700 tabular-nums">{tradeProgress}%</span>
           </div>
-          <Progress value={tradeProgress} className="w-full" />
-          <StepIndicator steps={tradeSteps} orientation="horizontal" className="mt-3" />
+          <Progress value={tradeProgress} className="w-full h-3 bg-blue-100 [&>div]:bg-gradient-to-r [&>div]:from-blue-500 [&>div]:to-blue-600" />
+          <StepIndicator steps={tradeSteps} orientation="horizontal" className="mt-4" />
         </div>
       )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label htmlFor="symbol" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
+            <label htmlFor="symbol" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
               Symbol
             </label>
             <Tooltip>
@@ -239,11 +241,12 @@ export function QuickTradeForm() {
                 <div>
                   <SymbolCombobox
                     value={symbol}
-                    onValueChange={(value) => setValue('symbol', value)}
+                    onValueChange={(value: string) => setValue('symbol', value)}
                     placeholder="Search symbols..."
                     className={cn(
-                      getFieldValidation('symbol').error && "border-red-500",
-                      getFieldValidation('symbol').success && "border-green-500"
+                      "input-professional",
+                      getFieldValidation('symbol').error && "border-red-500 focus:ring-red-500",
+                      getFieldValidation('symbol').success && "border-green-500 focus:ring-green-500"
                     )}
                   />
                 </div>
@@ -255,13 +258,13 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="side" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
+            <label htmlFor="side" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
               Side
             </label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <div>
-                  <Select id="side" {...register('side')} error={errors.side?.message}>
+                  <Select id="side" {...register('side')} error={errors.side?.message} className="input-professional">
                     <option value="">Select</option>
                     <option value="BUY">Buy</option>
                     <option value="SELL">Sell</option>
@@ -275,7 +278,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="quantity" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
+            <label htmlFor="quantity" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
               Quantity
             </label>
             <Tooltip>
@@ -287,6 +290,7 @@ export function QuickTradeForm() {
                     {...register('quantity', { valueAsNumber: true })}
                     placeholder="100"
                     showValidation={true}
+                    className="input-professional"
                     {...getFieldValidation('quantity')}
                   />
                 </div>
@@ -298,7 +302,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="order_type" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
+            <label htmlFor="order_type" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
               Order Type
             </label>
             <Tooltip>
@@ -308,6 +312,7 @@ export function QuickTradeForm() {
                     id="order_type"
                     {...register('order_type')}
                     error={errors.order_type?.message}
+                    className="input-professional"
                   >
                     <option value="">Select</option>
                     <option value="MARKET">Market</option>
@@ -322,8 +327,8 @@ export function QuickTradeForm() {
           </div>
 
           {orderType === 'LIMIT' && (
-            <div className="col-span-1 md:col-span-2">
-              <label htmlFor="price" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
+            <div className="col-span-1 md:col-span-2 animate-slide-in-up">
+              <label htmlFor="price" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                 Price
               </label>
               <Tooltip>
@@ -336,6 +341,7 @@ export function QuickTradeForm() {
                       {...register('price', { valueAsNumber: true })}
                       placeholder="0.00"
                       showValidation={true}
+                      className="input-professional"
                       {...getFieldValidation('price')}
                     />
                   </div>
@@ -348,19 +354,19 @@ export function QuickTradeForm() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4 pt-2">
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="flex-1">
                 <Button
                   type="submit"
                   disabled={executeTrade.isPending || !isValid}
-                  className="w-full"
+                  className="w-full btn-professional font-bold text-lg py-4 shadow-professional hover:shadow-professional-hover transition-all duration-300"
                 >
                   {executeTrade.isPending ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <LoadingSpinner size="sm" variant="default" />
-                      Executing Trade...
+                      <span>Executing Trade...</span>
                     </div>
                   ) : (
                     'Execute Trade'
@@ -374,7 +380,7 @@ export function QuickTradeForm() {
           </Tooltip>
 
           {!isValid && Object.keys(touchedFields).length > 0 && (
-            <div className="text-xs text-gray-500">
+            <div className="text-sm text-red-600 font-medium bg-red-50 px-3 py-2 rounded-lg border border-red-200">
               Please complete all required fields
             </div>
           )}
