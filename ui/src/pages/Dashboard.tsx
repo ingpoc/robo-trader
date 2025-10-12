@@ -75,30 +75,30 @@ export function Dashboard() {
   ]
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8 p-4 lg:p-6 overflow-auto">
-      <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-8 p-6 lg:p-8 overflow-auto bg-gradient-to-br from-slate-50 to-gray-50 min-h-screen">
+      <div className="flex flex-col gap-6">
         <Breadcrumb />
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Monitor your portfolio performance and AI insights</p>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+              Dashboard
+            </h1>
+            <p className="text-lg text-gray-600">Monitor your portfolio performance and AI insights</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex-1 sm:flex-none">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => portfolioScan()}
-                    disabled={isScanning}
-                    className="w-full sm:w-auto"
-                    aria-label="Scan portfolio for updates"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    Scan Portfolio
-                  </Button>
-                </div>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => portfolioScan()}
+                  disabled={isScanning}
+                  className="shadow-sm hover:shadow-md transition-all duration-200"
+                  aria-label="Scan portfolio for updates"
+                >
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Scan Portfolio
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Refresh portfolio data and update current positions and values</p>
@@ -106,19 +106,17 @@ export function Dashboard() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex-1 sm:flex-none">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => marketScreening()}
-                    disabled={isScanning}
-                    className="w-full sm:w-auto"
-                    aria-label="Perform market screening"
-                  >
-                    <PieChart className="w-4 h-4 mr-2" />
-                    Market Screen
-                  </Button>
-                </div>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => marketScreening()}
+                  disabled={isScanning}
+                  className="shadow-sm hover:shadow-md transition-all duration-200"
+                  aria-label="Perform market screening"
+                >
+                  <PieChart className="w-5 h-5 mr-2" />
+                  Market Screen
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Analyze market data and identify potential investment opportunities</p>
@@ -129,38 +127,46 @@ export function Dashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6">
-          <TabsTrigger value="overview" className="text-sm">Overview</TabsTrigger>
-          <TabsTrigger value="holdings" className="text-sm">Holdings</TabsTrigger>
-          <TabsTrigger value="analytics" className="text-sm">Analytics</TabsTrigger>
-          <TabsTrigger value="recommendations" className="text-sm">Recommendations</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 mb-8 p-1 bg-gray-100/50 rounded-xl">
+          <TabsTrigger value="overview" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Overview</TabsTrigger>
+          <TabsTrigger value="holdings" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Holdings</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Analytics</TabsTrigger>
+          <TabsTrigger value="recommendations" className="text-sm font-medium rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Recommendations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {/* Metrics Grid - Responsive */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Hero Metrics - Enhanced Layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <MetricCard
               label="Available Cash"
               value={portfolio?.cash.free || 0}
               format="currency"
+              icon="dollar"
+              variant="hero"
               tooltip="The amount of cash available for trading and investments"
             />
             <MetricCard
               label="Total Exposure"
               value={portfolio?.exposure_total || 0}
               format="currency"
+              icon="pie"
+              variant="hero"
               tooltip="Total market value of all your current positions"
             />
             <MetricCard
               label="Active Positions"
               value={portfolio?.holdings.length || 0}
               format="number"
+              icon="users"
+              variant="hero"
               tooltip="Number of different securities you currently hold"
             />
             <MetricCard
               label="Risk Score"
               value={analytics?.portfolio?.concentration_risk || 0}
               format="percent"
+              icon="alert"
+              variant="hero"
               changeLabel={analytics?.portfolio?.dominant_sector}
               tooltip="Portfolio concentration risk based on sector allocation"
             />
@@ -172,54 +178,56 @@ export function Dashboard() {
             <ChartCard title="Asset Allocation" type="pie" data={allocationData} showLegend isLoading={isAnalyticsLoading} />
           </div>
 
-          {/* Widgets Grid - Responsive */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {/* Enhanced Widgets Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
             <AIInsights status={dashboardData?.ai_status} />
             <AlertCenter />
             <QuickTradeForm />
 
-            {/* System Monitoring Status */}
-            <Card className="shadow-lg border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-600" />
+            {/* System Monitoring Status - Enhanced */}
+            <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Activity className="w-5 h-5 text-blue-600" />
+                  </div>
                   System Status
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-4">
                 {isAgentsLoading ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <SkeletonLoader className="h-4 w-full" />
                     <SkeletonLoader className="h-4 w-3/4" />
                     <SkeletonLoader className="h-4 w-1/2" />
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {Object.entries(agents).map(([agentName, agent]) => (
-                      <div key={agentName} className="flex items-center justify-between">
-                        <span className="text-sm font-medium capitalize">
+                      <div key={agentName} className="flex items-center justify-between p-3 bg-gray-50/50 rounded-lg hover:bg-gray-100/50 transition-colors">
+                        <span className="text-sm font-medium capitalize text-gray-700">
                           {agentName.replace('_', ' ')}
                         </span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
                           {agent.active ? (
                             agent.status === 'running' ? (
-                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                              <CheckCircle className="w-4 h-4 text-emerald-600 animate-pulse" />
                             ) : agent.status === 'error' ? (
                               <XCircle className="w-4 h-4 text-red-600" />
                             ) : (
-                              <Clock className="w-4 h-4 text-amber-600" />
+                              <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
                             )
                           ) : (
                             <AlertTriangle className="w-4 h-4 text-slate-400" />
                           )}
-                          <span className={`text-xs px-2 py-1 rounded-full ${
+                          <span className={`text-xs px-3 py-1 rounded-full font-medium ${
                             agent.active
                               ? agent.status === 'running'
                                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
                                 : agent.status === 'error'
                                   ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                                   : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                           }`}>
                             {agent.active ? agent.status : 'inactive'}
                           </span>
@@ -227,9 +235,10 @@ export function Dashboard() {
                       </div>
                     ))}
                     {Object.keys(agents).length === 0 && (
-                      <div className="text-center text-slate-500 dark:text-slate-400 py-4">
-                        <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">No agents configured</p>
+                      <div className="text-center text-slate-500 dark:text-slate-400 py-8">
+                        <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-sm font-medium">No agents configured</p>
+                        <p className="text-xs text-slate-400 mt-1">Configure agents to get started</p>
                       </div>
                     )}
                   </div>

@@ -152,21 +152,33 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
   )
 
   return (
-    <div className="flex flex-col gap-4 bg-white/80 backdrop-blur-sm border border-gray-200/50 card-shadow rounded-lg overflow-hidden">
+    <div className="flex flex-col gap-4 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm border-0 shadow-lg rounded-xl overflow-hidden hover:shadow-xl transition-all duration-300">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200/50">
-        <div className="text-xs font-medium text-gray-600 uppercase tracking-wider">
-          Holdings
+      <div className="flex items-center justify-between p-6 border-b border-gray-200/30 bg-gradient-to-r from-gray-50/50 to-white/50">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+              Holdings
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              Portfolio positions and performance
+            </div>
+          </div>
         </div>
-        <div className="text-11 text-gray-500">
-          {filteredHoldings.length} {filteredHoldings.length === 1 ? 'position' : 'positions'}
+        <div className="flex items-center gap-3">
+          <div className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full border border-blue-200">
+            {filteredHoldings.length} {filteredHoldings.length === 1 ? 'position' : 'positions'}
+          </div>
         </div>
       </div>
 
       {/* Search */}
-      <div className="px-4">
+      <div className="px-6">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             type="text"
             placeholder="Search symbols..."
@@ -175,7 +187,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               setSearchTerm(e.target.value)
               setCurrentPage(1) // Reset to first page when searching
             }}
-            className="pl-10"
+            className="pl-12 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-lg shadow-sm"
           />
         </div>
       </div>
@@ -183,7 +195,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
       {/* Table */}
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="bg-gray-50/80 border-b border-gray-200/50">
+          <TableHeader className="bg-gradient-to-r from-gray-50/80 to-white/50 border-b border-gray-200/30">
             <TableRow>
               <SortableHeader field="symbol" className="text-left">
                 <Tooltip>
@@ -257,12 +269,12 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody className="divide-y divide-gray-100">
+          <TableBody className="divide-y divide-gray-100/50">
             {paginatedHoldings.map((holding, index) => {
               const allocation = totalExposure > 0 ? (holding.exposure / totalExposure) * 100 : 0
 
               return (
-                <TableRow key={index} className="hover:bg-gray-50/50 transition-colors">
+                <TableRow key={index} className="hover:bg-blue-50/30 transition-colors group">
                   <TableCell className="font-medium">
                     <div className="flex flex-col">
                       <span className="text-sm font-semibold text-gray-900">
@@ -380,25 +392,25 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200/50">
-          <div className="text-sm text-gray-500">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200/30 bg-gradient-to-r from-gray-50/30 to-white/30">
+          <div className="text-sm text-gray-600 font-medium">
             Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, sortedHoldings.length)} of {sortedHoldings.length} entries
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-200"
             >
               Previous
             </button>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-700 font-semibold px-3 py-2 bg-white rounded-lg border border-gray-200">
               Page {currentPage} of {totalPages}
             </span>
             <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-200"
             >
               Next
             </button>
@@ -408,12 +420,18 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
 
       {/* Empty State */}
       {filteredHoldings.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 px-4">
-          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-            <Search className="w-6 h-6 text-gray-400" />
+        <div className="flex flex-col items-center justify-center py-16 px-6">
+          <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-sm">
+            <Search className="w-8 h-8 text-gray-500" />
           </div>
-          <p className="text-sm text-gray-500 text-center">
-            {searchTerm ? 'No holdings match your search.' : 'No holdings to display'}
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            {searchTerm ? 'No matches found' : 'No holdings yet'}
+          </h3>
+          <p className="text-sm text-gray-500 text-center max-w-sm">
+            {searchTerm
+              ? `No holdings match "${searchTerm}". Try adjusting your search terms.`
+              : 'Start building your portfolio by making your first trade.'
+            }
           </p>
         </div>
       )}

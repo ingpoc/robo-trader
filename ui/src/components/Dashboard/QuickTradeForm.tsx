@@ -12,10 +12,12 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { TradeConfirmationDialog } from '@/components/ui/TradeConfirmationDialog'
 import { Progress } from '@/components/ui/progress'
 import { StepIndicator, type Step } from '@/components/ui/step-indicator'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { useToast } from '@/hooks/use-toast'
 import { toastUtils } from '@/lib/toast-utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { TrendingUp } from 'lucide-react'
 
 export function QuickTradeForm() {
   const queryClient = useQueryClient()
@@ -203,8 +205,16 @@ export function QuickTradeForm() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 bg-white border border-gray-200 card-shadow rounded-lg">
-      <div className="text-xs font-medium text-gray-600 uppercase tracking-wider">Quick Trade</div>
+    <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
+          </div>
+          Quick Trade
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
 
       {/* Trade Progress Indicator */}
       {executeTrade.isPending && tradeSteps.length > 0 && (
@@ -218,7 +228,7 @@ export function QuickTradeForm() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label htmlFor="symbol" className="block text-11 font-medium text-gray-500 uppercase tracking-wider mb-1">
@@ -369,7 +379,8 @@ export function QuickTradeForm() {
             </div>
           )}
         </div>
-      </form>
+        </form>
+      </CardContent>
 
       {pendingTrade && (
         <TradeConfirmationDialog
@@ -383,6 +394,6 @@ export function QuickTradeForm() {
           riskWarnings={getRiskAssessment(pendingTrade).warnings}
         />
       )}
-    </div>
+    </Card>
   )
 }

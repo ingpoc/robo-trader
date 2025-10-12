@@ -69,19 +69,23 @@ export function ChartCard({
   const isPositive = data.length > 1 && data[data.length - 1]?.value > data[0]?.value
 
   const chartContent = (
-    <div className={`flex flex-col p-6 bg-white/80 backdrop-blur-sm border border-gray-200/50 card-shadow rounded-lg ${className || ''}`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+    <div className={`flex flex-col p-6 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl rounded-xl transition-all duration-300 ${className || ''}`}>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
             {title}
           </h3>
         </div>
         {type === 'line' && data.length > 1 && (
-          <div className={`flex items-center gap-1 text-xs font-medium ${
-            isPositive ? 'text-success' : 'text-error'
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
+            isPositive
+              ? 'bg-green-100 text-green-800 border border-green-200'
+              : 'bg-red-100 text-red-800 border border-red-200'
           }`}>
             {isPositive ? (
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">

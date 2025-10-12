@@ -60,83 +60,82 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
   }
 
   return (
-    <div className={`p-3 sm:p-4 border rounded-lg transition-all duration-200 ${config.bgColor} hover:shadow-sm`}>
-      <div className="flex items-start gap-2 sm:gap-3">
-        <div className="flex-shrink-0 mt-0.5">
-          <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${config.iconColor}`} />
+    <div className={`p-4 border rounded-xl transition-all duration-300 hover:shadow-md ${config.bgColor} group`}>
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 mt-1">
+          <div className={`p-2 rounded-lg ${config.bgColor.replace('border-', 'bg-').replace('-200', '-100')}`}>
+            <Icon className={`w-4 h-4 ${config.iconColor}`} />
+          </div>
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className={`inline-flex items-center px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-full text-xs font-medium border ${config.badgeColor}`}>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${config.badgeColor} shadow-sm`}>
               {alert.severity.toUpperCase()}
             </span>
             {alert.category && (
-              <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+              <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                 {alert.category}
               </span>
             )}
-            <div className="ml-auto text-xs text-gray-500 hidden sm:block">
+            <div className="ml-auto text-xs text-gray-500 font-medium">
               {formatDateTime(alert.timestamp)}
             </div>
           </div>
 
-          <div className="flex items-start justify-between gap-2 sm:gap-4">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h4 className={`text-sm font-semibold ${config.textColor} mb-1`}>
+              <h4 className={`text-sm font-bold ${config.textColor} mb-2 leading-tight`}>
                 {alert.title}
               </h4>
-              <p className="text-xs sm:text-sm text-gray-700 leading-relaxed line-clamp-2">
+              <p className="text-sm text-gray-700 leading-relaxed mb-2">
                 {alert.message}
               </p>
               {alert.symbol && (
-                <div className="text-xs text-gray-600 mt-1 font-medium uppercase tracking-wider">
+                <div className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-md border">
                   {alert.symbol}
                 </div>
               )}
-              <div className="text-xs text-gray-500 mt-1 sm:hidden">
-                {formatDateTime(alert.timestamp)}
-              </div>
             </div>
 
-            <div className="flex flex-col gap-1 sm:gap-2 flex-shrink-0">
+            <div className="flex flex-col gap-2 flex-shrink-0">
               {alert.details && (
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setIsExpanded(!isExpanded)}
-                  className="text-gray-600 hover:text-gray-900 p-1"
+                  className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-2 rounded-lg transition-colors"
                   aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
                 >
                   {isExpanded ? (
-                    <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <ChevronDown className="w-4 h-4" />
                   ) : (
-                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <ChevronRight className="w-4 h-4" />
                   )}
                 </Button>
               )}
 
               {alert.actionable && (
-                <div className="flex gap-0.5 sm:gap-1">
+                <div className="flex gap-1">
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => handleAction('acknowledge')}
                     disabled={isHandlingAction}
-                    className="text-green-600 hover:text-green-700 hover:bg-green-50 px-1.5 sm:px-2 py-1 text-xs"
+                    className="text-green-600 hover:text-green-700 hover:bg-green-50 px-3 py-2 rounded-lg transition-colors"
                     title="Acknowledge alert"
                   >
-                    <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <CheckCircle className="w-4 h-4" />
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => handleAction('dismiss')}
                     disabled={isHandlingAction}
-                    className="text-gray-600 hover:text-gray-700 hover:bg-gray-50 px-1.5 sm:px-2 py-1 text-xs"
+                    className="text-gray-600 hover:text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors"
                     title="Dismiss alert"
                   >
-                    <XCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <XCircle className="w-4 h-4" />
                   </Button>
                 </div>
               )}
@@ -144,8 +143,8 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
           </div>
 
           {isExpanded && alert.details && (
-            <div className="mt-3 pt-3 border-t border-gray-200">
-              <div className="text-xs sm:text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            <div className="mt-4 pt-4 border-t border-gray-200 bg-gray-50/50 rounded-lg p-3">
+              <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
                 {alert.details}
               </div>
             </div>
