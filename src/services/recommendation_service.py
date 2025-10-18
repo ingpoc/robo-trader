@@ -6,6 +6,7 @@ with Claude Agent SDK for intelligent reasoning and actionable BUY/SELL/HOLD rec
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
@@ -93,8 +94,8 @@ class RecommendationEngine:
             'temperature': 0.3  # Lower temperature for more consistent analysis
         }
 
-        # Use Claude API key from integration config
-        claude_api_key = getattr(config.integration, 'anthropic_api_key', None)
+        # Use Claude API key from environment variable (not from config.json)
+        claude_api_key = os.getenv("ANTHROPIC_API_KEY")
         if claude_api_key:
             try:
                 from anthropic import AsyncAnthropic

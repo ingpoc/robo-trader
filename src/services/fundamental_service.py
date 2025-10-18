@@ -6,6 +6,7 @@ Provides comprehensive fundamental analysis capabilities with batch processing.
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import asdict
@@ -40,10 +41,12 @@ class FundamentalService:
         self.config = config
         self.state_manager = state_manager
 
-        # Initialize Perplexity client with API keys
-        perplexity_keys = config.integration.perplexity_api_keys
+        # Initialize Perplexity client with API keys from environment variables ONLY (not from config.json)
+        perplexity_keys_str = os.getenv("PERPLEXITY_API_KEYS", "")
+        perplexity_keys = [key.strip() for key in perplexity_keys_str.split(",") if key.strip()] if perplexity_keys_str else []
+
         if not perplexity_keys:
-            logger.warning("No Perplexity API keys configured - fundamental service will be limited")
+            logger.warning("PERPLEXITY_API_KEYS not set in environment - fundamental service will be limited")
 
         client_config = {
             'model': getattr(config, 'news_monitoring', {}).get('perplexity_model', 'sonar-pro'),

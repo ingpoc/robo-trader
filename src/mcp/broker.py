@@ -11,6 +11,7 @@ Provides tools for:
 
 import asyncio
 import json
+import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 
@@ -32,18 +33,22 @@ class ZerodhaBroker:
 
     def _initialize_client(self) -> None:
         """Initialize Kite Connect client."""
-        if not self.config.integration.zerodha_api_key:
-            logger.warning("Zerodha API key not configured")
+        # Read API keys ONLY from environment variables (not from config.json)
+        api_key = os.getenv("ZERODHA_API_KEY")
+        access_token = os.getenv("ZERODHA_ACCESS_TOKEN")
+
+        if not api_key:
+            logger.warning("ZERODHA_API_KEY not set in environment - Zerodha client not initialized")
             return
 
-        self.kite = KiteConnect(api_key=self.config.integration.zerodha_api_key)
+        self.kite = KiteConnect(api_key=api_key)
 
         # Set access token if available
-        if self.config.integration.zerodha_access_token:
-            self.kite.set_access_token(self.config.integration.zerodha_access_token)
+        if access_token:
+            self.kite.set_access_token(access_token)
             logger.info("Zerodha client initialized with access token")
         else:
-            logger.warning("Zerodha access token not set - authentication required")
+            logger.warning("ZERODHA_ACCESS_TOKEN not set - authentication required")
 
     def get_login_url(self) -> str:
         """Get login URL for authentication."""
@@ -56,7 +61,12 @@ class ZerodhaBroker:
         if not self.kite:
             raise ValueError("Kite client not initialized")
 
-        data = self.kite.generate_session(request_token, api_secret=self.config.integration.zerodha_api_secret)
+        # Read API secret ONLY from environment variable (not from config.json)
+        api_secret = os.getenv("ZERODHA_API_SECRET")
+        if not api_secret:
+            raise ValueError("ZERODHA_API_SECRET not set in environment")
+
+        data = self.kite.generate_session(request_token, api_secret=api_secret)
         access_token = data["access_token"]
         self.kite.set_access_token(access_token)
 
