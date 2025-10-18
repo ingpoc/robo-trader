@@ -7,6 +7,7 @@ Handles loading and saving background tasks to persistent storage.
 import json
 from pathlib import Path
 from typing import Dict
+from datetime import datetime
 
 import aiofiles
 from loguru import logger
@@ -16,6 +17,17 @@ from ..models import BackgroundTask, TaskType, TaskPriority
 
 class TaskStore:
     """Manages task persistence with atomic writes."""
+
+    @staticmethod
+    def _to_datetime(value):
+        """Convert value to datetime if it's a string, otherwise return as-is."""
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except (ValueError, TypeError):
+                logger.warning(f"Failed to parse datetime string: {value}")
+                return value
+        return value
 
     @staticmethod
     async def load_tasks(state_dir: Path) -> Dict[str, BackgroundTask]:
@@ -36,12 +48,11 @@ class TaskStore:
                     tasks_data = json.loads(content)
 
                 for task_data in tasks_data:
-                    from datetime import datetime
                     task = BackgroundTask(
                         task_id=task_data["task_id"],
                         task_type=TaskType(task_data["task_type"]),
                         priority=TaskPriority(task_data["priority"]),
-                        execute_at=datetime.fromisoformat(task_data["execute_at"]) if isinstance(task_data["execute_at"], str) else task_data["execute_at"],
+                        execute_at=TaskStore._to_datetime(task_data["execute_at"]),
                         interval_seconds=task_data.get("interval_seconds"),
                         metadata=task_data.get("metadata", {}),
                         is_active=task_data.get("is_active", True),
@@ -50,9 +61,9 @@ class TaskStore:
                     )
 
                     if task_data.get("last_executed"):
-                        task.last_executed = datetime.fromisoformat(task_data["last_executed"]) if isinstance(task_data["last_executed"], str) else task_data["last_executed"]
+                        task.last_executed = TaskStore._to_datetime(task_data["last_executed"])
                     if task_data.get("next_execution"):
-                        task.next_execution = datetime.fromisoformat(task_data["next_execution"]) if isinstance(task_data["next_execution"], str) else task_data["next_execution"]
+                        task.next_execution = TaskStore._to_datetime(task_data["next_execution"])
 
                     tasks[task.task_id] = task
 
