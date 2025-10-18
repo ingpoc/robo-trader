@@ -29,6 +29,7 @@ from ..core.database_state import DatabaseStateManager
 from ..core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
 from .websocket_differ import WebSocketDiffer
+from .connection_manager import ConnectionManager
 
 
 app = FastAPI(
@@ -156,66 +157,6 @@ connection_manager = None
 shutdown_event = asyncio.Event()
 
 
-class ConnectionManager:
-    """WebSocket connection manager for real-time updates."""
-
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-        self._lock = asyncio.Lock()
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        async with self._lock:
-            self.active_connections.append(websocket)
-
-    async def disconnect(self, websocket: WebSocket):
-        async with self._lock:
-            try:
-                self.active_connections.remove(websocket)
-            except ValueError:
-                # Connection might already be removed
-                pass
-
-    async def broadcast(self, message: Dict[str, Any]):
-        """Broadcast message to all connected clients."""
-        async with self._lock:
-            # Create a copy to avoid modification during iteration
-            connections = self.active_connections.copy()
-
-        # Send to all connections outside the lock
-        dead_connections = []
-        for connection in connections:
-            try:
-                # Use shorter timeout for real-time updates (2 seconds instead of 5)
-                await asyncio.wait_for(
-                    connection.send_json(message),
-                    timeout=2.0
-                )
-            except (asyncio.TimeoutError, Exception) as e:
-                # Check if this is a normal connection closure (page refresh, etc.)
-                error_msg = str(e).lower()
-                if ("close message has been sent" in error_msg or
-                    "connection is closed" in error_msg or
-                    "websocket is closed" in error_msg):
-                    # Normal browser refresh/page navigation - don't log as error
-                    logger.debug(f"WebSocket connection closed normally: {e}")
-                else:
-                    # Unexpected error - log it
-                    logger.warning(f"WebSocket send failed: {e}")
-
-                # Mark for removal regardless of error type
-                dead_connections.append(connection)
-
-        # Remove dead connections
-        if dead_connections:
-            async with self._lock:
-                for dead_conn in dead_connections:
-                    try:
-                        self.active_connections.remove(dead_conn)
-                    except ValueError:
-                        pass
-
-
 class TradeRequest(BaseModel):
     """Manual trade request model."""
     symbol: str
@@ -223,6 +164,64 @@ class TradeRequest(BaseModel):
     quantity: int
     order_type: str = "MARKET"
     price: Optional[float] = None
+
+
+async def get_ai_data_with_retry(orchestrator, connection_id: str, max_retries: int = 2) -> tuple:
+    """Get AI status and recommendations with retry logic and better error handling."""
+    ai_status = {"status": "unknown", "error": "Failed to retrieve AI status"}
+    recommendations = []
+
+    for attempt in range(max_retries + 1):
+        try:
+            # Use different timeouts for different attempts
+            timeout = 3.0 if attempt == 0 else 2.0  # Shorter timeout on retries
+
+            # Get AI status with timeout
+            ai_status_task = asyncio.wait_for(orchestrator.get_ai_status(), timeout=timeout)
+
+            # Get recommendations with timeout
+            recommendations_task = asyncio.wait_for(
+                orchestrator.state_manager.get_pending_approvals(), timeout=timeout
+            )
+
+            # Execute both concurrently
+            ai_status_result, recommendations_result = await asyncio.gather(
+                ai_status_task, recommendations_task, return_exceptions=True
+            )
+
+            # Handle individual task results
+            if isinstance(ai_status_result, Exception):
+                logger.warning(f"AI status retrieval failed (attempt {attempt + 1}): {ai_status_result}")
+                ai_status = {"status": "error", "error": str(ai_status_result)}
+            else:
+                ai_status = ai_status_result
+
+            if isinstance(recommendations_result, Exception):
+                logger.warning(f"Recommendations retrieval failed (attempt {attempt + 1}): {recommendations_result}")
+                recommendations = []
+            else:
+                recommendations = recommendations_result
+
+            # If we got at least one successful result, return what we have
+            if not isinstance(ai_status_result, Exception) or not isinstance(recommendations_result, Exception):
+                return ai_status, recommendations
+
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout retrieving AI data for {connection_id} (attempt {attempt + 1})")
+            if attempt == max_retries:
+                ai_status = {"status": "timeout", "error": "Request timed out after retries"}
+                recommendations = []
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving AI data for {connection_id} (attempt {attempt + 1}): {e}")
+            if attempt == max_retries:
+                ai_status = {"status": "error", "error": str(e)}
+                recommendations = []
+
+        # Exponential backoff for retries
+        if attempt < max_retries:
+            await asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s, 2s...
+
+    return ai_status, recommendations
 
 
 async def get_dashboard_data() -> Dict[str, Any]:
@@ -292,10 +291,11 @@ async def startup_event():
     # Wire up WebSocket broadcasting
     logger.info("Wiring up WebSocket broadcasting...")
     async def broadcast_to_ui_impl(message: Dict[str, Any]):
-        await connection_manager.broadcast(message)
+        result = await connection_manager.broadcast(message)
+        logger.debug(f"Broadcast result: {result.successful_sends}/{result.total_connections} sent")
 
-    orchestrator.broadcast_to_ui = broadcast_to_ui_impl
-    logger.info("WebSocket broadcasting wired up")
+    orchestrator.broadcast_coordinator.set_broadcast_callback(broadcast_to_ui_impl)
+    logger.info("WebSocket broadcasting wired to BroadcastCoordinator")
 
     async def initialize_orchestrator():
         """Initialize orchestrator in background."""
@@ -406,6 +406,43 @@ async def root():
 async def api_dashboard():
     """API endpoint for dashboard data."""
     return await get_dashboard_data()
+
+
+@app.get("/api/portfolio")
+async def get_portfolio():
+    """API endpoint for portfolio data."""
+    if not container:
+        logger.error("System not initialized - cannot retrieve portfolio")
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        if not orchestrator or not orchestrator.state_manager:
+            logger.error("Orchestrator or state manager not available")
+            return JSONResponse({"error": "System not available"}, status_code=500)
+
+        portfolio = await orchestrator.state_manager.get_portfolio()
+
+        # Trigger lazy bootstrap if portfolio not yet available
+        if not portfolio:
+            try:
+                logger.debug("Portfolio missing in state store; triggering bootstrap scan")
+                await orchestrator.run_portfolio_scan()
+                portfolio = await orchestrator.state_manager.get_portfolio()
+            except Exception as exc:
+                logger.warning(f"Bootstrap portfolio scan failed: {exc}")
+
+        if not portfolio:
+            logger.warning("No portfolio data available after bootstrap attempt")
+            return JSONResponse({"error": "No portfolio data available"}, status_code=404)
+
+        portfolio_dict = portfolio.to_dict()
+        logger.info("Portfolio data retrieved successfully")
+        return portfolio_dict
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve portfolio data: {e}", exc_info=True)
+        return JSONResponse({"error": f"Failed to retrieve portfolio: {str(e)}"}, status_code=500)
 
 
 @app.post("/api/portfolio-scan")
@@ -1110,18 +1147,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 data = await asyncio.wait_for(get_dashboard_data(), timeout=10.0)
 
                 if container:
-                    try:
-                        orchestrator = await container.get_orchestrator()
-                        ai_status = await asyncio.wait_for(orchestrator.get_ai_status(), timeout=5.0)
-                        data["ai_status"] = ai_status
-                        recommendations = await asyncio.wait_for(
-                            orchestrator.state_manager.get_pending_approvals(), timeout=5.0
-                        )
-                        data["recommendations"] = recommendations
-                    except asyncio.TimeoutError:
-                        logger.warning(f"Timeout retrieving AI status for {connection_id}")
-                        data["ai_status"] = {"status": "timeout"}
-                        data["recommendations"] = []
+                    # Enhanced error handling with retry logic and better timeouts
+                    orchestrator = await container.get_orchestrator()
+                    ai_status, recommendations = await get_ai_data_with_retry(orchestrator, connection_id)
+                    data["ai_status"] = ai_status
+                    data["recommendations"] = recommendations
 
                 diff_update = differ.compute_diff(last_data, data)
 
@@ -1146,7 +1176,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     await websocket.send_json({
                         "type": "error",
-                        "message": "Data retrieval timeout",
+                        "message": "Data retrieval timeout - using cached data",
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     })
                 except Exception:
@@ -1160,12 +1190,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Normal browser refresh/page navigation - don't log as error
                     logger.debug(f"WebSocket connection closed during data processing for {connection_id}: {e}")
                 else:
-                    # Unexpected error - log it
-                    logger.error(f"Error during WebSocket data processing for {connection_id}: {e}")
+                    # Enhanced error categorization and handling
+                    error_type = "unknown_error"
+                    if "timeout" in error_msg:
+                        error_type = "timeout_error"
+                    elif "connection" in error_msg:
+                        error_type = "connection_error"
+                    elif "memory" in error_msg or "out of memory" in error_msg:
+                        error_type = "memory_error"
+                    elif "database" in error_msg or "db" in error_msg:
+                        error_type = "database_error"
+
+                    logger.error(f"Error during WebSocket data processing for {connection_id} ({error_type}): {e}")
                     try:
                         await websocket.send_json({
                             "type": "error",
-                            "message": "Data processing error",
+                            "message": f"Data processing error: {error_type.replace('_', ' ').title()}",
+                            "error_type": error_type,
                             "timestamp": datetime.now(timezone.utc).isoformat()
                         })
                     except Exception:
@@ -1343,6 +1384,43 @@ async def get_upcoming_earnings(days_ahead: int = 30):
         return {"upcoming_earnings": upcoming_earnings}
     except Exception as e:
         logger.error(f"Failed to get upcoming earnings: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/symbols/search")
+async def search_symbols(q: str, limit: int = 20):
+    """Search for trading symbols by query string."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        portfolio = await orchestrator.state_manager.get_portfolio()
+
+        if not portfolio or not portfolio.holdings:
+            return {"symbols": [], "total": 0}
+
+        q_upper = q.upper()
+        matching_symbols = []
+
+        for holding in portfolio.holdings:
+            symbol = holding.get("symbol", "")
+            if q_upper in symbol:
+                matching_symbols.append({
+                    "symbol": symbol,
+                    "qty": holding.get("quantity", 0),
+                    "current_value": holding.get("current_value", 0),
+                    "pnl_pct": holding.get("pnl_pct", 0)
+                })
+
+        matching_symbols = matching_symbols[:limit]
+        return {
+            "symbols": matching_symbols,
+            "total": len(matching_symbols),
+            "query": q
+        }
+    except Exception as e:
+        logger.error(f"Failed to search symbols: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

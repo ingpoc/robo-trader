@@ -31,13 +31,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             className={cn(
-              'w-full h-10 px-3 pr-10 text-base bg-white border rounded transition-all duration-200',
-              'placeholder:text-gray-400',
+              'w-full h-10 px-3 pr-10 text-base bg-white/70 border rounded-lg transition-all duration-200',
+              'placeholder:text-warmgray-400',
               'focus:outline-none focus:ring-2 focus:ring-offset-2',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              error ? 'border-red-500 focus:ring-red-500' :
-              success ? 'border-green-500 focus:ring-green-500' :
-              isFocused ? 'border-accent focus:ring-accent' : 'border-gray-300',
+              error ? 'border-rose-500 focus:ring-rose-500' :
+              success ? 'border-emerald-500 focus:ring-emerald-500' :
+              isFocused ? 'border-copper-500 focus:ring-copper-500' : 'border-warmgray-300',
               className
             )}
             onFocus={handleFocus}
@@ -56,13 +56,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
         {error && (
-          <p className="mt-1 text-sm text-red-600 flex items-center gap-1" role="alert">
+          <p className="mt-1 text-sm text-rose-600 flex items-center gap-1" role="alert">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             {error}
           </p>
         )}
         {success && !error && (
-          <p className="mt-1 text-sm text-green-600 flex items-center gap-1">
+          <p className="mt-1 text-sm text-emerald-600 flex items-center gap-1">
             <CheckCircle className="w-4 h-4 flex-shrink-0" />
             Looks good!
           </p>

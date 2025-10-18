@@ -26,6 +26,14 @@ from ..services.risk_service import RiskService
 from ..services.execution_service import ExecutionService
 from ..services.analytics_service import AnalyticsService
 from ..services.learning_service import LearningService
+from .coordinators import (
+    SessionCoordinator,
+    QueryCoordinator,
+    TaskCoordinator,
+    StatusCoordinator,
+    LifecycleCoordinator,
+    BroadcastCoordinator,
+)
 
 T = TypeVar('T')
 
@@ -171,31 +179,77 @@ class DependencyContainer:
 
         self._register_singleton("learning_service", create_learning_service)
 
+        # Coordinators
+        async def create_session_coordinator():
+            return SessionCoordinator(self.config)
+
+        self._register_singleton("session_coordinator", create_session_coordinator)
+
+        async def create_query_coordinator():
+            session_coordinator = await self.get("session_coordinator")
+            return QueryCoordinator(self.config, session_coordinator)
+
+        self._register_singleton("query_coordinator", create_query_coordinator)
+
+        async def create_task_coordinator():
+            state_manager = await self.get("state_manager")
+            return TaskCoordinator(self.config, state_manager)
+
+        self._register_singleton("task_coordinator", create_task_coordinator)
+
+        async def create_status_coordinator():
+            state_manager = await self.get("state_manager")
+            ai_planner = await self.get("ai_planner")
+            background_scheduler = await self.get("background_scheduler")
+            session_coordinator = await self.get("session_coordinator")
+            return StatusCoordinator(
+                self.config,
+                state_manager,
+                ai_planner,
+                background_scheduler,
+                session_coordinator
+            )
+
+        self._register_singleton("status_coordinator", create_status_coordinator)
+
+        async def create_lifecycle_coordinator():
+            background_scheduler = await self.get("background_scheduler")
+            return LifecycleCoordinator(self.config, background_scheduler)
+
+        self._register_singleton("lifecycle_coordinator", create_lifecycle_coordinator)
+
+        async def create_broadcast_coordinator():
+            return BroadcastCoordinator(self.config)
+
+        self._register_singleton("broadcast_coordinator", create_broadcast_coordinator)
+
         # Orchestrator - created last due to dependencies
         async def create_orchestrator():
-            logger.info("Creating orchestrator - getting state_manager...")
+            logger.info("Creating orchestrator - getting coordinators...")
+            session_coordinator = await self.get("session_coordinator")
+            query_coordinator = await self.get("query_coordinator")
+            task_coordinator = await self.get("task_coordinator")
+            status_coordinator = await self.get("status_coordinator")
+            lifecycle_coordinator = await self.get("lifecycle_coordinator")
+            broadcast_coordinator = await self.get("broadcast_coordinator")
+
+            logger.info("Creating orchestrator - getting legacy dependencies...")
             state_manager = await self.get("state_manager")
-            logger.info("Orchestrator - state_manager retrieved")
-
-            logger.info("Creating orchestrator - getting ai_planner...")
             ai_planner = await self.get("ai_planner")
-            logger.info("Orchestrator - ai_planner retrieved")
-
-            logger.info("Creating orchestrator - getting background_scheduler...")
             background_scheduler = await self.get("background_scheduler")
-            logger.info("Orchestrator - background_scheduler retrieved")
-
-            logger.info("Creating orchestrator - getting conversation_manager...")
             conversation_manager = await self.get("conversation_manager")
-            logger.info("Orchestrator - conversation_manager retrieved")
-
-            logger.info("Creating orchestrator - getting learning_engine...")
             learning_engine = await self.get("learning_engine")
-            logger.info("Orchestrator - learning_engine retrieved")
 
-            # Create orchestrator with injected dependencies
             logger.info("Creating orchestrator instance...")
             orchestrator = RoboTraderOrchestrator(self.config)
+
+            orchestrator.session_coordinator = session_coordinator
+            orchestrator.query_coordinator = query_coordinator
+            orchestrator.task_coordinator = task_coordinator
+            orchestrator.status_coordinator = status_coordinator
+            orchestrator.lifecycle_coordinator = lifecycle_coordinator
+            orchestrator.broadcast_coordinator = broadcast_coordinator
+
             orchestrator.state_manager = state_manager
             orchestrator.ai_planner = ai_planner
             orchestrator.background_scheduler = background_scheduler

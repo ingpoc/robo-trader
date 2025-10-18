@@ -86,9 +86,9 @@ export function MetricCard({
   }
 
   const getTrendColor = () => {
-    if (trend === 'up') return 'text-green-600'
-    if (trend === 'down') return 'text-red-600'
-    return 'text-gray-500'
+    if (trend === 'up') return 'text-emerald-600'
+    if (trend === 'down') return 'text-rose-600'
+    return 'text-warmgray-500'
   }
 
   const Icon = getIcon()
@@ -97,18 +97,18 @@ export function MetricCard({
   const cardContent = (
     <div
       className={cn(
-        "group relative overflow-hidden border-0 bg-gradient-to-br from-white/90 to-gray-50/70 backdrop-blur-sm shadow-professional hover:shadow-professional-hover transition-all duration-300 rounded-xl animate-scale-in",
-        variant === 'hero' && "from-blue-50/90 to-indigo-50/70 shadow-blue-100/50 ring-1 ring-blue-100/50",
+        "group relative overflow-hidden border-0 bg-gradient-to-br from-white/90 to-warmgray-50/70 backdrop-blur-sm shadow-md hover:shadow-lg transition-all duration-300 rounded-xl animate-scale-in",
+        variant === 'hero' && "from-warmgray-50/90 to-warmgray-100/70 shadow-sm ring-1 ring-warmgray-300/50",
         variant === 'compact' && "p-4 rounded-lg"
       )}
       role="region"
       aria-labelledby={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}
     >
       {/* Professional gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-professional opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="absolute inset-0 bg-gradient-to-br from-copper-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
       {/* Animated border glow */}
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -m-px" />
+      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-copper-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 -m-px" />
 
       <div className="relative z-10 p-6">
         <div className="flex items-center justify-between mb-4">
@@ -116,22 +116,22 @@ export function MetricCard({
             <div className={cn(
               "p-3 rounded-xl shadow-sm",
               variant === 'hero'
-                ? "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-700 shadow-blue-100/50"
-                : "bg-gradient-to-br from-gray-100 to-gray-200 text-gray-700 shadow-gray-100/50"
+                ? "bg-gradient-to-br from-copper-100 to-copper-200 text-copper-700 shadow-copper-100/50"
+                : "bg-gradient-to-br from-warmgray-100 to-warmgray-200 text-warmgray-700 shadow-warmgray-100/50"
             )}>
               <Icon className="w-5 h-5" />
             </div>
             <div
               id={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}
-              className="text-sm font-bold text-gray-800 uppercase tracking-wider leading-none"
+              className="text-sm font-bold text-warmgray-800 uppercase tracking-wider leading-none"
             >
               {label}
             </div>
           </div>
           {trend && (
             <div className={cn("flex items-center gap-1 text-sm font-semibold px-2 py-1 rounded-full", getTrendColor(),
-              trend === 'up' ? 'bg-green-50 text-green-700' :
-              trend === 'down' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'
+              trend === 'up' ? 'bg-emerald-50 text-emerald-700' :
+              trend === 'down' ? 'bg-rose-50 text-rose-700' : 'bg-warmgray-50 text-warmgray-700'
             )}>
               <TrendIcon className="w-4 h-4" />
               <span className="sr-only">{trend} trend</span>
@@ -141,8 +141,8 @@ export function MetricCard({
 
         <div
           className={cn(
-            "font-black text-gray-900 tabular-nums leading-none mb-3",
-            variant === 'hero' ? "text-5xl bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent" : "text-4xl",
+            "font-black text-warmgray-900 tabular-nums leading-none mb-3",
+            variant === 'hero' ? "text-5xl bg-gradient-to-r from-warmgray-900 to-warmgray-700 bg-clip-text text-transparent" : "text-4xl",
             variant === 'compact' && "text-3xl"
           )}
           aria-live="polite"

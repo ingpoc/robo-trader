@@ -25,10 +25,10 @@ interface ChartCardProps {
 }
 
 const COLORS = [
-  '#2563eb', // accent
-  '#22c55e', // success
-  '#f59e0b', // warning
-  '#ef4444', // error
+  '#b87333', // copper accent
+  '#6eb897', // emerald success
+  '#b87333', // copper warning
+  '#b87566', // rose error
   '#8b5cf6', // purple
   '#06b6d4', // cyan
   '#84cc16', // lime
@@ -39,15 +39,15 @@ const COLORS = [
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg p-3">
-        <p className="text-sm font-medium text-gray-900 mb-1">{label}</p>
+      <div className="bg-white/95 backdrop-blur-sm border border-warmgray-300 rounded-lg shadow-md p-3">
+        <p className="text-sm font-medium text-warmgray-900 mb-1">{label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: entry.color }}
             />
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-warmgray-700">
               {entry.name}: <span className="font-semibold">{entry.value}</span>
             </span>
           </div>
@@ -69,23 +69,23 @@ export function ChartCard({
   const isPositive = data.length > 1 && data[data.length - 1]?.value > data[0]?.value
 
   const chartContent = (
-    <div className={`flex flex-col p-6 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm border-0 shadow-professional hover:shadow-professional-hover rounded-xl transition-all duration-300 ring-1 ring-gray-200/50 animate-scale-in ${className || ''}`}>
+    <div className={`flex flex-col p-6 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm border-0 shadow-md hover:shadow-lg rounded-xl transition-all duration-300 ring-1 ring-warmgray-300/50 animate-scale-in ${className || ''}`}>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl shadow-sm">
-            <svg className="w-5 h-5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="p-3 bg-gradient-to-br from-copper-100 to-copper-200 rounded-xl shadow-sm">
+            <svg className="w-5 h-5 text-copper-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </div>
-          <h3 className="text-lg font-bold text-gray-900 uppercase tracking-wider">
+          <h3 className="text-lg font-bold text-warmgray-900 font-serif uppercase tracking-wider">
             {title}
           </h3>
         </div>
         {type === 'line' && data.length > 1 && (
           <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold shadow-sm ${
             isPositive
-              ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800 border border-green-300'
-              : 'bg-gradient-to-r from-red-100 to-red-200 text-red-800 border border-red-300'
+              ? 'bg-gradient-to-r from-emerald-100 to-emerald-200 text-emerald-800 border border-emerald-300'
+              : 'bg-gradient-to-r from-rose-100 to-rose-200 text-rose-800 border border-rose-300'
           }`}>
             {isPositive ? (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -115,35 +115,35 @@ export function ChartCard({
             <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <defs>
                 <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2563eb" stopOpacity={0.2} />
-                  <stop offset="100%" stopColor="#2563eb" stopOpacity={0.05} />
+                  <stop offset="0%" stopColor="#b87333" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="#b87333" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="name"
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickLine={{ stroke: '#e5e7eb' }}
+                tick={{ fill: '#9d928a', fontSize: 12 }}
+                axisLine={{ stroke: '#e8e3de' }}
+                tickLine={{ stroke: '#e8e3de' }}
               />
               <YAxis
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickLine={{ stroke: '#e5e7eb' }}
+                tick={{ fill: '#9d928a', fontSize: 12 }}
+                axisLine={{ stroke: '#e8e3de' }}
+                tickLine={{ stroke: '#e8e3de' }}
               />
               <Tooltip content={<CustomTooltip />} />
               {showLegend && <Legend />}
               <Line
                 type="monotone"
                 dataKey="value"
-                stroke="#2563eb"
+                stroke="#b87333"
                 strokeWidth={2.5}
-                dot={{ fill: '#2563eb', strokeWidth: 2, r: 4 }}
+                dot={{ fill: '#b87333', strokeWidth: 2, r: 4 }}
                 activeDot={{
                   r: 6,
-                  stroke: '#2563eb',
+                  stroke: '#b87333',
                   strokeWidth: 2,
                   fill: '#ffffff',
-                  style: { filter: 'drop-shadow(0 2px 4px rgba(37, 99, 235, 0.2))' }
+                  style: { filter: 'drop-shadow(0 2px 4px rgba(184, 115, 51, 0.2))' }
                 }}
                 fill="url(#lineGradient)"
                 fillOpacity={1}
@@ -153,27 +153,27 @@ export function ChartCard({
             <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <defs>
                 <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#22c55e" stopOpacity={0.1} />
+                  <stop offset="0%" stopColor="#6eb897" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#6eb897" stopOpacity={0.1} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="name"
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickLine={{ stroke: '#e5e7eb' }}
+                tick={{ fill: '#9d928a', fontSize: 12 }}
+                axisLine={{ stroke: '#e8e3de' }}
+                tickLine={{ stroke: '#e8e3de' }}
               />
               <YAxis
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickLine={{ stroke: '#e5e7eb' }}
+                tick={{ fill: '#9d928a', fontSize: 12 }}
+                axisLine={{ stroke: '#e8e3de' }}
+                tickLine={{ stroke: '#e8e3de' }}
               />
               <Tooltip content={<CustomTooltip />} />
               {showLegend && <Legend />}
               <Area
                 type="monotone"
                 dataKey="value"
-                stroke="#22c55e"
+                stroke="#6eb897"
                 strokeWidth={2}
                 fill="url(#areaGradient)"
                 fillOpacity={1}

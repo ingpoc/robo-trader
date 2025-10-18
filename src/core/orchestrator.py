@@ -2,64 +2,48 @@
 Robo Trader Orchestrator
 
 The central coordinator for the multi-agent trading system.
-Manages agent interactions, tool routing, permissions, and safety controls.
+Refactored as a thin facade that delegates to focused coordinators.
 """
 
-import asyncio
-import json
-from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
-from pathlib import Path
 
-from claude_agent_sdk import (
-    ClaudeSDKClient,
-    ClaudeAgentOptions,
-    HookMatcher,
-    create_sdk_mcp_server,
-    tool,
-    AssistantMessage,
-    TextBlock,
-    ToolUseBlock,
-    ToolResultBlock
-)
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from loguru import logger
 
 from ..config import Config
-from ..mcp.broker import create_broker_mcp_server
-from ..agents import create_agents_mcp_server
-from ..core.hooks import create_safety_hooks
-from ..core.ai_planner import AIPlanner
-from ..core.background_scheduler import BackgroundScheduler
-from ..services.analytics import (
-    run_portfolio_scan as analytics_run_portfolio_scan,
-    run_market_screening as analytics_run_market_screening,
-    run_strategy_analysis,
-)
 from ..auth.claude_auth import ClaudeAuthStatus
 
 
 class RoboTraderOrchestrator:
     """
-    Main orchestrator for the Robo Trader system.
+    Main orchestrator for the Robo Trader system - Thin Facade.
 
-    Coordinates between multiple agents for autonomous trading:
-    - Portfolio Analyzer
-    - Technical Analyst
-    - Fundamental Screener
-    - Risk Manager
-    - Execution Agent
-    - Market Monitor
+    Coordinates between multiple agents for autonomous trading by delegating
+    to focused coordinators:
+    - SessionCoordinator: Claude session lifecycle
+    - QueryCoordinator: Query processing
+    - TaskCoordinator: Analytics tasks
+    - StatusCoordinator: Status aggregation
+    - LifecycleCoordinator: Emergency stop/resume
+    - BroadcastCoordinator: UI broadcasting
     """
 
     def __init__(self, config: Config):
         self.config = config
-        # Dependencies will be injected by DI container
+
+        self.session_coordinator = None
+        self.query_coordinator = None
+        self.task_coordinator = None
+        self.status_coordinator = None
+        self.lifecycle_coordinator = None
+        self.broadcast_coordinator = None
+
         self.state_manager = None
         self.ai_planner = None
         self.background_scheduler = None
         self.conversation_manager = None
         self.learning_engine = None
-        self.client: Optional[ClaudeSDKClient] = None
+
         self.options: Optional[ClaudeAgentOptions] = None
         self.claude_status: Optional[ClaudeAuthStatus] = None
 
@@ -67,25 +51,14 @@ class RoboTraderOrchestrator:
         """Initialize the orchestrator with MCP servers and hooks."""
         logger.info("Initializing Robo Trader Orchestrator")
 
-        from ..auth.claude_auth import validate_claude_api
+        self.claude_status = await self.session_coordinator.validate_authentication()
 
-        self.claude_status = await validate_claude_api()
-        if not self.claude_status.is_valid:
-            error_msg = f"Claude API authentication failed: {self.claude_status.error}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-
-        logger.info(f"Claude API authenticated successfully via {self.claude_status.account_info.get('auth_method', 'unknown')}")
-
-        # MCP servers disabled for debugging
         logger.info("MCP servers creation disabled")
         broker_server = None
         agents_server = None
 
-        # Define allowed tools based on environment
         allowed_tools = self._get_allowed_tools()
 
-        # Add educational tools to all environments
         educational_tools = [
             "mcp__agents__explain_concept",
             "mcp__agents__explain_decision",
@@ -93,7 +66,6 @@ class RoboTraderOrchestrator:
         ]
         allowed_tools.extend(educational_tools)
 
-        # Add alert tools to all environments
         alert_tools = [
             "mcp__agents__create_alert_rule",
             "mcp__agents__list_alert_rules",
@@ -102,7 +74,6 @@ class RoboTraderOrchestrator:
         ]
         allowed_tools.extend(alert_tools)
 
-        # Add strategy tools to all environments
         strategy_tools = [
             "mcp__agents__list_strategies",
             "mcp__agents__compare_strategies",
@@ -112,7 +83,7 @@ class RoboTraderOrchestrator:
         ]
         allowed_tools.extend(strategy_tools)
 
-        # Create safety hooks
+        from ..core.hooks import create_safety_hooks
         hooks = create_safety_hooks(self.config, self.state_manager)
 
         mcp_servers_dict = {}
@@ -131,22 +102,17 @@ class RoboTraderOrchestrator:
             max_turns=self.config.max_turns,
         )
 
-        # Initialize AI planner
+        self.session_coordinator.options = self.options
+
         await self.ai_planner.initialize()
-
-        # Initialize conversation manager
         await self.conversation_manager.initialize()
-
-        # Initialize learning engine
         await self.learning_engine.initialize()
 
-        # Set callback functions on background scheduler to avoid circular imports
         self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
         self.background_scheduler._run_market_screening = self.run_market_screening
         self.background_scheduler._ai_planner_create_plan = self.ai_planner.create_daily_plan
         self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
 
-        # Initialize background scheduler and track tasks for lifecycle management
         self.background_tasks = await self.background_scheduler.start()
 
         logger.info("Orchestrator initialized successfully")
@@ -221,29 +187,8 @@ Use the available tools to coordinate between agents. Maintain state and create 
 """
 
     async def start_session(self) -> None:
-        """
-        Start an interactive session with the orchestrator.
-
-        For web applications, this maintains a long-lived client.
-        For CLI applications, prefer using the session context manager.
-        """
-        if not self.options:
-            await self.initialize()
-
-        try:
-            self.client = ClaudeSDKClient(options=self.options)
-            await self.client.__aenter__()
-            logger.info("Claude SDK client initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize Claude SDK client: {e}. Session will have limited functionality.")
-            self.client = None
-            self.claude_status = ClaudeAuthStatus(
-                is_valid=False,
-                api_key_present=False,
-                account_info={"auth_method": "failed", "note": f"Initialization failed: {str(e)}"}
-            )
-
-        logger.info("Orchestrator session started")
+        """Start an interactive session with the orchestrator."""
+        await self.session_coordinator.start_session()
 
     async def end_session(self) -> None:
         """End the current session and cleanup resources."""
@@ -267,396 +212,69 @@ Use the available tools to coordinate between agents. Maintain state and create 
         except Exception as e:
             logger.error(f"Error cleaning up Learning Engine: {e}")
 
-        if self.client:
-            try:
-                await self.client.__aexit__(None, None, None)
-                logger.info("Orchestrator client cleaned up")
-            except Exception as e:
-                logger.warning(f"Error during orchestrator client cleanup: {e}")
-            finally:
-                self.client = None
+        await self.session_coordinator.end_session()
 
         logger.info("Orchestrator session ended successfully")
 
     async def process_query(self, query: str) -> List[Any]:
-        """
-        Process a user query and return responses.
+        """Process a user query and return responses."""
+        return await self.query_coordinator.process_query(query)
 
-        For single queries, prefer using session() context manager.
-        This method is for applications with persistent sessions.
-        """
-        if not self.client:
-            logger.warning("Claude client not available - cannot process query")
-            return [{
-                "type": "error",
-                "message": "AI assistant is not available. Please check Claude authentication.",
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }]
+    async def process_query_enhanced(self, query: str) -> Dict[str, Any]:
+        """Process query with proper streaming and progressive updates."""
+        return await self.query_coordinator.process_query_enhanced(query)
 
-        try:
-            await asyncio.wait_for(self.client.query(query), timeout=30.0)
-
-            responses = []
-            async for response in self.client.receive_response():
-                responses.append(response)
-
-            return responses
-        except asyncio.TimeoutError:
-            logger.error(f"Query timed out after 30 seconds: {query[:100]}...")
-            return [{
-                "type": "error",
-                "message": "Query timed out. Please try again or simplify your request.",
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }]
-        except Exception as e:
-            logger.error(f"Error processing query: {e}", exc_info=True)
-            return [{
-                "type": "error",
-                "message": f"Failed to process query: {str(e)}",
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }]
-
-    # NEW: Enhanced streaming intelligence processing
-    async def process_query_enhanced(self, query: str):
-        """
-        Process query with proper streaming and progressive updates.
-
-        Returns structured response with thinking, tool usage, and results.
-        """
-        try:
-            if not self.client:
-                logger.warning("Claude client not available - cannot process enhanced query")
-                return {
-                    "thinking": [],
-                    "tool_uses": [],
-                    "results": [],
-                    "error": "AI assistant is not available. Please check Claude authentication."
-                }
-
-            await self.client.query(query)
-
-            thinking_content = []
-            tool_uses = []
-            results = []
-
-            async for message in self.client.receive_response():
-                if isinstance(message, AssistantMessage):
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            thinking_content.append(block.text)
-                            # Broadcast thinking to UI (would need WebSocket integration)
-                            logger.info(f"AI Thinking: {block.text[:100]}...")
-                        elif isinstance(block, ToolUseBlock):
-                            tool_uses.append({
-                                "id": block.id,
-                                "name": block.name,
-                                "status": "executing"
-                            })
-                            logger.info(f"Tool Use: {block.name}")
-                        elif isinstance(block, ToolResultBlock):
-                            # Update tool status and add result
-                            tool_uses.append({
-                                "id": block.tool_use_id,
-                                "name": "tool_result",
-                                "status": "completed",
-                                "result": block.content,
-                                "is_error": block.is_error
-                            })
-                            results.append({
-                                "tool_use_id": block.tool_use_id,
-                                "content": block.content,
-                                "is_error": block.is_error
-                            })
-                            logger.info(f"Tool Result: {block.tool_use_id} - {'error' if block.is_error else 'success'}")
-
-            return {
-                "thinking": thinking_content,
-                "tool_uses": tool_uses,
-                "results": results
-            }
-
-        except Exception as e:
-            logger.error(f"Error in enhanced query processing: {e}", exc_info=True)
-            return {
-                "thinking": [],
-                "tool_uses": [],
-                "results": [],
-                "error": f"Query processing failed: {str(e)}"
-            }
-
-    # NEW: AI Status for UI
     async def get_ai_status(self) -> Dict[str, Any]:
         """Get current AI activity status for UI display."""
-        return await self.ai_planner.get_current_task_status()
+        return await self.status_coordinator.get_ai_status()
 
-    # NEW: Autonomous Operations
     async def trigger_market_event(self, event_type: str, event_data: Dict[str, Any]) -> None:
         """Trigger market event for autonomous response."""
-        await self.background_scheduler.trigger_event(event_type, event_data)
+        await self.lifecycle_coordinator.trigger_market_event(event_type, event_data)
 
     async def get_system_status(self) -> Dict[str, Any]:
         """Get comprehensive system status for monitoring."""
-        ai_status = await self.get_ai_status()
-        scheduler_status = await self.background_scheduler.get_scheduler_status()
-
-        return {
-            "ai_status": ai_status,
-            "scheduler_status": scheduler_status,
-            "claude_status": self.claude_status.to_dict() if self.claude_status else None,
-            "portfolio_status": await self._get_portfolio_status(),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-
-    async def _get_portfolio_status(self) -> Dict[str, Any]:
-        """Get portfolio health status."""
-        try:
-            portfolio = await self.state_manager.get_portfolio()
-            if portfolio:
-                return {
-                    "holdings_count": len(portfolio.holdings),
-                    "total_value": portfolio.exposure_total,
-                    "last_updated": getattr(portfolio, 'last_updated', None)
-                }
-            return {"status": "no_portfolio"}
-        except Exception:
-            return {"status": "error"}
+        return await self.status_coordinator.get_system_status()
 
     async def emergency_stop(self) -> None:
         """Emergency stop all autonomous operations."""
-        logger.warning("Emergency stop triggered - halting all operations")
-
-        # Stop background scheduler
-        await self.background_scheduler.stop()
-
-        # Cancel any running tasks
-        # This would need to be implemented based on current task management
-
-        # Notify UI
-        # This would broadcast to WebSocket clients
+        await self.lifecycle_coordinator.emergency_stop()
 
     async def resume_operations(self) -> None:
         """Resume autonomous operations after emergency stop."""
-        logger.info("Resuming autonomous operations")
+        await self.lifecycle_coordinator.resume_operations()
 
-        # Restart background scheduler
-        await self.background_scheduler.start()
-
-        # Notify UI
-        # This would broadcast to WebSocket clients
-    
     async def session(self):
-        """
-        Context manager for single-query sessions.
-        
-        Example:
-            async with orchestrator.session() as client:
-                await client.query("Analyze portfolio")
-                async for msg in client.receive_response():
-                    print(msg)
-        """
+        """Context manager for single-query sessions."""
         if not self.options:
             await self.initialize()
-        
+
         return ClaudeSDKClient(options=self.options)
 
     async def run_portfolio_scan(self) -> Dict[str, Any]:
         """Run a portfolio scan using live portfolio data."""
-        results = await analytics_run_portfolio_scan(self.config, self.state_manager)
-        logger.info(
-            "Portfolio scan completed from %s with %d holdings",
-            results["source"],
-            len(results["portfolio"]["holdings"]),
-        )
-
-        # Generate AI recommendations from scan results
-        await self._generate_recommendations_from_scan(results)
-
-        return results
+        return await self.task_coordinator.run_portfolio_scan()
 
     async def run_market_screening(self) -> Dict[str, Any]:
         """Run market screening using current holdings analytics."""
-        results = await analytics_run_market_screening(self.config, self.state_manager)
-        logger.info(
-            "Market screening completed from %s with %d momentum candidates",
-            results["source"],
-            len(results["screening"]["momentum"]),
-        )
-        return results
+        return await self.task_coordinator.run_market_screening()
 
     async def run_strategy_review(self) -> Dict[str, Any]:
         """Run strategy review to derive actionable rebalance suggestions."""
-        results = await run_strategy_analysis(self.config, self.state_manager)
-        logger.info(
-            "Strategy review completed from %s with %d recommended actions",
-            results["source"],
-            len(results["strategy"]["actions"]),
-        )
-        return results
-
-    async def _generate_recommendations_from_scan(self, scan_results: Dict[str, Any]) -> None:
-        """Generate AI recommendations from portfolio scan results."""
-        try:
-            portfolio = scan_results.get("portfolio", {})
-            holdings = portfolio.get("holdings", [])
-
-            if not holdings:
-                logger.info("No holdings to generate recommendations for")
-                return
-
-            # Analyze each holding
-            for holding in holdings:
-                symbol = holding.get("symbol", "")
-                if not symbol:
-                    continue
-
-                # Get key metrics
-                pnl_pct = holding.get("pnl_pct", 0)
-                exposure_pct = (holding.get("exposure", 0) / portfolio.get("exposure_total", 1)) * 100 if portfolio.get("exposure_total", 0) > 0 else 0
-
-                # Simple recommendation logic (will be enhanced with AI later)
-                recommendation = None
-
-                # SELL if losing > 15%
-                if pnl_pct < -15:
-                    recommendation = {
-                        "symbol": symbol,
-                        "action": "SELL",
-                        "confidence": 75,
-                        "reasoning": f"Stock down {pnl_pct:.1f}%. Consider cutting losses.",
-                        "analysis_type": "risk_management",
-                        "current_price": holding.get("last_price"),
-                        "stop_loss": holding.get("avg_price", 0) * 0.92,
-                        "quantity": holding.get("qty"),
-                        "potential_impact": f"Stop loss triggered at {pnl_pct:.1f}%",
-                        "risk_level": "high",
-                        "time_horizon": "immediate"
-                    }
-
-                # BOOK_PROFIT if up > 25%
-                elif pnl_pct > 25:
-                    recommendation = {
-                        "symbol": symbol,
-                        "action": "BOOK_PROFIT",
-                        "confidence": 70,
-                        "reasoning": f"Stock up {pnl_pct:.1f}%. Consider booking partial profits.",
-                        "analysis_type": "profit_taking",
-                        "current_price": holding.get("last_price"),
-                        "target_price": holding.get("last_price", 0) * 1.1,
-                        "stop_loss": holding.get("last_price", 0) * 0.95,
-                        "quantity": int(holding.get("qty", 0) / 2),
-                        "potential_impact": f"Lock in {pnl_pct/2:.1f}% profit on half position",
-                        "risk_level": "low",
-                        "time_horizon": "short_term"
-                    }
-
-                # REDUCE if overweight (>10% of portfolio)
-                elif exposure_pct > 10:
-                    recommendation = {
-                        "symbol": symbol,
-                        "action": "REDUCE",
-                        "confidence": 65,
-                        "reasoning": f"Position is {exposure_pct:.1f}% of portfolio. Reduce concentration risk.",
-                        "analysis_type": "risk_management",
-                        "current_price": holding.get("last_price"),
-                        "quantity": int(holding.get("qty", 0) * 0.3),
-                        "potential_impact": f"Reduce from {exposure_pct:.1f}% to {exposure_pct*0.7:.1f}%",
-                        "risk_level": "medium",
-                        "time_horizon": "medium_term"
-                    }
-
-                # Add recommendation to approval queue
-                if recommendation:
-                    await self.state_manager.add_to_approval_queue(recommendation)
-                    logger.info(f"Generated {recommendation['action']} recommendation for {symbol}")
-
-        except Exception as e:
-            logger.error(f"Failed to generate recommendations: {e}")
+        return await self.task_coordinator.run_strategy_review()
 
     async def handle_market_alert(self, symbol: str, alert_type: str, data: Dict) -> None:
         """Handle real-time market alerts."""
-        query = f"""
-        Market alert received for {symbol}:
-        Type: {alert_type}
-        Data: {json.dumps(data)}
-
-        Evaluate the alert and determine if action is needed:
-        1. Check current position in {symbol}
-        2. Assess technical indicators
-        3. Evaluate risk implications
-        4. Suggest appropriate response (hold, adjust stops, exit, etc.)
-        """
-
-        responses = await self.process_query(query)
-        logger.info(f"Market alert handled for {symbol} with {len(responses)} responses")
+        await self.query_coordinator.handle_market_alert(symbol, alert_type, data)
 
     async def broadcast_to_ui(self, message: Dict[str, Any]) -> None:
         """Broadcast message to all connected WebSocket clients."""
-        logger.info(f"UI Broadcast: {message.get('type', 'unknown')}")
+        await self.broadcast_coordinator.broadcast_to_ui(message)
 
     async def get_agents_status(self) -> Dict[str, Any]:
         """Get status of all agents."""
-        agents = {
-            "portfolio_analyzer": {
-                "name": "Portfolio Analyzer",
-                "active": True,
-                "status": "idle",
-                "tools": ["analyze_portfolio"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            },
-            "technical_analyst": {
-                "name": "Technical Analyst",
-                "active": True,
-                "status": "idle",
-                "tools": ["technical_analysis"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            },
-            "fundamental_screener": {
-                "name": "Fundamental Screener",
-                "active": True,
-                "status": "idle",
-                "tools": ["fundamental_screening"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            },
-            "risk_manager": {
-                "name": "Risk Manager",
-                "active": True,
-                "status": "idle",
-                "tools": ["risk_assessment"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            },
-            "execution_agent": {
-                "name": "Execution Agent",
-                "active": True,
-                "status": "idle",
-                "tools": ["execute_trade"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            },
-            "market_monitor": {
-                "name": "Market Monitor",
-                "active": True,
-                "status": "idle",
-                "tools": ["monitor_market"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            },
-            "educational_agent": {
-                "name": "Educational Agent",
-                "active": True,
-                "status": "idle",
-                "tools": ["explain_concept", "explain_decision", "explain_portfolio"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            },
-            "alert_agent": {
-                "name": "Alert Agent",
-                "active": True,
-                "status": "idle",
-                "tools": ["create_alert_rule", "list_alert_rules", "check_alerts", "delete_alert_rule"],
-                "last_activity": datetime.now(timezone.utc).isoformat()
-            }
-        }
-
-        return agents
+        return await self.status_coordinator.get_agents_status()
 
     async def get_claude_status(self) -> ClaudeAuthStatus:
         """Get current Claude API status."""
-        return self.claude_status
-
+        return await self.session_coordinator.get_claude_status()

@@ -7,15 +7,15 @@ export const useRecommendations = () => {
   const isLoading = false
 
   const approve = useCallback(async (id: string) => {
-    await api.post(`/api/recommendations/${id}/approve`)
+    await api.post(`/api/recommendations/approve/${id}`)
   }, [])
 
   const reject = useCallback(async (id: string) => {
-    await api.post(`/api/recommendations/${id}/reject`)
+    await api.post(`/api/recommendations/reject/${id}`)
   }, [])
 
   const discuss = useCallback(async (id: string) => {
-    await api.post(`/api/recommendations/${id}/discuss`)
+    await api.post(`/api/recommendations/discuss/${id}`)
   }, [])
 
   return {

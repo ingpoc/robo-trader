@@ -62,7 +62,7 @@ export function Config() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-6 p-4 lg:p-6 animate-fade-in">
+      <div className="flex flex-col gap-6 p-4 lg:p-6 animate-fade-in-luxury bg-warmgray-50 min-h-screen">
         <Breadcrumb />
         <div className="flex flex-col gap-4">
           <SkeletonLoader className="h-8 w-48" />
@@ -87,28 +87,28 @@ export function Config() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto">
+    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
       <div className="flex flex-col gap-4">
         <Breadcrumb />
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-          <p className="text-lg text-gray-600 mt-1">Configure system parameters and preferences</p>
+          <h1 className="text-3xl font-bold text-warmgray-900 font-serif">Settings</h1>
+          <p className="text-lg text-warmgray-600 mt-1">Configure system parameters and preferences</p>
         </div>
       </div>
 
       <Card className="max-w-2xl shadow-sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-blue-600" />
+          <CardTitle className="flex items-center gap-2 text-warmgray-900">
+            <Settings className="w-5 h-5 text-copper-500" />
             System Configuration
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <label htmlFor="maxTurns" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="maxTurns" className="block text-sm font-medium text-warmgray-700">
               Max Conversation Turns
             </label>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-warmgray-500">
               Maximum number of conversation turns allowed per session
             </p>
             <Input
@@ -123,10 +123,10 @@ export function Config() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="riskTolerance" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="riskTolerance" className="block text-sm font-medium text-warmgray-700">
               Risk Tolerance (1-10)
             </label>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-warmgray-500">
               Higher values allow more aggressive trading strategies
             </p>
             <Input
@@ -141,10 +141,10 @@ export function Config() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="dailyApiLimit" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="dailyApiLimit" className="block text-sm font-medium text-warmgray-700 dark:text-warmgray-300">
               Daily API Call Limit
             </label>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-warmgray-500 dark:text-warmgray-400">
               Maximum number of API calls allowed per day
             </p>
             <Input
@@ -157,7 +157,7 @@ export function Config() {
             />
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex gap-3 pt-4 border-t border-warmgray-300 dark:border-warmgray-700">
             <Button
               onClick={handleSave}
               disabled={isUpdating || !hasChanges}

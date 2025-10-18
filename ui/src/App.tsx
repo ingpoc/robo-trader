@@ -59,7 +59,7 @@ function AppContent() {
         Skip to navigation
       </a>
 
-      <div className="flex h-screen overflow-hidden bg-slate-50">
+      <div className="flex h-screen overflow-hidden bg-warmgray-50">
         {/* Mobile sidebar backdrop */}
         {sidebarOpen && (
           <div
@@ -91,7 +91,7 @@ function AppContent() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Mobile header */}
           <header
-            className="flex h-14 items-center gap-4 border-b border-gray-200 bg-white/80 backdrop-blur-sm px-4 lg:hidden"
+            className="flex h-14 items-center gap-4 border-b border-warmgray-300 bg-white/80 backdrop-blur-sm px-4 lg:hidden"
             role="banner"
           >
             <Button
@@ -108,10 +108,10 @@ function AppContent() {
               </svg>
             </Button>
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded bg-accent flex items-center justify-center" aria-hidden="true">
+              <div className="h-6 w-6 rounded bg-copper-500 flex items-center justify-center" aria-hidden="true">
                 <span className="text-white text-xs font-bold">R</span>
               </div>
-              <span className="text-sm font-semibold text-gray-900">Robo Trader</span>
+              <span className="text-sm font-semibold text-warmgray-900">Robo Trader</span>
             </div>
           </header>
 

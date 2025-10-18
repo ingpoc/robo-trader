@@ -31,19 +31,19 @@ export function Navigation({ onClose }: NavigationProps) {
 
   return (
     <nav
-      className="flex flex-col h-full bg-gradient-to-b from-white/95 to-gray-50/90 backdrop-blur-sm border-r border-gray-200/50 shadow-professional"
+      className="flex flex-col h-full bg-gradient-to-b from-white/95 to-warmgray-50/90 backdrop-blur-sm border-r border-warmgray-300/50 shadow-md"
       aria-label="Main navigation"
       role="navigation"
     >
-      <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/50 bg-gradient-to-r from-white/80 to-gray-50/60">
+      <div className="flex items-center justify-between h-16 px-6 border-b border-warmgray-300/50 bg-gradient-to-r from-white/80 to-warmgray-50/60">
         <div className="flex items-center gap-3">
           <div
-            className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-professional"
+            className="w-8 h-8 bg-gradient-to-br from-copper-500 to-copper-600 rounded-xl flex items-center justify-center shadow-md"
             aria-hidden="true"
           >
             <span className="text-white text-sm font-black">R</span>
           </div>
-          <span className="text-lg font-bold text-gray-900 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Robo Trader</span>
+          <span className="text-lg font-bold text-warmgray-900 font-serif">Robo Trader</span>
         </div>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -112,8 +112,8 @@ export function Navigation({ onClose }: NavigationProps) {
                 cn(
                   'flex items-center gap-4 px-4 py-3 text-sm font-bold rounded-xl transition-all duration-300 relative group focus-ring',
                   isActive
-                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-professional before:content-[""] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-8 before:bg-white before:rounded-r before:shadow-lg'
-                    : 'text-gray-700 hover:bg-gradient-to-r hover:from-gray-100 hover:to-gray-200 hover:text-blue-700 hover:shadow-md'
+                    ? 'bg-gradient-to-r from-copper-500 to-copper-600 text-white shadow-md before:content-[""] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-8 before:bg-white before:rounded-r before:shadow-lg'
+                    : 'text-warmgray-700 hover:bg-gradient-to-r hover:from-warmgray-100 hover:to-warmgray-200 hover:text-copper-600 hover:shadow-sm'
                 )
               }
             >
@@ -125,20 +125,20 @@ export function Navigation({ onClose }: NavigationProps) {
       </div>
 
       <div
-        className="flex items-center gap-3 h-16 px-6 border-t border-gray-200/50 bg-gradient-to-r from-gray-50/80 to-gray-100/60 text-xs"
+        className="flex items-center gap-3 h-16 px-6 border-t border-warmgray-300/50 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 text-xs"
         role="status"
         aria-live="polite"
         aria-label="Connection status"
       >
         {isConnected ? (
-          <Wifi className="w-5 h-5 text-green-600 animate-pulse" />
+          <Wifi className="w-5 h-5 text-emerald-600 animate-pulse" />
         ) : (
-          <WifiOff className="w-5 h-5 text-gray-400" />
+          <WifiOff className="w-5 h-5 text-warmgray-400" />
         )}
         <span
           className={cn(
             'font-bold',
-            isConnected ? 'text-green-700' : 'text-gray-500'
+            isConnected ? 'text-emerald-700' : 'text-warmgray-500'
           )}
           id="connection-status"
         >

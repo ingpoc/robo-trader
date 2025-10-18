@@ -55,7 +55,7 @@ export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
       <div
         ref={ref}
         className={cn(
-          'relative max-h-[90vh] w-full max-w-lg rounded-lg bg-white p-6 shadow-lg',
+          'relative max-h-[90vh] w-full max-w-lg rounded-xl bg-white/70 backdrop-blur-sm p-6 shadow-md border border-warmgray-300/50',
           'animate-in zoom-in-95 duration-200',
           'focus:outline-none',
           className

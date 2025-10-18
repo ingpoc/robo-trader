@@ -3,16 +3,16 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/utils/format'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-ring rounded-md',
+  'inline-flex items-center justify-center font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-ring rounded-lg',
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-white border border-accent hover:bg-accent-dark hover:shadow-lg hover:shadow-accent/25',
-        secondary: 'bg-white text-gray-900 border border-gray-300 hover:border-accent hover:bg-gray-50 hover:shadow-md',
-        outline: 'bg-transparent text-accent border border-accent hover:bg-accent hover:text-white hover:shadow-md',
-        ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 hover:text-accent active:bg-gray-200',
-        success: 'bg-success text-white border border-success hover:bg-success-dark hover:shadow-lg hover:shadow-success/25',
-        danger: 'bg-error text-white border border-error hover:bg-error-dark hover:shadow-lg hover:shadow-error/25',
+        primary: 'bg-copper-500 text-white border border-copper-500 hover:bg-copper-600 hover:shadow-md hover:shadow-copper/25 hover:translate-y-[-1px]',
+        secondary: 'bg-white/70 text-warmgray-900 border border-warmgray-300 hover:border-copper-500 hover:bg-white hover:shadow-md hover:text-copper-500',
+        outline: 'bg-transparent text-copper-500 border border-copper-500 hover:bg-copper-500 hover:text-white hover:shadow-md',
+        ghost: 'bg-transparent text-warmgray-700 hover:bg-warmgray-100 hover:text-copper-500 active:bg-warmgray-200',
+        success: 'bg-emerald-600 text-white border border-emerald-600 hover:bg-emerald-700 hover:shadow-md hover:shadow-emerald/25 hover:translate-y-[-1px]',
+        danger: 'bg-rose-600 text-white border border-rose-600 hover:bg-rose-700 hover:shadow-md hover:shadow-rose/25 hover:translate-y-[-1px]',
       },
       size: {
         sm: 'h-8 px-3 text-xs',

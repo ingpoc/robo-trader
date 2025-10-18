@@ -122,7 +122,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
   }) => (
     <TableHead
       className={cn(
-        "cursor-pointer select-none hover:bg-gray-50/50 transition-colors",
+        "cursor-pointer select-none hover:bg-warmgray-50/50 transition-colors",
         className
       )}
       onClick={() => handleSort(field)}
@@ -134,16 +134,16 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
             className={cn(
               "w-3 h-3 -mb-1",
               sortField === field && sortDirection === 'asc'
-                ? "text-gray-900"
-                : "text-gray-300"
+                ? "text-warmgray-900"
+                : "text-warmgray-300"
             )}
           />
           <ChevronDown
             className={cn(
               "w-3 h-3 -mt-1",
               sortField === field && sortDirection === 'desc'
-                ? "text-gray-900"
-                : "text-gray-300"
+                ? "text-warmgray-900"
+                : "text-warmgray-300"
             )}
           />
         </div>
@@ -152,24 +152,24 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
   )
 
   return (
-    <div className="flex flex-col gap-4 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm border-0 shadow-professional rounded-xl overflow-hidden hover:shadow-professional-hover transition-all duration-300 ring-1 ring-gray-200/50 animate-scale-in">
+    <div className="flex flex-col gap-4 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm border-0 shadow-md rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 ring-1 ring-warmgray-300/50 animate-scale-in">
       {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-gray-200/30 bg-gradient-to-r from-gray-50/80 to-white/60">
+      <div className="flex items-center justify-between p-6 border-b border-warmgray-300/30 bg-gradient-to-r from-warmgray-50/80 to-white/60">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl shadow-sm">
-            <TrendingUp className="w-6 h-6 text-blue-700" />
+          <div className="p-3 bg-gradient-to-br from-copper-100 to-copper-200 rounded-xl shadow-sm">
+            <TrendingUp className="w-6 h-6 text-copper-700" />
           </div>
           <div>
-            <div className="text-lg font-bold text-gray-900 uppercase tracking-wider">
+            <div className="text-lg font-bold text-warmgray-900 font-serif uppercase tracking-wider">
               Holdings
             </div>
-            <div className="text-sm text-gray-600 mt-0.5 font-medium">
+            <div className="text-sm text-warmgray-600 mt-0.5 font-medium">
               Portfolio positions and performance
             </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="px-4 py-2 bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 text-sm font-bold rounded-full border border-blue-300 shadow-sm">
+          <div className="px-4 py-2 bg-gradient-to-r from-copper-100 to-copper-200 text-copper-800 text-sm font-bold rounded-full border border-copper-300 shadow-sm">
             {filteredHoldings.length} {filteredHoldings.length === 1 ? 'position' : 'positions'}
           </div>
         </div>
@@ -178,7 +178,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
       {/* Search */}
       <div className="px-6">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-warmgray-500" />
           <Input
             type="text"
             placeholder="Search symbols..."
@@ -187,7 +187,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               setSearchTerm(e.target.value)
               setCurrentPage(1) // Reset to first page when searching
             }}
-            className="pl-12 h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl shadow-sm bg-white/80 backdrop-blur-sm font-medium"
+            className="pl-12 h-12 border-warmgray-300 focus:border-copper-500 focus:ring-copper-500/20 rounded-xl shadow-sm bg-white/80 backdrop-blur-sm font-medium"
           />
         </div>
       </div>
@@ -195,12 +195,12 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
       {/* Table */}
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="bg-gradient-to-r from-gray-50/90 to-white/60 border-b border-gray-200/40">
+          <TableHeader className="bg-gradient-to-r from-warmgray-50/90 to-white/60 border-b border-warmgray-300/40">
             <TableRow>
               <SortableHeader field="symbol" className="text-left">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="font-bold text-gray-800">Symbol</span>
+                    <span className="font-bold text-warmgray-800">Symbol</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Stock ticker symbol (e.g., AAPL, GOOGL)</p>
@@ -210,7 +210,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="qty" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="font-bold text-gray-800">Quantity</span>
+                    <span className="font-bold text-warmgray-800">Quantity</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Number of shares you own</p>
@@ -220,7 +220,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="last_price" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="font-bold text-gray-800">Current Price</span>
+                    <span className="font-bold text-warmgray-800">Current Price</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Latest market price per share</p>
@@ -230,7 +230,7 @@ export function HoldingsTable({ holdings, totalExposure, onBuy, onSell, onEdit }
               <SortableHeader field="exposure" className="text-right">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="font-bold text-gray-800">Market Value</span>
+                    <span className="font-bold text-warmgray-800">Market Value</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Total value of your position (price × quantity)</p>

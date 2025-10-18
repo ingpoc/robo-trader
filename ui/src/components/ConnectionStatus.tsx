@@ -8,43 +8,43 @@ export function ConnectionStatus() {
     switch (backendStatus) {
       case 'unknown':
         return {
-          color: 'text-gray-500',
-          bgColor: 'bg-gray-100',
+          color: 'text-warmgray-500',
+          bgColor: 'bg-warmgray-100',
           text: 'Checking...',
           icon: '⏳'
         }
       case 'connecting':
         return {
-          color: 'text-yellow-600',
-          bgColor: 'bg-yellow-100',
+          color: 'text-copper-600',
+          bgColor: 'bg-copper-100',
           text: 'Connecting...',
           icon: '🔄'
         }
       case 'connected':
         return {
-          color: 'text-green-600',
-          bgColor: 'bg-green-100',
+          color: 'text-emerald-600',
+          bgColor: 'bg-emerald-100',
           text: 'Connected',
           icon: '🟢'
         }
       case 'disconnected':
         return {
-          color: 'text-red-600',
-          bgColor: 'bg-red-100',
+          color: 'text-rose-600',
+          bgColor: 'bg-rose-100',
           text: 'Disconnected',
           icon: '🔴'
         }
       case 'error':
         return {
-          color: 'text-red-600',
-          bgColor: 'bg-red-100',
+          color: 'text-rose-600',
+          bgColor: 'bg-rose-100',
           text: 'Connection Error',
           icon: '❌'
         }
       default:
         return {
-          color: 'text-gray-500',
-          bgColor: 'bg-gray-100',
+          color: 'text-warmgray-500',
+          bgColor: 'bg-warmgray-100',
           text: 'Unknown',
           icon: '❓'
         }

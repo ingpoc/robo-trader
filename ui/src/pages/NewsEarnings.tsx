@@ -93,9 +93,9 @@ export function NewsEarnings() {
       case 'positive':
         return 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950 dark:border-emerald-800'
       case 'negative':
-        return 'text-red-700 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950 dark:border-red-800'
+        return 'text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-950 dark:border-rose-800'
       default:
-        return 'text-slate-700 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-950 dark:border-slate-800'
+        return 'text-warmgray-700 bg-warmgray-50 border-warmgray-300 dark:text-warmgray-400 dark:bg-warmgray-950 dark:border-warmgray-800'
     }
   }
 
@@ -112,9 +112,9 @@ export function NewsEarnings() {
 
 
   const getRiskColor = (surprise?: number) => {
-    if (!surprise) return 'text-slate-500'
-    if (Math.abs(surprise) > 10) return 'text-red-600'
-    if (Math.abs(surprise) > 5) return 'text-amber-600'
+    if (!surprise) return 'text-warmgray-500'
+    if (Math.abs(surprise) > 10) return 'text-rose-600'
+    if (Math.abs(surprise) > 5) return 'text-copper-600'
     return 'text-emerald-600'
   }
 
@@ -123,11 +123,11 @@ export function NewsEarnings() {
       case 'buy':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-200 dark:border-emerald-800'
       case 'sell':
-        return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200 dark:border-red-800'
+        return 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900 dark:text-rose-200 dark:border-rose-800'
       case 'hold':
-        return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900 dark:text-amber-200 dark:border-amber-800'
+        return 'bg-copper-100 text-copper-800 border-copper-200 dark:bg-copper-900 dark:text-copper-200 dark:border-copper-800'
       default:
-        return 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-800'
+        return 'bg-warmgray-100 text-warmgray-800 border-warmgray-300 dark:bg-warmgray-900 dark:text-warmgray-200 dark:border-warmgray-800'
     }
   }
 
@@ -149,18 +149,18 @@ export function NewsEarnings() {
       case 'approved':
         return <CheckCircle className="w-4 h-4 text-emerald-600" />
       case 'rejected':
-        return <XCircle className="w-4 h-4 text-red-600" />
+        return <XCircle className="w-4 h-4 text-rose-600" />
       case 'discussing':
-        return <Clock className="w-4 h-4 text-amber-600" />
+        return <Clock className="w-4 h-4 text-copper-600" />
       default:
-        return <Clock className="w-4 h-4 text-slate-400" />
+        return <Clock className="w-4 h-4 text-warmgray-400" />
     }
   }
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return 'text-emerald-600'
-    if (confidence >= 0.6) return 'text-amber-600'
-    return 'text-red-600'
+    if (confidence >= 0.6) return 'text-copper-600'
+    return 'text-rose-600'
   }
 
   if (dashboardLoading) {
@@ -172,24 +172,24 @@ export function NewsEarnings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-gradient-to-br from-warmgray-50 to-warmgray-100 dark:from-warmgray-900 dark:to-warmgray-800">
       <div className="max-w-7xl mx-auto p-6 space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold text-warmgray-900 font-serif dark:text-warmgray-100">
             Market Intelligence Hub
           </h1>
-          <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+          <p className="text-lg text-warmgray-600 dark:text-warmgray-400 max-w-2xl mx-auto">
             Real-time news, earnings analysis, and AI-powered recommendations for informed trading decisions
           </p>
         </div>
 
         {/* Symbol Selector */}
-        <Card className="shadow-lg border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+        <Card className="shadow-md border-warmgray-300 bg-white/70 dark:bg-warmgray-800/70 backdrop-blur-sm">
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
               <div className="flex-1 min-w-0">
-                <label htmlFor="symbol-select" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                <label htmlFor="symbol-select" className="block text-sm font-semibold text-warmgray-700 dark:text-warmgray-300 mb-2">
                   Select Portfolio Stock
                 </label>
                 <Select
@@ -235,8 +235,8 @@ export function NewsEarnings() {
                       onClick={() => setActiveTab(tab.id as any)}
                       className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
                         activeTab === tab.id
-                          ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          ? 'bg-copper-500 text-white shadow-md transform scale-105'
+                          : 'text-warmgray-600 dark:text-warmgray-400 hover:text-warmgray-900 dark:hover:text-warmgray-200 hover:bg-warmgray-100 dark:hover:bg-warmgray-700'
                       }`}
                     >
                       <span className="text-lg">{tab.icon}</span>
@@ -272,10 +272,10 @@ export function NewsEarnings() {
                   </div>
                 ) : error ? (
                   <div className="text-center py-12">
-                    <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-xl p-6 max-w-md mx-auto">
-                      <AlertTriangle className="w-12 h-12 text-red-600 dark:text-red-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-red-900 dark:text-red-100 mb-2">Unable to load news data</h3>
-                      <p className="text-red-700 dark:text-red-300 text-sm mb-4">
+                    <div className="bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 rounded-xl p-6 max-w-md mx-auto">
+                      <AlertTriangle className="w-12 h-12 text-rose-600 dark:text-rose-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-rose-900 dark:text-rose-100 mb-2">Unable to load news data</h3>
+                      <p className="text-rose-700 dark:text-rose-300 text-sm mb-4">
                         {error?.message?.includes('404') ? 'Stock data not found. Please select a different stock.' :
                          error?.message?.includes('500') ? 'Server error. Please try again in a few moments.' :
                          error?.message?.includes('timeout') ? 'Request timed out. Please check your connection and try again.' :
@@ -284,7 +284,7 @@ export function NewsEarnings() {
                       <Button
                         onClick={() => window.location.reload()}
                         variant="outline"
-                        className="border-red-300 text-red-700 hover:bg-red-50"
+                        className="border-rose-300 text-rose-700 hover:bg-rose-50"
                       >
                         Retry
                       </Button>

@@ -11,10 +11,9 @@ import { AlertCenter } from '@/components/Dashboard/AlertCenter'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { SkeletonCard, SkeletonLoader, SkeletonGrid, SkeletonTable } from '@/components/common/SkeletonLoader'
-import { LoadingChart } from '@/components/common/LoadingStates'
+import { SkeletonCard, SkeletonLoader } from '@/components/common/SkeletonLoader'
 import { Breadcrumb } from '@/components/common/Breadcrumb'
-import { Activity, CheckCircle, XCircle, Clock, AlertTriangle, TrendingUp, DollarSign, PieChart, Users } from 'lucide-react'
+import { Activity, CheckCircle, XCircle, Clock, AlertTriangle, TrendingUp, PieChart } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 export function Dashboard() {
@@ -75,15 +74,15 @@ export function Dashboard() {
   ]
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 min-h-screen">
-      <div className="flex flex-col gap-4 animate-fade-in">
+    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
+      <div className="flex flex-col gap-4 animate-fade-in-luxury">
         <Breadcrumb />
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-2">
-            <h1 className="text-3xl lg:text-4xl font-bold text-gray-900">
+            <h1 className="text-3xl lg:text-4xl font-bold text-warmgray-900 font-serif">
               Trading Dashboard
             </h1>
-            <p className="text-lg text-gray-600">Professional portfolio management with AI-powered insights</p>
+            <p className="text-lg text-warmgray-600">Professional portfolio management with AI-powered insights</p>
           </div>
           <div className="flex gap-4">
             <Tooltip>
@@ -127,11 +126,11 @@ export function Dashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6 p-1 bg-gray-100 rounded-lg">
-          <TabsTrigger value="overview" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Overview</TabsTrigger>
-          <TabsTrigger value="holdings" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Holdings</TabsTrigger>
-          <TabsTrigger value="analytics" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">Analytics</TabsTrigger>
-          <TabsTrigger value="recommendations" className="text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200">AI Insights</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 mb-6 p-1 bg-warmgray-200 rounded-xl border border-warmgray-300/50 shadow-sm">
+          <TabsTrigger value="overview" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">Overview</TabsTrigger>
+          <TabsTrigger value="holdings" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">Holdings</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">Analytics</TabsTrigger>
+          <TabsTrigger value="recommendations" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">AI Insights</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -185,13 +184,13 @@ export function Dashboard() {
             <QuickTradeForm />
 
             {/* System Monitoring Status - Professional */}
-            <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-blue-50/70 backdrop-blur-sm hover:shadow-professional-hover transition-all duration-300 ring-1 ring-blue-100/50">
+            <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-copper-50/70 backdrop-blur-sm hover:shadow-professional-hover transition-all duration-300 ring-1 ring-copper-100/50">
               <CardHeader className="pb-4">
                 <CardTitle className="text-xl flex items-center gap-3 font-bold">
-                  <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl shadow-sm">
-                    <Activity className="w-6 h-6 text-blue-700" />
+                  <div className="p-3 bg-gradient-to-br from-copper-100 to-copper-200 rounded-xl shadow-sm">
+                    <Activity className="w-6 h-6 text-copper-700" />
                   </div>
-                  <span className="bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-copper-700 to-copper-600 bg-clip-text text-transparent">
                     System Status
                   </span>
                 </CardTitle>
@@ -206,8 +205,8 @@ export function Dashboard() {
                 ) : (
                   <div className="space-y-4">
                     {Object.entries(agents).map(([agentName, agent]) => (
-                      <div key={agentName} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50/80 to-gray-100/60 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200">
-                        <span className="text-sm font-bold capitalize text-gray-800">
+                      <div key={agentName} className="flex items-center justify-between p-4 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 rounded-xl border border-warmgray-300/50 hover:shadow-md transition-all duration-200">
+                        <span className="text-sm font-bold capitalize text-warmgray-800">
                           {agentName.replace('_', ' ')}
                         </span>
                         <div className="flex items-center gap-3">
@@ -215,12 +214,12 @@ export function Dashboard() {
                             agent.status === 'running' ? (
                               <CheckCircle className="w-5 h-5 text-emerald-600 animate-pulse" />
                             ) : agent.status === 'error' ? (
-                              <XCircle className="w-5 h-5 text-red-600" />
+                              <XCircle className="w-5 h-5 text-rose-600" />
                             ) : (
                               <Clock className="w-5 h-5 text-amber-600 animate-pulse" />
                             )
                           ) : (
-                            <AlertTriangle className="w-5 h-5 text-slate-400" />
+                            <AlertTriangle className="w-5 h-5 text-warmgray-400" />
                           )}
                           <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
                             agent.active
@@ -253,8 +252,8 @@ export function Dashboard() {
         <TabsContent value="holdings" className="space-y-6">
           {/* Holdings Table - Responsive */}
           {isLoading ? (
-            <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 card-shadow rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200/50">
+            <div className="bg-white/80 backdrop-blur-sm border border-warmgray-300/50 card-shadow rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b border-warmgray-300/50">
                 <SkeletonLoader className="h-4 w-24" />
                 <SkeletonLoader className="h-4 w-16" />
               </div>
@@ -265,13 +264,13 @@ export function Dashboard() {
               <HoldingsTable holdings={portfolio.holdings} totalExposure={portfolio.exposure_total} />
             </div>
           ) : (
-            <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm ring-1 ring-gray-200/50 animate-scale-in">
+            <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm ring-1 ring-warmgray-300/50 animate-scale-in">
               <CardContent className="flex flex-col items-center justify-center py-16">
-                <div className="p-4 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full mb-6">
-                  <PieChart className="w-12 h-12 text-gray-600" />
+                <div className="p-4 bg-gradient-to-br from-warmgray-100 to-warmgray-200 rounded-full mb-6">
+                  <PieChart className="w-12 h-12 text-warmgray-600" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">No Holdings Found</h3>
-                <p className="text-sm text-gray-600 text-center max-w-md leading-relaxed">
+                <h3 className="text-xl font-bold text-warmgray-900 mb-3">No Holdings Found</h3>
+                <p className="text-sm text-warmgray-600 text-center max-w-md leading-relaxed">
                   You don't have any active positions in your portfolio yet. Start trading to see your holdings here.
                 </p>
               </CardContent>
@@ -324,29 +323,29 @@ export function Dashboard() {
           </div>
 
           {/* AI Recommendations Section */}
-          <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-blue-50/70 backdrop-blur-sm ring-1 ring-blue-100/50 animate-scale-in">
+          <Card className="shadow-professional border-0 bg-gradient-to-br from-white/95 to-copper-50/70 backdrop-blur-sm ring-1 ring-copper-100/50 animate-scale-in">
             <CardHeader>
               <CardTitle className="text-xl flex items-center gap-3 font-bold">
-                <div className="p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg">
-                  <TrendingUp className="w-6 h-6 text-blue-700" />
+                <div className="p-2 bg-gradient-to-br from-copper-100 to-copper-200 rounded-lg">
+                  <TrendingUp className="w-6 h-6 text-copper-700" />
                 </div>
-                <span className="bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-copper-700 to-copper-600 bg-clip-text text-transparent">
                   AI Recommendations
                 </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <p className="text-sm text-gray-600 leading-relaxed">
+                <p className="text-sm text-warmgray-600 leading-relaxed">
                   AI-powered recommendations will appear here based on your portfolio analysis and market conditions.
                 </p>
-                <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-green-50/80 to-emerald-50/80 rounded-xl border border-green-200/50">
-                  <div className="p-2 bg-gradient-to-br from-green-100 to-green-200 rounded-lg">
-                    <Activity className="w-4 h-4 text-green-700" />
+                <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-emerald-50/80 to-emerald-50/80 rounded-xl border border-emerald-200/50">
+                  <div className="p-2 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-lg">
+                    <Activity className="w-4 h-4 text-emerald-700" />
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-bold text-green-800">AI Analysis Active</div>
-                    <div className="text-xs text-green-600">Monitoring market conditions and portfolio performance</div>
+                    <div className="text-sm font-bold text-emerald-800">AI Analysis Active</div>
+                    <div className="text-xs text-emerald-600">Monitoring market conditions and portfolio performance</div>
                   </div>
                 </div>
               </div>

@@ -43,7 +43,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
 
   return (
     <nav
-      className={cn('flex items-center space-x-1 text-sm text-gray-600', className)}
+      className={cn('flex items-center space-x-1 text-sm text-warmgray-600', className)}
       aria-label="Breadcrumb"
     >
       {breadcrumbItems.map((item, index) => {
@@ -53,14 +53,14 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
         return (
           <div key={item.path || item.label} className="flex items-center">
             {index > 0 && (
-              <svg className="w-4 h-4 mx-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 mx-1 text-warmgray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             )}
 
             {isLast ? (
               <span
-                className="font-medium text-gray-900 px-2 py-1 rounded-md bg-gray-100"
+                className="font-medium text-warmgray-900 px-2 py-1 rounded-md bg-warmgray-100"
                 aria-current="page"
               >
                 {item.label}
@@ -69,7 +69,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
               <NavLink
                 to={item.path}
                 className={cn(
-                  'flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:bg-gray-100 hover:text-gray-900',
+                  'flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:bg-warmgray-100 hover:text-warmgray-900',
                   isFirst && 'font-medium'
                 )}
               >
@@ -119,16 +119,16 @@ export function BreadcrumbCompact({ items, className }: BreadcrumbProps) {
         <>
           <NavLink
             to={parentItem.path}
-            className="text-gray-600 hover:text-gray-900 transition-colors"
+            className="text-warmgray-600 hover:text-warmgray-900 transition-colors"
           >
             {parentItem.label}
           </NavLink>
-          <svg className="w-4 h-4 mx-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 mx-1 text-warmgray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </>
       )}
-      <span className="font-medium text-gray-900" aria-current="page">
+      <span className="font-medium text-warmgray-900" aria-current="page">
         {currentItem.label}
       </span>
     </nav>

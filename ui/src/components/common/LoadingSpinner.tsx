@@ -25,9 +25,9 @@ export function LoadingSpinner({
   }
 
   const colorClasses = {
-    default: 'text-gray-600',
-    primary: 'text-accent',
-    secondary: 'text-gray-400'
+    default: 'text-warmgray-600',
+    primary: 'text-copper-500',
+    secondary: 'text-warmgray-400'
   }
 
   return (
@@ -115,7 +115,7 @@ export function ProgressBar({
   return (
     <div className={cn('w-full', className)}>
       <div className={cn(
-        'w-full bg-gray-200 rounded-full overflow-hidden',
+        'w-full bg-warmgray-200 rounded-full overflow-hidden',
         sizeClasses[size]
       )}>
         <div
@@ -128,8 +128,8 @@ export function ProgressBar({
       </div>
       {showLabel && (
         <div className="flex justify-between items-center mt-1">
-          <span className="text-xs text-gray-500">Progress</span>
-          <span className="text-xs font-medium text-gray-700">
+          <span className="text-xs text-warmgray-500">Progress</span>
+          <span className="text-xs font-medium text-warmgray-700">
             {Math.round(progress)}%
           </span>
         </div>
@@ -157,9 +157,9 @@ export function LoadingOverlay({
       'bg-white/80 backdrop-blur-sm rounded-lg',
       className
     )}>
-      <div className="flex flex-col items-center gap-3 p-6 bg-white rounded-lg shadow-lg border">
+      <div className="flex flex-col items-center gap-3 p-6 bg-white/70 rounded-lg shadow-md border border-warmgray-300">
         <LoadingSpinner size="lg" variant="primary" />
-        <p className="text-sm font-medium text-gray-700">{text}</p>
+        <p className="text-sm font-medium text-warmgray-700">{text}</p>
       </div>
     </div>
   )

@@ -52,14 +52,18 @@ export function AgentConfig() {
   }
 
   if (loading || !features) {
-    return <div>Loading...</div>
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-warmgray-50">
+        <div className="text-warmgray-600">Loading configuration...</div>
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto">
+    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Agent Configuration</h1>
+          <h1 className="text-3xl font-bold text-warmgray-900 font-serif">Agent Configuration</h1>
         </div>
       </div>
 
@@ -81,28 +85,30 @@ function FeatureCard({ featureName, config, onUpdate }: {
   onUpdate: (updates: Partial<AgentFeatureConfig>) => void
 }) {
   return (
-    <div className="border rounded-lg p-4 space-y-4">
+    <div className="card-luxury p-4 space-y-4 max-w-2xl">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">{featureName.replace(/_/g, ' ')}</h3>
-        <label className="flex items-center gap-2">
-          <span>Enabled</span>
+        <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100">{featureName.replace(/_/g, ' ')}</h3>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <span className="text-warmgray-700 dark:text-warmgray-300">Enabled</span>
           <input
             type="checkbox"
             checked={config.enabled}
             onChange={(e) => onUpdate({ enabled: e.target.checked })}
+            className="w-4 h-4 accent-copper-500"
           />
         </label>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="flex items-center gap-2">
-            <span>Use Claude</span>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="text-warmgray-700 dark:text-warmgray-300">Use Claude</span>
             <input
               type="checkbox"
               checked={config.use_claude}
               onChange={(e) => onUpdate({ use_claude: e.target.checked })}
               disabled={!config.enabled}
+              className="w-4 h-4 accent-copper-500"
             />
           </label>
         </div>

@@ -1,6 +1,6 @@
 import type { DashboardData } from '@/types/api'
 
-const WS_URL = 'ws://localhost:8000/ws'
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
 
 type WebSocketCallback = (data: DashboardData) => void
 type ErrorCallback = (error: Event) => void

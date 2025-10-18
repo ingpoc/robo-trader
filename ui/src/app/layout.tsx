@@ -1,8 +1,5 @@
 import { ReactNode } from 'react'
-import { Inter } from 'next/font/google'
 import '@/styles/globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
 
 interface LayoutProps {
   children: ReactNode
@@ -11,7 +8,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className="font-sans">
         <div id="root">{children}</div>
       </body>
     </html>

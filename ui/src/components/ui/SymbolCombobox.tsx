@@ -121,10 +121,10 @@ export function SymbolCombobox({
           {selectedSymbol ? (
             <div className="flex items-center gap-2 truncate">
               <span className="font-medium">{selectedSymbol.symbol}</span>
-              <span className="text-sm text-gray-500 truncate">{selectedSymbol.name}</span>
+              <span className="text-sm text-warmgray-500 truncate">{selectedSymbol.name}</span>
             </div>
           ) : (
-            <span className="text-gray-500">{placeholder}</span>
+            <span className="text-warmgray-500">{placeholder}</span>
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -198,14 +198,14 @@ export function SymbolCombobox({
                     />
                     <div>
                       <div className="font-medium">{symbol.symbol}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-[200px]">{symbol.name}</div>
+                      <div className="text-sm text-warmgray-500 truncate max-w-[200px]">{symbol.name}</div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-medium">{formatPrice(symbol.price)}</div>
                     <div className={cn(
                       "text-sm flex items-center gap-1",
-                      symbol.change >= 0 ? "text-green-600" : "text-red-600"
+                      symbol.change >= 0 ? "text-emerald-600" : "text-rose-600"
                     )}>
                       {symbol.change >= 0 ? (
                         <TrendingUp className="h-3 w-3" />

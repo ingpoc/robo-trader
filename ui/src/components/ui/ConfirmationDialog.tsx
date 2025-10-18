@@ -49,7 +49,7 @@ export const ConfirmationDialog = forwardRef<HTMLDivElement, ConfirmationDialogP
 
           <div className="space-y-4">
             {description && (
-              <p className="text-sm text-gray-600 leading-relaxed">
+              <p className="text-sm text-warmgray-600 leading-relaxed">
                 {description}
               </p>
             )}

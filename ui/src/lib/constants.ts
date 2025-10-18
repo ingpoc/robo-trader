@@ -38,14 +38,14 @@ export const SENTIMENT_COLORS = {
     text: 'text-emerald-700 dark:text-emerald-400',
   },
   negative: {
-    bg: 'bg-red-50 dark:bg-red-950',
-    border: 'border-red-200 dark:border-red-800',
-    text: 'text-red-700 dark:text-red-400',
+    bg: 'bg-rose-50 dark:bg-rose-950',
+    border: 'border-rose-200 dark:border-rose-800',
+    text: 'text-rose-700 dark:text-rose-400',
   },
   neutral: {
-    bg: 'bg-slate-50 dark:bg-slate-950',
-    border: 'border-slate-200 dark:border-slate-800',
-    text: 'text-slate-700 dark:text-slate-400',
+    bg: 'bg-warmgray-50 dark:bg-warmgray-950',
+    border: 'border-warmgray-300 dark:border-warmgray-800',
+    text: 'text-warmgray-700 dark:text-warmgray-400',
   },
 } as const
 
@@ -54,18 +54,18 @@ export const RECOMMENDATION_COLORS = {
     bg: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-200 dark:border-emerald-800',
   },
   sell: {
-    bg: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200 dark:border-red-800',
+    bg: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900 dark:text-rose-200 dark:border-rose-800',
   },
   hold: {
-    bg: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900 dark:text-amber-200 dark:border-amber-800',
+    bg: 'bg-copper-100 text-copper-800 border-copper-200 dark:bg-copper-900 dark:text-copper-200 dark:border-copper-800',
   },
 } as const
 
 export const STATUS_COLORS = {
   approved: 'text-emerald-600',
-  rejected: 'text-red-600',
-  discussing: 'text-amber-600',
-  pending: 'text-slate-400',
+  rejected: 'text-rose-600',
+  discussing: 'text-copper-600',
+  pending: 'text-warmgray-400',
 } as const
 
 export const AGENT_STATUS_COLORS = {
@@ -75,14 +75,14 @@ export const AGENT_STATUS_COLORS = {
     text: 'text-emerald-700 dark:text-emerald-400',
   },
   inactive: {
-    bg: 'bg-slate-50 dark:bg-slate-950',
-    border: 'border-slate-200 dark:border-slate-800',
-    text: 'text-slate-700 dark:text-slate-400',
+    bg: 'bg-warmgray-50 dark:bg-warmgray-950',
+    border: 'border-warmgray-300 dark:border-warmgray-800',
+    text: 'text-warmgray-700 dark:text-warmgray-400',
   },
   error: {
-    bg: 'bg-red-50 dark:bg-red-950',
-    border: 'border-red-200 dark:border-red-800',
-    text: 'text-red-700 dark:text-red-400',
+    bg: 'bg-rose-50 dark:bg-rose-950',
+    border: 'border-rose-200 dark:border-rose-800',
+    text: 'text-rose-700 dark:text-rose-400',
   },
 } as const
 
@@ -93,14 +93,14 @@ export const RISK_LEVEL_COLORS = {
     text: 'text-emerald-700 dark:text-emerald-400',
   },
   medium: {
-    bg: 'bg-amber-50 dark:bg-amber-950',
-    border: 'border-amber-200 dark:border-amber-800',
-    text: 'text-amber-700 dark:text-amber-400',
+    bg: 'bg-copper-50 dark:bg-copper-950',
+    border: 'border-copper-200 dark:border-copper-800',
+    text: 'text-copper-700 dark:text-copper-400',
   },
   high: {
-    bg: 'bg-red-50 dark:bg-red-950',
-    border: 'border-red-200 dark:border-red-800',
-    text: 'text-red-700 dark:text-red-400',
+    bg: 'bg-rose-50 dark:bg-rose-950',
+    border: 'border-rose-200 dark:border-rose-800',
+    text: 'text-rose-700 dark:text-rose-400',
   },
 } as const
 

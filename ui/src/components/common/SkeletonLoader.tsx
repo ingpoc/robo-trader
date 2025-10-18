@@ -11,11 +11,11 @@ export function SkeletonLoader({
   variant = 'default',
   lines = 1
 }: SkeletonLoaderProps) {
-  const baseClasses = 'skeleton-shimmer bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse'
+  const baseClasses = 'skeleton-shimmer-luxury bg-gradient-to-r from-warmgray-200 via-warmgray-100 to-warmgray-200 animate-pulse'
 
   if (variant === 'card') {
     return (
-      <div className={cn('shadow-professional rounded-xl p-6 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm ring-1 ring-gray-200/50', className)}>
+      <div className={cn('shadow-md rounded-xl p-6 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm ring-1 ring-warmgray-300/50', className)}>
         <div className={cn('h-5 w-3/4 mb-4 rounded-lg', baseClasses)} />
         <div className={cn('h-8 w-1/2 mb-6 rounded-lg', baseClasses)} />
         <div className={cn('h-4 w-full mb-3 rounded-lg', baseClasses)} />
@@ -111,7 +111,7 @@ interface SkeletonCardProps {
 
 export function SkeletonCard({ className, showAvatar = false, lines = 3 }: SkeletonCardProps) {
   return (
-    <div className={cn('shadow-professional rounded-xl p-6 bg-gradient-to-br from-white/95 to-gray-50/70 backdrop-blur-sm ring-1 ring-gray-200/50 animate-scale-in', className)}>
+    <div className={cn('shadow-professional rounded-xl p-6 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm ring-1 ring-warmgray-300/50 animate-scale-in', className)}>
       {showAvatar && (
         <div className="flex items-center space-x-4 mb-4">
           <SkeletonLoader variant="circle" className="w-12 h-12" />
@@ -136,7 +136,7 @@ export function SkeletonTable({ rows, columns, className }: SkeletonTableProps) 
   return (
     <div className={cn('space-y-4 p-6', className)}>
       {/* Table Header */}
-      <div className="flex space-x-6 pb-4 border-b border-gray-200/50">
+      <div className="flex space-x-6 pb-4 border-b border-warmgray-300/50">
         {Array.from({ length: columns }).map((_, colIndex) => (
           <SkeletonLoader
             key={`header-${colIndex}`}
@@ -150,7 +150,7 @@ export function SkeletonTable({ rows, columns, className }: SkeletonTableProps) 
 
       {/* Table Rows */}
       {Array.from({ length: rows }).map((_, rowIndex) => (
-        <div key={rowIndex} className="flex space-x-6 py-4 border-b border-gray-100/50 last:border-b-0">
+        <div key={rowIndex} className="flex space-x-6 py-4 border-b border-warmgray-200/50 last:border-b-0">
           {Array.from({ length: columns }).map((_, colIndex) => (
             <SkeletonLoader
               key={`cell-${rowIndex}-${colIndex}`}
