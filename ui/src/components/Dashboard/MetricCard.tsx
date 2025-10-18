@@ -97,7 +97,7 @@ export function MetricCard({
   const cardContent = (
     <div
       className={cn(
-        "group relative overflow-hidden border-0 bg-gradient-to-br from-white/90 to-warmgray-50/70 backdrop-blur-sm shadow-md hover:shadow-lg transition-all duration-300 rounded-xl animate-scale-in",
+        "group relative overflow-hidden border-0 bg-gradient-to-br from-white/90 to-warmgray-50/70 backdrop-blur-sm shadow-md hover:shadow-lg transition-all duration-300 rounded-xl animate-scale-in hover:animate-hover-lift",
         variant === 'hero' && "from-warmgray-50/90 to-warmgray-100/70 shadow-sm ring-1 ring-warmgray-300/50",
         variant === 'compact' && "p-4 rounded-lg"
       )}
@@ -141,7 +141,7 @@ export function MetricCard({
 
         <div
           className={cn(
-            "font-black text-warmgray-900 tabular-nums leading-none mb-3",
+            "font-black text-warmgray-900 tabular-nums leading-none mb-3 animate-metric-pop",
             variant === 'hero' ? "text-5xl bg-gradient-to-r from-warmgray-900 to-warmgray-700 bg-clip-text text-transparent" : "text-4xl",
             variant === 'compact' && "text-3xl"
           )}
@@ -154,15 +154,15 @@ export function MetricCard({
         {change !== undefined && (
           <div
             className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold tabular-nums shadow-sm",
+              "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold tabular-nums shadow-sm animate-badge-pop",
               change >= 0
-                ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800 border border-green-200'
-                : 'bg-gradient-to-r from-red-100 to-red-200 text-red-800 border border-red-200'
+                ? 'bg-gradient-to-r from-emerald-100 to-emerald-200 text-emerald-800 border border-emerald-200'
+                : 'bg-gradient-to-r from-rose-100 to-rose-200 text-rose-800 border border-rose-200'
             )}
             aria-label={`Change: ${change >= 0 ? 'positive' : 'negative'} ${Math.abs(change)} percent`}
           >
             <div className={cn("w-2 h-2 rounded-full animate-pulse",
-              change >= 0 ? 'bg-green-500' : 'bg-red-500'
+              change >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
             )} />
             {changeLabel || `${change >= 0 ? '+' : ''}${formatNumber(change, 1)}%`}
           </div>

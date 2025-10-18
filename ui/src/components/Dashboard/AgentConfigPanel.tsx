@@ -65,21 +65,21 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-sm text-gray-600">Loading configuration...</div>
+        <div className="text-sm text-warmgray-600">Loading configuration...</div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 bg-white border border-gray-200 rounded">
+    <div className="flex flex-col gap-4 p-4 bg-white border border-warmgray-200 rounded">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900 capitalize">
+        <h3 className="text-lg font-semibold text-warmgray-900 capitalize">
           {agentName.replace('_', ' ')} Configuration
         </h3>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-warmgray-400 hover:text-warmgray-600"
           >
             ✕
           </button>
@@ -93,15 +93,15 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
             id="enabled"
             checked={config.enabled || false}
             onChange={(e) => handleChange('enabled', e.target.checked)}
-            className="rounded border-gray-300"
+            className="rounded border-warmgray-300"
           />
-          <label htmlFor="enabled" className="text-sm font-medium text-gray-700">
+          <label htmlFor="enabled" className="text-sm font-medium text-warmgray-700">
             Enable Agent
           </label>
         </div>
 
         <div>
-          <label htmlFor="frequency" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="frequency" className="block text-sm font-medium text-warmgray-700 mb-1">
             Update Frequency
           </label>
           <Select
@@ -122,7 +122,7 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
         {agentName === 'risk_manager' && (
           <>
             <div>
-              <label htmlFor="max_position_size" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="max_position_size" className="block text-sm font-medium text-warmgray-700 mb-1">
                 Max Position Size (%)
               </label>
               <Input
@@ -133,7 +133,7 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
               />
             </div>
             <div>
-              <label htmlFor="risk_per_trade" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="risk_per_trade" className="block text-sm font-medium text-warmgray-700 mb-1">
                 Risk per Trade (%)
               </label>
               <Input
@@ -149,7 +149,7 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
 
         {agentName === 'technical_analyst' && (
           <div>
-            <label htmlFor="indicators" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="indicators" className="block text-sm font-medium text-warmgray-700 mb-1">
               Technical Indicators
             </label>
             <div className="flex flex-wrap gap-2">
@@ -165,7 +165,7 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
                         : current.filter((i: string) => i !== indicator)
                       handleChange('indicators' as any, updated)
                     }}
-                    className="rounded border-gray-300"
+                    className="rounded border-warmgray-300"
                   />
                   {indicator.replace('_', ' ')}
                 </label>

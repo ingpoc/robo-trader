@@ -74,25 +74,25 @@ export function Dashboard() {
   ]
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
+    <div className="page-wrapper">
       <div className="flex flex-col gap-4 animate-fade-in-luxury">
         <Breadcrumb />
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-2">
-            <h1 className="text-3xl lg:text-4xl font-bold text-warmgray-900 font-serif">
+            <h1 className="text-4xl lg:text-5xl font-bold text-warmgray-900 dark:text-warmgray-100 font-serif">
               Trading Dashboard
             </h1>
-            <p className="text-lg text-warmgray-600">Professional portfolio management with AI-powered insights</p>
+            <p className="text-lg text-warmgray-600 dark:text-warmgray-400">Professional portfolio management with AI-powered insights</p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-3">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="secondary"
+                  variant="primary"
                   size="lg"
                   onClick={() => portfolioScan()}
                   disabled={isScanning}
-                  className="btn-professional-secondary hover:scale-105 transition-all duration-200 font-semibold"
+                  className="font-semibold"
                   aria-label="Scan portfolio for updates"
                 >
                   <TrendingUp className="w-5 h-5 mr-2" />
@@ -110,7 +110,7 @@ export function Dashboard() {
                   size="lg"
                   onClick={() => marketScreening()}
                   disabled={isScanning}
-                  className="btn-professional-secondary hover:scale-105 transition-all duration-200 font-semibold"
+                  className="font-semibold"
                   aria-label="Perform market screening"
                 >
                   <PieChart className="w-5 h-5 mr-2" />
@@ -126,11 +126,11 @@ export function Dashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6 p-1 bg-warmgray-200 rounded-xl border border-warmgray-300/50 shadow-sm">
-          <TabsTrigger value="overview" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">Overview</TabsTrigger>
-          <TabsTrigger value="holdings" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">Holdings</TabsTrigger>
-          <TabsTrigger value="analytics" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">Analytics</TabsTrigger>
-          <TabsTrigger value="recommendations" className="text-sm font-medium rounded-lg data-[state=active]:bg-white/90 data-[state=active]:text-warmgray-900 data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 hover:text-warmgray-900">AI Insights</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 mb-6 p-1.5 bg-warmgray-100 dark:bg-warmgray-800 rounded-lg border border-warmgray-300 dark:border-warmgray-700 shadow-sm">
+          <TabsTrigger value="overview" className="text-sm font-semibold rounded-md data-[state=active]:bg-gradient-to-r data-[state=active]:from-copper-500 data-[state=active]:to-copper-600 dark:data-[state=active]:from-copper-600 dark:data-[state=active]:to-copper-700 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 dark:text-warmgray-400 hover:text-warmgray-900 dark:hover:text-warmgray-200">Overview</TabsTrigger>
+          <TabsTrigger value="holdings" className="text-sm font-semibold rounded-md data-[state=active]:bg-gradient-to-r data-[state=active]:from-copper-500 data-[state=active]:to-copper-600 dark:data-[state=active]:from-copper-600 dark:data-[state=active]:to-copper-700 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 dark:text-warmgray-400 hover:text-warmgray-900 dark:hover:text-warmgray-200">Holdings</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-sm font-semibold rounded-md data-[state=active]:bg-gradient-to-r data-[state=active]:from-copper-500 data-[state=active]:to-copper-600 dark:data-[state=active]:from-copper-600 dark:data-[state=active]:to-copper-700 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 dark:text-warmgray-400 hover:text-warmgray-900 dark:hover:text-warmgray-200">Analytics</TabsTrigger>
+          <TabsTrigger value="recommendations" className="text-sm font-semibold rounded-md data-[state=active]:bg-gradient-to-r data-[state=active]:from-copper-500 data-[state=active]:to-copper-600 dark:data-[state=active]:from-copper-600 dark:data-[state=active]:to-copper-700 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 text-warmgray-600 dark:text-warmgray-400 hover:text-warmgray-900 dark:hover:text-warmgray-200">AI Insights</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -236,10 +236,10 @@ export function Dashboard() {
                       </div>
                     ))}
                     {Object.keys(agents).length === 0 && (
-                      <div className="text-center text-slate-500 py-8">
+                      <div className="text-center text-warmgray-500 py-8">
                         <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
                         <p className="text-sm font-bold">No agents configured</p>
-                        <p className="text-xs text-slate-400 mt-1">Configure agents to get started</p>
+                        <p className="text-xs text-warmgray-400 mt-1">Configure agents to get started</p>
                       </div>
                     )}
                   </div>

@@ -40,6 +40,10 @@ export function AgentConfig() {
 
   const updateFeature = async (featureName: string, updates: Partial<AgentFeatureConfig>) => {
     try {
+      // If disabling an agent, automatically disable use_claude
+      if (updates.enabled === false && !updates.use_claude) {
+        updates.use_claude = false
+      }
       await apiRequest(`/api/agents/features/${featureName}`, {
         method: 'PUT',
         body: JSON.stringify(updates),
@@ -60,7 +64,7 @@ export function AgentConfig() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
+    <div className="page-wrapper">
       <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-3xl font-bold text-warmgray-900 font-serif">Agent Configuration</h1>
@@ -93,7 +97,13 @@ function FeatureCard({ featureName, config, onUpdate }: {
           <input
             type="checkbox"
             checked={config.enabled}
-            onChange={(e) => onUpdate({ enabled: e.target.checked })}
+            onChange={(e) => {
+              const updates: any = { enabled: e.target.checked }
+              if (!e.target.checked) {
+                updates.use_claude = false
+              }
+              onUpdate(updates)
+            }}
             className="w-4 h-4 accent-copper-500"
           />
         </label>

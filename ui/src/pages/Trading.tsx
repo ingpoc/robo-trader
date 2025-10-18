@@ -14,20 +14,20 @@ export function Trading() {
   const [approvalSteps, setApprovalSteps] = useState<Step[]>([])
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
+    <div className="page-wrapper">
       <div className="flex flex-col gap-4">
         <Breadcrumb />
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-warmgray-900 font-serif">Trading Center</h1>
-          <p className="text-sm text-warmgray-600 mt-1">Execute trades and review AI recommendations</p>
+          <h1 className="text-4xl lg:text-5xl font-bold text-warmgray-900 dark:text-warmgray-100 font-serif">Trading Center</h1>
+          <p className="text-lg text-warmgray-600 dark:text-warmgray-400 mt-2">Execute trades and review AI recommendations</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Quick Trade Form */}
-        <Card className="shadow-md border-warmgray-300/50 bg-gradient-to-br from-white/95 to-copper-50/70 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
+        <Card variant="featured">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-warmgray-900 font-serif">
+            <CardTitle className="flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100 font-serif">
               <DollarSign className="w-5 h-5 text-copper-500" />
               Quick Trade
             </CardTitle>
@@ -38,10 +38,10 @@ export function Trading() {
         </Card>
 
         {/* AI Recommendations */}
-        <Card className="shadow-md border-warmgray-300/50 bg-gradient-to-br from-white/95 to-copper-50/70 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
+        <Card variant="featured">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-warmgray-900 font-serif">
+              <CardTitle className="flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100 font-serif">
                 <Target className="w-5 h-5 text-copper-500" />
                 AI Recommendations ({recommendations.length})
               </CardTitle>

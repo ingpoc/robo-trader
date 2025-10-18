@@ -235,8 +235,8 @@ async def get_dashboard_data() -> Dict[str, Any]:
 
     portfolio = await orchestrator.state_manager.get_portfolio()
 
-    # Trigger lazy bootstrap if portfolio not yet available
-    if not portfolio and orchestrator:
+    # Trigger lazy bootstrap if portfolio not yet available and portfolio_scan is enabled
+    if not portfolio and orchestrator and config.agents.portfolio_scan.enabled:
         try:
             logger.debug("Portfolio missing in state store; triggering bootstrap scan")
             await orchestrator.run_portfolio_scan()
@@ -315,18 +315,20 @@ async def startup_event():
         """Prime initial analytics so UI renders with real data."""
         if not orchestrator:
             return
-        try:
-            await asyncio.wait_for(orchestrator.run_portfolio_scan(), timeout=30.0)
-        except asyncio.TimeoutError:
-            logger.warning("Initial portfolio scan timed out during startup")
-        except Exception as exc:
-            logger.warning(f"Initial portfolio scan failed: {exc}")
-        try:
-            await asyncio.wait_for(orchestrator.run_market_screening(), timeout=30.0)
-        except asyncio.TimeoutError:
-            logger.warning("Initial market screening timed out during startup")
-        except Exception as exc:
-            logger.warning(f"Initial market screening failed: {exc}")
+        if config.agents.portfolio_scan.enabled:
+            try:
+                await asyncio.wait_for(orchestrator.run_portfolio_scan(), timeout=30.0)
+            except asyncio.TimeoutError:
+                logger.warning("Initial portfolio scan timed out during startup")
+            except Exception as exc:
+                logger.warning(f"Initial portfolio scan failed: {exc}")
+        if config.agents.market_screening.enabled:
+            try:
+                await asyncio.wait_for(orchestrator.run_market_screening(), timeout=30.0)
+            except asyncio.TimeoutError:
+                logger.warning("Initial market screening timed out during startup")
+            except Exception as exc:
+                logger.warning(f"Initial market screening failed: {exc}")
         try:
             await asyncio.wait_for(orchestrator.run_strategy_review(), timeout=30.0)
         except asyncio.TimeoutError:
@@ -1070,6 +1072,9 @@ async def update_agent_feature(feature_name: str, feature_data: Dict[str, Any]):
 
         if "enabled" in feature_data:
             feature_config.enabled = feature_data["enabled"]
+            # If disabling an agent, automatically disable use_claude
+            if not feature_data["enabled"]:
+                feature_config.use_claude = False
         if "use_claude" in feature_data:
             feature_config.use_claude = feature_data["use_claude"]
         if "frequency_seconds" in feature_data:

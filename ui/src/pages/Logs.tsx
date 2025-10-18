@@ -94,7 +94,7 @@ export function Logs() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
+    <div className="page-wrapper">
       <div className="flex flex-col gap-4">
         <Breadcrumb />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

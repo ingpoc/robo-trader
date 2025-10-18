@@ -278,7 +278,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="quantity" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+            <label htmlFor="quantity" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
               Quantity
             </label>
             <Tooltip>
@@ -302,7 +302,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="order_type" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+            <label htmlFor="order_type" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
               Order Type
             </label>
             <Tooltip>
@@ -328,7 +328,7 @@ export function QuickTradeForm() {
 
           {orderType === 'LIMIT' && (
             <div className="col-span-1 md:col-span-2 animate-slide-in-up">
-              <label htmlFor="price" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+              <label htmlFor="price" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
                 Price
               </label>
               <Tooltip>

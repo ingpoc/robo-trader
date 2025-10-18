@@ -40,33 +40,33 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gray-50">
+        <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-warmgray-50">
           <div className="max-w-md w-full bg-white border border-red-200 rounded-lg p-6 shadow-lg">
             <div className="flex items-center mb-4">
               <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center mr-3">
                 <span className="text-red-600 text-lg">⚠</span>
               </div>
-              <h2 className="text-lg font-semibold text-gray-900">Something went wrong</h2>
+              <h2 className="text-lg font-semibold text-warmgray-900">Something went wrong</h2>
             </div>
 
-            <p className="text-gray-600 mb-4">
+            <p className="text-warmgray-600 mb-4">
               An unexpected error occurred. The error has been logged and our team has been notified.
             </p>
 
-            <div className="text-sm text-gray-500 mb-4">
+            <div className="text-sm text-warmgray-500 mb-4">
               Error: {this.state.error?.message}
             </div>
 
             <div className="flex gap-3">
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-copper-600 text-white rounded hover:bg-copper-700 transition-colors"
               >
                 Reload Page
               </button>
               <button
                 onClick={() => this.setState({ hasError: false, error: undefined })}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+                className="px-4 py-2 bg-warmgray-200 text-warmgray-800 rounded hover:bg-warmgray-300 transition-colors"
               >
                 Try Again
               </button>

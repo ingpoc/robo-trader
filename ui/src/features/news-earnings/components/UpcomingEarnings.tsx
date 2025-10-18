@@ -21,20 +21,20 @@ export const UpcomingEarnings = memo<UpcomingEarningsProps>(({
 }) => {
   if (isLoading) {
     return (
-      <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+      <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-800/90 backdrop-blur-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+          <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
             📅 Upcoming Earnings Calendar
           </CardTitle>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-warmgray-600 dark:text-warmgray-400">
             Next earnings reports for your portfolio stocks (next 60 days)
           </p>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
             <div className="text-center space-y-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-slate-600 dark:text-slate-400">Loading upcoming earnings...</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-copper-600 mx-auto"></div>
+              <p className="text-warmgray-600 dark:text-warmgray-400">Loading upcoming earnings...</p>
             </div>
           </div>
         </CardContent>
@@ -44,12 +44,12 @@ export const UpcomingEarnings = memo<UpcomingEarningsProps>(({
 
   if (error) {
     return (
-      <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+      <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-800/90 backdrop-blur-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+          <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
             📅 Upcoming Earnings Calendar
           </CardTitle>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-warmgray-600 dark:text-warmgray-400">
             Next earnings reports for your portfolio stocks (next 60 days)
           </p>
         </CardHeader>
@@ -80,22 +80,22 @@ export const UpcomingEarnings = memo<UpcomingEarningsProps>(({
 
   if (!portfolioEarnings || portfolioEarnings.length === 0) {
     return (
-      <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+      <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-800/90 backdrop-blur-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+          <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
             📅 Upcoming Earnings Calendar
           </CardTitle>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-warmgray-600 dark:text-warmgray-400">
             Next earnings reports for your portfolio stocks (next 60 days)
           </p>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <div className="bg-warmgray-100 dark:bg-warmgray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl">📅</span>
             </div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">No Upcoming Earnings</h3>
-            <p className="text-slate-600 dark:text-slate-400">
+            <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">No Upcoming Earnings</h3>
+            <p className="text-warmgray-600 dark:text-warmgray-400">
               No earnings reports scheduled for your portfolio stocks in the next 60 days.
             </p>
           </div>
@@ -105,12 +105,12 @@ export const UpcomingEarnings = memo<UpcomingEarningsProps>(({
   }
 
   return (
-    <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+    <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-800/90 backdrop-blur-sm">
       <CardHeader className="pb-4">
-        <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+        <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
           📅 Upcoming Earnings Calendar
         </CardTitle>
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-warmgray-600 dark:text-warmgray-400">
           Next earnings reports for your portfolio stocks (next 60 days)
         </p>
       </CardHeader>
@@ -119,31 +119,31 @@ export const UpcomingEarnings = memo<UpcomingEarningsProps>(({
           {portfolioEarnings.map((earnings, index) => (
             <article
               key={index}
-              className="flex items-center justify-between p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-md transition-all duration-200"
+              className="flex items-center justify-between p-4 border border-warmgray-200 dark:border-warmgray-700 rounded-lg bg-gradient-to-r from-white to-warmgray-50 dark:from-warmgray-800 dark:to-warmgray-800/50 hover:shadow-md transition-all duration-200"
             >
               <div className="flex items-center gap-4">
-                <div className="bg-blue-100 dark:bg-blue-900 rounded-full w-12 h-12 flex items-center justify-center">
-                  <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                <div className="bg-copper-100 dark:bg-copper-900 rounded-full w-12 h-12 flex items-center justify-center">
+                  <Calendar className="w-6 h-6 text-copper-600 dark:text-copper-400" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-lg text-slate-900 dark:text-slate-100">
+                  <h4 className="font-bold text-lg text-warmgray-900 dark:text-warmgray-100">
                     {earnings.symbol}
                   </h4>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                  <p className="text-sm text-warmgray-600 dark:text-warmgray-400">
                     {earnings.fiscal_period}
                   </p>
                   {earnings.guidance && (
-                    <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 max-w-md truncate">
+                    <p className="text-xs text-warmgray-500 dark:text-warmgray-500 mt-1 max-w-md truncate">
                       {earnings.guidance}
                     </p>
                   )}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                <div className="text-lg font-bold text-warmgray-900 dark:text-warmgray-100">
                   {formatDate(earnings.next_earnings_date)}
                 </div>
-                <div className="text-sm text-slate-600 dark:text-slate-400">
+                <div className="text-sm text-warmgray-600 dark:text-warmgray-400">
                   {earnings.days_until} days
                 </div>
               </div>

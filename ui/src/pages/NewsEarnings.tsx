@@ -185,7 +185,7 @@ export function NewsEarnings() {
         </div>
 
         {/* Symbol Selector */}
-        <Card className="shadow-md border-warmgray-300 bg-white/70 dark:bg-warmgray-800/70 backdrop-blur-sm">
+        <Card className="shadow-md border-warmgray-300 bg-white/70 dark:bg-warmgray-900/70 backdrop-blur-sm">
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
               <div className="flex-1 min-w-0">
@@ -223,7 +223,7 @@ export function NewsEarnings() {
           <>
             {/* Tab Navigation */}
             <div className="flex justify-center">
-              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-1 shadow-lg border border-slate-200 dark:border-slate-700">
+              <div className="bg-white/80 dark:bg-warmgray-900/80 backdrop-blur-sm rounded-xl p-1 shadow-lg border border-warmgray-200 dark:border-warmgray-700">
                 <div className="flex space-x-1">
                   {[
                     { id: 'news', label: 'News Feed', icon: '📰' },
@@ -249,14 +249,14 @@ export function NewsEarnings() {
 
             {/* Tab Content */}
           {activeTab === 'news' && (
-            <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+            <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-900/90 backdrop-blur-sm">
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+                  <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
                     📰 News Feed for {selectedSymbol}
                   </CardTitle>
                   {newsEarningsData?.last_updated && (
-                    <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full">
+                    <div className="text-sm text-warmgray-500 dark:text-warmgray-400 bg-warmgray-100 dark:bg-warmgray-700 px-3 py-1 rounded-full">
                       Updated {formatRelativeTime(newsEarningsData.last_updated)}
                     </div>
                   )}
@@ -267,7 +267,7 @@ export function NewsEarnings() {
                   <div className="flex items-center justify-center py-12">
                     <div className="text-center space-y-4">
                       <LoadingSpinner />
-                      <p className="text-slate-600 dark:text-slate-400">Loading latest news...</p>
+                      <p className="text-warmgray-600 dark:text-warmgray-400">Loading latest news...</p>
                     </div>
                   </div>
                 ) : error ? (
@@ -296,11 +296,11 @@ export function NewsEarnings() {
                       <AccordionItem
                         key={index}
                         value={`news-${index}`}
-                        className="group border border-slate-200 dark:border-slate-700 rounded-xl hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+                        className="group border border-warmgray-200 dark:border-warmgray-700 rounded-xl hover:shadow-lg hover:border-warmgray-300 dark:hover:border-warmgray-600 transition-all duration-300 bg-white dark:bg-warmgray-900/50 hover:bg-warmgray-50 dark:hover:bg-warmgray-900/80"
                       >
                         <AccordionTrigger className="px-6 py-4 hover:no-underline">
                           <div className="flex items-start justify-between w-full mr-4">
-                            <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 flex-1 leading-tight text-left">
+                            <h3 className="font-bold text-lg text-warmgray-900 dark:text-warmgray-100 flex-1 leading-tight text-left">
                               {item.title}
                             </h3>
                             <div className={`px-3 py-2 rounded-full text-sm font-semibold border-2 flex items-center gap-2 transition-all duration-200 ml-4 ${getSentimentColor(item.sentiment)}`}>
@@ -311,16 +311,16 @@ export function NewsEarnings() {
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-4">
                           <div className="space-y-4">
-                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                            <p className="text-warmgray-700 dark:text-warmgray-300 leading-relaxed">
                               {item.content || item.summary}
                             </p>
 
-                            <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
-                              <div className="flex items-center gap-6 text-sm text-slate-500 dark:text-slate-400">
+                            <div className="flex items-center justify-between pt-4 border-t border-warmgray-200 dark:border-warmgray-700">
+                              <div className="flex items-center gap-6 text-sm text-warmgray-500 dark:text-warmgray-400">
                                 {item.source && (
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium">Source:</span>
-                                    <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{item.source}</span>
+                                    <span className="bg-warmgray-100 dark:bg-warmgray-700 px-2 py-1 rounded-md">{item.source}</span>
                                   </div>
                                 )}
                                 <div className="flex items-center gap-2">
@@ -330,13 +330,13 @@ export function NewsEarnings() {
                               </div>
                               <div className="flex items-center gap-4">
                                 <div className="text-right">
-                                  <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Relevance</div>
-                                  <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                                  <div className="text-xs text-warmgray-500 dark:text-warmgray-400 mb-1">Relevance</div>
+                                  <div className="text-lg font-bold text-warmgray-900 dark:text-warmgray-100">
                                     {(item.relevance_score * 100).toFixed(0)}%
                                   </div>
                                 </div>
                                 {item.citations && item.citations.length > 0 && (
-                                  <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700">
+                                  <Button variant="ghost" size="sm" className="text-warmgray-500 hover:text-warmgray-700">
                                     <ExternalLink className="w-4 h-4" />
                                   </Button>
                                 )}
@@ -349,11 +349,11 @@ export function NewsEarnings() {
                   </Accordion>
                 ) : (
                   <div className="text-center py-12">
-                    <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                    <div className="bg-warmgray-100 dark:bg-warmgray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                       <span className="text-2xl">📰</span>
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">No Recent News</h3>
-                    <p className="text-slate-600 dark:text-slate-400">No recent news found for {selectedSymbol}</p>
+                    <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">No Recent News</h3>
+                    <p className="text-warmgray-600 dark:text-warmgray-400">No recent news found for {selectedSymbol}</p>
                   </div>
                 )}
               </CardContent>
@@ -363,9 +363,9 @@ export function NewsEarnings() {
           {activeTab === 'earnings' && (
             <div className="space-y-6">
               {/* Earnings Reports */}
-              <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+              <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-900/90 backdrop-blur-sm">
                 <CardHeader className="pb-4">
-                  <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+                  <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
                     📊 Earnings Reports for {selectedSymbol}
                   </CardTitle>
                 </CardHeader>
@@ -374,7 +374,7 @@ export function NewsEarnings() {
                     <div className="flex items-center justify-center py-12">
                       <div className="text-center space-y-4">
                         <LoadingSpinner />
-                        <p className="text-slate-600 dark:text-slate-400">Loading earnings data...</p>
+                        <p className="text-warmgray-600 dark:text-warmgray-400">Loading earnings data...</p>
                       </div>
                     </div>
                   ) : error ? (
@@ -396,13 +396,13 @@ export function NewsEarnings() {
                         <AccordionItem
                           key={index}
                           value={`earnings-${index}`}
-                          className="border border-slate-200 dark:border-slate-700 rounded-xl bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-lg transition-all duration-300"
+                          className="border border-warmgray-200 dark:border-warmgray-700 rounded-xl bg-gradient-to-r from-white to-warmgray-50 dark:from-warmgray-900 dark:to-warmgray-900/50 hover:shadow-lg transition-all duration-300"
                         >
                           <AccordionTrigger className="px-6 py-4 hover:no-underline">
                             <div className="flex items-center justify-between w-full">
                               <div className="flex items-center gap-4">
-                                <h4 className="font-bold text-xl text-slate-900 dark:text-slate-100">{report.fiscal_period}</h4>
-                                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                <h4 className="font-bold text-xl text-warmgray-900 dark:text-warmgray-100">{report.fiscal_period}</h4>
+                                <div className="flex items-center gap-2 text-warmgray-600 dark:text-warmgray-400">
                                   <Calendar className="w-4 h-4" />
                                   <span className="text-sm">{formatDate(report.report_date)}</span>
                                 </div>
@@ -423,13 +423,13 @@ export function NewsEarnings() {
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                               {/* EPS Data */}
                               <div className="space-y-3">
-                                <h5 className="font-semibold text-slate-900 dark:text-slate-100">EPS Performance</h5>
-                                <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
-                                  <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
+                                <h5 className="font-semibold text-warmgray-900 dark:text-warmgray-100">EPS Performance</h5>
+                                <div className="bg-white dark:bg-warmgray-800 rounded-lg p-4 border border-warmgray-200 dark:border-warmgray-700">
+                                  <div className="text-2xl font-bold text-warmgray-900 dark:text-warmgray-100 mb-1">
                                     {report.eps_actual ? `$${report.eps_actual.toFixed(2)}` : 'N/A'}
                                   </div>
                                   {report.eps_estimated && (
-                                    <div className="text-sm text-slate-600 dark:text-slate-400">
+                                    <div className="text-sm text-warmgray-600 dark:text-warmgray-400">
                                       Est: ${report.eps_estimated.toFixed(2)}
                                     </div>
                                   )}
@@ -438,45 +438,45 @@ export function NewsEarnings() {
 
                               {/* Revenue Data */}
                               <div className="space-y-3">
-                                <h5 className="font-semibold text-slate-900 dark:text-slate-100">Revenue</h5>
-                                <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                                <h5 className="font-semibold text-warmgray-900 dark:text-warmgray-100">Revenue</h5>
+                                <div className="bg-white dark:bg-warmgray-800 rounded-lg p-4 border border-warmgray-200 dark:border-warmgray-700">
                                   {report.revenue_actual ? (
                                     <>
-                                      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
+                                      <div className="text-2xl font-bold text-warmgray-900 dark:text-warmgray-100 mb-1">
                                         ${(report.revenue_actual / 1000000).toFixed(0)}M
                                       </div>
                                       {report.revenue_estimated && (
-                                        <div className="text-sm text-slate-600 dark:text-slate-400">
+                                        <div className="text-sm text-warmgray-600 dark:text-warmgray-400">
                                           Est: ${(report.revenue_estimated / 1000000).toFixed(0)}M
                                         </div>
                                       )}
                                     </>
                                   ) : (
-                                    <div className="text-slate-500 dark:text-slate-400">N/A</div>
+                                    <div className="text-warmgray-500 dark:text-warmgray-400">N/A</div>
                                   )}
                                 </div>
                               </div>
 
                               {/* Next Earnings */}
                               <div className="space-y-3">
-                                <h5 className="font-semibold text-slate-900 dark:text-slate-100">Next Report</h5>
-                                <div className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                                <h5 className="font-semibold text-warmgray-900 dark:text-warmgray-100">Next Report</h5>
+                                <div className="bg-white dark:bg-warmgray-800 rounded-lg p-4 border border-warmgray-200 dark:border-warmgray-700">
                                   {report.next_earnings_date ? (
-                                    <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                                    <div className="text-lg font-semibold text-copper-600 dark:text-copper-400">
                                       {formatDate(report.next_earnings_date)}
                                     </div>
                                   ) : (
-                                    <div className="text-slate-500 dark:text-slate-400">TBD</div>
+                                    <div className="text-warmgray-500 dark:text-warmgray-400">TBD</div>
                                   )}
                                 </div>
                               </div>
                             </div>
 
                             {report.guidance && (
-                              <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-                                <h5 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Management Guidance</h5>
-                                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                                  <p className="text-blue-900 dark:text-blue-100">{report.guidance}</p>
+                              <div className="mt-6 pt-6 border-t border-warmgray-200 dark:border-warmgray-700">
+                                <h5 className="font-semibold text-warmgray-900 dark:text-warmgray-100 mb-3">Management Guidance</h5>
+                                <div className="bg-copper-50 dark:bg-copper-950 border border-copper-200 dark:border-copper-800 rounded-lg p-4">
+                                  <p className="text-copper-900 dark:text-copper-100">{report.guidance}</p>
                                 </div>
                               </div>
                             )}
@@ -486,23 +486,23 @@ export function NewsEarnings() {
                     </Accordion>
                   ) : (
                     <div className="text-center py-12">
-                      <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                      <div className="bg-warmgray-100 dark:bg-warmgray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                         <span className="text-2xl">📊</span>
                       </div>
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">No Earnings Data</h3>
-                      <p className="text-slate-600 dark:text-slate-400">No earnings reports found for {selectedSymbol}</p>
+                      <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">No Earnings Data</h3>
+                      <p className="text-warmgray-600 dark:text-warmgray-400">No earnings reports found for {selectedSymbol}</p>
                     </div>
                   )}
                 </CardContent>
               </Card>
 
               {/* Upcoming Earnings Calendar */}
-              <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+              <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-900/90 backdrop-blur-sm">
                 <CardHeader className="pb-4">
-                  <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+                  <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
                     📅 Upcoming Earnings Calendar
                   </CardTitle>
-                  <p className="text-slate-600 dark:text-slate-400">
+                  <p className="text-warmgray-600 dark:text-warmgray-400">
                     Next earnings reports for your portfolio stocks (next 60 days)
                   </p>
                 </CardHeader>
@@ -511,7 +511,7 @@ export function NewsEarnings() {
                     <div className="flex items-center justify-center py-8">
                       <div className="text-center space-y-4">
                         <LoadingSpinner />
-                        <p className="text-slate-600 dark:text-slate-400">Loading upcoming earnings...</p>
+                        <p className="text-warmgray-600 dark:text-warmgray-400">Loading upcoming earnings...</p>
                       </div>
                     </div>
                   ) : upcomingEarningsData?.upcoming_earnings && upcomingEarningsData.upcoming_earnings.length > 0 ? (
@@ -548,12 +548,12 @@ export function NewsEarnings() {
                                 <AccordionItem
                                   key={weekKey}
                                   value={`week-${weekKey}`}
-                                  className="border border-slate-200 dark:border-slate-700 rounded-lg bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-md transition-all duration-200"
+                                  className="border border-warmgray-200 dark:border-warmgray-700 rounded-lg bg-gradient-to-r from-white to-warmgray-50 dark:from-warmgray-900 dark:to-warmgray-900/50 hover:shadow-md transition-all duration-200"
                                 >
                                   <AccordionTrigger className="px-4 py-3 hover:no-underline">
                                     <div className="flex items-center gap-3">
-                                      <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                      <Calendar className="w-5 h-5 text-copper-600 dark:text-copper-400" />
+                                      <span className="font-semibold text-warmgray-900 dark:text-warmgray-100">
                                         {weekLabel} ({earnings.length} report{earnings.length !== 1 ? 's' : ''})
                                       </span>
                                     </div>
@@ -563,33 +563,33 @@ export function NewsEarnings() {
                                       {earnings.map((earning, index) => (
                                         <div
                                           key={index}
-                                          className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800/50"
+                                          className="flex items-center justify-between p-3 border border-warmgray-200 dark:border-warmgray-700 rounded-lg bg-white dark:bg-warmgray-900/50"
                                         >
                                           <div className="flex items-center gap-4">
-                                            <div className="bg-blue-100 dark:bg-blue-900 rounded-full w-10 h-10 flex items-center justify-center">
-                                              <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                                            <div className="bg-copper-100 dark:bg-copper-900 rounded-full w-10 h-10 flex items-center justify-center">
+                                              <span className="text-sm font-bold text-copper-600 dark:text-copper-400">
                                                 {earning.symbol.slice(0, 2)}
                                               </span>
                                             </div>
                                             <div>
-                                              <h4 className="font-bold text-lg text-slate-900 dark:text-slate-100">
+                                              <h4 className="font-bold text-lg text-warmgray-900 dark:text-warmgray-100">
                                                 {earning.symbol}
                                               </h4>
-                                              <p className="text-sm text-slate-600 dark:text-slate-400">
+                                              <p className="text-sm text-warmgray-600 dark:text-warmgray-400">
                                                 {earning.fiscal_period}
                                               </p>
                                               {earning.guidance && (
-                                                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 max-w-md truncate">
+                                                <p className="text-xs text-warmgray-500 dark:text-warmgray-500 mt-1 max-w-md truncate">
                                                   {earning.guidance}
                                                 </p>
                                               )}
                                             </div>
                                           </div>
                                           <div className="text-right">
-                                            <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                                            <div className="text-lg font-bold text-warmgray-900 dark:text-warmgray-100">
                                               {formatDate(earning.next_earnings_date)}
                                             </div>
-                                            <div className="text-sm text-slate-600 dark:text-slate-400">
+                                            <div className="text-sm text-warmgray-600 dark:text-warmgray-400">
                                               {Math.ceil((new Date(earning.next_earnings_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days
                                             </div>
                                           </div>
@@ -603,21 +603,21 @@ export function NewsEarnings() {
                         </Accordion>
                       ) : (
                         <div className="text-center py-8">
-                          <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                          <div className="bg-warmgray-100 dark:bg-warmgray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                             <span className="text-2xl">📅</span>
                           </div>
-                          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">No Upcoming Earnings</h3>
-                          <p className="text-slate-600 dark:text-slate-400">No earnings reports scheduled for your portfolio stocks in the next 60 days.</p>
+                          <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">No Upcoming Earnings</h3>
+                          <p className="text-warmgray-600 dark:text-warmgray-400">No earnings reports scheduled for your portfolio stocks in the next 60 days.</p>
                         </div>
                       );
                     })()
                   ) : (
                     <div className="text-center py-8">
-                      <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                      <div className="bg-warmgray-100 dark:bg-warmgray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                         <span className="text-2xl">📅</span>
                       </div>
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">No Upcoming Earnings</h3>
-                      <p className="text-slate-600 dark:text-slate-400">Unable to load upcoming earnings data.</p>
+                      <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">No Upcoming Earnings</h3>
+                      <p className="text-warmgray-600 dark:text-warmgray-400">Unable to load upcoming earnings data.</p>
                     </div>
                   )}
                 </CardContent>
@@ -628,12 +628,12 @@ export function NewsEarnings() {
           {activeTab === 'recommendations' && (
             <div className="space-y-6">
               {/* Recommendations Overview */}
-              <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+              <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-900/90 backdrop-blur-sm">
                 <CardHeader className="pb-4">
-                  <CardTitle className="text-2xl flex items-center gap-3 text-slate-900 dark:text-slate-100">
+                  <CardTitle className="text-2xl flex items-center gap-3 text-warmgray-900 dark:text-warmgray-100">
                     🤖 AI Trading Recommendations
                   </CardTitle>
-                  <p className="text-slate-600 dark:text-slate-400">
+                  <p className="text-warmgray-600 dark:text-warmgray-400">
                     Real-time AI-powered buy/sell/hold recommendations based on fundamental and technical analysis
                   </p>
                 </CardHeader>
@@ -642,7 +642,7 @@ export function NewsEarnings() {
                     <div className="flex items-center justify-center py-12">
                       <div className="text-center space-y-4">
                         <LoadingSpinner />
-                        <p className="text-slate-600 dark:text-slate-400">Loading AI recommendations...</p>
+                        <p className="text-warmgray-600 dark:text-warmgray-400">Loading AI recommendations...</p>
                       </div>
                     </div>
                   ) : recommendations && recommendations.length > 0 ? (
@@ -650,17 +650,17 @@ export function NewsEarnings() {
                       {recommendations.map((rec) => (
                         <div
                           key={rec.id}
-                          className="border border-slate-200 dark:border-slate-700 rounded-xl p-6 bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 hover:shadow-lg transition-all duration-300"
+                          className="border border-warmgray-200 dark:border-warmgray-700 rounded-xl p-6 bg-gradient-to-br from-white to-warmgray-50 dark:from-warmgray-900 dark:to-warmgray-900/50 hover:shadow-lg transition-all duration-300"
                         >
                           {/* Header */}
                           <div className="flex items-start justify-between mb-4">
                             <div>
-                              <h3 className="font-bold text-xl text-slate-900 dark:text-slate-100 mb-1">
+                              <h3 className="font-bold text-xl text-warmgray-900 dark:text-warmgray-100 mb-1">
                                 {rec.recommendation.symbol}
                               </h3>
                               <div className="flex items-center gap-2">
                                 {getStatusIcon(rec.status)}
-                                <span className="text-sm text-slate-600 dark:text-slate-400 capitalize">
+                                <span className="text-sm text-warmgray-600 dark:text-warmgray-400 capitalize">
                                   {rec.status}
                                 </span>
                               </div>
@@ -675,12 +675,12 @@ export function NewsEarnings() {
                           <div className="space-y-4">
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Confidence</span>
+                                <span className="text-sm font-medium text-warmgray-700 dark:text-warmgray-300">Confidence</span>
                                 <span className={`text-sm font-bold ${getConfidenceColor(rec.recommendation.confidence)}`}>
                                   {(rec.recommendation.confidence * 100).toFixed(0)}%
                                 </span>
                               </div>
-                              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                              <div className="w-full bg-warmgray-200 dark:bg-warmgray-700 rounded-full h-2">
                                 <div
                                   className={`h-2 rounded-full transition-all duration-300 ${
                                     rec.recommendation.confidence >= 0.8 ? 'bg-emerald-500' :
@@ -692,8 +692,8 @@ export function NewsEarnings() {
                             </div>
 
                             <div>
-                              <h4 className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Analysis</h4>
-                              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                              <h4 className="font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">Analysis</h4>
+                              <p className="text-sm text-warmgray-700 dark:text-warmgray-300 leading-relaxed">
                                 {rec.recommendation.reasoning}
                               </p>
                             </div>
@@ -701,7 +701,7 @@ export function NewsEarnings() {
 
                           {/* Action Buttons */}
                           {rec.status === 'pending' && (
-                            <div className="flex gap-2 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                            <div className="flex gap-2 mt-6 pt-4 border-t border-warmgray-200 dark:border-warmgray-700">
                               <Button
                                 onClick={() => approve(rec.id)}
                                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -732,8 +732,8 @@ export function NewsEarnings() {
                           )}
 
                           {/* Timestamp */}
-                          <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                          <div className="mt-4 pt-4 border-t border-warmgray-200 dark:border-warmgray-700">
+                            <p className="text-xs text-warmgray-500 dark:text-warmgray-400">
                               Generated {rec.created_at ? formatRelativeTime(rec.created_at) : 'recently'}
                             </p>
                           </div>
@@ -742,11 +742,11 @@ export function NewsEarnings() {
                     </div>
                   ) : (
                     <div className="text-center py-12">
-                      <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                      <div className="bg-warmgray-100 dark:bg-warmgray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                         <span className="text-2xl">🤖</span>
                       </div>
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">No Active Recommendations</h3>
-                      <p className="text-slate-600 dark:text-slate-400 mb-6">
+                      <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">No Active Recommendations</h3>
+                      <p className="text-warmgray-600 dark:text-warmgray-400 mb-6">
                         AI recommendations will appear here when the system analyzes market conditions and generates trading signals.
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
@@ -755,10 +755,10 @@ export function NewsEarnings() {
                           { icon: '📊', title: 'Earnings Data', desc: 'Fundamental analysis integration' },
                           { icon: '📈', title: 'Technical Signals', desc: 'Chart patterns and indicators' }
                         ].map((feature, index) => (
-                          <div key={index} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                          <div key={index} className="bg-warmgray-50 dark:bg-warmgray-900/50 rounded-lg p-4 border border-warmgray-200 dark:border-warmgray-700">
                             <div className="text-2xl mb-2">{feature.icon}</div>
-                            <h4 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">{feature.title}</h4>
-                            <p className="text-sm text-slate-600 dark:text-slate-400">{feature.desc}</p>
+                            <h4 className="font-semibold text-warmgray-900 dark:text-warmgray-100 mb-1">{feature.title}</h4>
+                            <p className="text-sm text-warmgray-600 dark:text-warmgray-400">{feature.desc}</p>
                           </div>
                         ))}
                       </div>
@@ -769,9 +769,9 @@ export function NewsEarnings() {
 
               {/* Performance Metrics */}
               {recommendations && recommendations.length > 0 && (
-                <Card className="shadow-xl border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm">
+                <Card className="shadow-xl border-0 bg-white/90 dark:bg-warmgray-900/90 backdrop-blur-sm">
                   <CardHeader>
-                    <CardTitle className="text-xl flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                    <CardTitle className="text-xl flex items-center gap-2 text-warmgray-900 dark:text-warmgray-100">
                       <BarChart3 className="w-5 h-5" />
                       Recommendation Performance
                     </CardTitle>
@@ -782,25 +782,25 @@ export function NewsEarnings() {
                         <div className="text-2xl font-bold text-emerald-600 mb-1">
                           {recommendations.filter(r => r.status === 'approved').length}
                         </div>
-                        <div className="text-sm text-slate-600 dark:text-slate-400">Approved</div>
+                        <div className="text-sm text-warmgray-600 dark:text-warmgray-400">Approved</div>
                       </div>
                       <div className="text-center">
                         <div className="text-2xl font-bold text-amber-600 mb-1">
                           {recommendations.filter(r => r.status === 'discussing').length}
                         </div>
-                        <div className="text-sm text-slate-600 dark:text-slate-400">Under Discussion</div>
+                        <div className="text-sm text-warmgray-600 dark:text-warmgray-400">Under Discussion</div>
                       </div>
                       <div className="text-center">
                         <div className="text-2xl font-bold text-red-600 mb-1">
                           {recommendations.filter(r => r.status === 'rejected').length}
                         </div>
-                        <div className="text-sm text-slate-600 dark:text-slate-400">Rejected</div>
+                        <div className="text-sm text-warmgray-600 dark:text-warmgray-400">Rejected</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-600 mb-1">
+                        <div className="text-2xl font-bold text-copper-600 mb-1">
                           {recommendations.filter(r => r.status === 'pending').length}
                         </div>
-                        <div className="text-sm text-slate-600 dark:text-slate-400">Pending</div>
+                        <div className="text-sm text-warmgray-600 dark:text-warmgray-400">Pending</div>
                       </div>
                     </div>
                   </CardContent>

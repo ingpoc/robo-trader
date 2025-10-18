@@ -31,13 +31,29 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             className={cn(
-              'w-full h-10 px-3 pr-10 text-base bg-white/70 border rounded-lg transition-all duration-200',
-              'placeholder:text-warmgray-400',
-              'focus:outline-none focus:ring-2 focus:ring-offset-2',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              error ? 'border-rose-500 focus:ring-rose-500' :
-              success ? 'border-emerald-500 focus:ring-emerald-500' :
-              isFocused ? 'border-copper-500 focus:ring-copper-500' : 'border-warmgray-300',
+              // Base styling with luxury theme
+              'w-full h-10 px-4 pr-10 text-base',
+              'bg-white dark:bg-warmgray-800',
+              'border border-warmgray-300 dark:border-warmgray-700',
+              'rounded-lg transition-all duration-200',
+              'text-warmgray-900 dark:text-warmgray-100',
+              'placeholder:text-warmgray-400 dark:placeholder:text-warmgray-500',
+              
+              // Focus styling with copper accent
+              'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-warmgray-900',
+              
+              // Disabled state
+              'disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-warmgray-100 dark:disabled:bg-warmgray-700',
+              
+              // Error state
+              error ? 'border-rose-500 dark:border-rose-600 focus:ring-rose-400' :
+              // Success state
+              success ? 'border-emerald-500 dark:border-emerald-600 focus:ring-emerald-400' :
+              // Focused state with copper
+              isFocused ? 'border-copper-500 dark:border-copper-400 focus:ring-copper-400 shadow-sm shadow-copper-100 dark:shadow-copper-950' :
+              // Default state
+              'focus:ring-copper-400',
+              
               className
             )}
             onFocus={handleFocus}
@@ -47,22 +63,22 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           {showValidation && (
             <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
               {showError && (
-                <AlertCircle className="w-5 h-5 text-red-500" />
+                <AlertCircle className="w-5 h-5 text-rose-500 dark:text-rose-400" />
               )}
               {showSuccess && (
-                <CheckCircle className="w-5 h-5 text-green-500" />
+                <CheckCircle className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
               )}
             </div>
           )}
         </div>
         {error && (
-          <p className="mt-1 text-sm text-rose-600 flex items-center gap-1" role="alert">
+          <p className="mt-2 text-sm text-rose-600 dark:text-rose-400 flex items-center gap-1" role="alert">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             {error}
           </p>
         )}
         {success && !error && (
-          <p className="mt-1 text-sm text-emerald-600 flex items-center gap-1">
+          <p className="mt-2 text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
             <CheckCircle className="w-4 h-4 flex-shrink-0" />
             Looks good!
           </p>

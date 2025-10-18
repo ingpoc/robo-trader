@@ -87,18 +87,18 @@ export function Config() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
+    <div className="page-wrapper">
       <div className="flex flex-col gap-4">
         <Breadcrumb />
         <div>
-          <h1 className="text-3xl font-bold text-warmgray-900 font-serif">Settings</h1>
-          <p className="text-lg text-warmgray-600 mt-1">Configure system parameters and preferences</p>
+          <h1 className="text-4xl lg:text-5xl font-bold text-warmgray-900 dark:text-warmgray-100 font-serif">Settings</h1>
+          <p className="text-lg text-warmgray-600 dark:text-warmgray-400 mt-2">Configure system parameters and preferences</p>
         </div>
       </div>
 
-      <Card className="max-w-2xl shadow-sm">
+      <Card className="max-w-2xl" variant="featured">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-warmgray-900">
+          <CardTitle className="flex items-center gap-2 text-warmgray-900 dark:text-warmgray-100">
             <Settings className="w-5 h-5 text-copper-500" />
             System Configuration
           </CardTitle>

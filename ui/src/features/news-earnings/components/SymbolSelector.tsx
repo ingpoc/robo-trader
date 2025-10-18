@@ -20,13 +20,13 @@ export const SymbolSelector = memo<SymbolSelectorProps>(({
   isLoading = false,
 }) => {
   return (
-    <Card className="shadow-lg border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+    <Card className="shadow-lg border-0 bg-white/80 dark:bg-warmgray-800/80 backdrop-blur-sm">
       <CardContent className="p-6">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
           <div className="flex-1 min-w-0">
             <label
               htmlFor="symbol-select"
-              className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+              className="block text-sm font-semibold text-warmgray-700 dark:text-warmgray-300 mb-2"
             >
               Select Portfolio Stock
             </label>

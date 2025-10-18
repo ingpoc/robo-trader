@@ -73,7 +73,7 @@ export function AIInsights({ status }: AIInsightsProps) {
                   />
                   <div className={cn("text-xs font-bold tabular-nums",
                     isHighUsage ? "text-red-600" :
-                    isLowUsage ? "text-green-600" : "text-blue-600"
+                    isLowUsage ? "text-green-600" : "text-copper-600"
                   )}>
                     {apiUsagePercent.toFixed(1)}% of daily limit
                     {isHighUsage && " ⚠️ High usage"}

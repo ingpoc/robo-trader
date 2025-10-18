@@ -78,14 +78,14 @@ const NewsEarningsFeature = memo(() => {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      <div className="min-h-screen bg-gradient-to-br from-warmgray-50 to-warmgray-100 dark:from-warmgray-900 dark:to-warmgray-800">
         <div className="max-w-7xl mx-auto p-6 space-y-8">
           {/* Header */}
           <div className="text-center space-y-4">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-warmgray-900 to-warmgray-600 dark:from-warmgray-100 dark:to-warmgray-400 bg-clip-text text-transparent">
               Market Intelligence Hub
             </h1>
-            <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+            <p className="text-lg text-warmgray-600 dark:text-warmgray-400 max-w-2xl mx-auto">
               Real-time news, earnings analysis, and AI-powered recommendations for informed trading decisions
             </p>
           </div>

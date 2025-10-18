@@ -252,15 +252,58 @@
   box-shadow: 0 0 0 3px rgb(184 115 51 / 0.1);
 }
 
-/* Animations - Subtle and refined */
+/* Animations - Sophisticated and refined */
 .animate-fade-in-luxury {
-  animation: fadeInLuxury 0.4s ease-out;
+  animation: fadeInLuxury 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .animate-slide-up-luxury {
-  animation: slideUpLuxury 0.3s ease-out;
+  animation: slideUpLuxury 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.animate-slide-down-luxury {
+  animation: slideDownLuxury 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-copper-glow {
+  animation: copperGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-card-lift {
+  animation: cardLift 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-hover-lift {
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -6px rgb(184 115 51 / 0.15) !important;
+}
+
+.animate-metric-pop {
+  animation: metricPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-chart-draw {
+  animation: chartDraw 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-number-roll {
+  animation: numberRoll 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-badge-pop {
+  animation: badgePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Keyframe animations */
 @keyframes fadeInLuxury {
   from {
     opacity: 0;
@@ -273,12 +316,114 @@
 @keyframes slideUpLuxury {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes slideDownLuxury {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgb(184 115 51 / 0.1);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 16px rgb(184 115 51 / 0.2);
+  }
+}
+
+@keyframes copperGlow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgb(184 115 51 / 0.15);
+  }
+  50% {
+    box-shadow: 0 0 20px rgb(184 115 51 / 0.3);
+  }
+}
+
+@keyframes cardLift {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes metricPop {
+  0% {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes chartDraw {
+  from {
+    opacity: 0;
+    stroke-dashoffset: 100%;
+  }
+  to {
+    opacity: 1;
+    stroke-dashoffset: 0%;
+  }
+}
+
+@keyframes numberRoll {
+  0% {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes badgePop {
+  0% {
+    transform: scale(0.3) rotate(-180deg);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+}
+
+/* Hover effects - Luxury elevation */
+.group:hover .group-hover\:copper-glow {
+  box-shadow: 0 0 16px rgb(184 115 51 / 0.2);
+}
+
+.hover\:copper-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px -4px rgb(184 115 51 / 0.2);
 }
 
 /* Scrollbar styling - Refined */

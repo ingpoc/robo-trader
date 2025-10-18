@@ -42,11 +42,11 @@ const severityConfig = {
     iconColor: 'text-yellow-600'
   },
   low: {
-    bgColor: 'bg-blue-50 border-blue-200',
-    badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
-    textColor: 'text-blue-900',
+    bgColor: 'bg-copper-50 border-copper-200',
+    badgeColor: 'bg-copper-100 text-copper-800 border-copper-200',
+    textColor: 'text-copper-900',
     icon: Info,
-    iconColor: 'text-blue-600'
+    iconColor: 'text-copper-600'
   }
 }
 
@@ -74,11 +74,11 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
               {alert.severity.toUpperCase()}
             </span>
             {alert.category && (
-              <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+              <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-warmgray-100 text-warmgray-700 border border-warmgray-200">
                 {alert.category}
               </span>
             )}
-            <div className="ml-auto text-xs text-gray-500 font-medium">
+            <div className="ml-auto text-xs text-warmgray-500 font-medium">
               {formatDateTime(alert.timestamp)}
             </div>
           </div>
@@ -88,11 +88,11 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
               <h4 className={`text-sm font-bold ${config.textColor} mb-2 leading-tight`}>
                 {alert.title}
               </h4>
-              <p className="text-sm text-gray-700 leading-relaxed mb-2">
+              <p className="text-sm text-warmgray-700 leading-relaxed mb-2">
                 {alert.message}
               </p>
               {alert.symbol && (
-                <div className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-md border">
+                <div className="inline-flex items-center px-2 py-1 bg-warmgray-100 text-warmgray-700 text-xs font-semibold rounded-md border">
                   {alert.symbol}
                 </div>
               )}
@@ -104,7 +104,7 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
                   size="sm"
                   variant="ghost"
                   onClick={() => setIsExpanded(!isExpanded)}
-                  className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-2 rounded-lg transition-colors"
+                  className="text-warmgray-600 hover:text-warmgray-900 hover:bg-warmgray-100 p-2 rounded-lg transition-colors"
                   aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
                 >
                   {isExpanded ? (
@@ -132,7 +132,7 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
                     variant="ghost"
                     onClick={() => handleAction('dismiss')}
                     disabled={isHandlingAction}
-                    className="text-gray-600 hover:text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors"
+                    className="text-warmgray-600 hover:text-warmgray-700 hover:bg-warmgray-50 px-3 py-2 rounded-lg transition-colors"
                     title="Dismiss alert"
                   >
                     <XCircle className="w-4 h-4" />
@@ -143,8 +143,8 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
           </div>
 
           {isExpanded && alert.details && (
-            <div className="mt-4 pt-4 border-t border-gray-200 bg-gray-50/50 rounded-lg p-3">
-              <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            <div className="mt-4 pt-4 border-t border-warmgray-200 bg-warmgray-50/50 rounded-lg p-3">
+              <div className="text-sm text-warmgray-700 leading-relaxed whitespace-pre-wrap">
                 {alert.details}
               </div>
             </div>

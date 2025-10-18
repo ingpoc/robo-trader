@@ -158,7 +158,7 @@ export function SymbolCombobox({
                       />
                       <div>
                         <div className="font-medium">{symbol.symbol}</div>
-                        <div className="text-sm text-gray-500 truncate max-w-[200px]">{symbol.name}</div>
+                        <div className="text-sm text-warmgray-500 truncate max-w-[200px]">{symbol.name}</div>
                       </div>
                     </div>
                     <div className="text-right">

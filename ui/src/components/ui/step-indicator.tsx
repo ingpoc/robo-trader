@@ -43,7 +43,7 @@ export function StepIndicator({
       case 'error':
         return 'text-error bg-error border-error'
       default:
-        return 'text-gray-400 bg-gray-100 border-gray-300'
+        return 'text-warmgray-400 bg-warmgray-100 border-warmgray-300'
     }
   }
 
@@ -64,7 +64,7 @@ export function StepIndicator({
                   'text-sm font-medium',
                   step.status === 'active' ? 'text-accent' :
                   step.status === 'completed' ? 'text-success' :
-                  step.status === 'error' ? 'text-error' : 'text-gray-600'
+                  step.status === 'error' ? 'text-error' : 'text-warmgray-600'
                 )}>
                   {step.title}
                 </h4>
@@ -73,7 +73,7 @@ export function StepIndicator({
                 )}
               </div>
               {step.description && (
-                <p className="text-xs text-gray-500 mt-1">{step.description}</p>
+                <p className="text-xs text-warmgray-500 mt-1">{step.description}</p>
               )}
             </div>
           </div>
@@ -98,12 +98,12 @@ export function StepIndicator({
                 'text-xs font-medium',
                 step.status === 'active' ? 'text-accent' :
                 step.status === 'completed' ? 'text-success' :
-                step.status === 'error' ? 'text-error' : 'text-gray-600'
+                step.status === 'error' ? 'text-error' : 'text-warmgray-600'
               )}>
                 {step.title}
               </div>
               {step.description && (
-                <div className="text-xs text-gray-500 mt-1 max-w-20 truncate">
+                <div className="text-xs text-warmgray-500 mt-1 max-w-20 truncate">
                   {step.description}
                 </div>
               )}
@@ -113,7 +113,7 @@ export function StepIndicator({
             <div className={cn(
               'flex-1 h-0.5 mx-4 transition-colors',
               step.status === 'completed' ? 'bg-success' :
-              step.status === 'active' ? 'bg-accent' : 'bg-gray-200'
+              step.status === 'active' ? 'bg-accent' : 'bg-warmgray-200'
             )} />
           )}
         </div>

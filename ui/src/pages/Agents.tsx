@@ -38,33 +38,33 @@ export function Agents() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6 overflow-auto bg-warmgray-50 min-h-screen">
+    <div className="page-wrapper">
       <div className="flex flex-col gap-4">
         <Breadcrumb />
         <div>
-          <h1 className="text-3xl font-bold text-warmgray-900 font-serif">AI Agents</h1>
-          <p className="text-lg text-warmgray-600 mt-1">Monitor and control autonomous trading agents</p>
+          <h1 className="text-4xl lg:text-5xl font-bold text-warmgray-900 dark:text-warmgray-100 font-serif">AI Agents</h1>
+          <p className="text-lg text-warmgray-600 dark:text-warmgray-400 mt-2">Monitor and control autonomous trading agents</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {Object.entries(agents).map(([name, status]) => (
-          <Card key={name} className="hover:shadow-card-hover transition-all duration-200">
+          <Card key={name} variant="interactive">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg capitalize flex items-center gap-2 text-warmgray-900">
+                <CardTitle className="text-lg capitalize flex items-center gap-2 text-warmgray-900 dark:text-warmgray-100">
                   <Users className="w-5 h-5 text-copper-500" />
                   {name.replace('_', ' ')}
                 </CardTitle>
                 <div
-                  className={`px-2 py-1 text-xs rounded-full flex items-center gap-1 font-medium ${
+                  className={`px-2.5 py-1 text-xs rounded-full flex items-center gap-1 font-semibold border ${
                     status.status === 'running'
-                      ? 'bg-emerald-100 text-emerald-700'
+                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-100 border-emerald-300 dark:border-emerald-700'
                       : status.status === 'idle'
-                        ? 'bg-warmgray-200 text-warmgray-700'
+                        ? 'bg-warmgray-200 dark:bg-warmgray-700 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
                         : status.status === 'error'
-                          ? 'bg-rose-100 text-rose-700'
-                          : 'bg-warmgray-100 text-warmgray-700'
+                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-100 border-rose-300 dark:border-rose-700'
+                          : 'bg-warmgray-100 dark:bg-warmgray-800 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
                   }`}
                 >
                   {status.status === 'running' ? (

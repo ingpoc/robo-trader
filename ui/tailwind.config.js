@@ -167,6 +167,16 @@ module.exports = {
         'slide-in-right': 'slideInRight 0.4s ease-out',
         'scale-in': 'scaleIn 0.3s ease-out',
         'subtle-pulse': 'subtlePulse 3s ease-in-out infinite',
+        'fade-in-luxury': 'fadeInLuxury 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        'slide-up-luxury': 'slideUpLuxury 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        'slide-down-luxury': 'slideDownLuxury 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'copper-glow': 'copperGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'card-lift': 'cardLift 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'metric-pop': 'metricPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'chart-draw': 'chartDraw 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards',
+        'number-roll': 'numberRoll 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+        'badge-pop': 'badgePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
       keyframes: {
         fadeIn: {
@@ -192,6 +202,48 @@ module.exports = {
         subtlePulse: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.95' },
+        },
+        fadeInLuxury: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideUpLuxury: {
+          '0%': { opacity: '0', transform: 'translateY(12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideDownLuxury: {
+          '0%': { opacity: '0', transform: 'translateY(-12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        pulseGlow: {
+          '0%, 100%': { opacity: '1', boxShadow: '0 0 8px rgb(184 115 51 / 0.1)' },
+          '50%': { opacity: '0.8', boxShadow: '0 0 16px rgb(184 115 51 / 0.2)' },
+        },
+        copperGlow: {
+          '0%, 100%': { boxShadow: '0 0 8px rgb(184 115 51 / 0.15)' },
+          '50%': { boxShadow: '0 0 20px rgb(184 115 51 / 0.3)' },
+        },
+        cardLift: {
+          '0%': { transform: 'translateY(4px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        metricPop: {
+          '0%': { transform: 'scale(0.95)', opacity: '0' },
+          '50%': { transform: 'scale(1.02)' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        },
+        chartDraw: {
+          '0%': { opacity: '0', strokeDashoffset: '100%' },
+          '100%': { opacity: '1', strokeDashoffset: '0%' },
+        },
+        numberRoll: {
+          '0%': { transform: 'translateY(24px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        badgePop: {
+          '0%': { transform: 'scale(0.3) rotate(-180deg)', opacity: '0' },
+          '70%': { transform: 'scale(1.1)' },
+          '100%': { transform: 'scale(1) rotate(0)', opacity: '1' },
         },
       },
       boxShadow: {

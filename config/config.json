@@ -66,8 +66,12 @@
     "zerodha_api_secret": "your_api_secret_here",
     "zerodha_access_token": null,
     "zerodha_request_token": null,
-   "anthropic_api_key": "your_anthropic_api_key_here",
-    "perplexity_api_keys": []
+    "anthropic_api_key": "your_anthropic_api_key_here",
+    "perplexity_api_keys": [
+      "your_perplexity_api_key_1_here",
+      "your_perplexity_api_key_2_here",
+      "your_perplexity_api_key_3_here"
+    ]
   },
   "scheduling": {
     "portfolio_scan_interval_minutes": 60,
@@ -89,37 +93,37 @@
       "priority": "medium"
     },
     "market_screening": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": true,
       "frequency_seconds": 86400,
       "priority": "high"
     },
     "market_monitoring": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": false,
       "frequency_seconds": 60,
       "priority": "medium"
     },
     "stop_loss_monitor": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": false,
       "frequency_seconds": 15,
       "priority": "high"
     },
     "earnings_check": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": true,
       "frequency_seconds": 86400,
       "priority": "medium"
     },
     "news_monitoring": {
-      "enabled": true,
-      "use_claude": true,
+      "enabled": false,
+      "use_claude": false,
       "frequency_seconds": 86400,
       "priority": "medium"
     },
     "ai_daily_planning": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": true,
       "frequency_seconds": 86400,
       "priority": "high"
@@ -131,13 +135,13 @@
       "priority": "low"
     },
     "trade_execution": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": true,
       "frequency_seconds": 0,
       "priority": "high"
     },
     "fundamental_monitoring": {
-      "enabled": true,
+      "enabled": false,
       "use_claude": false,
       "frequency_seconds": 86400,
       "priority": "medium"

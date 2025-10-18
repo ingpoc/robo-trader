@@ -23,16 +23,22 @@ cleanup() {
 
     if [ ! -z "$BACKEND_PID" ]; then
         echo "Stopping backend (PID: $BACKEND_PID)..."
-        kill $BACKEND_PID 2>/dev/null
+        kill -9 $BACKEND_PID 2>/dev/null || true
     fi
 
     if [ ! -z "$FRONTEND_PID" ]; then
         echo "Stopping frontend (PID: $FRONTEND_PID)..."
-        kill $FRONTEND_PID 2>/dev/null
+        kill -9 $FRONTEND_PID 2>/dev/null || true
     fi
 
-    pkill -f "python -m src.main --command web" 2>/dev/null
-    pkill -f "vite" 2>/dev/null
+    echo "  Killing remaining processes on port 8000..."
+    lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+
+    echo "  Killing remaining processes on port 3000..."
+    lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+
+    pkill -9 -f "python -m src.main --command web" 2>/dev/null || true
+    pkill -9 -f "vite" 2>/dev/null || true
 
     echo "✅ Shutdown complete"
     exit 0
@@ -41,9 +47,20 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 echo "Cleaning up existing processes..."
-pkill -f "python -m src.main --command web" 2>/dev/null
-pkill -f "vite" 2>/dev/null
+echo "  Killing processes on port 8000 (Backend)..."
+lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+
+echo "  Killing processes on port 3000 (Frontend)..."
+lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+
+echo "  Killing Python processes (src.main)..."
+pkill -9 -f "python -m src.main --command web" 2>/dev/null || true
+
+echo "  Killing Vite processes..."
+pkill -9 -f "vite" 2>/dev/null || true
+
 sleep 2
+echo "✅ Cleanup complete"
 
 echo ""
 echo "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

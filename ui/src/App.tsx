@@ -63,7 +63,7 @@ function AppContent() {
         {/* Mobile sidebar backdrop */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 z-40 bg-gray-900/50 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-40 bg-warmgray-900/50 backdrop-blur-sm lg:hidden"
             onClick={() => setSidebarOpen(false)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') setSidebarOpen(false)

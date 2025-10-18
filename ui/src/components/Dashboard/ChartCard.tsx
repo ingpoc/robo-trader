@@ -70,7 +70,7 @@ export function ChartCard({
   const isPositive = data.length > 1 && data[data.length - 1]?.value > data[0]?.value
 
   const chartContent = (
-    <div className={`flex flex-col p-6 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm border-0 shadow-md hover:shadow-lg rounded-xl transition-all duration-300 ring-1 ring-warmgray-300/50 animate-scale-in ${className || ''}`}>
+    <div className={`flex flex-col p-6 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm border-0 shadow-md hover:shadow-lg rounded-xl transition-all duration-300 ring-1 ring-warmgray-300/50 animate-scale-in hover:animate-hover-lift ${className || ''}`}>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-gradient-to-br from-copper-100 to-copper-200 rounded-xl shadow-sm">
