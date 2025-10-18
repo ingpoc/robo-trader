@@ -1,4 +1,4 @@
-import { cn } from '@/utils/format'
+import { cn } from '@/lib/utils'
 
 interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg' | 'xl'

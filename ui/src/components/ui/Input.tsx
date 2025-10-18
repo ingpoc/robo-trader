@@ -1,5 +1,5 @@
 import { forwardRef, useState, type InputHTMLAttributes } from 'react'
-import { cn } from '@/utils/format'
+import { cn } from '@/lib/utils'
 import { CheckCircle, AlertCircle } from 'lucide-react'
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {

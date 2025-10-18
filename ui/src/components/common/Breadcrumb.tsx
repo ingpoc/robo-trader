@@ -1,6 +1,6 @@
 import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { cn } from '@/utils/format'
+import { cn } from '@/lib/utils'
 
 interface BreadcrumbItem {
   label: string

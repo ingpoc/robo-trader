@@ -18,9 +18,14 @@ export class WebSocketClient {
   private shouldReconnect = true
   private isConnecting = false
   private connectionId: string
+  private isChromium: boolean
+  private lastProcessedTime: number = 0
+  private throttleInterval: number
 
   constructor() {
     this.connectionId = `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    this.isChromium = this.detectChromium()
+    this.throttleInterval = this.isChromium ? 5000 : 1500 // 5s for Chromium, 1.5s for others
   }
 
   connect() {
@@ -65,6 +70,15 @@ export class WebSocketClient {
 
       // Validate message structure
       if (typeof message === 'object' && message !== null) {
+        // Apply throttling for Chromium browsers to prevent excessive processing
+        const now = Date.now()
+        if (this.isChromium && now - this.lastProcessedTime < this.throttleInterval) {
+          console.log(`[${this.connectionId}] Throttling message processing for Chromium browser (last processed ${now - this.lastProcessedTime}ms ago)`)
+          return
+        }
+
+        this.lastProcessedTime = now
+
         // Any message received means we're connected - pass data to callbacks
         this.callbacks.forEach((callback) => callback(message as DashboardData))
       } else {
@@ -197,17 +211,28 @@ export class WebSocketClient {
     }
   }
 
+  private detectChromium(): boolean {
+    const userAgent = navigator.userAgent
+    // Check for Chromium-based browsers (Chrome, Edge, Opera, etc.)
+    // This includes browsers that use Chromium engine, including Comet
+    return /Chrome|Chromium|Edg|OPR/.test(userAgent) && !/Safari/.test(userAgent)
+  }
+
   getConnectionInfo(): {
     id: string
     state: string
     reconnectAttempts: number
     isReconnecting: boolean
+    isChromium: boolean
+    throttleInterval: number
   } {
     return {
       id: this.connectionId,
       state: this.getConnectionState(),
       reconnectAttempts: this.reconnectAttempts,
-      isReconnecting: this.shouldReconnect && !this.isConnected()
+      isReconnecting: this.shouldReconnect && !this.isConnected(),
+      isChromium: this.isChromium,
+      throttleInterval: this.throttleInterval
     }
   }
 }

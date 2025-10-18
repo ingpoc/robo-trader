@@ -22,6 +22,7 @@ interface ChartCardProps {
   height?: number
   showLegend?: boolean
   className?: string
+  isLoading?: boolean
 }
 
 const COLORS = [

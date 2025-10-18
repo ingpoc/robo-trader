@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { formatCurrency, formatNumber } from '@/utils/format'
+import { formatCurrency, formatNumber, formatPercent } from '@/utils/format'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, PieChart, Users, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -58,7 +58,7 @@ export function MetricCard({
       case 'currency':
         return formatCurrency(val)
       case 'percent':
-        return `${formatNumber(val, 1)}%`
+        return formatPercent(val, 1)
       default:
         return formatNumber(val, 0)
     }
