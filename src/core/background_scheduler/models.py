@@ -24,6 +24,9 @@ class TaskType(Enum):
     PORTFOLIO_SCAN = "portfolio_scan"
     MARKET_SCREENING = "market_screening"
     AI_PLANNING = "ai_planning"
+    EARNINGS_FUNDAMENTALS = "earnings_fundamentals"
+    MARKET_NEWS_ANALYSIS = "market_news_analysis"
+    DEEP_FUNDAMENTAL_ANALYSIS = "deep_fundamental_analysis"
 
 
 class TaskPriority(Enum):

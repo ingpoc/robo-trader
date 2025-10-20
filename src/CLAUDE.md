@@ -45,6 +45,70 @@
 - ❌ No synchronous file I/O
 - ❌ No direct database access (use state manager)
 
+#### 2.1 Service Event Handler Pattern
+
+**Responsibility**: Services react to cross-cutting events.
+
+**Pattern**: Inherit from `EventHandler` and implement `handle_event()` for event-driven architecture:
+
+**Implementation**:
+```python
+from src.core.event_bus import EventHandler, Event, EventType
+
+class MyService(EventHandler):
+    def __init__(self, config: Config, event_bus: EventBus):
+        self.config = config
+        self.event_bus = event_bus
+        self._initialized = False
+
+        # Subscribe to relevant events
+        self.event_bus.subscribe(EventType.EXECUTION_ORDER_FILLED, self)
+        self.event_bus.subscribe(EventType.PORTFOLIO_CASH_CHANGE, self)
+
+    async def initialize(self) -> None:
+        """Initialize service resources."""
+        self._initialized = True
+
+    async def handle_event(self, event: Event) -> None:
+        """Handle incoming events based on type."""
+        try:
+            if event.type == EventType.EXECUTION_ORDER_FILLED:
+                await self._handle_order_fill(event)
+            elif event.type == EventType.PORTFOLIO_CASH_CHANGE:
+                await self._handle_cash_change(event)
+        except TradingError as e:
+            logger.error(f"Failed to handle {event.type.value}: {e.context.code}")
+
+    async def _handle_order_fill(self, event: Event) -> None:
+        """Process order fill event."""
+        try:
+            data = event.data
+            order_id = data.get("order_id")
+            # Process event
+        except Exception as e:
+            raise TradingError(f"Order fill processing failed: {e}")
+
+    async def close(self) -> None:
+        """Cleanup: unsubscribe from events."""
+        if not self._initialized:
+            return
+        self.event_bus.unsubscribe(EventType.EXECUTION_ORDER_FILLED, self)
+        self.event_bus.unsubscribe(EventType.PORTFOLIO_CASH_CHANGE, self)
+```
+
+**Rules**:
+- ✅ Inherit from `EventHandler` to receive events
+- ✅ Subscribe to events in `__init__()`
+- ✅ Implement `handle_event()` with type-based routing
+- ✅ Unsubscribe in `close()` method
+- ✅ Handle errors within event handlers (catch and log)
+- ✅ Keep event handlers fast and non-blocking
+- ✅ Use correlation_id from event for tracing
+- ❌ Don't subscribe without cleanup (memory leak)
+- ❌ Don't block in event handlers (keep async)
+- ❌ Don't raise unhandled exceptions from event handlers
+- ❌ Don't directly call other services (emit events instead)
+
 ### 3. Background Scheduler (`src/core/background_scheduler/`)
 
 **Responsibility**: Periodic task processing (earnings, news, monitoring).
@@ -94,6 +158,105 @@
 - ✅ No hardcoded API keys (use environment variables)
 - ✅ Never commit credentials
 - ✅ Use secure token storage
+
+### 6. Web Layer (`src/web/`)
+
+**Responsibility**: FastAPI application, HTTP endpoints, WebSocket connections.
+
+**Structure**:
+- `app.py` - Main FastAPI application with middleware
+- `chat_api.py` - Chat/AI endpoints
+- `connection_manager.py` - WebSocket connection management
+- `websocket_differ.py` - Differential update logic
+
+#### 6.1 Middleware Error Handling Pattern
+
+**Responsibility**: Centralized error handling for consistent HTTP responses.
+
+**Pattern**: HTTPMiddleware that catches `TradingError` and generic exceptions separately:
+
+**Implementation**:
+```python
+@app.middleware("http")
+async def error_handling_middleware(request: Request, call_next):
+    """Centralized error handling middleware."""
+    try:
+        return await call_next(request)
+    except TradingError as e:
+        # Trading domain errors
+        logger.error(f"Trading error: {e.context.code}")
+        status_code = 500 if e.context.severity.value in ["critical", "high"] else 400
+        return JSONResponse(
+            status_code=status_code,
+            content=e.to_dict()
+        )
+    except Exception as e:
+        # Generic application errors
+        error_context = ErrorHandler.handle_error(e)
+        logger.error(f"Unhandled error: {error_context}")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorHandler.format_error_response(e)
+        )
+```
+
+**Rules**:
+- ✅ Catch `TradingError` explicitly for structured responses
+- ✅ Use `ErrorHandler.handle_error()` for generic exceptions
+- ✅ Return appropriate HTTP status codes based on severity
+- ✅ Never expose internal stack traces to clients
+- ✅ Log errors with full context for debugging
+- ✅ Include correlation_id in error response for tracing
+- ❌ Don't let unhandled exceptions propagate to client
+- ❌ Don't return generic "Internal Server Error"
+- ❌ Don't expose implementation details
+
+#### 6.2 Rate Limiting Pattern
+
+**Responsibility**: Environment-configurable rate limits per endpoint group.
+
+**Pattern**: Use SlowAPI with environment-based configuration:
+
+**Implementation**:
+```python
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+# Environment-configurable limits
+dashboard_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
+trade_limit = os.getenv("RATE_LIMIT_TRADES", "10/minute")
+agents_limit = os.getenv("RATE_LIMIT_AGENTS", "20/minute")
+
+# Custom key function for load balancer support
+def get_rate_limit_key(request: Request):
+    """Get client IP, respecting X-Forwarded-For header."""
+    return request.headers.get("X-Forwarded-For", get_remote_address(request))
+
+limiter = Limiter(key_func=get_rate_limit_key)
+app.state.limiter = limiter
+
+# Apply limits to endpoint groups
+@app.get("/api/dashboard")
+@limiter.limit(dashboard_limit)
+async def api_dashboard(request: Request):
+    return await get_dashboard_data()
+
+@app.post("/api/trades/place")
+@limiter.limit(trade_limit)
+async def place_trade(request: Request, trade: TradeRequest):
+    return await execute_trade(trade)
+```
+
+**Rules**:
+- ✅ Configure limits via environment variables
+- ✅ Handle X-Forwarded-For header for load balancers
+- ✅ Group endpoints by risk/cost (trades stricter than reads)
+- ✅ Use different limits for read vs write operations
+- ✅ Return descriptive error message on rate limit
+- ✅ Include Retry-After header in response
+- ❌ Don't hard-code rate limits
+- ❌ Don't apply same limit to all endpoints
+- ❌ Don't ignore X-Forwarded-For (breaks behind load balancer)
 
 ---
 
@@ -228,6 +391,134 @@ class MyService:
     def __init__(self):
         self.scheduler = BackgroundScheduler()  # Not injected
 ```
+
+---
+
+## Anti-Patterns - Backend Failures to Avoid
+
+### Service Anti-Patterns
+
+**❌ Anti-Pattern 1: Services Not Inheriting EventHandler**
+```python
+# WRONG - Service can't receive events
+class MyService:
+    def __init__(self, event_bus):
+        self.event_bus = event_bus
+
+    # Never receives events
+```
+**Why Bad**: Service can't react to domain events, manual coordination needed
+**Fix**: Inherit from `EventHandler`, implement `handle_event()`, subscribe to events
+
+---
+
+**❌ Anti-Pattern 2: Event Subscriptions Without Cleanup**
+```python
+# WRONG - Memory leak
+class MyService(EventHandler):
+    def __init__(self, event_bus):
+        self.event_bus = event_bus
+        event_bus.subscribe(EventType.ORDER_FILLED, self)
+        # No cleanup() method
+```
+**Why Bad**: Services accumulate subscriptions when initialized multiple times
+**Fix**: Always unsubscribe in `close()` method
+
+---
+
+### Error Handling Anti-Patterns
+
+**❌ Anti-Pattern 3: Bare Except Clause**
+```python
+# WRONG - Catches SystemExit, KeyboardInterrupt
+try:
+    data = await fetch_data()
+except:
+    pass  # Silent failure!
+```
+**Why Bad**: Masks all failures, including interrupts
+**Fix**: Catch specific exceptions: `except APIError:`, `except TradingError:`
+
+---
+
+**❌ Anti-Pattern 4: Exception Before More Specific One**
+```python
+# WRONG - Generic before specific
+try:
+    data = await api.fetch()
+except Exception:  # Catches everything first
+    pass
+except APIError:   # Never reached!
+    pass
+```
+**Why Bad**: Specific handlers never execute
+**Fix**: Order from specific to general
+
+---
+
+### Web Layer Anti-Patterns
+
+**❌ Anti-Pattern 5: Exposing Stack Traces to Clients**
+```python
+# WRONG - Internal details exposed
+@app.get("/data")
+async def get_data():
+    try:
+        return await fetch()
+    except Exception as e:
+        return {"error": str(e), "traceback": traceback.format_exc()}
+```
+**Why Bad**: Exposes internal structure, security risk
+**Fix**: Return `to_dict()` from `TradingError`, generic message for others
+
+---
+
+**❌ Anti-Pattern 6: Hardcoded Rate Limits**
+```python
+# WRONG - Can't adjust without redeployment
+DASHBOARD_LIMIT = "30/minute"
+TRADE_LIMIT = "10/minute"
+
+@app.get("/api/dashboard")
+@limiter.limit(DASHBOARD_LIMIT)
+async def dashboard():
+    pass
+```
+**Why Bad**: Can't tune for different environments
+**Fix**: Load from environment variables with defaults
+
+---
+
+### Async Anti-Patterns
+
+**❌ Anti-Pattern 7: Awaiting Task After Cancel**
+```python
+# WRONG - Can hang indefinitely
+try:
+    await asyncio.wait_for(task, timeout=5)
+except asyncio.TimeoutError:
+    task.cancel()
+    await task  # Can hang here!
+```
+**Why Bad**: Cancelled task doesn't always complete
+**Fix**: Wrap in wait_for with timeout: `await asyncio.wait_for(task, timeout=2)`
+
+---
+
+### DI Container Anti-Patterns
+
+**❌ Anti-Pattern 8: Creating Services Outside Container**
+```python
+# WRONG - Not managed by container
+service = MyService()
+
+# WRONG - Global reference
+_scheduler = BackgroundScheduler()
+def get_scheduler():
+    return _scheduler
+```
+**Why Bad**: Services not in DI, can't mock for testing
+**Fix**: Always get from container: `container.get(MyService)`
 
 ---
 

@@ -10,8 +10,8 @@ export function useAlerts() {
   const { data: alertsData, isLoading } = useQuery({
     queryKey: ['alerts'],
     queryFn: alertsAPI.getActive,
-    refetchInterval: 10000, // Refresh every 10 seconds for active alerts
-    retry: 2,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   })
 
   const handleAction = useMutation({

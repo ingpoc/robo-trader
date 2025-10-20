@@ -6,9 +6,12 @@ and improve testability and maintainability.
 """
 
 import asyncio
+import logging
 from typing import Dict, Any, Optional, Type, TypeVar, Generic
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 from ..config import Config
 from .orchestrator import RoboTraderOrchestrator
@@ -26,6 +29,9 @@ from ..services.risk_service import RiskService
 from ..services.execution_service import ExecutionService
 from ..services.analytics_service import AnalyticsService
 from ..services.learning_service import LearningService
+from ..services.claude_agent.tool_executor import ToolExecutor
+from ..services.claude_agent.response_validator import ResponseValidator
+from ..stores.claude_strategy_store import ClaudeStrategyStore
 from .coordinators import (
     SessionCoordinator,
     QueryCoordinator,
@@ -33,6 +39,7 @@ from .coordinators import (
     StatusCoordinator,
     LifecycleCoordinator,
     BroadcastCoordinator,
+    ClaudeAgentCoordinator,
 )
 
 T = TypeVar('T')
@@ -179,6 +186,54 @@ class DependencyContainer:
 
         self._register_singleton("learning_service", create_learning_service)
 
+        # Paper Trading Infrastructure
+        async def create_paper_trading_store():
+            from ..stores.paper_trading_store import PaperTradingStore
+            store = PaperTradingStore(self.config)
+            await store.initialize()
+            return store
+
+        self._register_singleton("paper_trading_store", create_paper_trading_store)
+
+        async def create_paper_trading_account_manager():
+            from ..services.paper_trading.account_manager import PaperTradingAccountManager
+            store = await self.get("paper_trading_store")
+            manager = PaperTradingAccountManager(self.config, store)
+            await manager.initialize()
+            return manager
+
+        self._register_singleton("paper_trading_account_manager", create_paper_trading_account_manager)
+
+        async def create_paper_trade_executor():
+            from ..services.paper_trading.trade_executor import PaperTradeExecutor
+            store = await self.get("paper_trading_store")
+            event_bus = await self.get("event_bus")
+            executor = PaperTradeExecutor(self.config, store, event_bus)
+            await executor.initialize()
+            return executor
+
+        self._register_singleton("paper_trade_executor", create_paper_trade_executor)
+
+        # Claude Agent Services
+        async def create_tool_executor():
+            risk_config = self.config.risk.__dict__ if hasattr(self.config, 'risk') else {}
+            return ToolExecutor(self, risk_config)
+
+        self._register_singleton("tool_executor", create_tool_executor)
+
+        async def create_response_validator():
+            risk_config = self.config.risk.__dict__ if hasattr(self.config, 'risk') else {}
+            return ResponseValidator(risk_config)
+
+        self._register_singleton("response_validator", create_response_validator)
+
+        async def create_claude_strategy_store():
+            store = ClaudeStrategyStore(self.config)
+            await store.initialize()
+            return store
+
+        self._register_singleton("claude_strategy_store", create_claude_strategy_store)
+
         # Coordinators
         async def create_session_coordinator():
             return SessionCoordinator(self.config)
@@ -222,6 +277,17 @@ class DependencyContainer:
             return BroadcastCoordinator(self.config)
 
         self._register_singleton("broadcast_coordinator", create_broadcast_coordinator)
+
+        async def create_claude_agent_coordinator():
+            event_bus = await self.get("event_bus")
+            strategy_store = await self.get("claude_strategy_store")
+            tool_executor = await self.get("tool_executor")
+            response_validator = await self.get("response_validator")
+            coordinator = ClaudeAgentCoordinator(self.config, event_bus, strategy_store, self)
+            await coordinator.initialize()
+            return coordinator
+
+        self._register_singleton("claude_agent_coordinator", create_claude_agent_coordinator)
 
         # Orchestrator - created last due to dependencies
         async def create_orchestrator():

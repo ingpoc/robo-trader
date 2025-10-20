@@ -28,6 +28,8 @@ from ..core.di import initialize_container, cleanup_container, DependencyContain
 from ..core.database_state import DatabaseStateManager
 from ..core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
+from .claude_agent_api import router as claude_agent_router
+from .paper_trading_api import router as paper_trading_router
 from .websocket_differ import WebSocketDiffer
 from .connection_manager import ConnectionManager
 
@@ -79,8 +81,9 @@ app.add_middleware(
         "http://127.0.0.1:5173",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    max_age=3600,
 )
 
 @app.middleware("http")
@@ -144,9 +147,15 @@ async def log_requests(request: Request, call_next):
 
     return response
 
-# Include chat API router
+# Include API routers
 # TEMPORARILY DISABLED FOR DEBUGGING
 # app.include_router(chat_router)
+
+# Include Claude Agent API router
+app.include_router(claude_agent_router)
+
+# Include Paper Trading API router
+app.include_router(paper_trading_router)
 
 # Global variables
 config = None
@@ -280,6 +289,10 @@ async def startup_event():
     container = await initialize_container(config)
     logger.info("DI container initialized")
 
+    # Store container in app state for API routes
+    app.state.container = container
+    logger.info("Container stored in app.state for API access")
+
     connection_manager = ConnectionManager()
     logger.info("ConnectionManager created")
 
@@ -405,6 +418,7 @@ async def root():
 
 
 @app.get("/api/dashboard")
+@app.get("/api/dashboard/")
 async def api_dashboard():
     """API endpoint for dashboard data."""
     return await get_dashboard_data()
@@ -1389,6 +1403,80 @@ async def get_upcoming_earnings(days_ahead: int = 30):
         return {"upcoming_earnings": upcoming_earnings}
     except Exception as e:
         logger.error(f"Failed to get upcoming earnings: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/fundamentals/{symbol}")
+async def get_fundamentals(symbol: str):
+    """Get comprehensive fundamental metrics for a symbol."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        state_manager = orchestrator.state_manager
+        async with state_manager._connection_pool as db:
+            cursor = await db.execute(
+                "SELECT * FROM fundamental_metrics WHERE symbol = ? ORDER BY analysis_date DESC LIMIT 1",
+                (symbol.upper(),)
+            )
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return JSONResponse({"error": "No fundamental data found"}, status_code=404)
+    except Exception as e:
+        logger.error(f"Failed to get fundamentals for {symbol}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/investment-analysis/{symbol}")
+async def get_investment_analysis(symbol: str):
+    """Get investment recommendation and analysis for a symbol."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        state_manager = orchestrator.state_manager
+        async with state_manager._connection_pool as db:
+            cursor = await db.execute(
+                "SELECT * FROM fundamental_details WHERE symbol = ? ORDER BY analysis_date DESC LIMIT 1",
+                (symbol.upper(),)
+            )
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return JSONResponse({"error": "No analysis data found"}, status_code=404)
+    except Exception as e:
+        logger.error(f"Failed to get investment analysis for {symbol}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/portfolio-fundamentals")
+async def get_portfolio_fundamentals():
+    """Get fundamental metrics for all holdings in the portfolio."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        orchestrator = await container.get_orchestrator()
+        state_manager = orchestrator.state_manager
+        portfolio = await state_manager.get_portfolio()
+
+        if not portfolio or not portfolio.holdings:
+            return {"fundamentals": []}
+
+        symbols = [h.symbol for h in portfolio.holdings]
+        async with state_manager._connection_pool as db:
+            placeholders = ",".join("?" * len(symbols))
+            cursor = await db.execute(
+                f"SELECT symbol, fundamental_score, investment_recommendation, revenue_growth_yoy, earnings_growth_yoy FROM fundamental_metrics WHERE symbol IN ({placeholders}) ORDER BY analysis_date DESC",
+                symbols
+            )
+            rows = await cursor.fetchall()
+            return {"fundamentals": [dict(row) for row in rows]}
+    except Exception as e:
+        logger.error(f"Failed to get portfolio fundamentals: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

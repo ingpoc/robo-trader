@@ -18,6 +18,7 @@ from .processors import EarningsProcessor, NewsProcessor, FundamentalAnalyzer
 from .monitors import MarketMonitor, RiskMonitor, HealthMonitor
 from .config import TaskConfigManager
 from .events import EventHandler
+from .executors import FundamentalExecutor
 
 
 class BackgroundScheduler:
@@ -48,6 +49,7 @@ class BackgroundScheduler:
         self.earnings_processor = EarningsProcessor()
         self.news_processor = NewsProcessor()
         self.fundamental_analyzer = FundamentalAnalyzer()
+        self.fundamental_executor = None
 
         self.market_monitor = MarketMonitor()
         self.risk_monitor = RiskMonitor(state_manager, None)
@@ -234,36 +236,25 @@ class BackgroundScheduler:
     # Task Execution
 
     async def _execute_task_logic(self, task: BackgroundTask) -> None:
-        """Execute task logic based on type.
-
-        Args:
-            task: Task to execute
-        """
+        """Execute task logic based on type."""
         task_type = task.task_type
 
-        if task_type == TaskType.MARKET_MONITORING:
-            if self.market_open:
-                await self._execute_market_monitoring(task.metadata)
+        if task_type == TaskType.MARKET_MONITORING and self.market_open:
+            logger.info("Executing market monitoring task")
         elif task_type == TaskType.STOP_LOSS_MONITOR:
-            await self._execute_stop_loss_monitor(task.metadata)
+            portfolio = await self.state_manager.get_portfolio()
+            await self.risk_monitor.check_stop_loss(portfolio, self.config.risk.stop_loss_percent)
         elif task_type == TaskType.HEALTH_CHECK:
             await self.health_monitor.execute_system_health_check()
-        else:
-            logger.info(f"Task type {task_type.value} delegated to orchestrator")
-
-    async def _execute_market_monitoring(self, metadata: Dict[str, Any]) -> None:
-        """Execute market monitoring task."""
-        if not self.market_open:
-            return
-
-        logger.info("Executing market monitoring task")
-
-    async def _execute_stop_loss_monitor(self, metadata: Dict[str, Any]) -> None:
-        """Execute stop loss monitoring task."""
-        portfolio = await self.state_manager.get_portfolio()
-        stop_loss_percent = self.config.risk.stop_loss_percent
-
-        await self.risk_monitor.check_stop_loss(portfolio, stop_loss_percent)
+        elif task_type == TaskType.EARNINGS_FUNDAMENTALS:
+            if self.fundamental_executor:
+                await self.fundamental_executor.execute_earnings_fundamentals([], task.metadata)
+        elif task_type == TaskType.MARKET_NEWS_ANALYSIS:
+            if self.fundamental_executor:
+                await self.fundamental_executor.execute_market_news_analysis([], task.metadata)
+        elif task_type == TaskType.DEEP_FUNDAMENTAL_ANALYSIS:
+            if self.fundamental_executor:
+                await self.fundamental_executor.execute_deep_fundamental_analysis([], task.metadata)
 
     async def _handle_task_failure(self, task: BackgroundTask, error: str) -> None:
         """Handle task failure.

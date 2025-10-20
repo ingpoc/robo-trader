@@ -145,6 +145,24 @@
       "use_claude": false,
       "frequency_seconds": 86400,
       "priority": "medium"
+    },
+    "earnings_fundamentals": {
+      "enabled": true,
+      "interval_seconds": 3600,
+      "priority": "high",
+      "max_retries": 3
+    },
+    "market_news_analysis": {
+      "enabled": true,
+      "interval_seconds": 600,
+      "priority": "medium",
+      "max_retries": 3
+    },
+    "deep_fundamental_analysis": {
+      "enabled": true,
+      "interval_seconds": 7200,
+      "priority": "medium",
+      "max_retries": 2
     }
   }
 }

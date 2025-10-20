@@ -286,3 +286,38 @@ class NewsProcessor:
             return "company_news"
         else:
             return "other"
+
+    @staticmethod
+    def parse_categorized_news(response_text: str) -> Dict[str, Any]:
+        """Parse categorized news data from Perplexity API response.
+
+        Args:
+            response_text: Raw JSON response from Perplexity API
+
+        Returns:
+            Categorized news data with articles and analysis
+        """
+        import json
+
+        if not response_text or not isinstance(response_text, str):
+            logger.warning("Empty or invalid news data")
+            return {}
+
+        try:
+            data = json.loads(response_text)
+
+            if isinstance(data, dict) and 'data' in data:
+                data = data['data']
+
+            if not isinstance(data, dict):
+                logger.warning(f"Unexpected data structure: {type(data)}")
+                return {}
+
+            return data
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error parsing news: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error parsing categorized news: {e}")
+            return {}

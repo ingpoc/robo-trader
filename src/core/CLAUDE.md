@@ -210,6 +210,110 @@ raise MarketDataError(
 - RISK_MONITORING
 - HEALTH_CHECK
 
+#### 6.1 API Client Consolidation Pattern
+
+**Responsibility**: Unified external API interactions with resilience.
+
+**Pattern**: One client class per external API with centralized:
+- API key rotation for rate limit management
+- Exponential backoff retry logic
+- Structured response parsing
+- Timeout handling and error recovery
+
+**Implementation**:
+```python
+class UnifiedAPIClient:
+    def __init__(self, api_key_rotator: APIKeyRotator, model: str = "sonar-pro", timeout_seconds: int = 45):
+        self.key_rotator = api_key_rotator
+        self.model = model
+        self.timeout = timeout_seconds
+
+    async def fetch_data(self, query: str, max_retries: int = 3) -> Dict[str, Any]:
+        """Fetch with automatic retry and key rotation."""
+        for attempt in range(max_retries):
+            try:
+                api_key = self.key_rotator.get_next_key()
+                response = await self._call_api(query, api_key)
+                return response
+            except RateLimitError as e:
+                self.key_rotator.rotate_on_error()
+                backoff_delay = 2 ** attempt  # Exponential backoff
+                await asyncio.sleep(backoff_delay)
+            except APIError as e:
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(2 ** attempt)
+```
+
+**Rules**:
+- ✅ One client class per external service (PerplexityClient, KiteClient, etc.)
+- ✅ Consolidate all duplicate API calls into unified methods
+- ✅ Use API key rotation to avoid rate limits
+- ✅ Implement exponential backoff for retries
+- ✅ Handle authentication errors with key rotation
+- ✅ Set appropriate timeouts for all requests
+- ✅ Return structured, parsed data (not raw responses)
+- ❌ Don't create separate functions for similar API calls
+- ❌ Don't make HTTP requests without retry logic
+- ❌ Don't hard-code API keys (use DI container)
+- ❌ Don't ignore rate limit errors
+
+#### 6.2 Fallback Parsing Strategy Pattern
+
+**Responsibility**: Resilient data extraction from external APIs.
+
+**Pattern**: Multi-layer parsing with progressive fallback:
+1. **Primary**: Comprehensive structured parsing with detailed patterns
+2. **Secondary**: Simplified regex-based extraction
+3. **Tertiary**: Basic field extraction with minimal processing
+
+**Implementation**:
+```python
+class DataParser:
+    @staticmethod
+    def parse_data(raw_text: str) -> Dict[str, Any]:
+        """Parse with automatic fallback on failure."""
+        try:
+            return DataParser._parse_structured(raw_text)
+        except Exception as e:
+            logger.debug(f"Structured parsing failed: {e}")
+            try:
+                return DataParser._parse_regex(raw_text)
+            except Exception as e:
+                logger.debug(f"Regex parsing failed: {e}")
+                return DataParser._basic_extraction(raw_text)
+
+    @staticmethod
+    def _parse_structured(text: str) -> Dict[str, Any]:
+        """Comprehensive parsing with full data extraction."""
+        # Complex regex patterns, validation, etc.
+        pass
+
+    @staticmethod
+    def _parse_regex(text: str) -> Dict[str, Any]:
+        """Simplified regex patterns for fallback."""
+        # Basic patterns, less validation
+        pass
+
+    @staticmethod
+    def _basic_extraction(text: str) -> Dict[str, Any]:
+        """Minimal extraction, better than nothing."""
+        # Extract only critical fields
+        pass
+```
+
+**Rules**:
+- ✅ Always implement at least 2 fallback levels
+- ✅ Log which parsing strategy succeeded (for monitoring)
+- ✅ Return partial data rather than complete failure
+- ✅ Test each parsing strategy independently
+- ✅ Each strategy more lenient than previous
+- ✅ Emit event with parsing success/fallback used
+- ❌ Don't raise exceptions on parsing failure
+- ❌ Don't return empty dict on first parsing failure
+- ❌ Don't skip fallback strategies silently
+- ❌ Don't lose data in fallback (return what you got)
+
 ### 7. State Management (`database_state.py`)
 
 **Responsibility**: Persistent application state.
@@ -390,6 +494,97 @@ async def _handle_risk(self, event: Event):
 async def _handle_risk(self, event: Event):
     data = json.load(open('data.json'))  # BLOCKS!
 ```
+
+---
+
+## Anti-Patterns - What NOT to Do
+
+### Background Scheduler Anti-Patterns
+
+**❌ Anti-Pattern 1: Multiple API Clients for Same Service**
+```python
+# WRONG - Creates multiple clients, inconsistent error handling
+async def fetch_earnings():
+    response = await httpx.AsyncClient().get("https://api.example.com/earnings")
+
+async def fetch_fundamentals():
+    response = await httpx.AsyncClient().get("https://api.example.com/fundamentals")
+```
+**Why Bad**: Duplicate retry logic, key rotation, error handling across files
+**Fix**: Use consolidated `UnifiedAPIClient` with single initialization
+
+---
+
+### API Client Anti-Patterns
+
+**❌ Anti-Pattern 2: Direct HTTP Requests Without Retry**
+```python
+# WRONG - No retry on failure, no rate limit handling
+async def get_data(query: str):
+    response = await httpx.get(f"https://api.example.com/query?q={query}")
+    return response.json()
+```
+**Why Bad**: Transient failures cause immediate failure, no resilience
+**Fix**: Use API client with exponential backoff and max_retries
+
+---
+
+### Parsing Anti-Patterns
+
+**❌ Anti-Pattern 3: Single-Level Parsing Without Fallback**
+```python
+# WRONG - Parsing failure = no data extracted
+def parse_earnings(text: str) -> Dict:
+    # Complex regex
+    return structured_data  # Raises if pattern doesn't match
+```
+**Why Bad**: Any format variation causes complete failure
+**Fix**: Implement 3-level fallback parsing strategy
+
+---
+
+### Event Handler Anti-Patterns
+
+**❌ Anti-Pattern 4: No Event Handler Cleanup**
+```python
+# WRONG - Memory leak, event subscriptions never removed
+class MyService:
+    def __init__(self, event_bus):
+        self.event_bus = event_bus
+        event_bus.subscribe(EventType.ORDER_FILLED, self._handle)
+
+    # No cleanup() method!
+```
+**Why Bad**: Event handlers accumulate, memory grows unbounded
+**Fix**: Always unsubscribe in `cleanup()` method
+
+---
+
+### Task Anti-Patterns
+
+**❌ Anti-Pattern 5: Direct HTTP Requests in Background Tasks**
+```python
+# WRONG - No timeout, no retry, blocking operations
+async def process_earnings():
+    for symbol in symbols:
+        response = await httpx.get(f"https://api.example.com/earnings/{symbol}")
+```
+**Why Bad**: Long-running tasks can hang indefinitely, no resilience
+**Fix**: Use API client with timeouts and retry logic
+
+---
+
+### File I/O Anti-Patterns
+
+**❌ Anti-Pattern 6: Blocking File I/O in Async Functions**
+```python
+# WRONG - Blocks event loop
+async def load_tasks():
+    with open("tasks.json") as f:  # BLOCKS!
+        return json.load(f)
+```
+**Why Bad**: Blocks entire async event loop
+**Fix**: Use `aiofiles` with `async with`
 
 ---
 

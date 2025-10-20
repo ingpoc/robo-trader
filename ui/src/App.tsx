@@ -11,6 +11,7 @@ import { Dashboard } from '@/pages/Dashboard'
 import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
 import { Agents } from '@/pages/Agents'
 import { Trading } from '@/pages/Trading'
+import { PaperTrading } from '@/pages/PaperTrading'
 import { Config } from '@/pages/Config'
 import { Logs } from '@/pages/Logs'
 import { AgentConfig } from '@/pages/AgentConfig'
@@ -127,6 +128,7 @@ function AppContent() {
                <Route path="/news-earnings" element={<NewsEarningsFeature />} />
                <Route path="/agents" element={<Agents />} />
                <Route path="/trading" element={<Trading />} />
+               <Route path="/paper-trading" element={<PaperTrading />} />
                <Route path="/config" element={<Config />} />
                <Route path="/agent-config" element={<AgentConfig />} />
                <Route path="/logs" element={<Logs />} />

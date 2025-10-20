@@ -181,6 +181,11 @@ Never break existing public APIs. When refactoring, maintain import paths (use w
 | Building UI component | Feature folder with one component per file | Frontend Organization |
 | Need real-time updates | Send changed data only via `differential_update` | WebSocket Diffs |
 | Managing distributed state | Use `StateCoordinator`, emit change events | State Management |
+| **Centralizing configuration** | **Single `Config` class, load once, pass via DI** | **Centralized Configuration** |
+| **Consolidating API calls** | **One client per API, key rotation, retry logic** | **API Client Pattern** (src/core) |
+| **Parsing external data** | **3-layer fallback: structured → regex → basic** | **Fallback Parsing** (src/core) |
+| **Services receiving events** | **Inherit `EventHandler`, implement handler, cleanup** | **Event Handler Pattern** (src/services) |
+| **HTTP endpoints & WebSockets** | **Middleware error handling, rate limiting** | **Web Layer** (src/web) |
 
 ---
 
@@ -196,6 +201,10 @@ Every code submission MUST pass:
 - [ ] **Testing**: Testable design, mocks for externals, 80%+ coverage for domain logic
 - [ ] **Documentation**: Module/class/method docstrings, type hints
 - [ ] **Backward Compat**: Old imports still work, no breaking changes
+- [ ] **API Clients**: Single client per API, key rotation, exponential backoff (src/core)
+- [ ] **Parsing**: Multi-layer fallback if parsing external data (src/core)
+- [ ] **Services**: Inherit EventHandler if reacting to events, proper cleanup (src)
+- [ ] **Web Layer**: Error middleware + rate limiting for endpoints (src/web)
 
 ---
 
@@ -234,6 +243,10 @@ Every code submission MUST pass:
 - `src/core/event_bus.py` - Event infrastructure (343 lines)
 - `src/core/errors.py` - Error hierarchy with context (219 lines)
 - `src/core/background_scheduler/` - Modularized scheduler (8 focused domains)
+  - `clients/perplexity_client.py` - Unified API client pattern
+  - `processors/earnings_processor.py` - Fallback parsing strategy
+- `src/services/` - Domain services with EventHandler pattern
+- `src/web/app.py` - FastAPI with middleware error handling & rate limiting
 - `config/config.json` - Runtime configuration
 - `ui/src/pages/` - Top-level pages
 - `ui/src/features/` - Feature-specific components
