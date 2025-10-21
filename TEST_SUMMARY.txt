@@ -1,0 +1,256 @@
+================================================================================
+ROBO TRADER E2E TEST - EXECUTIVE SUMMARY
+================================================================================
+
+TEST DATE: 2025-10-21
+TEST DURATION: Full navigation and error analysis
+APPLICATION: Robo Trader - AI-Powered Trading Platform
+STATUS: NON-FUNCTIONAL (2 Critical Issues)
+
+================================================================================
+CRITICAL ISSUES FOUND: 2
+================================================================================
+
+1. API GATEWAY DOCKER BUILD FAILURE (BLOCKS ALL FUNCTIONALITY)
+   Severity: CRITICAL
+   Impact: Application completely non-functional
+
+   Root Cause:
+   - File: /services/api_gateway/Dockerfile (lines 10-11)
+   - Problem: Dockerfile copies only services/ but NOT src/ directory
+   - Error: ModuleNotFoundError: No module named 'src' at line 37 of main.py
+
+   Failing Imports:
+   - from src.config import load_config
+   - from src.core.di import initialize_container, cleanup_container, DependencyContainer
+   - from src.web.paper_trading_api import router as paper_trading_router
+
+   Result:
+   - Container exits with code 1
+   - Port 8000 has no listener
+   - All 40+ API calls from frontend receive ERR_CONNECTION_REFUSED
+   - All 8 pages fail to load data
+   - WebSocket real-time updates completely broken
+   - Application shows "Offline" status
+
+   Fix Required:
+   Add to Dockerfile line 10:
+   COPY src/ /app/src/
+
+2. PAPER TRADING API RETURNS HTTP 500 ERRORS
+   Severity: CRITICAL
+   Impact: Paper Trading feature completely unavailable
+
+   Affected Endpoints:
+   - GET /api/paper-trading/accounts/paper_swing_main/overview → 500
+   - GET /api/paper-trading/accounts/paper_swing_main/positions → 500
+   - GET /api/paper-trading/accounts/paper_swing_main/trades → 500
+   - GET /api/paper-trading/accounts/paper_swing_main/performance → 500
+
+   Error Message: "Failed to load paper trading account. Please try again."
+
+   Root Cause: Unknown (requires backend debugging)
+   Possible Causes:
+   - Database connection issue
+   - Missing account initialization
+   - Configuration error
+   - Missing environment variable
+   - Unhandled exception in paper trading service
+
+   Fix Required:
+   - Check paper trading service logs
+   - Verify database connectivity
+   - Check account initialization
+   - Add better error handling with stack traces
+
+================================================================================
+ISSUES BY PAGE
+================================================================================
+
+Overview (/)
+  Status: Data not loading
+  Errors: 40+ connection refused errors
+  Shows: Empty metrics (₹0.00, 0 positions)
+  Expected: Real-time portfolio data
+
+News & Earnings (/news-earnings)
+  Status: Data not loading
+  Errors: Failed to load earnings and recommendations
+  Shows: "Loading stocks..." dropdown never populates
+  Expected: Stock selection and news/earnings display
+
+Agents (/agents)
+  Status: OK (empty state is legitimate)
+  Shows: "No Agents Configured" message
+  Expected: User needs to configure agents
+
+Trading (/trading)
+  Status: Data not loading
+  Errors: No recommendations loaded
+  Shows: Disabled "Execute Trade" button
+  Expected: Ability to execute trades with recommendations
+
+Paper Trading (/paper-trading)
+  Status: ERROR - HTTP 500
+  Errors: 4x 500 errors on endpoints
+  Shows: Error alert "Failed to load paper trading account"
+  Expected: Account overview, positions, trades, performance
+
+Config (/config)
+  Status: Data not loading
+  Errors: Connection refused on /api/config
+  Shows: Form with default values
+  Expected: Load and save configuration
+
+Agent Config (/agent-config)
+  Status: Stuck loading
+  Errors: Connection refused on /api/agents/features
+  Shows: "Loading configuration..." (never completes)
+  Expected: Agent configuration interface
+
+Logs (/logs)
+  Status: ERROR - Connection refused
+  Errors: Failed to load /api/logs
+  Shows: Error alert with Retry button
+  Expected: System logs table
+
+================================================================================
+CONSOLE ERRORS BY TYPE
+================================================================================
+
+1. net::ERR_CONNECTION_REFUSED (40+ occurrences)
+   All attempts to http://localhost:8000/* fail
+   Port 8000 has no listener (API Gateway not running)
+
+2. WebSocket Connection Failed (20+ occurrences)
+   Unable to connect to ws://localhost:8000/ws
+   Attempts reconnect 10 times with exponential backoff (1s to 30s)
+
+3. HTTP 500 Errors (8+ occurrences)
+   Paper Trading endpoints returning server errors
+
+4. React Router Warnings (2 occurrences)
+   Future flag warnings about state transitions and route resolution
+
+================================================================================
+SERVICE STATUS
+================================================================================
+
+Running Services:
+  ✓ React Frontend on port 3001 (http://localhost:3001)
+  ✓ PostgreSQL on port 5432
+  ✓ RabbitMQ on ports 5672, 15672
+  ✓ Redis on port 6379
+  ✓ Portfolio Service on port 8001
+  ✓ Risk Service on port 8002
+  ✓ Execution Service on port 8003
+  ✓ Market Data Service on port 8004
+  ✓ Analytics Service on port 8005
+  ✓ Recommendation Service on port 8006
+  ✓ Task Scheduler Service on port 8007
+
+NOT Running:
+  ✗ API Gateway on port 8000 (Exited with code 1)
+
+================================================================================
+FRONTEND QUALITY ASSESSMENT
+================================================================================
+
+✓ UI/UX Quality: EXCELLENT
+  - Professional design with brown/tan color scheme
+  - Clean layout and consistent spacing
+  - Intuitive navigation
+  - Good use of icons and visual hierarchy
+  - Responsive design
+
+✓ Components: WELL IMPLEMENTED
+  - Sidebar navigation (8 items)
+  - Breadcrumb navigation
+  - Tab interfaces
+  - Data cards with metrics
+  - Charts (Recharts integration)
+  - Forms with fields
+  - Error alerts
+  - Empty state placeholders
+  - Loading indicators
+  - Status indicator
+
+✓ Accessibility: GOOD
+  - Skip to content links
+  - ARIA roles present
+  - Keyboard navigation support
+
+Issues:
+  - Form validation feedback missing
+  - Disabled button states not explained
+  - Empty vs error states sometimes ambiguous
+
+================================================================================
+TEST COVERAGE
+================================================================================
+
+Frontend Pages Tested: 8/8 (100%)
+- Overview: ✓ Tested
+- News & Earnings: ✓ Tested
+- Agents: ✓ Tested
+- Trading: ✓ Tested
+- Paper Trading: ✓ Tested
+- Config: ✓ Tested
+- Agent Config: ✓ Tested
+- Logs: ✓ Tested
+
+Navigation: ✓ All menu items navigate correctly
+Forms: ✓ All form fields render (but backend not available)
+WebSocket: ✗ Cannot test (backend not available)
+API Endpoints: ✗ Cannot test (backend not available)
+
+Screenshots: 9 captured (all saved in .playwright-mcp/)
+
+================================================================================
+RECOMMENDED ACTION PLAN
+================================================================================
+
+IMMEDIATE (Fix Blockers):
+1. Fix API Gateway Dockerfile - add COPY src/ /app/src/
+2. Rebuild API Gateway container
+3. Restart container
+4. Verify with: curl http://localhost:8000/health
+
+2. Debug Paper Trading API:
+   - Check backend logs
+   - Verify database connectivity
+   - Check account initialization
+   - Add error handling with stack traces
+
+FOLLOW-UP (Improvements):
+3. Add detailed error messages in Paper Trading API
+4. Improve UI error state messaging
+5. Fix React Router future flag warnings
+6. Add form validation feedback
+
+================================================================================
+COMPLETE TEST REPORT
+================================================================================
+
+Full detailed report with evidence, code references, and screenshots:
+File: /Users/gurusharan/Documents/remote-claude/robo-trader/E2E_TEST_REPORT.md
+
+================================================================================
+CONCLUSION
+================================================================================
+
+The Robo Trader frontend is well-designed and fully functional from a UI
+perspective. However, the application is completely non-functional due to
+backend deployment and configuration issues:
+
+1. API Gateway container fails to start (Docker build issue)
+2. Paper Trading API returns unhandled server errors
+
+Once these backend issues are resolved and the API Gateway is running, all
+frontend pages should be able to load and display data correctly.
+
+The frontend has been thoroughly tested across all 8 pages and navigation
+paths. No frontend code issues found - all errors are due to backend
+unavailability.
+
+================================================================================

@@ -29,7 +29,6 @@ from ..core.database_state import DatabaseStateManager
 from ..core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
 from .claude_agent_api import router as claude_agent_router
-from .paper_trading_api import router as paper_trading_router
 from .websocket_differ import WebSocketDiffer
 from .connection_manager import ConnectionManager
 
@@ -153,9 +152,6 @@ async def log_requests(request: Request, call_next):
 
 # Include Claude Agent API router
 app.include_router(claude_agent_router)
-
-# Include Paper Trading API router
-app.include_router(paper_trading_router)
 
 # Global variables
 config = None

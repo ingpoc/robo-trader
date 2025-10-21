@@ -20,6 +20,10 @@ class PaperTradingStore:
         """Initialize store with database path."""
         self.db_path = db_path
 
+    async def initialize(self) -> None:
+        """Initialize the store."""
+        await self.initialize_schema()
+
     async def initialize_schema(self) -> None:
         """Initialize database schema if it doesn't exist."""
         async with aiosqlite.connect(self.db_path) as db:
@@ -87,10 +91,12 @@ class PaperTradingStore:
         strategy_type: AccountType,
         risk_level: RiskLevel = RiskLevel.MODERATE,
         max_position_size: float = 5.0,
-        max_portfolio_risk: float = 10.0
+        max_portfolio_risk: float = 10.0,
+        account_id: Optional[str] = None
     ) -> PaperTradingAccount:
         """Create new paper trading account."""
-        account_id = f"paper_{strategy_type.value}_{uuid.uuid4().hex[:8]}"
+        if not account_id:
+            account_id = f"paper_{strategy_type.value}_{uuid.uuid4().hex[:8]}"
         now = datetime.utcnow().isoformat()
         today = datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -329,3 +335,32 @@ class PaperTradingStore:
             await db.commit()
 
         logger.info(f"Reset monthly account: {account_id}")
+    async def get_closed_trades(self, account_id: str, month: Optional[int] = None, year: Optional[int] = None, symbol: Optional[str] = None, limit: int = 50) -> List[PaperTrade]:
+        """Get closed trades for account with optional filters."""
+        query = """
+            SELECT * FROM paper_trades
+            WHERE account_id = ? AND status IN (?, ?)
+        """
+        params = [account_id, TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value]
+
+        if month and year:
+            start_date = f"{year:04d}-{month:02d}-01"
+            if month == 12:
+                end_date = f"{year+1:04d}-01-01"
+            else:
+                end_date = f"{year:04d}-{month+1:02d}-01"
+            query += " AND entry_timestamp >= ? AND entry_timestamp < ?"
+            params.extend([start_date, end_date])
+
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+
+        query += " ORDER BY exit_timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+            return [PaperTrade.from_dict(dict(row)) for row in rows]

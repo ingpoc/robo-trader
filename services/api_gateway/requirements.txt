@@ -8,3 +8,5 @@ httpx==0.25.2
 python-dotenv==1.0.0
 python-json-logger==2.0.7
 websockets==12.0
+slowapi==0.1.9
+aiofiles>=23.0.0

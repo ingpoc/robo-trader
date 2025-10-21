@@ -189,7 +189,9 @@ class DependencyContainer:
         # Paper Trading Infrastructure
         async def create_paper_trading_store():
             from ..stores.paper_trading_store import PaperTradingStore
-            store = PaperTradingStore(self.config)
+            import os
+            db_path = os.path.join(str(self.config.state_dir), "paper_trading.db")
+            store = PaperTradingStore(db_path)
             await store.initialize()
             return store
 
@@ -198,8 +200,7 @@ class DependencyContainer:
         async def create_paper_trading_account_manager():
             from ..services.paper_trading.account_manager import PaperTradingAccountManager
             store = await self.get("paper_trading_store")
-            manager = PaperTradingAccountManager(self.config, store)
-            await manager.initialize()
+            manager = PaperTradingAccountManager(store)
             return manager
 
         self._register_singleton("paper_trading_account_manager", create_paper_trading_account_manager)
@@ -207,9 +208,8 @@ class DependencyContainer:
         async def create_paper_trade_executor():
             from ..services.paper_trading.trade_executor import PaperTradeExecutor
             store = await self.get("paper_trading_store")
-            event_bus = await self.get("event_bus")
-            executor = PaperTradeExecutor(self.config, store, event_bus)
-            await executor.initialize()
+            account_manager = await self.get("paper_trading_account_manager")
+            executor = PaperTradeExecutor(store, account_manager)
             return executor
 
         self._register_singleton("paper_trade_executor", create_paper_trade_executor)

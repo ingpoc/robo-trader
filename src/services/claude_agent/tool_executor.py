@@ -7,7 +7,9 @@ from typing import Dict, Any, Optional, Callable
 from collections import defaultdict
 
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ...core.di import DependencyContainer
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ...core.di import DependencyContainer
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +89,7 @@ class RateLimiter:
 class ToolExecutor:
     """Execute Claude tool calls with safety, validation, and error recovery."""
 
-    def __init__(self, container: DependencyContainer, config: Dict[str, Any]):
+    def __init__(self, container: "DependencyContainer", config: Dict[str, Any]):
         """Initialize tool executor."""
         self.container = container
         self.config = config

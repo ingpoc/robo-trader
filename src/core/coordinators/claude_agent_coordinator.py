@@ -15,7 +15,9 @@ from ...stores.claude_strategy_store import ClaudeStrategyStore
 from ...services.claude_agent.tool_executor import ToolExecutor
 from ...services.claude_agent.response_validator import ResponseValidator
 from ..event_bus import EventBus, Event, EventType
-from ..di import DependencyContainer
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..di import DependencyContainer
 from .base_coordinator import BaseCoordinator
 from ..errors import TradingError, ErrorCategory, ErrorSeverity
 
@@ -34,7 +36,7 @@ class ClaudeAgentCoordinator(BaseCoordinator):
     """
 
     def __init__(self, config, event_bus: EventBus, strategy_store: ClaudeStrategyStore,
-                 container: DependencyContainer):
+                 container: "DependencyContainer"):
         """Initialize coordinator."""
         super().__init__(config, event_bus)
         self.strategy_store = strategy_store

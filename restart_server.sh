@@ -23,27 +23,32 @@ cleanup() {
     echo ""
     echo "${YELLOW}🛑 Shutting down Robo Trader...${NC}"
 
-    # Kill background log processes
+    # Kill all background processes created by this script
+    echo "  Stopping log streams..."
     if [ ! -z "$BACKEND_LOG_PID" ]; then
-        kill $BACKEND_LOG_PID 2>/dev/null || true
+        # Kill process group to ensure all children are killed
+        kill -9 -$BACKEND_LOG_PID 2>/dev/null || kill -9 $BACKEND_LOG_PID 2>/dev/null || true
     fi
     if [ ! -z "$FRONTEND_LOG_PID" ]; then
-        kill $FRONTEND_LOG_PID 2>/dev/null || true
+        # Kill process group to ensure all children are killed
+        kill -9 -$FRONTEND_LOG_PID 2>/dev/null || kill -9 $FRONTEND_LOG_PID 2>/dev/null || true
     fi
 
-    # Stop frontend
+    # Stop frontend npm process
     if [ ! -z "$FRONTEND_PID" ]; then
-        echo "  Stopping frontend (PID: $FRONTEND_PID)..."
+        echo "  Stopping frontend server (PID: $FRONTEND_PID)..."
         kill -15 $FRONTEND_PID 2>/dev/null || true
         sleep 1
         kill -9 $FRONTEND_PID 2>/dev/null || true
     fi
 
-    # Stop all vite processes
+    # Stop all vite processes (be more aggressive)
     echo "  Stopping Vite dev server..."
     pkill -15 -f "vite" 2>/dev/null || true
+    pkill -15 -f "npm.*dev" 2>/dev/null || true
     sleep 1
     pkill -9 -f "vite" 2>/dev/null || true
+    pkill -9 -f "npm.*dev" 2>/dev/null || true
 
     # Stop Docker containers
     echo "  Stopping Docker containers..."
@@ -53,6 +58,13 @@ cleanup() {
     # Clean up any remaining processes on port 3000
     echo "  Cleaning up port 3000..."
     lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+
+    # Kill any lingering docker-compose processes
+    pkill -9 -f "docker-compose" 2>/dev/null || true
+
+    # Kill any lingering tail processes (logs)
+    pkill -9 -f "tail.*logs" 2>/dev/null || true
+    pkill -9 -f "docker-compose logs" 2>/dev/null || true
 
     echo "✅ Shutdown complete"
     exit 0
@@ -71,6 +83,18 @@ docker-compose down 2>/dev/null || true
 sleep 2
 
 echo "✅ Cleanup complete"
+
+echo ""
+echo "${YELLOW}🔨 Building containers (preventing stale cache)...${NC}"
+echo "   Using DOCKER_BUILDKIT=0 to ensure fresh code is used"
+echo ""
+DOCKER_BUILDKIT=0 docker-compose build --no-cache 2>&1 | tail -5
+if [ $? -ne 0 ]; then
+    echo "${RED}❌ Build failed!${NC}"
+    exit 1
+fi
+echo "${GREEN}✅ Build complete${NC}"
+echo ""
 
 echo ""
 echo "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -243,7 +267,10 @@ format_frontend_logs &
 FRONTEND_LOG_PID=$!
 
 # Keep running and listen for signals
-wait $FRONTEND_PID 2>/dev/null
+# Use wait with no arguments to wait for ALL background processes
+# This ensures trap cleanup is called immediately when signal arrives
+wait
+
 FRONTEND_EXIT=$?
 
 if [ $FRONTEND_EXIT -ne 143 ] && [ $FRONTEND_EXIT -ne 0 ]; then

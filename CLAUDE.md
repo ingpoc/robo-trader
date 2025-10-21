@@ -166,6 +166,34 @@ NEVER auto-generate summary documents after work completes. WAIT for explicit us
 
 Never break existing public APIs. When refactoring, maintain import paths (use wrapper if needed). Test with existing code before deployment.
 
+### 7. Container Networking (CRITICAL)
+
+**Rule**: All inter-service communication MUST use container names, NOT `.orb.local` DNS names.
+
+**Format**: `http://robo-trader-<service-name>:<port>` (e.g., `http://robo-trader-postgres:5432`)
+
+**Why**:
+- `.orb.local` only works in OrbStack, fails in standard Docker
+- Container names work reliably across Docker, Docker Compose, OrbStack
+- Avoids DNS resolution failures and service communication timeouts
+
+**Where to Update**:
+- `docker-compose.yml` - service environment variables (DATABASE_URL, RABBITMQ_URL, SERVICE_URLs)
+- `monitoring/prometheus.yml` - scrape targets
+- `monitoring/grafana/provisioning/datasources/prometheus.yml` - datasource URLs
+- Service code (if hardcoding URLs) - use ENV variables instead
+
+**Naming Convention**: `robo-trader-<service-name>` (always use this exact format for new services)
+
+**See**: @documentation/CONTAINER_NETWORKING.md for troubleshooting and detailed guide.
+
+**Restart Scripts Available**:
+- `./restart_server.sh` - Complete restart with automatic cache prevention
+- `./scripts/restart-safe.sh [service] [--rebuild]` - Safe restart with optional rebuild
+- `./scripts/safe-build.sh [service] [force]` - Build single service safely
+- `./scripts/rebuild-all.sh` - Nuclear option: remove all and rebuild from scratch
+- `./scripts/verify-cache.sh [service]` - Verify no stale code in containers
+
 ---
 
 ## =� Quick Reference - What to Do

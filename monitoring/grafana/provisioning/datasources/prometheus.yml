@@ -7,7 +7,7 @@ datasources:
     type: prometheus
     access: proxy
     orgId: 1
-    url: http://prometheus.orb.local:9090
+    url: http://robo-trader-prometheus:9090
     password: ''
     user: ''
     database: ''

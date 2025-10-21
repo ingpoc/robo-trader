@@ -12,6 +12,7 @@ from .task_coordinator import TaskCoordinator
 from .status_coordinator import StatusCoordinator
 from .lifecycle_coordinator import LifecycleCoordinator
 from .broadcast_coordinator import BroadcastCoordinator
+from .claude_agent_coordinator import ClaudeAgentCoordinator
 
 __all__ = [
     "BaseCoordinator",
@@ -21,4 +22,5 @@ __all__ = [
     "StatusCoordinator",
     "LifecycleCoordinator",
     "BroadcastCoordinator",
+    "ClaudeAgentCoordinator",
 ]

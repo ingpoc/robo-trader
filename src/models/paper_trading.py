@@ -50,6 +50,13 @@ class PaperTradingAccount:
     monthly_pnl: float
     created_at: str
     updated_at: str
+    total_pnl: Optional[float] = None
+    total_pnl_pct: Optional[float] = None
+    monthly_pnl_pct: Optional[float] = None
+    open_positions_count: Optional[int] = None
+    today_trades: Optional[int] = None
+    win_rate: Optional[float] = None
+    reset_date: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""

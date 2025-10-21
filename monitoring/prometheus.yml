@@ -18,74 +18,74 @@ scrape_configs:
   # API Gateway
   - job_name: 'api-gateway'
     static_configs:
-      - targets: ['api-gateway.orb.local:8000']
+      - targets: ['robo-trader-api-gateway:8000']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Portfolio Service
   - job_name: 'portfolio'
     static_configs:
-      - targets: ['portfolio.orb.local:8001']
+      - targets: ['robo-trader-portfolio:8001']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Risk Management Service
   - job_name: 'risk'
     static_configs:
-      - targets: ['risk.orb.local:8002']
+      - targets: ['robo-trader-risk:8002']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Execution Service
   - job_name: 'execution'
     static_configs:
-      - targets: ['execution.orb.local:8003']
+      - targets: ['robo-trader-execution:8003']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Market Data Service
   - job_name: 'market-data'
     static_configs:
-      - targets: ['market-data.orb.local:8004']
+      - targets: ['robo-trader-market-data:8004']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Analytics Service
   - job_name: 'analytics'
     static_configs:
-      - targets: ['analytics.orb.local:8005']
+      - targets: ['robo-trader-analytics:8005']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Recommendation Service
   - job_name: 'recommendation'
     static_configs:
-      - targets: ['recommendation.orb.local:8006']
+      - targets: ['robo-trader-recommendation:8006']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Task Scheduler Service
   - job_name: 'task-scheduler'
     static_configs:
-      - targets: ['task-scheduler.orb.local:8007']
+      - targets: ['robo-trader-task-scheduler:8007']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # PostgreSQL
   - job_name: 'postgres'
     static_configs:
-      - targets: ['postgres.orb.local:5432']
+      - targets: ['robo-trader-postgres:5432']
 
   # RabbitMQ
   - job_name: 'rabbitmq'
     static_configs:
-      - targets: ['rabbitmq.orb.local:15672']
+      - targets: ['robo-trader-rabbitmq:15672']
     metrics_path: '/api/metrics'
 
   # Redis
   - job_name: 'redis'
     static_configs:
-      - targets: ['redis.orb.local:6379']
+      - targets: ['robo-trader-redis:6379']
 
   # Prometheus itself
   - job_name: 'prometheus'
