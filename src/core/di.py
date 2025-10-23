@@ -430,10 +430,6 @@ class DependencyContainer:
         """Get the orchestrator instance."""
         return await self.get("orchestrator")
 
-    async def get_broker(self) -> ZerodhaBroker:
-        """Get the broker instance."""
-        return await self.get("broker")
-
     async def get_state_manager(self) -> DatabaseStateManager:
         """Get the state manager instance."""
         return await self.get("state_manager")
@@ -474,25 +470,9 @@ class DependencyContainer:
         """Get the event router service instance."""
         return await self.get("event_router_service")
 
-    async def get_live_trading_service(self) -> LiveTradingService:
-        """Get the live trading service instance."""
-        return await self.get("live_trading_service")
-
     async def get_market_data_service(self) -> MarketDataService:
         """Get the market data service instance."""
         return await self.get("market_data_service")
-
-    async def get_enterprise_security_service(self) -> EnterpriseSecurityService:
-        """Get the enterprise security service instance."""
-        return await self.get("enterprise_security_service")
-
-    async def get_advanced_monitoring_service(self) -> AdvancedMonitoringService:
-        """Get the advanced monitoring service instance."""
-        return await self.get("advanced_monitoring_service")
-
-    async def get_scalability_service(self) -> ScalabilityService:
-        """Get the scalability service instance."""
-        return await self.get("scalability_service")
 
     async def get_analytics_service(self) -> AnalyticsService:
         """Get the analytics service instance."""
@@ -525,11 +505,11 @@ class DependencyContainer:
 
         # Cleanup services in reverse order
         services_to_cleanup = [
-            "scalability_service", "advanced_monitoring_service", "enterprise_security_service",
-            "market_data_service", "live_trading_service", "learning_service", "analytics_service",
+            "market_data_service", "learning_service", "analytics_service",
             "execution_service", "risk_service", "portfolio_service", "feature_management_service",
+            "strategy_evolution_engine", "event_router_service",
             "safety_layer", "event_bus", "learning_engine", "conversation_manager",
-            "background_scheduler", "ai_planner", "broker", "state_manager", "resource_manager"
+            "background_scheduler", "ai_planner", "state_manager", "resource_manager"
         ]
 
         for service_name in services_to_cleanup:
