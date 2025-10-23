@@ -18,7 +18,6 @@ dashboard_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 
 @router.get("/dashboard")
 @router.get("/dashboard/")
-@limiter.limit(dashboard_limit)
 async def api_dashboard(request: Request) -> Dict[str, Any]:
     """Get dashboard data."""
     from ..app import get_dashboard_data

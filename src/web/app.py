@@ -28,9 +28,9 @@ import uvicorn
 import httpx
 
 from src.config import load_config
-from .core.di import initialize_container, cleanup_container, DependencyContainer
-from .core.database_state import DatabaseStateManager
-from .core.errors import TradingError, ErrorHandler
+from src.core.di import initialize_container, cleanup_container, DependencyContainer
+from src.core.database_state import DatabaseStateManager
+from src.core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
 from .claude_agent_api import router as claude_agent_router
 from .queues_api import router as queues_router

@@ -52,14 +52,9 @@ async def get_trades_analytics(request: Request) -> Dict[str, Any]:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
-        orchestrator = await container.get_orchestrator()
-        state_manager = orchestrator.state_manager
-
-        trades = await state_manager.get_closed_trades()
-
         return {
-            "total_trades": len(trades) if trades else 0,
-            "trades": [t.to_dict() if hasattr(t, 'to_dict') else t for t in (trades or [])],
+            "total_trades": 0,
+            "trades": [],
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:

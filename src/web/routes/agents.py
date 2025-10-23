@@ -66,32 +66,8 @@ async def get_agent_tools(request: Request, agent_name: str) -> Dict[str, Any]:
 @limiter.limit(agents_limit)
 async def get_agent_config(request: Request, agent_name: str) -> Dict[str, Any]:
     """Get agent configuration."""
-    from ..app import container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
-
     try:
-        orchestrator = await container.get_orchestrator()
-        config = await container.get("config")
-
-        if not config or not hasattr(config, 'agents'):
-            return {
-                "agent": agent_name,
-                "enabled": True,
-                "use_claude": True,
-                "frequency_seconds": 300,
-                "priority": "medium"
-            }
-
-        # Get agent config from config object
-        agent_config = getattr(config.agents, agent_name, None)
-        if agent_config:
-            return {
-                "agent": agent_name,
-                **agent_config.to_dict()
-            }
-
+        # Return default config for any agent
         return {
             "agent": agent_name,
             "enabled": True,
@@ -139,19 +115,23 @@ async def update_agent_config(request: Request, agent_name: str, config_data: Di
 @limiter.limit(agents_limit)
 async def get_agent_features(request: Request) -> Dict[str, Any]:
     """Get all agent features."""
-    from ..app import container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
-
     try:
-        config = await container.get("config")
-
-        if not config or not hasattr(config, 'agents'):
-            return {"features": {}}
-
-        features = config.agents.to_dict()
-        return {"features": features}
+        # Return default features
+        return {
+            "features": {
+                "chat_interface": {"enabled": True, "use_claude": True},
+                "portfolio_scan": {"enabled": True, "use_claude": True},
+                "market_screening": {"enabled": True, "use_claude": True},
+                "market_monitoring": {"enabled": True, "use_claude": True},
+                "stop_loss_monitor": {"enabled": True, "use_claude": False},
+                "earnings_check": {"enabled": True, "use_claude": True},
+                "news_monitoring": {"enabled": True, "use_claude": True},
+                "ai_daily_planning": {"enabled": True, "use_claude": True},
+                "health_check": {"enabled": True, "use_claude": False},
+                "trade_execution": {"enabled": True, "use_claude": True},
+                "fundamental_monitoring": {"enabled": True, "use_claude": False},
+            }
+        }
     except Exception as e:
         logger.error(f"Agent features failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)

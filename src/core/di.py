@@ -571,12 +571,6 @@ class ServiceProvider:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_orchestrator()
 
-    async def get_broker(self) -> ZerodhaBroker:
-        """Get the broker instance."""
-        if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
-        return await self._container.get_broker()
-
     async def get_state_manager(self) -> DatabaseStateManager:
         """Get the state manager instance."""
         if not self._container:
