@@ -61,7 +61,7 @@ class ConnectionManager:
             self.active_connections[connection_id] = websocket
             self._generation_counter += 1
 
-        logger.info(f"WebSocket connected: {connection_id} (total: {len(self.active_connections)})")
+        logger.debug(f"WebSocket connected: {connection_id} (total: {len(self.active_connections)})")
 
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
@@ -84,7 +84,7 @@ class ConnectionManager:
                 self._generation_counter += 1
 
         if removed:
-            logger.info(f"WebSocket disconnected: {connection_id} (remaining: {len(self.active_connections)})")
+            logger.debug(f"WebSocket disconnected: {connection_id} (remaining: {len(self.active_connections)})")
 
     async def broadcast(self, message: Dict[str, Any]) -> BroadcastResult:
         """
@@ -212,7 +212,7 @@ class ConnectionManager:
                 self._generation_counter += 1
 
         if removed_count > 0:
-            logger.info(f"Cleaned up {removed_count} dead WebSocket connections")
+            logger.debug(f"Cleaned up {removed_count} dead WebSocket connections")
 
         return removed_count
 
@@ -244,7 +244,7 @@ class ConnectionManager:
 
     async def shutdown(self) -> None:
         """Gracefully shutdown connection manager."""
-        logger.info("Shutting down WebSocket ConnectionManager")
+        logger.debug("Shutting down WebSocket ConnectionManager")
 
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
@@ -258,4 +258,4 @@ class ConnectionManager:
             self.active_connections.clear()
             self._dead_connections.clear()
 
-        logger.info(f"ConnectionManager shutdown complete ({connection_count} connections closed)")
+        logger.debug(f"ConnectionManager shutdown complete ({connection_count} connections closed)")

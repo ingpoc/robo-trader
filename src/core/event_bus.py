@@ -46,6 +46,17 @@ class EventType(Enum):
     AI_ANALYSIS_COMPLETE = "ai.analysis_complete"
     AI_LEARNING_UPDATE = "ai.learning_update"
 
+    # Feature Management events
+    FEATURE_CREATED = "feature.created"
+    FEATURE_UPDATED = "feature.updated"
+    FEATURE_DELETED = "feature.deleted"
+    FEATURE_ENABLED = "feature.enabled"
+    FEATURE_DISABLED = "feature.disabled"
+    FEATURE_ERROR = "feature.error"
+    FEATURE_HEALTH_CHANGE = "feature.health_change"
+    FEATURE_DEPENDENCY_RESOLVED = "feature.dependency_resolved"
+    FEATURE_BULK_UPDATE = "feature.bulk_update"
+
     # System events
     SYSTEM_HEALTH_CHECK = "system.health_check"
     SYSTEM_ERROR = "system.error"

@@ -1,14 +1,60 @@
 """Paper trading account management service."""
 
 import logging
+import os
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+
+import httpx
 
 from ...models.paper_trading import PaperTradingAccount, AccountType, RiskLevel
 from ...stores.paper_trading_store import PaperTradingStore
 from ...web.paper_trading_api import OpenPositionResponse, ClosedTradeResponse
+from .performance_calculator import PerformanceCalculator
 
 logger = logging.getLogger(__name__)
+
+
+class MarketDataClient:
+    """Client for fetching real-time market data."""
+
+    def __init__(self):
+        self.base_url = os.getenv("MARKET_DATA_URL", "http://localhost:8004/api/market-data")
+        self.timeout = httpx.Timeout(5.0)  # 5 second timeout
+
+    async def get_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get real-time quote for a symbol."""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(f"{self.base_url}/quote/{symbol}")
+                response.raise_for_status()
+                data = response.json()
+                return data.get("ltp") if isinstance(data, dict) else data
+        except Exception as e:
+            logger.warning(f"Failed to fetch quote for {symbol}: {e}")
+            return None
+
+    async def get_quotes(self, symbols: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
+        """Get real-time quotes for multiple symbols."""
+        if not symbols:
+            return {}
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                symbols_str = ",".join(symbols)
+                response = await client.get(f"{self.base_url}/quotes?symbols={symbols_str}")
+                response.raise_for_status()
+                data = response.json()
+
+                quotes = {}
+                if isinstance(data, dict) and "quotes" in data:
+                    for quote in data["quotes"]:
+                        if isinstance(quote, dict) and "symbol" in quote:
+                            quotes[quote["symbol"]] = quote.get("ltp")
+                return quotes
+        except Exception as e:
+            logger.warning(f"Failed to fetch quotes for {symbols}: {e}")
+            return {symbol: None for symbol in symbols}
 
 
 class PaperTradingAccountManager:
@@ -17,6 +63,7 @@ class PaperTradingAccountManager:
     def __init__(self, store: PaperTradingStore):
         """Initialize manager."""
         self.store = store
+        self.market_data_client = MarketDataClient()
 
     async def create_account(
         self,
@@ -147,15 +194,30 @@ class PaperTradingAccountManager:
         # Get open trades from store
         open_trades = await self.store.get_open_trades(account_id)
 
+        if not open_trades:
+            return []
+
+        # Get unique symbols for batch quote fetching
+        symbols = list(set(trade.symbol for trade in open_trades))
+
+        # Fetch current prices for all symbols
+        current_prices = await self.market_data_client.get_quotes(symbols)
+
         # Convert to response format
         positions = []
         for trade in open_trades:
-            # Get current price (placeholder - would need market data service)
-            current_price = trade.entry_price  # Placeholder
+            # Get current price from market data, fallback to entry price if unavailable
+            current_price = current_prices.get(trade.symbol, trade.entry_price)
+            if current_price is None:
+                current_price = trade.entry_price
+                logger.warning(f"Market data unavailable for {trade.symbol}, using entry price")
 
             # Calculate unrealized P&L
             unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
             unrealized_pnl_pct = (unrealized_pnl / (trade.entry_price * trade.quantity)) * 100
+
+            # Calculate days held
+            days_held = PerformanceCalculator.calculate_days_held(trade.entry_timestamp)
 
             positions.append(OpenPositionResponse(
                 trade_id=trade.trade_id,
@@ -170,7 +232,7 @@ class PaperTradingAccountManager:
                 stop_loss=trade.stop_loss,
                 target_price=trade.target_price,
                 entry_date=trade.entry_timestamp,
-                days_held=0,  # TODO: Calculate actual days held
+                days_held=days_held,
                 strategy_rationale=trade.strategy_rationale,
                 ai_suggested=False  # TODO: Add this field to trade model
             ))
@@ -185,6 +247,16 @@ class PaperTradingAccountManager:
         # Convert to response format
         trades = []
         for trade in closed_trades:
+            # Calculate holding period days
+            holding_period_days = PerformanceCalculator.calculate_days_held(
+                trade.entry_timestamp, trade.exit_timestamp
+            )
+
+            # Calculate realized P&L percentage
+            realized_pnl_pct = PerformanceCalculator.calculate_pnl_percentage(
+                trade.entry_price, trade.exit_price
+            )
+
             trades.append(ClosedTradeResponse(
                 trade_id=trade.trade_id,
                 symbol=trade.symbol,
@@ -193,10 +265,10 @@ class PaperTradingAccountManager:
                 entry_price=trade.entry_price,
                 exit_price=trade.exit_price,
                 realized_pnl=trade.realized_pnl,
-                realized_pnl_pct=0.0,  # TODO: Calculate percentage
+                realized_pnl_pct=realized_pnl_pct,
                 entry_date=trade.entry_timestamp,
                 exit_date=trade.exit_timestamp,
-                holding_period_days=0,  # TODO: Calculate days
+                holding_period_days=holding_period_days,
                 reason_closed="Manual exit",  # TODO: Add reason field
                 strategy_rationale=trade.strategy_rationale,
                 ai_suggested=False  # TODO: Add this field to trade model
@@ -206,17 +278,71 @@ class PaperTradingAccountManager:
 
     async def get_performance_metrics(self, account_id: str, period: str = "all-time") -> Dict[str, Any]:
         """Get performance metrics for account."""
-        # TODO: Implement proper metrics calculation
-        return {
-            "total_trades": 0,
-            "winning_trades": 0,
-            "losing_trades": 0,
-            "win_rate": 0.0,
-            "avg_win": 0.0,
-            "avg_loss": 0.0,
-            "profit_factor": 0.0,
-            "largest_win": 0.0,
-            "largest_loss": 0.0,
-            "sharpe_ratio": None,
-            "period": period
-        }
+        from datetime import datetime, timedelta
+
+        # Get account for initial balance
+        account = await self.get_account(account_id)
+        if not account:
+            return {
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "win_rate": 0.0,
+                "avg_win": 0.0,
+                "avg_loss": 0.0,
+                "profit_factor": 0.0,
+                "largest_win": 0.0,
+                "largest_loss": 0.0,
+                "sharpe_ratio": None,
+                "period": period
+            }
+
+        # Filter trades based on period
+        closed_trades = await self.store.get_closed_trades(account_id)
+        filtered_trades = self._filter_trades_by_period(closed_trades, period)
+
+        # Get open trades for unrealized P&L
+        open_trades = await self.store.get_open_trades(account_id)
+
+        # Get current prices for open positions
+        current_prices = {}
+        if open_trades:
+            symbols = list(set(trade.symbol for trade in open_trades))
+            current_prices = await self.market_data_client.get_quotes(symbols)
+
+        # Use PerformanceCalculator to calculate metrics
+        metrics = PerformanceCalculator.calculate_account_performance(
+            initial_balance=account.initial_balance,
+            current_balance=account.current_balance,
+            closed_trades=filtered_trades,
+            open_trades=open_trades,
+            current_prices=current_prices
+        )
+
+        # Add period info
+        metrics["period"] = period
+
+        return metrics
+
+    def _filter_trades_by_period(self, trades: List, period: str) -> List:
+        """Filter trades based on period."""
+        from datetime import datetime, timedelta
+
+        now = datetime.now()
+        if period == "today":
+            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "week":
+            start_date = now - timedelta(days=7)
+        elif period == "month":
+            start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:  # all-time
+            return trades
+
+        filtered = []
+        for trade in trades:
+            if hasattr(trade, 'exit_timestamp') and trade.exit_timestamp:
+                trade_date = datetime.fromisoformat(trade.exit_timestamp)
+                if trade_date >= start_date:
+                    filtered.append(trade)
+
+        return filtered

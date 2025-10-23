@@ -148,8 +148,10 @@ async def _initialize_default_account(container):
         import uuid
         from datetime import datetime
 
-        # Get SQLite database path (typically in project root as robo_trader_paper_trading.db)
-        db_path = Path(__file__).parent.parent.parent / "robo_trader_paper_trading.db"
+        # Get SQLite database path (persistent location for container environments)
+        persistent_dir = Path("/app/data")
+        persistent_dir.mkdir(parents=True, exist_ok=True)
+        db_path = persistent_dir / "paper_trading.db"
 
         async with aiosqlite.connect(str(db_path)) as db:
             # Initialize schema first

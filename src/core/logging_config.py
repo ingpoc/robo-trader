@@ -46,7 +46,7 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO"):
     logger.add(
         error_log,
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="ERROR",
+        level="WARNING",
         rotation="5 MB",
         retention="30 days",
         compression="zip",

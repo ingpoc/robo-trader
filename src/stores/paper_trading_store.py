@@ -26,6 +26,12 @@ class PaperTradingStore:
 
     async def initialize_schema(self) -> None:
         """Initialize database schema if it doesn't exist."""
+        # Ensure directory exists and has proper permissions
+        import os
+        from pathlib import Path
+        db_dir = Path(self.db_path).parent
+        db_dir.mkdir(parents=True, exist_ok=True)
+
         async with aiosqlite.connect(self.db_path) as db:
             # Create accounts table
             await db.execute("""

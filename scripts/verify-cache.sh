@@ -25,17 +25,13 @@ verify_service() {
     local app_file=""
 
     case $svc in
-        paper-trading)
-            local_file="services/paper_trading/main.py"
-            app_file="/app/main.py"
+        web)
+            local_file="src/web/app.py"
+            app_file="/app/src/web/app.py"
             ;;
-        api-gateway)
-            local_file="services/api_gateway/main.py"
-            app_file="/app/main.py"
-            ;;
-        market-data)
-            local_file="services/market_data/main.py"
-            app_file="/app/main.py"
+        frontend)
+            echo "  ⏭️  Frontend uses volume mount - cache not applicable"
+            return 0
             ;;
         *)
             echo "  ⏭️  Unknown service - skipping"
@@ -82,7 +78,7 @@ case $SERVICE in
         echo ""
 
         FAILED=0
-        for svc in paper-trading api-gateway market-data portfolio risk execution analytics recommendation task-scheduler; do
+        for svc in web frontend; do
             verify_service "$svc" || FAILED=$((FAILED + 1))
             echo ""
         done

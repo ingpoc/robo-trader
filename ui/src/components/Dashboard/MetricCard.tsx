@@ -97,43 +97,38 @@ export function MetricCard({
   const cardContent = (
     <div
       className={cn(
-        "group relative overflow-hidden border-0 bg-gradient-to-br from-white/90 to-warmgray-50/70 backdrop-blur-sm shadow-md hover:shadow-lg transition-all duration-300 rounded-xl animate-scale-in hover:animate-hover-lift",
-        variant === 'hero' && "from-warmgray-50/90 to-warmgray-100/70 shadow-sm ring-1 ring-warmgray-300/50",
+        "group relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow duration-300 rounded-lg animate-fade-in",
+        variant === 'hero' && "bg-warmgray-50 shadow-sm",
         variant === 'compact' && "p-4 rounded-lg"
       )}
       role="region"
       aria-labelledby={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}
     >
-      {/* Professional gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-copper-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-      {/* Animated border glow */}
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-copper-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 -m-px" />
 
       <div className="relative z-10 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
             <div className={cn(
-              "p-3 rounded-xl shadow-sm",
+              "p-2 rounded-lg",
               variant === 'hero'
-                ? "bg-gradient-to-br from-copper-100 to-copper-200 text-copper-700 shadow-copper-100/50"
-                : "bg-gradient-to-br from-warmgray-100 to-warmgray-200 text-warmgray-700 shadow-warmgray-100/50"
+                ? "bg-copper-100 text-copper-600"
+                : "bg-warmgray-100 text-warmgray-700"
             )}>
-              <Icon className="w-5 h-5" />
+              <Icon className="w-4 h-4" />
             </div>
             <div
               id={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}
-              className="text-sm font-bold text-warmgray-800 uppercase tracking-wider leading-none"
+              className="text-sm font-semibold text-warmgray-700 leading-none"
             >
               {label}
             </div>
           </div>
           {trend && (
-            <div className={cn("flex items-center gap-1 text-sm font-semibold px-2 py-1 rounded-full", getTrendColor(),
-              trend === 'up' ? 'bg-emerald-50 text-emerald-700' :
-              trend === 'down' ? 'bg-rose-50 text-rose-700' : 'bg-warmgray-50 text-warmgray-700'
+            <div className={cn("flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded", getTrendColor(),
+              trend === 'up' ? 'bg-emerald-50' :
+              trend === 'down' ? 'bg-rose-50' : 'bg-warmgray-50'
             )}>
-              <TrendIcon className="w-4 h-4" />
+              <TrendIcon className="w-3 h-3" />
               <span className="sr-only">{trend} trend</span>
             </div>
           )}
@@ -141,9 +136,9 @@ export function MetricCard({
 
         <div
           className={cn(
-            "font-black text-warmgray-900 tabular-nums leading-none mb-3 animate-metric-pop",
-            variant === 'hero' ? "text-5xl bg-gradient-to-r from-warmgray-900 to-warmgray-700 bg-clip-text text-transparent" : "text-4xl",
-            variant === 'compact' && "text-3xl"
+            "font-bold text-warmgray-900 tabular-nums leading-none mb-2",
+            variant === 'hero' ? "text-4xl" : "text-3xl",
+            variant === 'compact' && "text-2xl"
           )}
           aria-live="polite"
           aria-atomic="true"
@@ -154,16 +149,13 @@ export function MetricCard({
         {change !== undefined && (
           <div
             className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold tabular-nums shadow-sm animate-badge-pop",
+              "inline-flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold tabular-nums",
               change >= 0
-                ? 'bg-gradient-to-r from-emerald-100 to-emerald-200 text-emerald-800 border border-emerald-200'
-                : 'bg-gradient-to-r from-rose-100 to-rose-200 text-rose-800 border border-rose-200'
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-rose-50 text-rose-700'
             )}
             aria-label={`Change: ${change >= 0 ? 'positive' : 'negative'} ${Math.abs(change)} percent`}
           >
-            <div className={cn("w-2 h-2 rounded-full animate-pulse",
-              change >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
-            )} />
             {changeLabel || `${change >= 0 ? '+' : ''}${formatNumber(change, 1)}%`}
           </div>
         )}

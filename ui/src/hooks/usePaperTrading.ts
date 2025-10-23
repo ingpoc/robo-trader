@@ -18,7 +18,7 @@ import type {
  * Hook for managing paper trading account and positions.
  * Provides queries and mutations for all paper trading operations.
  */
-export function usePaperTrading(accountId: string) {
+export function usePaperTrading(accountId?: string) {
   const queryClient = useQueryClient()
 
   // Query: Get account overview
@@ -29,8 +29,8 @@ export function usePaperTrading(accountId: string) {
       if (!response.ok) throw new Error('Failed to fetch account overview')
       return response.json() as Promise<AccountOverviewResponse>
     },
-    enabled: !!accountId,
-    refetchInterval: 10000, // Refresh every 10 seconds
+    enabled: !!accountId && accountId !== '',
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time P&L updates
   })
 
   // Query: Get open positions
@@ -41,8 +41,8 @@ export function usePaperTrading(accountId: string) {
       if (!response.ok) throw new Error('Failed to fetch positions')
       return response.json() as Promise<OpenPositionResponse[]>
     },
-    enabled: !!accountId,
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
+    enabled: !!accountId && accountId !== '',
+    refetchInterval: 2000, // Refresh every 2 seconds for real-time price updates
   })
 
   // Query: Get trade history
@@ -53,7 +53,7 @@ export function usePaperTrading(accountId: string) {
       if (!response.ok) throw new Error('Failed to fetch trade history')
       return response.json() as Promise<ClosedTradeResponse[]>
     },
-    enabled: !!accountId,
+    enabled: !!accountId && accountId !== '',
     refetchInterval: 30000, // Refresh every 30 seconds
   })
 
@@ -67,7 +67,7 @@ export function usePaperTrading(accountId: string) {
       if (!response.ok) throw new Error('Failed to fetch performance metrics')
       return response.json() as Promise<PerformanceMetricsResponse>
     },
-    enabled: !!accountId,
+    enabled: !!accountId && accountId !== '',
     refetchInterval: 60000, // Refresh every minute
   })
 

@@ -1,6 +1,8 @@
 # Frontend Architecture Guidelines
 
-> **Scope**: Applies to all files under `ui/src/`. Read after root CLAUDE.md.
+> **Scope**: Applies to all files under `ui/src/`. Read after root CLAUDE.md for project patterns.
+
+Frontend architecture focuses on component organization, real-time data updates, and maintainable UI code. This file complements the root CLAUDE.md with React/TypeScript-specific patterns.
 
 ## Frontend Architecture
 
@@ -405,58 +407,190 @@ const styles = { container: { color: 'red' } };
 
 ---
 
+## Frontend Performance Patterns
+
+### Component Memoization
+- ✅ Use `React.memo()` for expensive components
+- ✅ Memoize callbacks with `useCallback()` for event handlers
+- ✅ Memoize computed values with `useMemo()`
+- ❌ Don't over-memoize simple components (adds overhead)
+- ❌ Don't memoize without dependencies array
+
+### WebSocket Optimization
+- ✅ Use differential updates (only changed fields)
+- ✅ Batch updates, don't update every frame
+- ✅ Debounce frequent updates (price tickers)
+- ✅ Lazy load feature components
+- ❌ NEVER fetch full state on every update
+- ❌ NEVER render without error boundaries
+
+---
+
+## Anti-Patterns - Frontend (What to Avoid)
+
+### Inline Styling Anti-Pattern
+**Problem**: Inline styles duplicate across files, hard to maintain
+```typescript
+// WRONG
+<div style={{ color: 'red', fontSize: '16px' }}>
+```
+**Solution**: Use Tailwind classes or CSS modules
+
+### Missing Error Boundaries Anti-Pattern
+**Problem**: Single component error crashes entire page
+```typescript
+// WRONG - No error boundary
+const Dashboard = () => {
+  return <div><ProblematicComponent /></div>;
+};
+```
+**Solution**: Wrap components with error boundaries, show fallback UI
+
+### Direct Data Fetching Anti-Pattern
+**Problem**: Multiple instances fetch same data, hard to test
+```typescript
+// WRONG - Fetching in component
+const Component = () => {
+  useEffect(() => {
+    fetch('/api/data').then(setData);
+  }, []);
+};
+```
+**Solution**: Use custom hooks, mock for testing
+
+### No WebSocket Cleanup Anti-Pattern
+**Problem**: Memory leaks, connections pile up
+```typescript
+// WRONG - No cleanup
+useEffect(() => {
+  const ws = new WebSocket('...');
+  ws.onmessage = ...;
+  // Missing return cleanup
+}, []);
+```
+**Solution**: Always return cleanup function that closes connection
+
+### Prop Drilling Anti-Pattern
+**Problem**: Passing props through many levels gets unmaintainable
+```typescript
+// WRONG - Drilling 5 levels deep
+<Page data={data}>
+  <Section data={data}>
+    <Component data={data}>
+      <Child data={data}>
+        <GrandChild data={data} />
+```
+**Solution**: Use Context for shared data, keep to 2-3 levels
+
+---
+
 ## Pre-Commit Checklist - Frontend
 
 - [ ] One component per file
 - [ ] Props interface exported and typed
-- [ ] No `any` types in TypeScript
-- [ ] Handles loading/error states
-- [ ] WebSocket subscribed and cleaned up
-- [ ] No inline styling (use Tailwind/CSS)
+- [ ] No `any` types in TypeScript (use proper types)
+- [ ] Handles loading/error/empty states
+- [ ] WebSocket subscribed and properly cleaned up
+- [ ] No inline styling (use Tailwind/CSS modules)
 - [ ] Reusable components in `components/`
-- [ ] Features self-contained
-- [ ] No data fetching in components (use hooks)
+- [ ] Features self-contained and isolated
+- [ ] No direct API calls in components (use hooks/props)
 - [ ] Proper TypeScript types throughout
+- [ ] Component under 200 lines (split if larger)
+- [ ] No unused dependencies or props
+- [ ] Memoization applied only where needed (not over-optimized)
+- [ ] Error handling for async operations
 
 ---
 
 ## Quick Reference - Frontend Patterns
 
-| Need | Location | Pattern |
-|------|----------|---------|
-| New page | `pages/` | One file, imports features |
-| New feature | `features/name/` | Main file + components/ |
-| Shared component | `components/` | One file, typed props |
-| Reusable hook | `hooks/` | Custom hook with typed returns |
-| Helper function | `utils/` | Pure function, no side effects |
-| Global style | `styles/` | CSS or Tailwind |
-| Real-time data | `hooks/useWebSocket*` | Custom hook with WebSocket |
+| Need | Location | Pattern | Max Size |
+|------|----------|---------|----------|
+| New page | `pages/` | One file, imports features | 300 lines |
+| New feature | `features/name/` | Main file + components/ | 400 lines |
+| Shared component | `components/` | One file, typed props | 200 lines |
+| Reusable hook | `hooks/` | Custom hook with types | 150 lines |
+| Helper function | `utils/` | Pure function, no side effects | 100 lines |
+| Global style | `styles/` | CSS or Tailwind | N/A |
+| Real-time data | `hooks/useWebSocket*` | Custom hook with WebSocket | 150 lines |
 
 ---
 
 ## Development Workflow - Frontend
 
-1. **New Page**
-   - Create in `pages/` directory
-   - Import feature components as needed
-   - Connect to WebSocket for data
-   - Handle loading/error states
+### 1. New Page
 
-2. **New Feature**
-   - Create `features/name/` directory
-   - Main component in `features/name/FeatureName.tsx`
-   - Sub-components in `features/name/components/`
-   - Keep all logic within feature
+- Create in `pages/` directory
+- Import feature components as needed
+- Connect to WebSocket for real-time data
+- Handle loading/error states with proper fallbacks
+- Max 300 lines per page
 
-3. **New Shared Component**
-   - Create in `components/` or `components/ui/`
-   - Export typed props interface
-   - Make fully composable (props-only, no side effects)
-   - Use in multiple places before sharing
+### 2. New Feature
 
-4. **Bug Fix**
-   - Identify component file
-   - Fix logic
-   - Verify props and types
-   - Test WebSocket updates if applicable
+- Create `features/name/` directory
+- Main component in `features/name/FeatureName.tsx`
+- Sub-components in `features/name/components/`
+- Export main feature component only
+- Keep all logic and state within feature
+- Max 400 lines for main feature file
+
+### 3. New Shared Component
+
+- Create in `components/` or `components/ui/`
+- Export typed props interface
+- Make fully composable (props-only, no side effects)
+- Use in at least 2-3 places before sharing
+- No feature-specific logic
+- Max 200 lines per component
+
+### 4. New Custom Hook
+
+- Create in `hooks/` directory
+- Encapsulate complex logic (WebSocket, data fetching)
+- Return typed data
+- Implement proper cleanup
+- Include useEffect cleanup functions
+- Max 150 lines per hook
+
+### 5. Bug Fix
+
+- Identify component file
+- Fix logic
+- Verify props and types are correct
+- Test WebSocket updates if component uses real-time data
+- Verify in multiple states (loading, error, empty)
+
+### 6. Performance Optimization
+
+- Profile with React DevTools first
+- Memoize only if profiler shows re-render issue
+- Use lazy loading for route components
+- Batch WebSocket updates
+- Avoid prop drilling (use Context if needed)
+
+---
+
+## Common Frontend Mistakes
+
+### Mistake 1: No Loading State
+**Problem**: Users think app is frozen during load
+**Solution**: Show loading spinner, disable inputs during load
+
+### Mistake 2: WebSocket Never Reconnects
+**Problem**: Connection drops, no updates, user refreshes page
+**Solution**: Implement reconnection logic with exponential backoff
+
+### Mistake 3: No Error Messages
+**Problem**: User doesn't know why action failed
+**Solution**: Show clear, actionable error messages
+
+### Mistake 4: Untyped Props
+**Problem**: Hard to know what props a component needs
+**Solution**: Always export interface, use TypeScript strictly
+
+### Mistake 5: Component Too Large
+**Problem**: Hard to read, test, and reuse
+**Solution**: Split into smaller components when over 200 lines
 

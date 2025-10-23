@@ -1,6 +1,8 @@
 # Backend Architecture Guidelines
 
-> **Scope**: Applies to all files under `src/` directory. Read after root CLAUDE.md.
+> **Scope**: Applies to all files under `src/` directory. Read after root CLAUDE.md for context.
+
+This file contains backend-specific patterns, service organization, and layer-specific rules that complement the project-wide patterns in the root CLAUDE.md.
 
 ## Backend Architecture Layers
 
@@ -115,8 +117,8 @@ class MyService(EventHandler):
 
 **Structure** (modularized):
 - `models.py` - Task definitions
-- `stores/` - Async file persistence
-- `clients/` - Unified API clients
+- `stores/` - Async file persistence (stock_state_store.py, strategy_log_store.py)
+- `clients/` - Unified API clients (perplexity_client.py, retry_handler.py)
 - `processors/` - Domain logic (earnings, news, fundamentals)
 - `monitors/` - Monitoring (market, risk, health)
 - `config/` - Configuration management
@@ -130,6 +132,8 @@ class MyService(EventHandler):
 - ✅ Consolidate duplicate API calls
 - ✅ Error handling mandatory
 - ✅ Use aiofiles for all I/O
+- ✅ Check stock state before API calls
+- ✅ Use retry logic with exponential backoff
 - ❌ No monolithic files
 - ❌ No direct HTTP requests without retry
 
@@ -145,9 +149,10 @@ class MyService(EventHandler):
 **Rules**:
 - ✅ One client per API
 - ✅ Consolidate duplicate logic
-- ✅ Handle rate limits
+- ✅ Handle rate limits with exponential backoff
 - ✅ Error handling with retry logic
 - ✅ Use aiofiles for file operations
+- ✅ Implement key rotation for rate limit management
 
 ### 5. Auth & Security (`src/auth/`)
 
@@ -522,6 +527,33 @@ def get_scheduler():
 
 ---
 
+## Anti-Patterns - Backend (What to Avoid)
+
+### Service Coupling Anti-Pattern
+- ❌ Direct service-to-service calls (violates DI)
+- ✅ Emit events, let handlers react via EventBus
+
+### Missing Cleanup Anti-Pattern
+- ❌ Initialize resources without cleanup() method
+- ✅ Implement both initialize() and cleanup() with proper unsubscribe
+
+### Async Violations Anti-Pattern
+- ❌ Blocking I/O in async methods
+- ❌ Synchronous operations in `__init__()`
+- ✅ Use `aiofiles`, lazy initialization, async/await throughout
+
+### Error Suppression Anti-Pattern
+- ❌ `try/except: pass` (silent failures)
+- ❌ Bare `except Exception:` without handling
+- ✅ Specific exception types with proper error context
+
+### Rate Limit Ignorance Anti-Pattern
+- ❌ Retry without backoff
+- ❌ Single API key without rotation
+- ✅ Exponential backoff + API key rotation
+
+---
+
 ## Pre-Commit Checklist - Backend
 
 - [ ] All file I/O uses `aiofiles` in async context
@@ -530,13 +562,17 @@ def get_scheduler():
 - [ ] Significant operations emit events
 - [ ] Services receive dependencies via DI
 - [ ] Max 350 lines per file
-- [ ] Async/await used throughout
-- [ ] External API calls have retry logic
-- [ ] No hardcoded credentials
+- [ ] Async/await used throughout (no blocking calls)
+- [ ] External API calls have retry logic + exponential backoff
+- [ ] Stock state checked before API calls, updated after fetches
+- [ ] No hardcoded credentials (use env vars)
+- [ ] Event subscriptions cleaned up
+- [ ] No direct service-to-service coupling
+- [ ] Performance metrics use PerformanceCalculator
 
 ---
 
-## Quick File Reference
+## Quick File Reference - Backend
 
 | File | Purpose | Max Size |
 |------|---------|----------|
@@ -552,27 +588,75 @@ def get_scheduler():
 
 ## Development Workflow - Backend
 
-1. **New Service**
-   - Create in `services/` directory
-   - Inherit domain from single responsibility
-   - Register in DI container
-   - Emit domain events
+### 1. New Service
 
-2. **New Background Task**
-   - Add to `core/background_scheduler/{domain}/`
-   - Max 350 lines
-   - Use aiofiles for I/O
-   - Handle errors with retry logic
+- Create in `services/` directory with single responsibility
+- Inherit from `EventHandler` if subscribing to events
+- Register in `DependencyContainer`
+- Emit domain events for significant operations
+- Implement `initialize()` and `cleanup()`
+- Max 400 lines per service file
 
-3. **New Coordinator**
-   - Inherit from `BaseCoordinator`
-   - Implement `initialize()` and `cleanup()`
-   - Delegate to services
-   - Emit lifecycle events
+### 2. New Background Task
 
-4. **Refactoring**
-   - Keep imports working (wrapper pattern)
-   - Maintain backward compatibility
-   - Update only single file/module at a time
-   - Verify tests pass
+- Add to `core/background_scheduler/{domain}/`
+- Keep under 350 lines (modularize if larger)
+- Use `aiofiles` for all file I/O
+- Handle errors with `TradingError` and retry logic
+- Emit completion/failure events
+- Use exponential backoff for retries
+
+### 3. New Coordinator
+
+- Inherit from `BaseCoordinator` (required)
+- Implement `initialize()` and `cleanup()`
+- Delegate operations to services
+- Subscribe to relevant events
+- Emit lifecycle events
+- Keep under 150 lines
+
+### 4. New API Client
+
+- Create unified client per external API
+- Implement key rotation for rate limits
+- Add exponential backoff retry logic
+- Handle all error cases with `TradingError`
+- Return structured, parsed data (not raw responses)
+- Set appropriate timeouts
+
+### 5. Refactoring
+
+- Keep imports working (wrapper pattern)
+- Maintain backward compatibility
+- Update only single file/module at a time
+- Verify tests pass before merging
+- Document changes in commit message
+
+---
+
+## Common Mistakes to Avoid
+
+### Mistake 1: Duplicate API Calls
+**Problem**: Multiple functions calling same API independently
+**Solution**: Create single `UnifiedAPIClient` class with key rotation, consolidate all calls
+
+### Mistake 2: No Cleanup on Initialize
+**Problem**: Resources leak when services recreated
+**Solution**: Always implement `cleanup()` method, unsubscribe from events
+
+### Mistake 3: Awaiting Cancelled Tasks
+**Problem**: Can hang indefinitely
+**Solution**: Wrap in `asyncio.wait_for()` with timeout when cancelling
+
+### Mistake 4: Silencing Errors
+**Problem**: Bugs disappear, debugging impossible
+**Solution**: Catch specific exceptions, log with context, never `except: pass`
+
+### Mistake 5: Hardcoded Credentials
+**Problem**: Security risk, can't rotate keys
+**Solution**: Always use environment variables, implement key rotation
+
+### Mistake 6: Parsing Without Fallback
+**Problem**: Any format variation causes complete failure
+**Solution**: Implement 3-level fallback parsing (structured → regex → basic)
 

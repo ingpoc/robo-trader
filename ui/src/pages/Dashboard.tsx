@@ -77,7 +77,7 @@ export function Dashboard() {
     <div className="page-wrapper">
       <div className="flex flex-col gap-4 animate-fade-in-luxury">
         <Breadcrumb />
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-4 lg:px-6">
           <div className="space-y-2">
             <h1 className="text-4xl lg:text-5xl font-bold text-warmgray-900 dark:text-warmgray-100 font-serif">
               Trading Dashboard
@@ -135,7 +135,7 @@ export function Dashboard() {
 
         <TabsContent value="overview" className="space-y-6">
           {/* Hero Metrics - Professional Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-slide-in-up">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 animate-slide-in-up">
             <MetricCard
               label="Available Cash"
               value={portfolio?.cash.free || 0}
@@ -168,6 +168,24 @@ export function Dashboard() {
               variant="hero"
               changeLabel={analytics?.portfolio?.dominant_sector}
               tooltip="Portfolio concentration risk based on sector allocation"
+            />
+
+            {/* Paper Trading Integration */}
+            <MetricCard
+              label="Paper Trading P&L"
+              value={0} // TODO: Connect to paper trading API
+              format="currency"
+              icon="activity"
+              variant="hero"
+              tooltip="Claude's paper trading performance today"
+            />
+            <MetricCard
+              label="AI Win Rate"
+              value={65.2} // TODO: Connect to paper trading API
+              format="percent"
+              icon="trending-up"
+              variant="hero"
+              tooltip="Claude's trading success rate in paper account"
             />
           </div>
 
@@ -204,37 +222,66 @@ export function Dashboard() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {Object.entries(agents).map(([agentName, agent]) => (
-                      <div key={agentName} className="flex items-center justify-between p-4 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 rounded-xl border border-warmgray-300/50 hover:shadow-md transition-all duration-200">
-                        <span className="text-sm font-bold capitalize text-warmgray-800">
-                          {agentName.replace('_', ' ')}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          {agent.active ? (
-                            agent.status === 'running' ? (
-                              <CheckCircle className="w-5 h-5 text-emerald-600 animate-pulse" />
-                            ) : agent.status === 'error' ? (
-                              <XCircle className="w-5 h-5 text-rose-600" />
-                            ) : (
-                              <Clock className="w-5 h-5 text-amber-600 animate-pulse" />
-                            )
-                          ) : (
-                            <AlertTriangle className="w-5 h-5 text-warmgray-400" />
-                          )}
-                          <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
-                            agent.active
-                              ? agent.status === 'running'
-                                ? 'status-online'
-                                : agent.status === 'error'
-                                  ? 'status-error'
-                                  : 'status-warning'
-                                : 'status-offline'
-                          }`}>
-                            {agent.active ? agent.status : 'inactive'}
-                          </span>
+                    {Object.entries(agents).map(([agentName, agent]) => {
+                      const agentDisplayName = agentName.replace('_', ' ')
+                      const agentDescription = {
+                        'portfolio analyzer': 'Analyzes portfolio performance and risk metrics',
+                        'risk manager': 'Monitors and manages trading risk limits',
+                        'analytics engine': 'Processes market data and generates insights',
+                        'task scheduler': 'Coordinates background tasks and workflows',
+                        'technical analyst': 'Analyzes chart patterns and technical indicators',
+                        'fundamental screener': 'Screens stocks based on fundamental metrics',
+                        'execution agent': 'Handles trade execution and order management',
+                        'market monitor': 'Monitors market conditions and alerts',
+                        'educational agent': 'Provides learning resources and explanations',
+                        'alert agent': 'Manages system alerts and notifications'
+                      }[agentName] || 'AI-powered trading agent'
+
+                      return (
+                        <div key={agentName} className="flex items-start gap-4 p-4 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 rounded-xl border border-warmgray-300/50 hover:shadow-md transition-all duration-200">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-bold capitalize text-warmgray-800">
+                                {agentDisplayName}
+                              </span>
+                              <div className="flex items-center gap-3">
+                                {agent.active ? (
+                                  agent.status === 'running' ? (
+                                    <CheckCircle className="w-5 h-5 text-emerald-600 animate-pulse" />
+                                  ) : agent.status === 'error' ? (
+                                    <XCircle className="w-5 h-5 text-rose-600" />
+                                  ) : (
+                                    <Clock className="w-5 h-5 text-amber-600 animate-pulse" />
+                                  )
+                                ) : (
+                                  <AlertTriangle className="w-5 h-5 text-warmgray-400" />
+                                )}
+                                <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
+                                  agent.active
+                                    ? agent.status === 'running'
+                                      ? 'status-online'
+                                      : agent.status === 'error'
+                                        ? 'status-error'
+                                        : 'status-warning'
+                                      : 'status-offline'
+                                }`}>
+                                  {agent.active ? agent.status : 'inactive'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-xs text-warmgray-600 leading-relaxed">
+                              {agentDescription}
+                            </div>
+                            {agent.tasks_completed !== undefined && (
+                              <div className="flex items-center gap-4 mt-2 text-xs text-warmgray-500">
+                                <span>Tasks: {agent.tasks_completed}</span>
+                                {agent.uptime && <span>Uptime: {agent.uptime}</span>}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                     {Object.keys(agents).length === 0 && (
                       <div className="text-center text-warmgray-500 py-8">
                         <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -270,9 +317,40 @@ export function Dashboard() {
                   <PieChart className="w-12 h-12 text-warmgray-600" />
                 </div>
                 <h3 className="text-xl font-bold text-warmgray-900 mb-3">No Holdings Found</h3>
-                <p className="text-sm text-warmgray-600 text-center max-w-md leading-relaxed">
+                <p className="text-sm text-warmgray-600 text-center max-w-md leading-relaxed mb-6">
                   You don't have any active positions in your portfolio yet. Start trading to see your holdings here.
                 </p>
+                <div className="flex flex-col gap-3 text-center">
+                  <p className="text-xs text-warmgray-500 font-medium">Quick Start:</p>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => portfolioScan()}
+                      disabled={isScanning}
+                      className="text-xs"
+                    >
+                      Scan Portfolio
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => marketScreening()}
+                      disabled={isScanning}
+                      className="text-xs"
+                    >
+                      Market Screen
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => window.location.href = '/paper-trading'}
+                      className="text-xs"
+                    >
+                      Start Paper Trading
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}

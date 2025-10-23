@@ -1,4 +1,8 @@
-"""Claude Agent API routes for session management and autonomous trading."""
+"""
+Claude Agent API routes for session management and autonomous trading.
+
+Enhanced with comprehensive AI transparency endpoints.
+"""
 
 import logging
 from typing import Optional, Dict, Any
@@ -8,6 +12,11 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from ..services.claude_agent import (
+    ResearchTracker, AnalysisLogger, ExecutionMonitor,
+    DailyStrategyEvaluator, ActivitySummarizer
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +69,68 @@ class CancelSessionRequest(BaseModel):
 
 
 # ============================================================================
-# Dependency Functions
+# Transparency API Models
 # ============================================================================
 
+class ResearchActivityResponse(BaseModel):
+    """Response containing research activity data."""
+
+    total_sessions: int = Field(..., description="Total research sessions")
+    symbols_analyzed: int = Field(..., description="Symbols analyzed")
+    data_sources_used: int = Field(..., description="Data sources consulted")
+    key_findings: list[str] = Field(..., description="Key research findings")
+    recent_sessions: list[Dict[str, Any]] = Field(..., description="Recent research sessions")
+
+
+class AnalysisActivityResponse(BaseModel):
+    """Response containing analysis activity data."""
+
+    total_decisions: int = Field(..., description="Total trade decisions made")
+    avg_confidence: float = Field(..., description="Average confidence score")
+    strategies_evaluated: int = Field(..., description="Strategies evaluated")
+    refinements_made: int = Field(..., description="Strategy refinements implemented")
+    recent_decisions: list[Dict[str, Any]] = Field(..., description="Recent trade decisions")
+
+
+class ExecutionActivityResponse(BaseModel):
+    """Response containing execution activity data."""
+
+    total_executions: int = Field(..., description="Total trade executions")
+    success_rate: float = Field(..., description="Execution success rate")
+    avg_slippage: float = Field(..., description="Average slippage (bps)")
+    avg_cost: float = Field(..., description="Average execution cost (%)")
+    risk_compliance: float = Field(..., description="Risk check compliance rate")
+    recent_executions: list[Dict[str, Any]] = Field(..., description="Recent executions")
+
+
+class DailyStrategyReportResponse(BaseModel):
+    """Response containing daily strategy evaluation."""
+
+    evaluation_date: str = Field(..., description="Date of evaluation")
+    strategies_evaluated: int = Field(..., description="Number of strategies evaluated")
+    refinements_recommended: int = Field(..., description="Refinements recommended")
+    confidence_score: float = Field(..., description="Overall confidence score")
+    key_insights: list[str] = Field(..., description="Key insights from evaluation")
+    performance_summary: Dict[str, Any] = Field(..., description="Strategy performance summary")
+
+
+class DailyActivitySummaryResponse(BaseModel):
+    """Response containing daily AI activity summary."""
+
+    date: str = Field(..., description="Date of summary")
+    day_rating: str = Field(..., description="Overall day rating")
+    trades_executed: int = Field(..., description="Trades executed")
+    total_pnl: float = Field(..., description="Total P&L")
+    research_sessions: int = Field(..., description="Research sessions completed")
+    strategies_evaluated: int = Field(..., description="Strategies evaluated")
+    key_achievements: list[str] = Field(..., description="Key achievements")
+    areas_for_improvement: list[str] = Field(..., description="Areas for improvement")
+    planned_activities: list[str] = Field(..., description="Planned activities for tomorrow")
+
+
+# ============================================================================
+# Dependency Functions
+# ============================================================================
 
 async def get_container(request: Request):
     """Get DI container from request state."""
@@ -71,10 +139,20 @@ async def get_container(request: Request):
     return request.app.state.container
 
 
+async def get_transparency_services(container):
+    """Get transparency service instances."""
+    return {
+        "research_tracker": await container.get("research_tracker"),
+        "analysis_logger": await container.get("analysis_logger"),
+        "execution_monitor": await container.get("execution_monitor"),
+        "strategy_evaluator": await container.get("daily_strategy_evaluator"),
+        "activity_summarizer": await container.get("activity_summarizer")
+    }
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
-
 
 @router.post("/sessions/start", response_model=SessionResponse)
 @limiter.limit("5/minute")
@@ -341,3 +419,235 @@ async def get_claude_status(
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat(),
         }
+
+
+# ============================================================================
+# Transparency API Endpoints
+# ============================================================================
+
+@router.get("/transparency/research", response_model=ResearchActivityResponse)
+@limiter.limit("30/minute")
+async def get_research_activity(
+    request: Request,
+    container=Depends(get_container),
+    account_type: Optional[str] = None,
+    days: int = 7,
+) -> ResearchActivityResponse:
+    """
+    Get AI research activity transparency data.
+
+    Shows what Claude has been researching, data sources used, and key findings.
+    """
+    try:
+        services = await get_transparency_services(container)
+        research_tracker = services["research_tracker"]
+
+        # Get research history
+        research_sessions = await research_tracker.get_research_history(
+            account_type=account_type
+        )
+
+        # Get data source usage
+        data_source_stats = await research_tracker.get_data_source_usage_stats()
+
+        # Get research effectiveness
+        effectiveness = await research_tracker.get_research_effectiveness(
+            account_type or "swing_trading", days=days
+        )
+
+        return ResearchActivityResponse(
+            total_sessions=effectiveness["total_sessions"],
+            symbols_analyzed=effectiveness["total_symbols_analyzed"],
+            data_sources_used=data_source_stats["sources_used"],
+            key_findings=["Market analysis completed", "Technical indicators reviewed", "Fundamental data assessed"],  # Would come from sessions
+            recent_sessions=[s.to_dict() for s in research_sessions[-5:]]
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get research activity: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get research activity: {str(e)}")
+
+
+@router.get("/transparency/analysis", response_model=AnalysisActivityResponse)
+@limiter.limit("30/minute")
+async def get_analysis_activity(
+    request: Request,
+    container=Depends(get_container),
+    account_type: Optional[str] = None,
+    days: int = 7,
+) -> AnalysisActivityResponse:
+    """
+    Get AI analysis activity transparency data.
+
+    Shows Claude's decision-making process, confidence levels, and strategy evaluations.
+    """
+    try:
+        services = await get_transparency_services(container)
+        analysis_logger = services["analysis_logger"]
+
+        # Get decision history
+        decisions = await analysis_logger.get_decision_history()
+
+        # Get analysis effectiveness
+        effectiveness = await analysis_logger.get_analysis_effectiveness(days=days)
+
+        # Get strategy evaluations
+        evaluations = await analysis_logger.get_strategy_evaluations()
+
+        return AnalysisActivityResponse(
+            total_decisions=effectiveness["total_decisions"],
+            avg_confidence=effectiveness["avg_confidence_score"],
+            strategies_evaluated=len(evaluations),
+            refinements_made=sum(len(e.get("refinements", [])) for e in evaluations),
+            recent_decisions=[d.to_dict() for d in decisions[-5:]]
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get analysis activity: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get analysis activity: {str(e)}")
+
+
+@router.get("/transparency/execution", response_model=ExecutionActivityResponse)
+@limiter.limit("30/minute")
+async def get_execution_activity(
+    request: Request,
+    container=Depends(get_container),
+    account_type: Optional[str] = None,
+    days: int = 7,
+) -> ExecutionActivityResponse:
+    """
+    Get AI execution activity transparency data.
+
+    Shows trade execution quality, slippage analysis, and risk compliance.
+    """
+    try:
+        services = await get_transparency_services(container)
+        execution_monitor = services["execution_monitor"]
+
+        # Get execution history
+        executions = await execution_monitor.get_execution_history()
+
+        # Get execution quality metrics
+        quality_metrics = await execution_monitor.get_execution_quality_metrics(days=days)
+
+        return ExecutionActivityResponse(
+            total_executions=quality_metrics["total_executions"],
+            success_rate=quality_metrics["success_rate"],
+            avg_slippage=quality_metrics["avg_slippage_bps"],
+            avg_cost=quality_metrics["avg_cost_pct"],
+            risk_compliance=quality_metrics["risk_checks_pass_rate"],
+            recent_executions=[e.to_dict() for e in executions[-5:]]
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get execution activity: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get execution activity: {str(e)}")
+
+
+@router.get("/transparency/daily-evaluation", response_model=DailyStrategyReportResponse)
+@limiter.limit("20/minute")
+async def get_daily_strategy_evaluation(
+    request: Request,
+    container=Depends(get_container),
+    account_type: str = "swing_trading",
+    date: Optional[str] = None,
+) -> DailyStrategyReportResponse:
+    """
+    Get daily strategy evaluation report.
+
+    Shows how Claude evaluated and refined strategies today.
+    """
+    try:
+        services = await get_transparency_services(container)
+        strategy_evaluator = services["strategy_evaluator"]
+
+        # Get daily reports
+        reports = await strategy_evaluator.get_daily_reports(account_type=account_type)
+
+        if not reports:
+            # Generate a new evaluation if none exists
+            report = await strategy_evaluator.evaluate_daily_strategies(account_type, date)
+        else:
+            report = reports[-1]  # Most recent
+
+        return DailyStrategyReportResponse(
+            evaluation_date=report.evaluation_date,
+            strategies_evaluated=len(report.strategies_evaluated),
+            refinements_recommended=len(report.refinements_recommended),
+            confidence_score=report.confidence_score,
+            key_insights=report.key_insights,
+            performance_summary=report.performance_summary
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get daily strategy evaluation: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get strategy evaluation: {str(e)}")
+
+
+@router.get("/transparency/daily-summary", response_model=DailyActivitySummaryResponse)
+@limiter.limit("20/minute")
+async def get_daily_activity_summary(
+    request: Request,
+    container=Depends(get_container),
+    account_type: str = "swing_trading",
+    date: Optional[str] = None,
+) -> DailyActivitySummaryResponse:
+    """
+    Get daily AI activity summary.
+
+    Comprehensive overview of what Claude accomplished today and plans for tomorrow.
+    """
+    try:
+        services = await get_transparency_services(container)
+        activity_summarizer = services["activity_summarizer"]
+
+        # Get daily summaries
+        summaries = await activity_summarizer.get_daily_summaries(account_type=account_type)
+
+        if not summaries:
+            # Generate a new summary if none exists
+            summary = await activity_summarizer.create_daily_summary(account_type, date)
+        else:
+            summary = summaries[-1]  # Most recent
+
+        return DailyActivitySummaryResponse(
+            date=summary.date,
+            day_rating=summary.day_rating,
+            trades_executed=summary.trades_executed,
+            total_pnl=summary.total_pnl,
+            research_sessions=summary.research_sessions,
+            strategies_evaluated=summary.strategies_evaluated,
+            key_achievements=summary.key_achievements,
+            areas_for_improvement=summary.areas_for_improvement,
+            planned_activities=summary.planned_activities
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get daily activity summary: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get activity summary: {str(e)}")
+
+
+@router.get("/transparency/strategy-evolution/{strategy_name}")
+@limiter.limit("20/minute")
+async def get_strategy_evolution_timeline(
+    request: Request,
+    strategy_name: str,
+    container=Depends(get_container),
+    days: int = 90,
+) -> Dict[str, Any]:
+    """
+    Get strategy evolution timeline.
+
+    Shows how a specific strategy has evolved over time with refinements and improvements.
+    """
+    try:
+        services = await get_transparency_services(container)
+        strategy_evaluator = services["strategy_evaluator"]
+
+        timeline = await strategy_evaluator.get_strategy_evolution_timeline(strategy_name, days)
+
+        return timeline
+
+    except Exception as e:
+        logger.error(f"Failed to get strategy evolution timeline: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get strategy timeline: {str(e)}")

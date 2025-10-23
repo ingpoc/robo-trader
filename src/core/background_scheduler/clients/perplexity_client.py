@@ -17,6 +17,7 @@ from loguru import logger
 from openai import OpenAI, RateLimitError, AuthenticationError
 
 from .api_key_rotator import APIKeyRotator
+from .retry_handler import RetryConfig, retry_on_rate_limit
 
 
 class PerplexityClient:
@@ -433,7 +434,10 @@ Return as structured JSON."""
         max_tokens: int = 2000,
         response_format: str = "text"
     ) -> Optional[str]:
-        """Make a call to Perplexity API with retry logic.
+        """Make a call to Perplexity API with exponential backoff retry.
+
+        Uses retry_on_rate_limit for automatic exponential backoff on rate limits.
+        Rotates API keys on authentication failures.
 
         Args:
             query: User query
@@ -445,35 +449,28 @@ Return as structured JSON."""
         Returns:
             API response content, or None on failure
         """
-        max_retries = 3
-        attempt = 0
+        async def _make_request() -> str:
+            """Inner function for retry wrapper."""
+            api_key = self.key_rotator.get_next_key()
+            if not api_key:
+                logger.error("No Perplexity API keys available")
+                raise RuntimeError("No API keys available")
 
-        while attempt < max_retries:
             try:
-                api_key = self.key_rotator.get_next_key()
-                if not api_key:
-                    logger.error("No Perplexity API keys available")
-                    return None
-
                 client = OpenAI(
                     api_key=api_key,
                     base_url="https://api.perplexity.ai",
                     http_client=httpx.Client(timeout=self.timeout_seconds)
                 )
 
-                response_format_config = {
-                    "type": "text"
-                }
-
+                response_format_config = {"type": "text"}
                 if response_format == "json":
                     response_format_config = {
                         "type": "json_schema",
                         "json_schema": {
                             "schema": {
                                 "type": "object",
-                                "properties": {
-                                    "data": {"type": "object"}
-                                }
+                                "properties": {"data": {"type": "object"}}
                             }
                         }
                     }
@@ -493,33 +490,14 @@ Return as structured JSON."""
                 logger.info(f"Perplexity API call succeeded (model: {self.model})")
                 return response_content
 
-            except RateLimitError as e:
-                attempt += 1
-                logger.warning(f"Perplexity rate limit (attempt {attempt}/{max_retries}): {e}")
-                self.key_rotator.rotate_on_error(self.key_rotator.get_current_key())
-
-                if attempt < max_retries:
-                    backoff_delay = min(30, 2 ** (attempt - 1))
-                    logger.info(f"Rate limited, waiting {backoff_delay} seconds")
-                    await asyncio.sleep(backoff_delay)
-                continue
-
             except AuthenticationError as e:
-                attempt += 1
-                logger.warning(f"Perplexity authentication error (attempt {attempt}/{max_retries}): {e}")
-                self.key_rotator.rotate_on_error(self.key_rotator.get_current_key())
+                logger.warning(f"Perplexity authentication error: {e}")
+                self.key_rotator.rotate_on_error(api_key)
+                raise RuntimeError(f"Authentication failed: {e}")
 
-                if attempt < max_retries:
-                    await asyncio.sleep(1)
-                continue
-
-            except Exception as e:
-                attempt += 1
-                logger.error(f"Perplexity API error (attempt {attempt}/{max_retries}): {e}")
-
-                if attempt < max_retries:
-                    await asyncio.sleep(1)
-                continue
-
-        logger.error(f"Perplexity API failed after {max_retries} attempts")
-        return None
+        try:
+            # Use exponential backoff retry for rate limits
+            return await retry_on_rate_limit(_make_request, max_retries=5)
+        except Exception as e:
+            logger.error(f"Perplexity API failed: {e}")
+            return None

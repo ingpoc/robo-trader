@@ -48,59 +48,126 @@ export function Agents() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {Object.entries(agents).map(([name, status]) => (
-          <Card key={name} variant="interactive">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg capitalize flex items-center gap-2 text-warmgray-900 dark:text-warmgray-100">
-                  <Users className="w-5 h-5 text-copper-500" />
-                  {name.replace('_', ' ')}
-                </CardTitle>
-                <div
-                  className={`px-2.5 py-1 text-xs rounded-full flex items-center gap-1 font-semibold border ${
-                    status.status === 'running'
-                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-100 border-emerald-300 dark:border-emerald-700'
-                      : status.status === 'idle'
-                        ? 'bg-warmgray-200 dark:bg-warmgray-700 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
-                        : status.status === 'error'
-                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-100 border-rose-300 dark:border-rose-700'
-                          : 'bg-warmgray-100 dark:bg-warmgray-800 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
-                  }`}
+        {/* Claude Paper Trading Agent - Special Highlight */}
+        {Object.entries(agents).map(([name, status]) => {
+          if (name === 'claude_paper_trader') {
+            return (
+              <Card key={name} variant="interactive" className="border-copper-200 bg-gradient-to-r from-copper-50/50 to-emerald-50/50">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg capitalize flex items-center gap-2 text-warmgray-900 dark:text-warmgray-100">
+                      <Activity className="w-5 h-5 text-copper-500" />
+                      Claude Paper Trader
+                      <span className="text-xs bg-copper-100 text-copper-800 px-2 py-1 rounded-full font-medium">
+                        AI Learning
+                      </span>
+                    </CardTitle>
+                    <div
+                      className={`px-2.5 py-1 text-xs rounded-full flex items-center gap-1 font-semibold border ${
+                        status.status === 'running'
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-100 border-emerald-300 dark:border-emerald-700'
+                          : status.status === 'idle'
+                            ? 'bg-warmgray-200 dark:bg-warmgray-700 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
+                            : status.status === 'error'
+                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-100 border-rose-300 dark:border-rose-700'
+                              : 'bg-warmgray-100 dark:bg-warmgray-800 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
+                      }`}
+                    >
+                      {status.status === 'running' ? (
+                        <CheckCircle className="w-3 h-3" />
+                      ) : status.status === 'error' ? (
+                        <XCircle className="w-3 h-3" />
+                      ) : status.status === 'idle' ? (
+                        <Clock className="w-3 h-3" />
+                      ) : (
+                        <AlertTriangle className="w-3 h-3" />
+                      )}
+                      {status.status}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-sm text-warmgray-600 space-y-1">
+                    <div>{status.message}</div>
+                    <div className="flex justify-between text-xs text-warmgray-500">
+                      <span>Today's Trades: {status.tasks_completed}</span>
+                      <span>Token Usage: 2,450 / 10,000</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-warmgray-500">
+                      <span>Win Rate: 65.2%</span>
+                      <span>P&L: ₹+2,450</span>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setSelectedAgent(selectedAgent === name ? null : name)}
+                    className="w-full"
+                    aria-label={`Configure ${name.replace('_', ' ')} agent`}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    View Learning Progress
+                  </Button>
+                </CardContent>
+              </Card>
+            )
+          }
+
+          // Regular agents
+          return (
+            <Card key={name} variant="interactive">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg capitalize flex items-center gap-2 text-warmgray-900 dark:text-warmgray-100">
+                    <Users className="w-5 h-5 text-copper-500" />
+                    {name.replace('_', ' ')}
+                  </CardTitle>
+                  <div
+                    className={`px-2.5 py-1 text-xs rounded-full flex items-center gap-1 font-semibold border ${
+                      status.status === 'running'
+                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-100 border-emerald-300 dark:border-emerald-700'
+                        : status.status === 'idle'
+                          ? 'bg-warmgray-200 dark:bg-warmgray-700 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
+                          : status.status === 'error'
+                            ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-100 border-rose-300 dark:border-rose-700'
+                            : 'bg-warmgray-100 dark:bg-warmgray-800 text-warmgray-700 dark:text-warmgray-300 border-warmgray-300 dark:border-warmgray-600'
+                    }`}
+                  >
+                    {status.status === 'running' ? (
+                      <CheckCircle className="w-3 h-3" />
+                    ) : status.status === 'error' ? (
+                      <XCircle className="w-3 h-3" />
+                    ) : status.status === 'idle' ? (
+                      <Clock className="w-3 h-3" />
+                    ) : (
+                      <AlertTriangle className="w-3 h-3" />
+                    )}
+                    {status.status}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-sm text-warmgray-600 space-y-1">
+                  <div>{status.message}</div>
+                  <div className="flex justify-between text-xs text-warmgray-500">
+                    <span>Tasks: {status.tasks_completed}</span>
+                    <span>Uptime: {status.uptime}</span>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSelectedAgent(selectedAgent === name ? null : name)}
+                  className="w-full"
+                  aria-label={`Configure ${name.replace('_', ' ')} agent`}
                 >
-                  {status.status === 'running' ? (
-                    <CheckCircle className="w-3 h-3" />
-                  ) : status.status === 'error' ? (
-                    <XCircle className="w-3 h-3" />
-                  ) : status.status === 'idle' ? (
-                    <Clock className="w-3 h-3" />
-                  ) : (
-                    <AlertTriangle className="w-3 h-3" />
-                  )}
-                  {status.status}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="text-sm text-warmgray-600 space-y-1">
-                <div>{status.message}</div>
-                <div className="flex justify-between text-xs text-warmgray-500">
-                  <span>Tasks: {status.tasks_completed}</span>
-                  <span>Uptime: {status.uptime}</span>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setSelectedAgent(selectedAgent === name ? null : name)}
-                className="w-full"
-                aria-label={`Configure ${name.replace('_', ' ')} agent`}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                {selectedAgent === name ? 'Hide Config' : 'Configure'}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+                  <Settings className="w-4 h-4 mr-2" />
+                  {selectedAgent === name ? 'Hide Config' : 'Configure'}
+                </Button>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       {Object.keys(agents).length === 0 && (

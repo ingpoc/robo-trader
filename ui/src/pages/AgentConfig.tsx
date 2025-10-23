@@ -29,10 +29,25 @@ export function AgentConfig() {
 
   const loadFeatures = async () => {
     try {
-      const data = await apiRequest<{ features: AgentFeaturesConfig }>('/api/agents/features')
-      setFeatures(data.features)
+      const data = await apiRequest<any>('/api/agents/features')
+      // API returns { agents: {...} }, but component expects { featureName: {...} }
+      // Map agents to the expected format
+      const features: AgentFeaturesConfig = {}
+      if (data.agents) {
+        Object.entries(data.agents).forEach(([name, agent]: [string, any]) => {
+          features[name] = {
+            enabled: agent.enabled || false,
+            config: agent.config || {},
+            use_claude: true,
+            frequency_seconds: 86400,
+            priority: 'medium' as any
+          }
+        })
+      }
+      setFeatures(features)
     } catch (error) {
       console.error('Failed to load agent features:', error)
+      setLoading(false)
     } finally {
       setLoading(false)
     }

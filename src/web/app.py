@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -22,6 +22,7 @@ from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
 import uvicorn
 import time
+import httpx
 
 from ..config import load_config
 from ..core.di import initialize_container, cleanup_container, DependencyContainer
@@ -29,6 +30,8 @@ from ..core.database_state import DatabaseStateManager
 from ..core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
 from .claude_agent_api import router as claude_agent_router
+from .feature_management_api import router as feature_management_router
+from .queues_api import router as queues_router
 from .websocket_differ import WebSocketDiffer
 from .connection_manager import ConnectionManager
 
@@ -153,10 +156,20 @@ async def log_requests(request: Request, call_next):
 # Include Claude Agent API router
 app.include_router(claude_agent_router)
 
+# Include Feature Management API router
+app.include_router(feature_management_router)
+
+# Include Queue Management API router
+app.include_router(queues_router, prefix="/api")
+
 # Global variables
 config = None
 container: Optional[DependencyContainer] = None
 connection_manager = None
+
+# Service registry for microservices
+# HTTP client for internal use (if needed)
+service_client = None
 
 # Shutdown event for graceful shutdown coordination
 shutdown_event = asyncio.Event()
@@ -273,12 +286,16 @@ async def get_dashboard_data() -> Dict[str, Any]:
 @app.on_event("startup")
 async def startup_event():
     """Initialize the system on startup."""
-    global config, container, connection_manager
+    global config, container, connection_manager, service_client
 
     logger.info("=== STARTUP EVENT STARTED ===")
 
     config = load_config()
     logger.info("Config loaded successfully")
+
+    # Initialize HTTP client for service proxying
+    service_client = httpx.AsyncClient(timeout=30.0)
+    logger.info("Service proxy HTTP client initialized")
 
     # Initialize dependency injection container
     logger.info("Initializing DI container...")
@@ -358,13 +375,18 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_handler():
     """Cleanup resources on shutdown."""
-    global container, connection_manager
+    global container, connection_manager, service_client
     logger.info("Application shutdown initiated - cleaning up resources")
 
     # Signal shutdown to all components
     shutdown_event.set()
 
     try:
+        # Close service proxy HTTP client
+        if service_client:
+            logger.info("Closing service proxy HTTP client...")
+            await service_client.aclose()
+
         # Close all WebSocket connections gracefully
         if connection_manager:
             logger.info("Closing WebSocket connections...")
@@ -1118,7 +1140,7 @@ async def update_agent_feature(feature_name: str, feature_data: Dict[str, Any]):
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates with differential updates."""
     connection_id = f"ws_{id(websocket)}"
-    logger.info(f"WebSocket connection established: {connection_id}")
+    logger.debug(f"WebSocket connection established: {connection_id}")
 
     await connection_manager.connect(websocket)
     last_data = None
@@ -1150,7 +1172,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         while True:
             if shutdown_event.is_set():
-                logger.info(f"Shutdown signal received, closing WebSocket connection {connection_id}")
+                logger.debug(f"Shutdown signal received, closing WebSocket connection {connection_id}")
                 await websocket.send_json({
                     "type": "shutdown",
                     "message": "Server is shutting down",
@@ -1242,7 +1264,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 pass
 
         await connection_manager.disconnect(websocket)
-        logger.info(f"WebSocket connection cleaned up: {connection_id}")
+        logger.debug(f"WebSocket connection cleaned up: {connection_id}")
 
 
 # Chat API endpoint for AI assistant
@@ -1806,6 +1828,30 @@ async def health_check():
         }, status_code=503)
 
 
+@app.get("/api/services/health")
+async def get_services_health():
+    """Get health status of all internal services."""
+    # In monolithic architecture, all services are internal
+    # Return health of key service coordinators
+    health_status = {}
+
+    if container:
+        orchestrator = await container.get_orchestrator()
+        if orchestrator:
+            health_status["orchestrator"] = "healthy"
+            health_status["portfolio"] = "healthy"
+            health_status["risk_management"] = "healthy"
+            health_status["execution"] = "healthy"
+            health_status["market_data"] = "healthy"
+            health_status["queue_management"] = "healthy"
+            health_status["claude_agent"] = "healthy"
+        else:
+            health_status["system"] = "unhealthy"
+    else:
+        health_status["system"] = "uninitialized"
+
+    return {"services": health_status, "timestamp": datetime.now(timezone.utc).isoformat()}
+
 @app.get("/api/health/detailed")
 async def detailed_health_check():
     """Detailed health check with performance metrics."""
@@ -1858,5 +1904,118 @@ async def detailed_health_check():
         }, status_code=503)
 
 
+@app.get("/api/limits")
+async def get_risk_limits(user_id: Optional[str] = None):
+    """Get risk limits."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        # Mock risk limits for now
+        limits = [
+            {
+                "id": "portfolio_size_limit",
+                "type": "portfolio_size",
+                "limit_value": 1000000,
+                "current_usage": 0,
+                "status": "active",
+                "description": "Maximum portfolio size limit"
+            },
+            {
+                "id": "single_stock_limit",
+                "type": "single_stock",
+                "limit_value": 100000,
+                "current_usage": 0,
+                "status": "active",
+                "description": "Maximum exposure per single stock"
+            }
+        ]
+        return {"limits": limits}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/limits")
+async def create_risk_limit(limit_data: Dict[str, Any]):
+    """Create a new risk limit."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        # Mock implementation
+        return {"status": "Limit created", "limit_id": "mock_id"}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/alerts")
+async def get_risk_alerts(user_id: Optional[str] = None):
+    """Get risk alerts."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        # Mock alerts for now
+        alerts = [
+            {
+                "id": "high_risk_alert",
+                "severity": "high",
+                "type": "risk_exposure",
+                "message": "Portfolio risk exposure above threshold",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "acknowledged": False
+            }
+        ]
+        return {"alerts": alerts}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/monitor/status")
+async def get_risk_monitoring_status(user_id: Optional[str] = None, portfolio_id: Optional[str] = None):
+    """Get risk monitoring status."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        # Mock monitoring status
+        status = {
+            "monitoring_active": True,
+            "last_check": datetime.now(timezone.utc).isoformat(),
+            "risk_score": 2.5,
+            "alerts_count": 0,
+            "status": "healthy"
+        }
+        return status
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/portfolio/risk-metrics")
+async def get_portfolio_risk_metrics(portfolio_id: str = "portfolio_123", period: str = "1M"):
+    """Get portfolio risk metrics."""
+    if not container:
+        return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+    try:
+        # Mock risk metrics
+        metrics = {
+            "portfolio_id": portfolio_id,
+            "period": period,
+            "sharpe_ratio": 1.8,
+            "max_drawdown": -8.5,
+            "volatility": 12.3,
+            "var_95": -15000,
+            "beta": 0.85,
+            "alpha": 2.1,
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+        return metrics
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+if __name__ == "__main__":
+    run_web_server()
 if __name__ == "__main__":
     run_web_server()

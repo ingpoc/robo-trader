@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Home, Newspaper, Users, TrendingUp, Settings, Settings2, FileText, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet } from 'lucide-react'
+import { Home, Newspaper, Users, TrendingUp, Settings, Settings2, FileText, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet, Eye, Database, Shield, List } from 'lucide-react'
 
 const menuItems = [
   { path: '/', label: 'Overview', icon: Home },
@@ -18,9 +18,13 @@ const menuItems = [
   { path: '/agents', label: 'Agents', icon: Users },
   { path: '/trading', label: 'Trading', icon: TrendingUp },
   { path: '/paper-trading', label: 'Paper Trading', icon: Wallet },
+  { path: '/order-management', label: 'Order Management', icon: List },
+  { path: '/risk-management', label: 'Risk Management', icon: Shield },
+  { path: '/queue-management', label: 'Queue Management', icon: Database },
   { path: '/config', label: 'Config', icon: Settings },
   { path: '/agent-config', label: 'Agent Config', icon: Settings2 },
   { path: '/logs', label: 'Logs', icon: FileText },
+  { path: '/claude-transparency', label: 'AI Transparency', icon: Eye },
 ]
 
 interface NavigationProps {

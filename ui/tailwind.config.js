@@ -161,22 +161,10 @@ module.exports = {
         'mono': ['JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Droid Sans Mono', 'Source Code Pro', 'Menlo', 'Consolas', 'monospace'],
       },
       animation: {
-        'fade-in': 'fadeIn 0.4s ease-out',
+        'fade-in': 'fadeIn 0.3s ease-out',
         'slide-up': 'slideUp 0.3s ease-out',
-        'slide-in-up': 'slideInUp 0.4s ease-out',
-        'slide-in-right': 'slideInRight 0.4s ease-out',
-        'scale-in': 'scaleIn 0.3s ease-out',
-        'subtle-pulse': 'subtlePulse 3s ease-in-out infinite',
-        'fade-in-luxury': 'fadeInLuxury 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-        'slide-up-luxury': 'slideUpLuxury 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        'slide-down-luxury': 'slideDownLuxury 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'copper-glow': 'copperGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'card-lift': 'cardLift 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-        'metric-pop': 'metricPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
-        'chart-draw': 'chartDraw 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards',
-        'number-roll': 'numberRoll 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-        'badge-pop': 'badgePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'slide-in-up': 'slideInUp 0.3s ease-out',
+        'chart-draw': 'chartDraw 0.6s ease-out forwards',
       },
       keyframes: {
         fadeIn: {
@@ -188,85 +176,20 @@ module.exports = {
           '100%': { transform: 'translateY(0)', opacity: '1' },
         },
         slideInUp: {
-          '0%': { transform: 'translateY(16px)', opacity: '0' },
+          '0%': { transform: 'translateY(12px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
-        slideInRight: {
-          '0%': { transform: 'translateX(-16px)', opacity: '0' },
-          '100%': { transform: 'translateX(0)', opacity: '1' },
-        },
-        scaleIn: {
-          '0%': { transform: 'scale(0.98)', opacity: '0' },
-          '100%': { transform: 'scale(1)', opacity: '1' },
-        },
-        subtlePulse: {
-          '0%, 100%': { opacity: '1' },
-          '50%': { opacity: '0.95' },
-        },
-        fadeInLuxury: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUpLuxury: {
-          '0%': { opacity: '0', transform: 'translateY(12px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        slideDownLuxury: {
-          '0%': { opacity: '0', transform: 'translateY(-12px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        pulseGlow: {
-          '0%, 100%': { opacity: '1', boxShadow: '0 0 8px rgb(184 115 51 / 0.1)' },
-          '50%': { opacity: '0.8', boxShadow: '0 0 16px rgb(184 115 51 / 0.2)' },
-        },
-        copperGlow: {
-          '0%, 100%': { boxShadow: '0 0 8px rgb(184 115 51 / 0.15)' },
-          '50%': { boxShadow: '0 0 20px rgb(184 115 51 / 0.3)' },
-        },
-        cardLift: {
-          '0%': { transform: 'translateY(4px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
-        metricPop: {
-          '0%': { transform: 'scale(0.95)', opacity: '0' },
-          '50%': { transform: 'scale(1.02)' },
-          '100%': { transform: 'scale(1)', opacity: '1' },
         },
         chartDraw: {
           '0%': { opacity: '0', strokeDashoffset: '100%' },
           '100%': { opacity: '1', strokeDashoffset: '0%' },
         },
-        numberRoll: {
-          '0%': { transform: 'translateY(24px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
-        badgePop: {
-          '0%': { transform: 'scale(0.3) rotate(-180deg)', opacity: '0' },
-          '70%': { transform: 'scale(1.1)' },
-          '100%': { transform: 'scale(1) rotate(0)', opacity: '1' },
-        },
       },
       boxShadow: {
-        // Refined, subtle shadows for luxury feel
         'xs': '0 1px 2px 0 rgb(58 57 53 / 0.05)',
-        'sm': '0 1px 2px 0 rgb(58 57 53 / 0.08)',
-        'base': '0 2px 4px 0 rgb(58 57 53 / 0.08), 0 1px 2px -1px rgb(58 57 53 / 0.06)',
-        'md': '0 4px 6px -1px rgb(58 57 53 / 0.08), 0 2px 4px -2px rgb(58 57 53 / 0.05)',
-        'lg': '0 6px 12px -2px rgb(58 57 53 / 0.08), 0 3px 6px -3px rgb(58 57 53 / 0.05)',
-        'xl': '0 10px 20px -5px rgb(58 57 53 / 0.08), 0 5px 10px -6px rgb(58 57 53 / 0.05)',
-        'card': '0 2px 6px 0 rgb(58 57 53 / 0.06), inset 0 1px 0 0 rgba(255, 255, 255, 0.5)',
-        'card-hover': '0 8px 16px -2px rgb(58 57 53 / 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.6)',
-        'copper-glow': '0 0 16px rgb(184 115 51 / 0.15)',
-        'copper-glow-hover': '0 0 24px rgb(184 115 51 / 0.25)',
-      },
-      backgroundImage: {
-        'gradient-subtle': 'linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 100%)',
-        'gradient-warm': 'linear-gradient(135deg, #f5f3f0 0%, #ede9e2 100%)',
-        'gradient-copper': 'linear-gradient(135deg, rgba(184, 115, 51, 0.1) 0%, rgba(184, 115, 51, 0.05) 100%)',
-      },
-      backdropBlur: {
-        'xs': '2px',
-        'sm': '4px',
+        'sm': '0 1px 3px 0 rgb(58 57 53 / 0.08)',
+        'base': '0 2px 4px 0 rgb(58 57 53 / 0.08)',
+        'md': '0 4px 8px 0 rgb(58 57 53 / 0.1)',
+        'lg': '0 8px 16px 0 rgb(58 57 53 / 0.12)',
       },
       transitionDuration: {
         '150': '150ms',

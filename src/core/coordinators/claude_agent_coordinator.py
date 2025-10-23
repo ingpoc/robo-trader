@@ -402,48 +402,69 @@ Risk Management Rules:
 Remember: Your decisions will be logged and analyzed. Trade responsibly."""
 
     def _build_morning_prompt(self, account_type: str, context: Dict[str, Any]) -> str:
-        """Build token-optimized morning prompt."""
+        """Build token-optimized morning prompt with learning loop."""
+        # Include historical learnings in prompt for continuous improvement
+        historical_learnings = context.get('historical_learnings', [])
+        learnings_text = ""
+        if historical_learnings:
+            learnings_text = "\n\nRECENT LEARNINGS FROM PAST SESSIONS:\n" + "\n".join(f"- {learning}" for learning in historical_learnings[:3])
+
         return f"""Morning Trading Session - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}
 
 CURRENT STATE:
 - Account: {account_type}
-- Balance: ₹{context.get('balance', 100000)}
-- Buying Power: ₹{context.get('buying_power', 100000)}
-- Open Positions: {len(context.get('open_positions', []))}
+- Balance: ₹{context.get('acct', {}).get('bal', 100000)}
+- Buying Power: ₹{context.get('acct', {}).get('bp', 100000)}
+- Open Positions: {len(context.get('pos', []))}
 
 OPEN POSITIONS:
-{json.dumps(context.get('open_positions', [])[:5], indent=2)}
+{json.dumps(context.get('pos', [])[:5], indent=2)}
 
 MARKET CONTEXT:
-{json.dumps(context.get('market_context', {}), indent=2)}
+{context.get('mkt', 'No market data available')}
+
+{learnings_text}
 
 YOUR TASK:
-1. Analyze open positions - should any be closed?
-2. Review market opportunities
-3. Execute new trades if opportunities exist
+1. Analyze open positions - should any be closed based on current conditions?
+2. Review market opportunities considering past performance
+3. Execute new trades if opportunities exist and align with successful strategies
 4. Use tools to execute your decisions
+5. Apply learnings from previous sessions to improve decision-making
 
-Think strategically and execute your trades."""
+Think strategically, learn from the past, and execute your trades."""
 
     def _build_evening_prompt(self, account_type: str, context: Dict[str, Any]) -> str:
-        """Build evening review prompt."""
+        """Build evening review prompt with strategy analysis."""
+        # Include strategy effectiveness analysis
+        strategy_analysis = ""
+        if context.get('strat'):
+            strat = context['strat']
+            if strat.get('worked'):
+                strategy_analysis += f"\n\nWHAT WORKED WELL:\n" + "\n".join(f"- {item}" for item in strat['worked'][:2])
+            if strat.get('failed'):
+                strategy_analysis += f"\n\nWHAT FAILED:\n" + "\n".join(f"- {item}" for item in strat['failed'][:2])
+
         return f"""Evening Strategy Review - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}
 
 TODAY'S PERFORMANCE:
-- Trades Executed: {len(context.get('trades_today', []))}
-- Daily P&L: ₹{context.get('daily_pnl', 0)}
-- Win Rate: {context.get('win_rate', 0)}%
+- Account: {context.get('acct', account_type)}
+- Trades Executed: {context.get('n_trades', 0)}
+- Daily P&L: ₹{context.get('pnl', 0)}
 
 TRADES TODAY:
-{json.dumps(context.get('trades_today', [])[:10], indent=2)}
+{json.dumps(context.get('trades', [])[:10], indent=2)}
+
+{strategy_analysis}
 
 REFLECTION TASKS:
-1. What strategies worked well today?
-2. What failed and why?
-3. What will you adjust for tomorrow?
-4. What do you want to research?
+1. What strategies worked well today? What evidence supports this?
+2. What failed and why? What patterns do you see?
+3. What will you adjust for tomorrow based on today's results?
+4. What do you want to research to improve future performance?
+5. How can you apply today's learnings to avoid past mistakes?
 
-Provide detailed insights for continuous improvement."""
+Provide detailed, actionable insights for continuous improvement. Focus on specific, measurable changes you can implement."""
 
     # NOTE: _parse_learnings moved to ResponseValidator.parse_learnings()
     # Learning extraction now uses:

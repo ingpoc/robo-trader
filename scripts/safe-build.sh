@@ -3,7 +3,7 @@
 # Safe Build Script for Robo Trader
 # Prevents stale Docker build cache issues
 # Usage: ./scripts/safe-build.sh [service] [force]
-#        ./scripts/safe-build.sh paper-trading force
+#        ./scripts/safe-build.sh web force
 
 set -e
 
@@ -29,14 +29,14 @@ echo ""
 echo "🔍 IMPORTANT: Verify the build is not stale:"
 
 case $SERVICE in
-    paper-trading)
+    web)
         echo ""
-        echo "Check 1: Routes should NOT have /api/paper-trading prefix:"
-        echo "   docker exec robo-trader-paper-trading grep '@app.get' /app/main.py | head -3"
+        echo "Check 1: Paper trading routes should have /api/paper-trading prefix:"
+        echo "   docker exec robo-trader-web grep 'paper-trading' /app/src/web/app.py | head -3"
         echo ""
         echo "Check 2: File hash should match local:"
-        LOCAL_HASH=$(md5 services/paper_trading/main.py 2>/dev/null | awk '{print $NF}' || md5sum services/paper_trading/main.py | awk '{print $1}')
-        CONTAINER_HASH=$(docker exec robo-trader-paper-trading md5sum /app/main.py 2>/dev/null | awk '{print $1}' || echo "N/A")
+        LOCAL_HASH=$(md5 src/web/app.py 2>/dev/null | awk '{print $NF}' || md5sum src/web/app.py | awk '{print $1}')
+        CONTAINER_HASH=$(docker exec robo-trader-web md5sum /app/src/web/app.py 2>/dev/null | awk '{print $1}' || echo "N/A")
         if [ "$LOCAL_HASH" = "$CONTAINER_HASH" ]; then
             echo "   ✅ Hashes match: $LOCAL_HASH"
         else
@@ -46,12 +46,11 @@ case $SERVICE in
             echo "      Fix: ./scripts/safe-build.sh $SERVICE force"
         fi
         ;;
-    api-gateway)
+    frontend)
         echo ""
-        echo "Check: Service URLs should use container names (robo-trader-*):"
-        docker exec robo-trader-api-gateway grep "robo-trader-" /app/main.py | head -3 || echo "Not found"
-        echo ""
-        echo "Should NOT have .orb.local DNS names"
+        echo "Frontend uses volume mount - cache not applicable"
+        echo "Check: Vite dev server should be running:"
+        docker exec robo-trader-frontend ps aux | grep vite || echo "Not running yet"
         ;;
     *)
         echo ""
@@ -59,7 +58,11 @@ case $SERVICE in
         docker-compose ps $SERVICE 2>/dev/null || echo "Not running yet"
         echo ""
         echo "Check 2: Container is healthy:"
-        echo "   docker exec robo-trader-$SERVICE cat /app/main.py | head -20"
+        if [ "$SERVICE" = "all" ]; then
+            echo "   docker-compose ps"
+        else
+            echo "   docker exec robo-trader-$SERVICE cat /proc/1/comm 2>/dev/null || echo 'Container not accessible'"
+        fi
         ;;
 esac
 

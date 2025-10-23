@@ -7,6 +7,7 @@ import { GlobalErrorBoundary } from '@/components/common/GlobalErrorBoundary'
 import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBoundary'
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { AccountProvider } from '@/contexts/AccountContext'
 import { Dashboard } from '@/pages/Dashboard'
 import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
 import { Agents } from '@/pages/Agents'
@@ -15,6 +16,10 @@ import { PaperTrading } from '@/pages/PaperTrading'
 import { Config } from '@/pages/Config'
 import { Logs } from '@/pages/Logs'
 import { AgentConfig } from '@/pages/AgentConfig'
+import { ClaudeTransparency } from '@/pages/ClaudeTransparency'
+import QueueManagement from '@/pages/QueueManagement'
+import RiskConfiguration from '@/pages/RiskConfiguration'
+import OrderManagement from '@/pages/OrderManagement'
 import { Button } from '@/components/ui/Button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -32,11 +37,56 @@ function AppContent() {
   useWebSocket()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Keyboard navigation for sidebar
+  // Keyboard navigation for sidebar and global shortcuts
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Sidebar shortcuts
       if (event.key === 'Escape' && sidebarOpen) {
         setSidebarOpen(false)
+      }
+
+      // Global shortcuts (only when not typing in inputs)
+      const target = event.target as HTMLElement
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true'
+
+      if (!isInput) {
+        switch (event.key) {
+          case 'b':
+            if (event.ctrlKey || event.metaKey) {
+              event.preventDefault()
+              setSidebarOpen(prev => !prev)
+            }
+            break
+          case 'f':
+            if (event.ctrlKey || event.metaKey) {
+              event.preventDefault()
+              // Focus search input if available
+              const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement
+              if (searchInput) {
+                searchInput.focus()
+              }
+            }
+            break
+          case '1':
+          case '2':
+          case '3':
+          case '4':
+          case '5':
+          case '6':
+          case '7':
+          case '8':
+          case '9':
+            if (event.altKey) {
+              event.preventDefault()
+              // Navigate to different sections based on number
+              const routes = ['/', '/news-earnings', '/agents', '/trading', '/paper-trading', '/order-management', '/risk-management', '/config', '/logs']
+              const index = parseInt(event.key) - 1
+              if (routes[index]) {
+                window.location.href = routes[index]
+              }
+            }
+            break
+        }
       }
     }
 
@@ -124,14 +174,18 @@ function AppContent() {
             aria-label="Main content"
           >
             <Routes>
-               <Route path="/" element={<DashboardErrorBoundary><Dashboard /></DashboardErrorBoundary>} />
-               <Route path="/news-earnings" element={<NewsEarningsFeature />} />
-               <Route path="/agents" element={<Agents />} />
-               <Route path="/trading" element={<Trading />} />
-               <Route path="/paper-trading" element={<PaperTrading />} />
-               <Route path="/config" element={<Config />} />
-               <Route path="/agent-config" element={<AgentConfig />} />
-               <Route path="/logs" element={<Logs />} />
+              <Route path="/" element={<DashboardErrorBoundary><Dashboard /></DashboardErrorBoundary>} />
+              <Route path="/news-earnings" element={<NewsEarningsFeature />} />
+              <Route path="/agents" element={<Agents />} />
+              <Route path="/trading" element={<Trading />} />
+              <Route path="/paper-trading" element={<PaperTrading />} />
+              <Route path="/order-management" element={<OrderManagement />} />
+              <Route path="/risk-management" element={<RiskConfiguration />} />
+              <Route path="/config" element={<Config />} />
+              <Route path="/agent-config" element={<AgentConfig />} />
+              <Route path="/logs" element={<Logs />} />
+              <Route path="/claude-transparency" element={<ClaudeTransparency />} />
+              <Route path="/queue-management" element={<QueueManagement />} />
             </Routes>
           </main>
         </div>
@@ -148,7 +202,9 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <TooltipProvider>
-            <AppContent />
+            <AccountProvider>
+              <AppContent />
+            </AccountProvider>
           </TooltipProvider>
         </BrowserRouter>
       </QueryClientProvider>

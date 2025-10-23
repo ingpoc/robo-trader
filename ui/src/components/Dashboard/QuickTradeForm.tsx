@@ -6,6 +6,7 @@ import { tradingAPI } from '@/api/endpoints'
 import { tradeSchema, type TradeFormData } from '@/utils/validation'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { forwardRef } from 'react'
 import { SymbolCombobox } from '@/components/ui/SymbolCombobox'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -15,7 +16,7 @@ import { StepIndicator, type Step } from '@/components/ui/step-indicator'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { useToast } from '@/hooks/use-toast'
 import { toastUtils } from '@/lib/toast-utils'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { TrendingUp } from 'lucide-react'
 
@@ -43,6 +44,10 @@ export function QuickTradeForm() {
       quantity: undefined,
       order_type: undefined,
       price: undefined,
+      strategy_tag: '',
+      stop_loss: undefined,
+      target_price: undefined,
+      rationale: '',
     },
   })
 
@@ -205,35 +210,36 @@ export function QuickTradeForm() {
   }
 
   return (
-    <Card className="shadow-md border-warmgray-300/50 bg-gradient-to-br from-white/95 to-copper-50/70 backdrop-blur-sm hover:shadow-lg transition-all duration-300 ring-1 ring-copper-100/50 animate-scale-in">
-      <CardHeader className="pb-4">
-        <CardTitle className="text-xl flex items-center gap-3 font-bold">
-          <div className="p-3 bg-gradient-to-br from-copper-100 to-copper-200 rounded-xl shadow-sm">
-            <TrendingUp className="w-6 h-6 text-copper-700" />
-          </div>
-          <span className="text-warmgray-900 font-serif">
-            Quick Trade
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <TooltipProvider>
+      <Card className="shadow-sm border-warmgray-200 bg-white hover:shadow-md transition-shadow duration-300">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl flex items-center gap-3 font-bold">
+            <div className="p-3 bg-warmgray-100 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-copper-600" />
+            </div>
+            <span className="text-warmgray-900 font-serif">
+              Quick Trade
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
 
       {/* Trade Progress Indicator */}
       {executeTrade.isPending && tradeSteps.length > 0 && (
-        <div className="space-y-4 p-4 bg-gradient-to-r from-copper-50/80 to-warmgray-50/80 rounded-xl border border-copper-200/50 shadow-sm">
+        <div className="space-y-4 p-4 bg-warmgray-50 rounded-lg border border-warmgray-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-copper-800">Trade Execution Progress</span>
-            <span className="text-sm font-semibold text-copper-700 tabular-nums">{tradeProgress}%</span>
+            <span className="text-sm font-semibold text-warmgray-700">Trade Execution Progress</span>
+            <span className="text-sm text-warmgray-600 tabular-nums">{tradeProgress}%</span>
           </div>
-          <Progress value={tradeProgress} className="w-full h-3 bg-copper-100 [&>div]:bg-gradient-to-r [&>div]:from-copper-500 [&>div]:to-copper-600" />
+          <Progress value={tradeProgress} className="w-full h-2 bg-warmgray-200 [&>div]:bg-copper-600" />
           <StepIndicator steps={tradeSteps} orientation="horizontal" className="mt-4" />
         </div>
       )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
-            <label htmlFor="symbol" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
+            <label htmlFor="symbol" className="block text-sm font-semibold text-warmgray-700 mb-2">
               Symbol
             </label>
             <Tooltip>
@@ -258,7 +264,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="side" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
+            <label htmlFor="side" className="block text-sm font-semibold text-warmgray-700 mb-2">
               Side
             </label>
             <Tooltip>
@@ -278,7 +284,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="quantity" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
+            <label htmlFor="quantity" className="block text-sm font-semibold text-warmgray-700 mb-2">
               Quantity
             </label>
             <Tooltip>
@@ -302,7 +308,7 @@ export function QuickTradeForm() {
           </div>
 
           <div>
-            <label htmlFor="order_type" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
+            <label htmlFor="order_type" className="block text-sm font-semibold text-warmgray-700 mb-2">
               Order Type
             </label>
             <Tooltip>
@@ -328,7 +334,7 @@ export function QuickTradeForm() {
 
           {orderType === 'LIMIT' && (
             <div className="col-span-1 md:col-span-2 animate-slide-in-up">
-              <label htmlFor="price" className="block text-xs font-bold text-warmgray-700 uppercase tracking-wider mb-2">
+              <label htmlFor="price" className="block text-sm font-semibold text-warmgray-700 mb-2">
                 Price
               </label>
               <Tooltip>
@@ -354,14 +360,14 @@ export function QuickTradeForm() {
           )}
         </div>
 
-        <div className="flex items-center gap-4 pt-2">
+        <div className="flex items-center gap-4 pt-6">
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="flex-1">
                 <Button
                   type="submit"
                   disabled={executeTrade.isPending || !isValid}
-                  className="w-full btn-professional font-bold text-lg py-4 shadow-professional hover:shadow-professional-hover transition-all duration-300"
+                  className="w-full btn-professional font-semibold text-base py-3 shadow-sm hover:shadow-md transition-shadow duration-300"
                 >
                   {executeTrade.isPending ? (
                     <div className="flex items-center gap-3">
@@ -400,6 +406,7 @@ export function QuickTradeForm() {
           riskWarnings={getRiskAssessment(pendingTrade).warnings}
         />
       )}
-    </Card>
+      </Card>
+    </TooltipProvider>
   )
 }
