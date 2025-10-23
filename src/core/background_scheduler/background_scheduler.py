@@ -43,14 +43,15 @@ class BackgroundScheduler:
     def _setup_event_handlers(self) -> None:
         """Setup event handlers for reactive scheduling."""
         # Portfolio events trigger data fetching
-        self.event_bus.subscribe(EventType.PORTFOLIO_UPDATED, self._handle_portfolio_updated)
-        self.event_bus.subscribe(EventType.STOCK_ADDED, self._handle_stock_added)
-        self.event_bus.subscribe(EventType.STOCK_REMOVED, self._handle_stock_removed)
+        self.event_bus.subscribe(EventType.PORTFOLIO_POSITION_CHANGE, self._handle_portfolio_updated)
+        # Note: STOCK_ADDED and STOCK_REMOVED events don't exist in current EventType enum
+        # self.event_bus.subscribe(EventType.STOCK_ADDED, self._handle_stock_added)
+        # self.event_bus.subscribe(EventType.STOCK_REMOVED, self._handle_stock_removed)
 
-        # Data fetch completion triggers AI analysis
-        self.event_bus.subscribe(EventType.NEWS_FETCHED, self._handle_news_fetched)
-        self.event_bus.subscribe(EventType.EARNINGS_FETCHED, self._handle_earnings_fetched)
-        self.event_bus.subscribe(EventType.FUNDAMENTALS_UPDATED, self._handle_fundamentals_updated)
+        # Data fetch completion triggers AI analysis - these events don't exist yet
+        # self.event_bus.subscribe(EventType.NEWS_FETCHED, self._handle_news_fetched)
+        # self.event_bus.subscribe(EventType.EARNINGS_FETCHED, self._handle_earnings_fetched)
+        # self.event_bus.subscribe(EventType.FUNDAMENTALS_UPDATED, self._handle_fundamentals_updated)
 
         # Market events trigger re-analysis
         self.event_bus.subscribe(EventType.MARKET_NEWS, self._handle_market_news)

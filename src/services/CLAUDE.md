@@ -76,6 +76,7 @@ class MyService(EventHandler):
 | `execution_service.py` | Order execution and lifecycle | EXECUTION_* |
 | `analytics_service.py` | Data analysis and reporting | ANALYTICS_* |
 | `learning_service.py` | AI/ML model integration | LEARNING_* |
+| `strategy_evolution_engine.py` | Strategy performance tracking & optimization | EXECUTION_*, PAPER_TRADING_* |
 | `paper_trading/` | Paper trading with performance metrics | PAPER_TRADING_* |
 
 ---
@@ -274,6 +275,73 @@ service = await container.get(MyService)
 
 # 4. On shutdown, service cleanup called
 await service.cleanup()  # Unsubscribes from events
+```
+
+---
+
+## Strategy Evolution Engine Pattern
+
+**Responsibility**: Track strategy performance per tag and provide Claude with optimization insights.
+
+**Pattern**: Maintain in-memory metrics cache with async file persistence.
+
+**Implementation**:
+```python
+class StrategyEvolutionEngine(EventHandler):
+    """Tracks strategy effectiveness and provides learnings to Claude."""
+
+    async def track_trade(self, trade: PaperTrade, strategy_tag: str) -> None:
+        """Track a closed trade, update metrics, calculate effectiveness."""
+        async with self._lock:
+            # Calculate P&L
+            pnl = (trade.exit_price - trade.entry_price) * trade.quantity
+
+            # Update or create strategy metrics
+            metrics = self._strategies.get(strategy_tag, StrategyMetrics(...))
+            metrics.total_trades += 1
+            metrics.total_pnl += pnl
+            if pnl > 0:
+                metrics.winning_trades += 1
+
+            # Save to file
+            await self._save_strategies()
+
+    async def analyze_strategy(self, strategy_tag: str) -> StrategyEvolution:
+        """Calculate effectiveness score and recommendations."""
+        # Score = 40 (win rate) + 30 (profit factor) + 20 (consistency) + 10 (volume)
+        # Recommendation: increase_use, maintain_use, modify_parameters, reduce_use, retire
+
+    async def get_strategy_context_for_claude(self) -> Dict[str, Any]:
+        """Return full strategy context for Claude's decision making."""
+        # Include: top performers, underperformers, trends, recommendations
+```
+
+**Rules**:
+- ✅ Track metrics per strategy_tag (from trade event data)
+- ✅ Update in-memory cache first, then persist to file
+- ✅ Use atomic file writes for consistency
+- ✅ Cache latest metrics in memory for fast queries
+- ✅ Calculate effectiveness score (0-100) based on win rate + profit factor
+- ✅ Provide Claude with top performers and underperformers
+- ✅ Emit events on strategy changes (optional, for UI updates)
+- ❌ NEVER lock during I/O (use atomic operations)
+- ❌ NEVER block calculating metrics (keep math operations quick)
+
+**Integration Points**:
+- Subscribes to `EXECUTION_ORDER_FILLED` and `PAPER_TRADING_CLOSED` events
+- Called by TradeExecutor after closing a trade with strategy_tag
+- Queried by Claude Agent for strategy context before decisions
+- Called by UI endpoints to display strategy analytics
+
+**Claude Context Usage**:
+```python
+# Claude calls before making trading decisions
+context = await engine.get_strategy_context_for_claude()
+# Returns: {
+#   "top_performers": [{"strategy": "RSI_oversold", "win_rate": "72%"}],
+#   "underperformers": [{"strategy": "MACD_divergence", "win_rate": "35%"}],
+#   "recommendations": ["increase_use", "retire"]
+# }
 ```
 
 ---

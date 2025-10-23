@@ -308,6 +308,58 @@ class AIPlanner:
 
         return status
 
+    async def get_current_task_status(self) -> Dict[str, Any]:
+        """
+        Get current AI task status for UI display.
+
+        Returns:
+            Current task status information
+        """
+        try:
+            # Get planning status as base
+            planning_status = await self.get_planning_status()
+
+            # Add current task information
+            current_task = {
+                "status": "idle",
+                "description": "No active AI tasks",
+                "progress": 0,
+                "estimated_completion": None,
+                "current_activity": "Monitoring market conditions"
+            }
+
+            # If we have an active plan, show planning activity
+            if planning_status.get("has_active_plan"):
+                current_task.update({
+                    "status": "planning",
+                    "description": f"Executing {planning_status.get('planning_horizon', 5)}-day trading plan",
+                    "progress": 0.3,  # Mock progress
+                    "current_activity": "Analyzing market conditions and generating recommendations"
+                })
+
+            # Combine planning status with task status
+            status = {
+                **planning_status,
+                "current_task": current_task,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+            return status
+
+        except Exception as e:
+            logger.error(f"Failed to get current task status: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "current_task": {
+                    "status": "error",
+                    "description": "Unable to retrieve task status",
+                    "progress": 0,
+                    "current_activity": "Error state"
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
     async def _generate_multi_day_plan_data(
         self,
         horizon_days: int,

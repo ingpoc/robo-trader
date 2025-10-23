@@ -6,7 +6,7 @@ Enhanced with comprehensive AI transparency endpoints.
 
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
@@ -651,3 +651,73 @@ async def get_strategy_evolution_timeline(
     except Exception as e:
         logger.error(f"Failed to get strategy evolution timeline: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get strategy timeline: {str(e)}")
+
+
+@router.get("/strategy-learnings")
+@limiter.limit("30/minute")
+async def get_strategy_learnings(
+    request: Request,
+    container=Depends(get_container),
+    limit: int = 5,
+) -> Dict[str, Any]:
+    """
+    Get strategy performance learnings for Claude decision-making.
+
+    Returns top-performing strategies with effectiveness metrics and recommendations.
+    """
+    try:
+        engine = await container.get("strategy_evolution_engine")
+        learnings = await engine.get_strategy_learnings(limit=limit)
+
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "learnings": learnings,
+            "total_strategies": len(learnings),
+            "recommendation": "Use top performers for increased capital allocation"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get strategy learnings: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get strategy learnings: {str(e)}")
+
+
+@router.get("/monthly-performance/{account_type}")
+@limiter.limit("30/minute")
+async def get_monthly_performance(
+    request: Request,
+    account_type: str,
+    container=Depends(get_container),
+) -> Dict[str, Any]:
+    """
+    Get current month's trading performance summary.
+
+    Returns performance metrics for the current month including P&L, trades, and win rate.
+    """
+    try:
+        account_manager = await container.get("paper_trading_account_manager")
+        account = await account_manager.get_account(account_type)
+
+        if not account:
+            raise HTTPException(status_code=404, detail=f"Account type {account_type} not found")
+
+        # Get monthly metrics
+        monthly_data = {
+            "account_type": account_type,
+            "current_balance": account.get("balance", 0),
+            "profit_loss": account.get("total_pnl", 0),
+            "profit_loss_percentage": account.get("total_pnl_pct", 0),
+            "trades_count": account.get("trades_count", 0),
+            "winning_trades": account.get("winning_trades", 0),
+            "losing_trades": account.get("losing_trades", 0),
+            "win_rate": account.get("win_rate", 0),
+            "max_drawdown": account.get("max_drawdown", 0),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        return monthly_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get monthly performance: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get monthly performance: {str(e)}")

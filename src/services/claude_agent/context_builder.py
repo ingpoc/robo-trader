@@ -20,7 +20,9 @@ class ContextBuilder:
         account_data: Dict[str, Any],
         open_positions: List[Dict[str, Any]],
         market_data: Optional[Dict[str, Any]] = None,
-        earnings_today: Optional[List[Dict[str, Any]]] = None
+        earnings_today: Optional[List[Dict[str, Any]]] = None,
+        strategy_learnings: Optional[List[Dict[str, Any]]] = None,
+        monthly_performance: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Build token-optimized morning context.
@@ -67,6 +69,28 @@ class ContextBuilder:
                 {"s": e.get("symbol"), "t": e.get("time")}
                 for e in earnings_today[:3]  # Limit to 3
             ]
+
+        # Strategy learnings (AI-driven insights from past performance)
+        if strategy_learnings:
+            context["strat_learn"] = [
+                {
+                    "name": s.get("strategy"),
+                    "score": s.get("effectiveness_score"),
+                    "rec": s.get("recommendation"),  # increase_use, maintain_use, modify, reduce_use, retire
+                    "wr": s.get("win_rate")  # Win rate %
+                }
+                for s in strategy_learnings[:3]  # Top 3 strategies
+            ]
+
+        # Monthly performance summary
+        if monthly_performance:
+            context["month_perf"] = {
+                "pnl": monthly_performance.get("total_pnl"),
+                "pnl_pct": monthly_performance.get("profit_loss_percentage"),
+                "trades": monthly_performance.get("total_trades"),
+                "wr": monthly_performance.get("win_rate"),  # Win rate %
+                "dd": monthly_performance.get("max_drawdown")  # Max drawdown %
+            }
 
         logger.debug(f"Built morning context (~{self._estimate_tokens(context)} tokens)")
         return context

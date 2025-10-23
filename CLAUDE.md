@@ -6,7 +6,7 @@
 
 ---
 
-## Core Architectural Patterns (22 Patterns)
+## Core Architectural Patterns (23 Patterns)
 
 ### 1. Coordinator Pattern (Responsibility: Service Orchestration)
 
@@ -205,6 +205,22 @@ Ensure data consistency during concurrent writes using atomic file operations.
 
 **Rule**: Always use atomic writes for persistence, implement validation, cleanup temporary files on failure.
 
+### 23. Monthly Reset Monitor (Responsibility: Paper Trading Capital Management)
+
+Automatically reset paper trading account capital on the 1st of each month while preserving performance history.
+
+**Implementation**: `MonthlyResetMonitor` runs daily, checks if it's the 1st, captures monthly metrics, resets balance.
+
+**Rule**: Reset happens on 1st of month only. Preserve closed trades and strategy learnings. Track monthly P&L in history file. Emit reset event for UI broadcast.
+
+**Process**:
+1. Daily check if today is the 1st of month
+2. If yes: Calculate monthly performance (P&L, trades, win rate, max drawdown)
+3. Save metrics to `monthly_performance_history.json` (atomic write)
+4. Reset account balance to initial amount (₹1,00,000)
+5. Emit `ACCOUNT_RESET` event with monthly summary
+6. UI updates show monthly results and capital reset confirmation
+
 ---
 
 ## Code Quality Standards
@@ -363,6 +379,7 @@ Never break existing public APIs. When refactoring, maintain import paths (use w
 | Performance metrics needed | Use `PerformanceCalculator` for all P&L calculations | Performance Metrics Calculation |
 | Three-queue scheduler needed | Implement PortfolioQueue, DataFetcherQueue, AIAnalysisQueue | Three Separate Scheduler Queues |
 | Event-driven triggering needed | NEWS_FETCHED → AI analysis, EARNINGS_FETCHED → fundamentals update | Event-Driven Triggering |
+| Monthly capital reset needed | Run MonthlyResetMonitor daily, reset on 1st, save performance history | Monthly Reset Monitor |
 
 ---
 

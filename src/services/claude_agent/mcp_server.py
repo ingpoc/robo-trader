@@ -112,6 +112,40 @@ class ClaudeAgentMCPServer:
                     },
                     "required": []
                 }
+            },
+            "get_strategy_learnings": {
+                "name": "get_strategy_learnings",
+                "description": "Get strategy performance learnings and recommendations for improving trading",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "description": "Number of top strategies to return (default: 5)", "default": 5}
+                    },
+                    "required": []
+                }
+            },
+            "get_monthly_performance": {
+                "name": "get_monthly_performance",
+                "description": "Get current month's trading performance summary",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "account_type": {"type": "string", "enum": ["swing", "options"], "description": "Account type"}
+                    },
+                    "required": ["account_type"]
+                }
+            },
+            "analyze_position": {
+                "name": "analyze_position",
+                "description": "Analyze a specific open position with technical and fundamental insights",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {"type": "string", "description": "Stock symbol"},
+                        "trade_id": {"type": "string", "description": "Trade ID for position analysis"}
+                    },
+                    "required": ["symbol"]
+                }
             }
         }
 
@@ -136,6 +170,18 @@ class ClaudeAgentMCPServer:
                 "uri": "claude://market/context",
                 "name": "Market Context",
                 "description": "Current market conditions and context",
+                "mime_type": "application/json"
+            },
+            "strategy_learnings": {
+                "uri": "claude://strategy/learnings",
+                "name": "Strategy Learnings",
+                "description": "Strategy performance data and effectiveness metrics for optimization",
+                "mime_type": "application/json"
+            },
+            "monthly_performance": {
+                "uri": "claude://performance/monthly",
+                "name": "Monthly Performance",
+                "description": "Monthly trading performance summary and metrics",
                 "mime_type": "application/json"
             }
         }

@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 from src.config import Config
 from .orchestrator import RoboTraderOrchestrator
-from ..mcp.broker import ZerodhaBroker
 from .database_state import DatabaseStateManager
 from .background_scheduler import BackgroundScheduler
 from .conversation_manager import ConversationManager
@@ -41,11 +40,8 @@ RiskService = None
 ExecutionService = None
 AnalyticsService = None
 LearningService = None
-LiveTradingService = None
+StrategyEvolutionEngine = None
 MarketDataService = None
-EnterpriseSecurityService = None
-AdvancedMonitoringService = None
-ScalabilityService = None
 FeatureManagementService = None
 EventRouterService = None
 QueueCoordinator = None
@@ -116,12 +112,6 @@ class DependencyContainer:
 
         self._register_singleton("state_manager", create_state_manager)
 
-        # Broker - singleton
-        async def create_broker():
-            return ZerodhaBroker(self.config)
-
-        self._register_singleton("broker", create_broker)
-
         # AI Planner
         async def create_ai_planner():
             state_manager = await self.get("state_manager")
@@ -129,11 +119,25 @@ class DependencyContainer:
 
         self._register_singleton("ai_planner", create_ai_planner)
 
+        # Task Service
+        async def create_task_service():
+            from ..stores.scheduler_task_store import SchedulerTaskStore
+            from ..services.scheduler.task_service import SchedulerTaskService
+
+            # Get database connection from state manager
+            state_manager = await self.get("state_manager")
+            task_store = SchedulerTaskStore(state_manager._connection_pool)
+            return SchedulerTaskService(task_store)
+
+        self._register_singleton("task_service", create_task_service)
+
         # Background Scheduler
         async def create_background_scheduler():
+            task_service = await self.get("task_service")
+            event_bus = await self.get("event_bus")
             state_manager = await self.get("state_manager")
-            # Orchestrator will be injected later to avoid circular dependency
-            return BackgroundScheduler(self.config, state_manager)
+            # Use state_manager's connection pool as db_connection
+            return BackgroundScheduler(task_service, event_bus, state_manager._connection_pool)
 
         self._register_singleton("background_scheduler", create_background_scheduler)
 
@@ -172,8 +176,7 @@ class DependencyContainer:
         # Execution Service
         async def create_execution_service():
             event_bus = await self.get("event_bus")
-            broker = await self.get("broker")
-            execution_service = ExecutionService(self.config, event_bus, broker)
+            execution_service = ExecutionService(self.config, event_bus)
             await execution_service.initialize()
             return execution_service
 
@@ -196,6 +199,16 @@ class DependencyContainer:
             return learning_service
 
         self._register_singleton("learning_service", create_learning_service)
+
+        # Strategy Evolution Engine
+        async def create_strategy_evolution_engine():
+            from ..services.strategy_evolution_engine import StrategyEvolutionEngine
+            event_bus = await self.get("event_bus")
+            engine = StrategyEvolutionEngine(self.config, event_bus)
+            await engine.initialize()
+            return engine
+
+        self._register_singleton("strategy_evolution_engine", create_strategy_evolution_engine)
 
         # Paper Trading Infrastructure
         async def create_paper_trading_store():
@@ -270,52 +283,6 @@ class DependencyContainer:
 
         self._register_singleton("event_router_service", create_event_router_service)
 
-        # Live Trading Service
-        async def create_live_trading_service():
-            event_bus = await self.get("event_bus")
-            broker = await self.get("broker")
-            live_trading_service = LiveTradingService(self.config, event_bus, broker)
-            await live_trading_service.initialize()
-            return live_trading_service
-
-        self._register_singleton("live_trading_service", create_live_trading_service)
-
-        # Market Data Service
-        async def create_market_data_service():
-            event_bus = await self.get("event_bus")
-            broker = await self.get("broker")
-            market_data_service = MarketDataService(self.config, event_bus, broker)
-            await market_data_service.initialize()
-            return market_data_service
-
-        self._register_singleton("market_data_service", create_market_data_service)
-
-        # Enterprise Security Service
-        async def create_enterprise_security_service():
-            event_bus = await self.get("event_bus")
-            enterprise_security_service = EnterpriseSecurityService(self.config, event_bus)
-            await enterprise_security_service.initialize()
-            return enterprise_security_service
-
-        self._register_singleton("enterprise_security_service", create_enterprise_security_service)
-
-        # Advanced Monitoring Service
-        async def create_advanced_monitoring_service():
-            event_bus = await self.get("event_bus")
-            advanced_monitoring_service = AdvancedMonitoringService(self.config, event_bus)
-            await advanced_monitoring_service.initialize()
-            return advanced_monitoring_service
-
-        self._register_singleton("advanced_monitoring_service", create_advanced_monitoring_service)
-
-        # Scalability Service
-        async def create_scalability_service():
-            event_bus = await self.get("event_bus")
-            scalability_service = ScalabilityService(self.config, event_bus)
-            await scalability_service.initialize()
-            return scalability_service
-
-        self._register_singleton("scalability_service", create_scalability_service)
 
         self._register_singleton("claude_strategy_store", create_claude_strategy_store)
 
