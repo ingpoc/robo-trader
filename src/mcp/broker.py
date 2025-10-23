@@ -19,7 +19,7 @@ from kiteconnect import KiteConnect
 from claude_agent_sdk import tool, create_sdk_mcp_server
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 
 
 class ZerodhaBroker:

@@ -3,7 +3,7 @@
 import asyncpg
 import logging
 from typing import List, Dict, Any, Optional
-from ..config import load_config
+from src.config import load_config
 
 logger = logging.getLogger(__name__)
 

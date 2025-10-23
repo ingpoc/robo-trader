@@ -10,7 +10,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from .config import load_config
+from src.config import load_config
 from .core.di import initialize_container, cleanup_container
 from .core.orchestrator import RoboTraderOrchestrator
 

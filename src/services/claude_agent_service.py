@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 from ..core.event_bus import EventHandler, Event, EventType, EventBus
 from ..core.di import DependencyContainer
 from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ..config import Config
+from src.config import Config
 from ..models.claude_agent import SessionType, ClaudeSessionResult
 from ..stores.claude_strategy_store import ClaudeStrategyStore
 from .claude_agent import ClaudeAgentMCPServer

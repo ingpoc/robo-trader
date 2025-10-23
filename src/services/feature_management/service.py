@@ -12,23 +12,23 @@ from typing import Dict, List, Optional, Any, Set
 from pathlib import Path
 from loguru import logger
 
-from ..config import Config
-from ...core.event_bus import EventBus, Event, EventType, EventHandler
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
-from .models import (
+from src.config import Config
+from src.core.event_bus import EventBus, Event, EventType, EventHandler
+from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.services.feature_management.models import (
     FeatureConfig, FeatureState, FeatureMetadata, FeatureDependency,
     FeatureToggleRequest, BulkFeatureUpdate, DependencyResolutionResult,
     FeatureStatus, FeatureType, DependencyType
 )
-from .database import FeatureDatabase
-from .dependency_resolver import DependencyResolver
-from .lifecycle_manager import ServiceLifecycleManager
-from .scheduler_integration import BackgroundSchedulerIntegration
-from .agent_integration import AgentManagementIntegration
-from .service_integration import ServiceManagementIntegration
-from .resource_cleanup import ResourceCleanupManager
-from .error_recovery import ErrorRecoveryManager
-from .event_broadcasting import EventBroadcastingService
+from src.services.feature_management.database import FeatureDatabase
+from src.services.feature_management.dependency_resolver import DependencyResolver
+from src.services.feature_management.lifecycle_manager import ServiceLifecycleManager
+from src.services.feature_management.scheduler_integration import BackgroundSchedulerIntegration
+from src.services.feature_management.agent_integration import AgentManagementIntegration
+from src.services.feature_management.service_integration import ServiceManagementIntegration
+from src.services.feature_management.resource_cleanup import ResourceCleanupManager
+from src.services.feature_management.error_recovery import ErrorRecoveryManager
+from src.services.feature_management.event_broadcasting import EventBroadcastingService
 
 
 class FeatureManagementError(TradingError):

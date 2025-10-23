@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import aiosqlite
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 from ..core.event_bus import EventBus, Event, EventType, EventHandler
 from ..core.errors import TradingError, APIError
 from ..mcp.broker import ZerodhaBroker

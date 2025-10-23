@@ -8,7 +8,7 @@ removing task queues, and cleaning up cron jobs when features are deactivated.
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import json
 from loguru import logger

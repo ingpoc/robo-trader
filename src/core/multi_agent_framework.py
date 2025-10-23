@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from loguru import logger
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
-from ..config import Config
+from src.config import Config
 from ..core.database_state import DatabaseStateManager
 from ..core.event_bus import EventBus, Event, EventType
 from .coordinators import (

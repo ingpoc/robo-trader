@@ -24,13 +24,14 @@ import uvicorn
 import time
 import httpx
 
-from ..config import load_config
+from src.config import load_config
 from ..core.di import initialize_container, cleanup_container, DependencyContainer
 from ..core.database_state import DatabaseStateManager
 from ..core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
 from .claude_agent_api import router as claude_agent_router
-from .feature_management_api import router as feature_management_router
+# Temporarily disabled - has import issues in feature_management module
+# from .feature_management_api import router as feature_management_router
 from .queues_api import router as queues_router
 from .websocket_differ import WebSocketDiffer
 from .connection_manager import ConnectionManager
@@ -157,7 +158,8 @@ async def log_requests(request: Request, call_next):
 app.include_router(claude_agent_router)
 
 # Include Feature Management API router
-app.include_router(feature_management_router)
+# Temporarily disabled - has import issues
+# app.include_router(feature_management_router)
 
 # Include Queue Management API router
 app.include_router(queues_router, prefix="/api")

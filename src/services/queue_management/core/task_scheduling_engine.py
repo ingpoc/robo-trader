@@ -31,7 +31,7 @@ class TaskDependencyType(Enum):
     FAILURE = "failure"        # Task must fail before dependent task (for retry logic)
 
 
-@dataclass(order=True)
+@dataclass
 class ScheduledTask:
     """Task wrapper for priority scheduling."""
     priority: int

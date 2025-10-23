@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, Callable
 
 from loguru import logger
 
-from ...config import Config
+from src.config import Config
 from .base_coordinator import BaseCoordinator
 
 

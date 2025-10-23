@@ -9,7 +9,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from ...config import Config
+from src.config import Config
 from ...core.di import DependencyContainer
 from ...core.event_bus import EventBus, Event, EventType
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity

@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # ============================================================================
   # INFRASTRUCTURE SERVICES
@@ -25,27 +27,6 @@ services:
     networks:
       - robo-trader-network
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: robo-trader-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: robo_trader
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-robo_trader}
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    labels:
-      - "dev.orbstack.domains=rabbitmq.orb.local"
-    networks:
-      - robo-trader-network
-
   redis:
     image: redis:7-alpine
     container_name: robo-trader-redis
@@ -64,315 +45,89 @@ services:
       - robo-trader-network
 
   # ============================================================================
-  # CORE PYTHON MICROSERVICES
+  # MONOLITHIC APPLICATION
   # ============================================================================
 
-  market-data:
+  robo-trader-app:
     build:
       context: .
-      dockerfile: services/market_data/Dockerfile
-    container_name: robo-trader-market-data
-    ports:
-      - "8004:8004"
-    environment:
-      SERVICE_NAME: market-data
-      SERVICE_PORT: 8004
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      BROKER_API_KEY: ${BROKER_API_KEY}
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    labels:
-      - "dev.orbstack.domains=market-data.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - robo-trader-network
-
-  portfolio:
-    build:
-      context: .
-      dockerfile: services/portfolio/Dockerfile
-    container_name: robo-trader-portfolio
-    ports:
-      - "8001:8001"
-    environment:
-      SERVICE_NAME: portfolio
-      SERVICE_PORT: 8001
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    labels:
-      - "dev.orbstack.domains=portfolio.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    volumes:
-      - ./logs:/app/logs
-      - ./services/portfolio:/shared/services/portfolio
-    networks:
-      - robo-trader-network
-
-  risk:
-    build:
-      context: .
-      dockerfile: services/risk_management/Dockerfile
-    container_name: robo-trader-risk
-    ports:
-      - "8002:8002"
-    environment:
-      SERVICE_NAME: risk
-      SERVICE_PORT: 8002
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      PORTFOLIO_SERVICE_URL: http://robo-trader-portfolio:8001
-      MARKET_DATA_SERVICE_URL: http://robo-trader-market-data:8004
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      portfolio:
-        condition: service_healthy
-    labels:
-      - "dev.orbstack.domains=risk.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - robo-trader-network
-
-  execution:
-    build:
-      context: .
-      dockerfile: services/execution/Dockerfile
-    container_name: robo-trader-execution
-    ports:
-      - "8003:8003"
-    environment:
-      SERVICE_NAME: execution
-      SERVICE_PORT: 8003
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      BROKER_API_KEY: ${BROKER_API_KEY}
-      RISK_SERVICE_URL: http://robo-trader-risk:8002
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      risk:
-        condition: service_healthy
-    labels:
-      - "dev.orbstack.domains=execution.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - robo-trader-network
-
-  analytics:
-    build:
-      context: .
-      dockerfile: services/analytics/Dockerfile
-    container_name: robo-trader-analytics
-    ports:
-      - "8005:8005"
-    environment:
-      SERVICE_NAME: analytics
-      SERVICE_PORT: 8005
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY}
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    labels:
-      - "dev.orbstack.domains=analytics.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - robo-trader-network
-
-  recommendation:
-    build:
-      context: .
-      dockerfile: services/recommendation/Dockerfile
-    container_name: robo-trader-recommendation
-    ports:
-      - "8006:8006"
-    environment:
-      SERVICE_NAME: recommendation
-      SERVICE_PORT: 8006
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      ANALYTICS_SERVICE_URL: http://robo-trader-analytics:8005
-      PORTFOLIO_SERVICE_URL: http://robo-trader-portfolio:8001
-      RISK_SERVICE_URL: http://robo-trader-risk:8002
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      analytics:
-        condition: service_healthy
-    labels:
-      - "dev.orbstack.domains=recommendation.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - robo-trader-network
-
-  task-scheduler:
-    build:
-      context: .
-      dockerfile: services/task_scheduler/Dockerfile
-    container_name: robo-trader-task-scheduler
-    ports:
-      - "8007:8007"
-    environment:
-      SERVICE_NAME: task-scheduler
-      SERVICE_PORT: 8007
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      CELERY_BROKER_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      CELERY_RESULT_BACKEND: redis://robo-trader-redis:6379/0
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    labels:
-      - "dev.orbstack.domains=scheduler.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - robo-trader-network
-
-  paper-trading:
-    build:
-      context: .
-      dockerfile: services/paper_trading/Dockerfile
-    container_name: robo-trader-paper-trading
-    ports:
-      - "8008:8008"
-    environment:
-      SERVICE_NAME: paper-trading
-      SERVICE_PORT: 8008
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres/robo_trader
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@robo-trader-rabbitmq//
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    volumes:
-      - paper-trading-data:/shared/db
-      - ./logs:/app/logs
-    labels:
-      - "dev.orbstack.domains=paper-trading.orb.local"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - robo-trader-network
-
-  # ============================================================================
-  # API GATEWAY
-  # ============================================================================
-
-  api-gateway:
-    build:
-      context: .
-      dockerfile: services/api_gateway/Dockerfile
-    container_name: robo-trader-api-gateway
+      dockerfile: Dockerfile
+    container_name: robo-trader-app
     ports:
       - "8000:8000"
     environment:
-      SERVICE_NAME: api-gateway
-      SERVICE_PORT: 8000
-      RABBITMQ_URL: amqp://robo_trader:${RABBITMQ_PASSWORD:-robo_trader}@rabbitmq.orb.local//
-      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@postgres.orb.local/robo_trader
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: 8000
+
+      # Database
+      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres:5432/robo_trader
+
+      # Cache
+      REDIS_URL: redis://robo-trader-redis:6379/0
+
+      # API Keys
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ZERODHA_API_KEY: ${ZERODHA_API_KEY}
+      ZERODHA_API_SECRET: ${ZERODHA_API_SECRET}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY}
+      BROKER_API_KEY: ${BROKER_API_KEY}
+
+      # Python
       PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app
+
     depends_on:
-      - portfolio
-      - risk
-      - execution
-      - market-data
-      - analytics
-      - recommendation
-      - task-scheduler
-      - paper-trading
-    labels:
-      - "dev.orbstack.domains=api.orb.local"
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
+      start_period: 40s
       retries: 3
+
     volumes:
       - ./logs:/app/logs
-      - ./services/api_gateway:/shared/services/api_gateway
+      - ./data:/app/data
+      - ./config:/app/config
+
+    labels:
+      - "dev.orbstack.domains=app.orb.local"
+
     networks:
       - robo-trader-network
 
-volumes:
-  postgres-data:
-    driver: local
-  rabbitmq-data:
-    driver: local
-  redis-data:
-    driver: local
-  paper-trading-data:
-    driver: local
+  # ============================================================================
+  # FRONTEND (Optional - can be served separately)
+  # ============================================================================
+
+  # Uncomment to run frontend in Docker (optional)
+  # frontend:
+  #   build:
+  #     context: ./ui
+  #     dockerfile: Dockerfile
+  #   container_name: robo-trader-frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     REACT_APP_API_URL: http://robo-trader-app:8000
+  #   depends_on:
+  #     - robo-trader-app
+  #   networks:
+  #     - robo-trader-network
 
 networks:
   robo-trader-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres-data:
+  redis-data:

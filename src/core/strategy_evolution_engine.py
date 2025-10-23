@@ -17,7 +17,7 @@ from copy import deepcopy
 from loguru import logger
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
-from ..config import Config
+from src.config import Config
 from ..core.database_state import DatabaseStateManager
 from ..core.learning_engine import LearningEngine
 

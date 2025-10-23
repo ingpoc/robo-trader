@@ -12,7 +12,7 @@ from enum import Enum
 import uuid
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 from ..core.state_models import OrderCommand
 from ..core.event_bus import EventBus, Event, EventType, EventHandler
 from ..core.errors import TradingError, ValidationError

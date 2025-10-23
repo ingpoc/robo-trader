@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-from ..config import Config
+from src.config import Config
 from .orchestrator import RoboTraderOrchestrator
 from ..mcp.broker import ZerodhaBroker
 from .database_state import DatabaseStateManager
@@ -352,7 +352,8 @@ class DependencyContainer:
 
         async def create_task_coordinator():
             state_manager = await self.get("state_manager")
-            return TaskCoordinator(self.config, state_manager)
+            event_bus = await self.get("event_bus")
+            return TaskCoordinator(self.config, state_manager, event_bus)
 
         self._register_singleton("task_coordinator", create_task_coordinator)
 

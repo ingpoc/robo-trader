@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 import aiosqlite
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 from .state_models import (
     PortfolioState, Signal, RiskDecision, OrderCommand,
     ExecutionReport, Intent, FundamentalAnalysis, Recommendation,

@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterable, List, Tuple, Optional
 
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 from ..core.state_models import PortfolioState
 from ..core.database_state import DatabaseStateManager
 from .broker_data import get_live_portfolio_data, is_broker_connected

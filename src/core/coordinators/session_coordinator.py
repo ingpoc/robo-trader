@@ -11,7 +11,7 @@ from typing import Optional
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from loguru import logger
 
-from ...config import Config
+from src.config import Config
 from ...auth.claude_auth import ClaudeAuthStatus, validate_claude_api
 from .base_coordinator import BaseCoordinator
 

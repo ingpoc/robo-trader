@@ -21,7 +21,7 @@ from ..core.multi_agent_framework import (
     MessageType,
     CollaborationTask
 )
-from ..config import Config
+from src.config import Config
 from ..core.database_state import DatabaseStateManager
 from ..core.event_bus import EventBus
 

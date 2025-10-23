@@ -14,7 +14,7 @@ from enum import Enum
 import aiosqlite
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 
 
 class EventType(Enum):

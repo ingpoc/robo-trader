@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from ...config import Config
+from src.config import Config
 from ...core.logging_config import setup_logging
 from ...core.event_bus import initialize_event_bus, EventBus
 from ...stores.scheduler_task_store import SchedulerTaskStore
