@@ -318,3 +318,105 @@ async def get_trade_decisions(request: Request) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Trade decisions retrieval failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/transparency/data-quality-summary")
+@limiter.limit(transparency_limit)
+async def get_data_quality_summary(request: Request) -> Dict[str, Any]:
+    """Get data quality summary from most recent Claude session."""
+    try:
+        from ..app import container
+
+        if not container:
+            return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+        # Get the most recent session's data quality metrics
+        # This is stored when ClaudeAgentService fetches optimized data
+        strategy_store = await container.get("claude_strategy_store")
+
+        if not strategy_store:
+            return JSONResponse({"error": "Strategy store not available"}, status_code=500)
+
+        # Get most recent session for each account type
+        sessions = {}
+        for account_type in ["swing", "options"]:
+            recent = await strategy_store.get_recent_sessions(account_type, limit=1)
+            if recent:
+                sessions[account_type] = recent[0]
+
+        # Extract data quality from session metadata
+        quality_summary = {}
+        for account_type, session in sessions.items():
+            if hasattr(session, 'metadata') and session.metadata:
+                session_quality = session.metadata.get('data_quality_summary', {})
+                # Merge quality data from all sessions
+                for data_type, metrics in session_quality.items():
+                    if data_type not in quality_summary:
+                        quality_summary[data_type] = metrics
+
+        # If no session data, provide empty structure
+        if not quality_summary:
+            quality_summary = {
+                "earnings": {"quality_score": 0.0, "optimization_attempts": 0, "optimization_triggered": False, "prompt_optimized": False},
+                "news": {"quality_score": 0.0, "optimization_attempts": 0, "optimization_triggered": False, "prompt_optimized": False},
+                "fundamentals": {"quality_score": 0.0, "optimization_attempts": 0, "optimization_triggered": False, "prompt_optimized": False}
+            }
+
+        return {
+            "quality_summary": quality_summary,
+            "sessions_analyzed": len(sessions),
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Data quality summary retrieval failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/current-strategy/{account_type}")
+@limiter.limit(transparency_limit)
+async def get_current_strategy(request: Request, account_type: str) -> Dict[str, Any]:
+    """Get current trading strategy for account type."""
+    try:
+        from ..app import container
+
+        if not container:
+            return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+        if account_type not in ["swing", "options"]:
+            return JSONResponse({"error": "Invalid account type"}, status_code=400)
+
+        strategy_store = await container.get("claude_strategy_store")
+
+        if not strategy_store:
+            return JSONResponse({"error": "Strategy store not available"}, status_code=500)
+
+        # Get most recent session
+        recent_sessions = await strategy_store.get_recent_sessions(account_type, limit=1)
+
+        if not recent_sessions:
+            return {
+                "strategy": None,
+                "message": "No strategy available yet"
+            }
+
+        session = recent_sessions[0]
+
+        # Extract strategy details
+        strategy = {
+            "strategy_type": account_type,
+            "focus_areas": session.metadata.get("focus_areas", []) if hasattr(session, 'metadata') and session.metadata else [],
+            "risk_level": session.metadata.get("risk_level", "moderate") if hasattr(session, 'metadata') and session.metadata else "moderate",
+            "current_analysis": session.metadata.get("current_analysis", "") if hasattr(session, 'metadata') and session.metadata else "",
+            "data_quality": session.metadata.get("data_quality_summary", {}) if hasattr(session, 'metadata') and session.metadata else {},
+            "last_updated": session.timestamp.isoformat() if hasattr(session, 'timestamp') else datetime.now(timezone.utc).isoformat()
+        }
+
+        return {
+            "strategy": strategy,
+            "session_id": session.session_id if hasattr(session, 'session_id') else None
+        }
+
+    except Exception as e:
+        logger.error(f"Current strategy retrieval failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

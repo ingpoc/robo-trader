@@ -11,6 +11,7 @@ Provides REST endpoints for:
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+import json
 
 from ..dependencies import get_database, get_current_user, get_container
 from ..services.prompt_optimization_service import PromptOptimizationService
