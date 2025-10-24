@@ -289,3 +289,32 @@ async def get_daily_summary_transparency(request: Request) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Daily summary transparency retrieval failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/transparency/trade-decisions")
+@limiter.limit(transparency_limit)
+async def get_trade_decisions(request: Request) -> Dict[str, Any]:
+    """Get Claude's trade decision logs for AI transparency."""
+    try:
+        from ..app import container
+
+        if not container:
+            return JSONResponse({"error": "System not initialized"}, status_code=500)
+
+        trade_decision_logger = await container.get("trade_decision_logger")
+
+        if not trade_decision_logger:
+            return JSONResponse({"error": "Trade decision logger not available"}, status_code=500)
+
+        recent_decisions = await trade_decision_logger.get_recent_decisions(limit=20)
+        stats = await trade_decision_logger.get_decision_stats()
+
+        return {
+            "decisions": recent_decisions,
+            "stats": stats,
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Trade decisions retrieval failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
