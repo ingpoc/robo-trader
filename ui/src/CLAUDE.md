@@ -8,52 +8,91 @@ Frontend architecture focuses on component organization, real-time data updates,
 
 ### 1. Pages (`ui/src/pages/`)
 
-**Responsibility**: Top-level route components.
+**Responsibility**: Legacy route components being phased out in favor of features.
 
-**Current Pages**:
-- `Dashboard.tsx` - Main trading dashboard
+**Remaining Pages** (to be refactored to features):
 - `Trading.tsx` - Trading interface
+- `PaperTrading.tsx` - Paper trading account management (59KB - candidate for refactoring)
 - `AgentConfig.tsx` - Agent configuration
 - `Agents.tsx` - Agent management
-- `NewsEarnings.tsx` - News and earnings feature
 - `Config.tsx` - System configuration
 - `Logs.tsx` - Logs viewer
+- `OrderManagement.tsx` - Order execution and management
+- `RiskConfiguration.tsx` - Risk settings and configuration
+- `QueueManagement.tsx` - Background task queue monitoring
+
+**Removed Pages** (migrated to features):
+- ~~`Dashboard.tsx`~~ → `features/dashboard/DashboardFeature.tsx`
+- ~~`ClaudeTransparency.tsx`~~ → `features/ai-transparency/AITransparencyFeature.tsx`
+- ~~`NewsEarnings.tsx`~~ → `features/news-earnings/NewsEarningsFeature.tsx`
 
 **Rules**:
+- ✅ Prefer features over pages for new functionality
 - ✅ One page component per file
 - ✅ Connect to WebSocket for real-time data
 - ✅ Handle loading and error states
-- ✅ Use feature components for complex sections
+- ✅ Delegate to feature components
+- ❌ Don't create new pages - use features instead
 - ❌ Don't add styling directly (use Tailwind or external CSS)
-- ❌ Don't duplicate logic across pages
 
 ### 2. Features (`ui/src/features/`)
 
-**Responsibility**: Self-contained feature modules with multiple related components.
+**Responsibility**: Self-contained feature modules with multiple related components and domain-specific logic.
 
 **Current Features**:
-- `news-earnings/` - News feed, earnings reports, recommendations, symbol selector, upcoming earnings
+- `dashboard/` - Main trading dashboard with portfolio overview, metrics, and insights
+  - `DashboardFeature.tsx` - Main component
+  - `components/` - MetricsGrid, PerformanceCharts, PortfolioOverview, AIInsightsSummary, AlertsSummary
+  - `hooks/` - useDashboardData
 
-**Structure**:
+- `ai-transparency/` - Claude AI trading transparency and learning visibility
+  - `AITransparencyFeature.tsx` - Main component with 5 tabs (Trades, Reflections, Recommendations, Sessions, Analytics)
+  - `components/` - TradeDecisionLog, StrategyReflections, RecommendationAudit, SessionTranscripts, PerformanceAttribution
+  - `hooks/` - useAITransparency
+
+- `system-health/` - System monitoring and health status
+  - `SystemHealthFeature.tsx` - Main component with 5 tabs (Schedulers, Queues, Database, Resources, Errors)
+  - `components/` - SchedulerStatus, QueueHealthMonitor, DatabaseStatus, ResourceUsage, ErrorAlerts
+  - `hooks/` - useSystemHealth
+
+- `news-earnings/` - News feed and earnings analysis (existing)
+  - `NewsEarningsFeature.tsx` - Main component
+  - `components/` - NewsFeed, EarningsReports, RecommendationsPanel, SymbolSelector, etc.
+
+- `paper-trading/` - Paper trading account management (planned refactoring)
+- `agents/` - Multi-agent coordination and monitoring (planned)
+- `order-management/` - Order execution and management (existing)
+- `queue-management/` - Background task queue management (existing)
+- `risk-management/` - Risk assessment and controls (existing)
+
+**Feature Structure Template**:
 ```
-features/news-earnings/
-├── NewsEarningsFeature.tsx     (Main feature entry)
+features/feature-name/
+├── FeatureNameFeature.tsx       (Main entry point, max 300 lines)
 ├── components/
-│   ├── NewsFeed.tsx
-│   ├── EarningsReports.tsx
-│   ├── RecommendationsPanel.tsx
-│   ├── SymbolSelector.tsx
-│   └── UpcomingEarnings.tsx
+│   ├── SubComponent1.tsx        (Self-contained, max 200 lines)
+│   ├── SubComponent2.tsx
+│   └── index.ts                 (Optional: export all components)
+├── hooks/
+│   ├── useFeatureData.ts        (Data fetching, max 150 lines)
+│   └── index.ts                 (Optional: export all hooks)
+└── utils/                       (Optional: feature-specific utilities)
+    ├── helper.ts
+    └── constants.ts
 ```
 
 **Rules**:
-- ✅ One feature = one responsibility
-- ✅ Main feature file exports default component
-- ✅ Shared components in `components/` subfolder
-- ✅ Local state management within feature
-- ✅ Export interfaces for type safety
-- ❌ Don't mix features
-- ❌ Don't export private components from main file
+- ✅ One feature = one major responsibility domain
+- ✅ Main feature file (`FeatureName.tsx`) is the only export from folder
+- ✅ Internal components in `components/` subfolder - NOT exported
+- ✅ Feature-specific hooks in `hooks/` subfolder
+- ✅ All state management encapsulated within feature
+- ✅ Feature exports only: main component, hooks, types
+- ✅ Max 300 lines for main feature component
+- ✅ Max 200 lines for individual sub-components
+- ❌ Don't export internal sub-components from feature
+- ❌ Don't mix multiple responsibilities in one feature
+- ❌ Don't create circular dependencies between features
 
 ### 3. Shared Components (`ui/src/components/`)
 
@@ -593,4 +632,69 @@ useEffect(() => {
 ### Mistake 5: Component Too Large
 **Problem**: Hard to read, test, and reuse
 **Solution**: Split into smaller components when over 200 lines
+
+---
+
+## Frontend Refactoring (Phase 1) - Completed Oct 24, 2024
+
+### Overview
+Completed comprehensive frontend refactoring to eliminate bloated monolithic pages, consolidate duplicate components, and establish a modular, feature-based architecture.
+
+### Changes Made
+
+#### 1. Created New Feature Modules
+- **`dashboard/`** - Main trading dashboard
+  - Consolidated from 435-line `Dashboard.tsx`
+  - Split into: DashboardFeature (main), MetricsGrid, PerformanceCharts, PortfolioOverview, AIInsightsSummary, AlertsSummary
+  - Added `useDashboardData` hook
+
+- **`ai-transparency/`** - Claude trading transparency center
+  - Consolidated from 667-line `ClaudeTransparencyDashboard.tsx`
+  - Split into: AITransparencyFeature (main), TradeDecisionLog, StrategyReflections, RecommendationAudit, SessionTranscripts, PerformanceAttribution
+  - Added `useAITransparency` hook
+
+- **`system-health/`** - System monitoring and infrastructure
+  - New feature for backend system monitoring
+  - Components: SchedulerStatus, QueueHealthMonitor, DatabaseStatus, ResourceUsage, ErrorAlerts
+  - Added `useSystemHealth` hook
+
+#### 2. Removed Dead Code
+- Deleted `pages/Dashboard.tsx` (435 lines)
+- Deleted `pages/ClaudeTransparency.tsx` (5.2 KB)
+- These are now accessed via features in App.tsx routing
+
+#### 3. Updated Routing
+- `App.tsx` - Updated imports and routes:
+  - `/` → `DashboardFeature` (was Dashboard page)
+  - `/ai-transparency` → `AITransparencyFeature` (was `/claude-transparency`)
+  - `/system-health` → `SystemHealthFeature` (new)
+  - Removed old page imports
+
+- `Navigation.tsx` - Updated sidebar menu:
+  - Replaced `/claude-transparency` with `/ai-transparency`
+  - Added `/system-health` route
+
+#### 4. Code Quality Improvements
+- Reduced component file sizes (max 200 lines per component)
+- Extracted data fetching to feature-specific hooks
+- Consolidated duplicate component logic
+- Improved separation of concerns (features contain their own state, hooks, and components)
+
+### Remaining Work
+- **PaperTrading.tsx** (59 KB) - Candidate for refactoring to `features/paper-trading/`
+- **NewsEarnings.tsx** (45 KB) - Partially refactored; complete modularization
+- **Agents/Agent-related pages** - Consider consolidating to `features/agents/`
+
+### Benefits Achieved
+✅ **Modularity**: Each feature self-contained with clear boundaries
+✅ **Maintainability**: Easier to locate and modify feature-specific code
+✅ **Reusability**: Components can be reused within and across features
+✅ **Scalability**: New features follow established pattern
+✅ **Performance**: Lazy loading of route components via features
+✅ **Type Safety**: All components fully typed with exported props interfaces
+
+### Files Changed
+- Created: 15 new feature component files
+- Modified: App.tsx, Navigation.tsx, ui/src/CLAUDE.md
+- Deleted: 2 monolithic page files (440 lines removed)
 

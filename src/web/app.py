@@ -45,6 +45,10 @@ from .routes import (
     agents_router,
     analytics_router
 )
+from .routes.paper_trading import router as paper_trading_router
+from .routes.news_earnings import router as news_earnings_router
+from .routes.config import router as config_router
+from .routes.logs import router as logs_router
 
 # ============================================================================
 # FastAPI Application Setup
@@ -144,6 +148,10 @@ app.include_router(execution_router)
 app.include_router(monitoring_router)
 app.include_router(agents_router)
 app.include_router(analytics_router)
+app.include_router(paper_trading_router)
+app.include_router(news_earnings_router)
+app.include_router(config_router)
+app.include_router(logs_router)
 
 # ============================================================================
 # Global State
@@ -273,9 +281,6 @@ async def startup_event():
 
     config = load_config()
     logger.info("Config loaded successfully")
-
-    service_client = httpx.AsyncClient(timeout=30.0)
-    logger.info("Service proxy HTTP client initialized")
 
     logger.info("Initializing DI container...")
     container = await initialize_container(config)

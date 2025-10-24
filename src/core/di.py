@@ -324,6 +324,13 @@ class DependencyContainer:
 
         self._register_singleton("task_coordinator", create_task_coordinator)
 
+        async def create_portfolio_coordinator():
+            from src.core.coordinators.portfolio_coordinator import PortfolioCoordinator
+            state_manager = await self.get("state_manager")
+            return PortfolioCoordinator(self.config, state_manager)
+
+        self._register_singleton("portfolio_coordinator", create_portfolio_coordinator)
+
         async def create_status_coordinator():
             state_manager = await self.get("state_manager")
             ai_planner = await self.get("ai_planner")
@@ -389,6 +396,7 @@ class DependencyContainer:
             orchestrator.session_coordinator = session_coordinator
             orchestrator.query_coordinator = query_coordinator
             orchestrator.task_coordinator = task_coordinator
+            orchestrator.portfolio_coordinator = await self.get("portfolio_coordinator")
             orchestrator.status_coordinator = status_coordinator
             orchestrator.lifecycle_coordinator = lifecycle_coordinator
             orchestrator.broadcast_coordinator = broadcast_coordinator

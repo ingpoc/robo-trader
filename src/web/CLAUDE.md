@@ -241,24 +241,34 @@ async def websocket_dashboard(websocket: WebSocket):
 
 ## Input Validation Pattern
 
-All endpoints must validate request data:
+All endpoints must validate request data using Pydantic v2 with proper Field constraints:
 
 ```python
 from pydantic import BaseModel, Field, validator
 from typing import Optional
 
 class TradeRequest(BaseModel):
-    """Validated trade request."""
+    """Validated trade request with comprehensive input validation."""
 
-    portfolio_id: str = Field(..., min_length=1)
-    symbol: str = Field(..., regex="^[A-Z0-9]{1,10}$")
+    # Text fields: min/max length constraints
+    symbol: str = Field(..., min_length=1, max_length=20)
+
+    # Pattern validation: Use 'pattern=' in Pydantic v2 (NOT 'regex=')
+    side: str = Field(..., pattern="^(BUY|SELL)$")
+
+    # Numeric: greater-than, less-than constraints
     quantity: int = Field(..., gt=0, le=10000)
-    order_type: str = Field(..., regex="^(BUY|SELL)$")
-    limit_price: Optional[float] = Field(None, gt=0)
 
+    # Optional enum-like field with pattern
+    order_type: str = Field(default="MARKET", pattern="^(MARKET|LIMIT)$")
+
+    # Optional numeric with constraint
+    price: Optional[float] = Field(None, gt=0)
+
+    # Custom validation for complex logic
     @validator('symbol')
     def validate_symbol(cls, v):
-        """Validate symbol format."""
+        """Validate symbol is uppercase."""
         if not v.isupper():
             raise ValueError('Symbol must be uppercase')
         return v
@@ -266,12 +276,17 @@ class TradeRequest(BaseModel):
 @app.post("/api/trades")
 @limiter.limit(TRADE_LIMIT)
 async def place_trade(request: Request, trade: TradeRequest):
-    """Place trade with validated input."""
+    """Place trade with validated input (422 on validation error)."""
     try:
         # Input already validated by Pydantic
+        # Invalid inputs return 422 automatically:
+        # - quantity: -10 → 422 (gt=0 violated)
+        # - side: "INVALID" → 422 (pattern mismatch)
+        # - symbol: "sbin" → 422 (custom validator)
+
         result = await trade_coordinator.place_trade(
-            portfolio_id=trade.portfolio_id,
             symbol=trade.symbol,
+            side=trade.side,
             quantity=trade.quantity
         )
         return {"success": True, "order_id": result}
@@ -285,23 +300,57 @@ async def place_trade(request: Request, trade: TradeRequest):
         raise TradingError(f"Trade failed: {e}")
 ```
 
+### Validation Field Constraints Reference
+
+```python
+# Numeric validation
+quantity: int = Field(..., gt=0, le=10000)  # > 0, ≤ 10,000
+price: float = Field(..., gt=0, lt=1000000)  # > 0, < 1,000,000
+
+# Text validation
+symbol: str = Field(..., min_length=1, max_length=20)  # 1-20 chars
+name: str = Field(..., min_length=3, max_length=100)  # 3-100 chars
+
+# Pattern matching (Pydantic v2)
+side: str = Field(..., pattern="^(BUY|SELL)$")  # Must be BUY or SELL
+order_type: str = Field(..., pattern="^(MARKET|LIMIT)$")  # Enum-like
+
+# Optional with constraints
+limit_price: Optional[float] = Field(None, gt=0)  # Must be positive if provided
+
+# Custom validators for complex rules
+@validator('email')
+def validate_email(cls, v):
+    if '@' not in v:
+        raise ValueError('Invalid email format')
+    return v.lower()
+```
+
 ### Rules for Validation
 
 - ✅ Use Pydantic models for all requests
-- ✅ Define field constraints (min, max, regex, etc.)
-- ✅ Include validators for complex logic
-- ✅ Return validation errors clearly
+- ✅ Use Pydantic v2: `pattern=` parameter (NOT deprecated `regex=`)
+- ✅ Define field constraints: `gt=`, `lt=`, `min_length=`, `max_length=`
+- ✅ Include validators for complex logic (custom validation logic)
+- ✅ Return validation errors clearly (422 Unprocessable Entity)
+- ✅ Validate at input boundary (before business logic)
 - ❌ NEVER skip validation
 - ❌ NEVER trust client input
 - ❌ NEVER expose validation details
+- ❌ NEVER use deprecated `regex=` parameter (use `pattern=` in Pydantic v2)
 
 ---
 
 ## Pre-Commit Checklist - Web Layer
 
 - [ ] Error middleware catches all exceptions
-- [ ] Rate limiting applied to all endpoints
-- [ ] Input validation using Pydantic models
+- [ ] Rate limiting applied to all endpoints (use env vars)
+- [ ] Input validation using Pydantic models with Field constraints
+- [ ] Validation uses Pydantic v2 syntax (`pattern=`, NOT `regex=`)
+- [ ] All numeric fields have constraints (`gt=`, `lt=`, `le=`, `ge=`)
+- [ ] All string fields have length constraints (`min_length=`, `max_length=`)
+- [ ] Complex validation via `@validator()` decorators
+- [ ] Invalid input returns 422 Unprocessable Entity
 - [ ] No hardcoded rate limits (use env vars)
 - [ ] Correlation ID included in all responses
 - [ ] Stack traces never exposed to clients
@@ -333,7 +382,36 @@ async def get_data():
 async def place_trade(trade_dict: dict):
     return await execute_trade(trade_dict)  # Could have anything!
 ```
-**Fix**: Use Pydantic models with validators
+**Fix**: Use Pydantic models with Field constraints
+
+### Mistake 3: Pydantic v1 Syntax in v2 (regex parameter)
+```python
+# WRONG - 'regex=' deprecated in Pydantic v2
+class TradeRequest(BaseModel):
+    side: str = Field(..., regex="^(BUY|SELL)$")  # BREAKS!
+```
+**Error**: `PydanticUserError: 'regex' is removed. use 'pattern' instead`
+
+**Fix**: Use `pattern=` instead of `regex=`
+```python
+# CORRECT - Pydantic v2 syntax
+class TradeRequest(BaseModel):
+    side: str = Field(..., pattern="^(BUY|SELL)$")  # ✅
+```
+
+### Mistake 4: Negative/Zero Quantity Accepted
+```python
+# WRONG - No constraint on quantity
+class TradeRequest(BaseModel):
+    quantity: int  # Accepts -10, 0, anything!
+```
+**Fix**: Add numeric constraint
+```python
+# CORRECT - Only positive integers up to 10,000
+class TradeRequest(BaseModel):
+    quantity: int = Field(..., gt=0, le=10000)
+```
+**Result**: Invalid input automatically returns 422
 
 ### Mistake 3: Exposing Stack Traces
 ```python

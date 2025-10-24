@@ -8,18 +8,14 @@ import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBounda
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { AccountProvider } from '@/contexts/AccountContext'
-import { Dashboard } from '@/pages/Dashboard'
+import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
 import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
-import { Agents } from '@/pages/Agents'
-import { Trading } from '@/pages/Trading'
+import { AITransparencyFeature } from '@/features/ai-transparency/AITransparencyFeature'
+import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeature'
+import { AgentsFeature } from '@/features/agents/AgentsFeature'
 import { PaperTrading } from '@/pages/PaperTrading'
 import { Config } from '@/pages/Config'
 import { Logs } from '@/pages/Logs'
-import { AgentConfig } from '@/pages/AgentConfig'
-import { ClaudeTransparency } from '@/pages/ClaudeTransparency'
-import QueueManagement from '@/pages/QueueManagement'
-import RiskConfiguration from '@/pages/RiskConfiguration'
-import OrderManagement from '@/pages/OrderManagement'
 import { Button } from '@/components/ui/Button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -79,7 +75,7 @@ function AppContent() {
             if (event.altKey) {
               event.preventDefault()
               // Navigate to different sections based on number
-              const routes = ['/', '/news-earnings', '/agents', '/trading', '/paper-trading', '/order-management', '/risk-management', '/config', '/logs']
+              const routes = ['/', '/news-earnings', '/agents', '/paper-trading', '/ai-transparency', '/system-health', '/config', '/logs']
               const index = parseInt(event.key) - 1
               if (routes[index]) {
                 window.location.href = routes[index]
@@ -174,18 +170,14 @@ function AppContent() {
             aria-label="Main content"
           >
             <Routes>
-              <Route path="/" element={<DashboardErrorBoundary><Dashboard /></DashboardErrorBoundary>} />
+              <Route path="/" element={<DashboardErrorBoundary><DashboardFeature /></DashboardErrorBoundary>} />
               <Route path="/news-earnings" element={<NewsEarningsFeature />} />
-              <Route path="/agents" element={<Agents />} />
-              <Route path="/trading" element={<Trading />} />
+              <Route path="/agents" element={<AgentsFeature />} />
               <Route path="/paper-trading" element={<PaperTrading />} />
-              <Route path="/order-management" element={<OrderManagement />} />
-              <Route path="/risk-management" element={<RiskConfiguration />} />
               <Route path="/config" element={<Config />} />
-              <Route path="/agent-config" element={<AgentConfig />} />
               <Route path="/logs" element={<Logs />} />
-              <Route path="/claude-transparency" element={<ClaudeTransparency />} />
-              <Route path="/queue-management" element={<QueueManagement />} />
+              <Route path="/ai-transparency" element={<AITransparencyFeature />} />
+              <Route path="/system-health" element={<SystemHealthFeature />} />
             </Routes>
           </main>
         </div>

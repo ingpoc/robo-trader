@@ -287,6 +287,55 @@ Automatically reset paper trading account capital on the 1st of each month while
 
 ---
 
+## Testing & Debugging Patterns
+
+### Testing Methodology: Systematic Debugging (4-Phase Process)
+
+When issues are discovered, follow this mandatory 4-phase debugging approach:
+
+**Phase 1: Root Cause Investigation**
+- Read error messages completely
+- Reproduce issue consistently
+- Check recent code changes
+- Gather evidence from multiple components
+- Trace data flow backward to source
+
+**Phase 2: Pattern Analysis**
+- Find working examples in codebase
+- Compare against reference implementations
+- Identify all differences (no matter how small)
+- Understand dependencies and assumptions
+
+**Phase 3: Hypothesis and Testing**
+- Form single clear hypothesis
+- Test with SMALLEST possible change
+- One variable at a time
+- Verify before continuing
+
+**Phase 4: Implementation**
+- Create failing test case first
+- Fix root cause (not symptoms)
+- One change at a time
+- Verify fix works
+
+**Critical Rule**: If 3+ fixes fail → STOP and question architecture (don't continue fixing symptoms)
+
+### Input Validation Pattern Discovery
+
+**Root Cause**: Negative quantities were accepted
+**Investigation**: TradeRequest had no validators
+**Solution**: Added Pydantic Field constraints
+**Documentation**: Updated src/web/CLAUDE.md with comprehensive validation patterns
+
+### Pydantic v2 Compatibility Discovery
+
+**Root Cause**: Server wouldn't start after adding validation
+**Investigation**: Used `regex=` parameter (deprecated in Pydantic v2)
+**Solution**: Changed to `pattern=` parameter
+**Documentation**: Added Pydantic v2 syntax examples and common mistakes
+
+---
+
 ## Critical Permanent Rules
 
 ### 1. No Code Duplication
@@ -395,10 +444,13 @@ Every code submission MUST pass:
 - [ ] **Testing**: Testable design, mocks for externals, 80%+ coverage for domain logic
 - [ ] **Documentation**: Module/class/method docstrings, type hints
 - [ ] **Backward Compat**: Old imports still work, no breaking changes
+- [ ] **Input Validation**: Pydantic models with Field constraints on all requests
+- [ ] **Pydantic v2**: Uses `pattern=` (NOT `regex=`), proper constraints (`gt=`, `le=`, etc.)
+- [ ] **Negative Input Handling**: Numeric fields have `gt=0` or appropriate lower bound
 - [ ] **API Clients**: Single client per API, key rotation, exponential backoff (src/core)
 - [ ] **Parsing**: Multi-layer fallback if parsing external data (src/core)
 - [ ] **Services**: Inherit EventHandler if reacting to events, proper cleanup (src)
-- [ ] **Web Layer**: Error middleware + rate limiting for endpoints (src/web)
+- [ ] **Web Layer**: Error middleware + rate limiting + input validation (src/web)
 - [ ] **Container Networking**: All URLs use container names, not .orb.local
 - [ ] **Smart Scheduling**: Check stock state before API calls, update after fetches
 - [ ] **API Resilience**: All external calls use retry with exponential backoff
@@ -410,6 +462,7 @@ Every code submission MUST pass:
 - [ ] **Multi-Agent Coordination**: Register agents with capabilities, use structured communication
 - [ ] **Service Integration**: Inherit EventHandler for services reacting to events
 - [ ] **Atomic Writes**: Use temp files and os.replace() for data consistency
+- [ ] **Systematic Debugging**: Use 4-phase process when fixing issues (root cause first)
 
 ---
 

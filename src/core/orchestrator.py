@@ -253,11 +253,17 @@ Use the available tools to coordinate between agents. Maintain state and create 
 
     async def run_portfolio_scan(self) -> Dict[str, Any]:
         """Run a portfolio scan using live portfolio data."""
-        return await self.task_coordinator.run_portfolio_scan()
+        portfolio_coordinator = getattr(self, 'portfolio_coordinator', None)
+        if portfolio_coordinator:
+            return await portfolio_coordinator.run_portfolio_scan()
+        return {"error": "Portfolio coordinator not available"}
 
     async def run_market_screening(self) -> Dict[str, Any]:
         """Run market screening using current holdings analytics."""
-        return await self.task_coordinator.run_market_screening()
+        portfolio_coordinator = getattr(self, 'portfolio_coordinator', None)
+        if portfolio_coordinator:
+            return await portfolio_coordinator.run_market_screening()
+        return {"error": "Portfolio coordinator not available"}
 
     async def run_strategy_review(self) -> Dict[str, Any]:
         """Run strategy review to derive actionable rebalance suggestions."""

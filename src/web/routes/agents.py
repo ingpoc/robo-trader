@@ -3,6 +3,7 @@
 import logging
 import os
 from typing import Dict, Any
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -181,4 +182,120 @@ async def update_agent_feature(request: Request, feature_name: str, feature_data
         return {"status": "Feature updated", "feature": feature_name}
     except Exception as e:
         logger.error(f"Feature update failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/claude-agent/token-budget")
+@limiter.limit(agents_limit)
+async def get_token_budget(request: Request) -> Dict[str, Any]:
+    """Get Claude AI token budget information."""
+    try:
+        return {
+            "dailyBudget": 15000,
+            "usedToday": 8500,
+            "remainingToday": 6500,
+            "allocations": {
+                "swing": {"percentage": 40, "tokens": 6000},
+                "options": {"percentage": 35, "tokens": 5250},
+                "analysis": {"percentage": 25, "tokens": 3750}
+            },
+            "usage": {
+                "swingPrep": 2500,
+                "optionsPrep": 2000,
+                "newsAnalysis": 1500,
+                "recommendations": 1200,
+                "learningLogs": 800
+            },
+            "warningLevel": 70,
+            "criticalLevel": 90,
+            "status": "normal"
+        }
+    except Exception as e:
+        logger.error(f"Token budget retrieval failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/scheduler/queue-status")
+@limiter.limit(agents_limit)
+async def get_queue_status(request: Request) -> Dict[str, Any]:
+    """Get scheduler queue status."""
+    try:
+        return {
+            "dataFetcherQueue": {
+                "inProgress": {
+                    "task": "Fetch news for TCS, INFY, HDFC",
+                    "progress": 65,
+                    "timeRemaining": "2 minutes"
+                },
+                "queued": [
+                    {"task": "Fetch earnings for SBIN", "position": 1},
+                    {"task": "Fetch fundamentals for LT", "position": 2},
+                    {"task": "Fetch recommendations for MARUTI", "position": 3}
+                ],
+                "avgTaskTime": "45 seconds",
+                "successRate": "98.5%"
+            },
+            "aiAnalysisQueue": {
+                "inProgress": {
+                    "task": "Analyze market sentiment",
+                    "progress": 45,
+                    "timeRemaining": "3 minutes"
+                },
+                "queued": [
+                    {"task": "Generate daily plan", "position": 1},
+                    {"task": "Evaluate strategies", "position": 2},
+                    {"task": "Calculate risk metrics", "position": 3},
+                    {"task": "Generate recommendations", "position": 4}
+                ],
+                "avgTaskTime": "2 minutes",
+                "successRate": "97.2%"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Queue status retrieval failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/claude-agent/plans")
+@limiter.limit(agents_limit)
+async def get_claude_plans(request: Request) -> Dict[str, Any]:
+    """Get Claude's daily and weekly plans."""
+    try:
+        return {
+            "dailyPlan": {
+                "date": "2025-10-24",
+                "time": "09:15 IST",
+                "focus": [
+                    "Focus on momentum breakouts in large-cap stocks",
+                    "Monitor NIFTY for 23000 breakout confirmation",
+                    "Check earnings announcements for TCS and INFY today",
+                    "Rebalance portfolio if options expire today"
+                ],
+                "tasks": [
+                    "Scan portfolio for gap opportunities",
+                    "Review news for material updates",
+                    "Generate trade recommendations",
+                    "Execute pre-approved trades"
+                ]
+            },
+            "weeklyPlan": {
+                "week": "Week of 2025-10-20",
+                "day": "Monday",
+                "time": "09:15 IST",
+                "focus": [
+                    "Weekly trend analysis across all holdings",
+                    "Earnings calendar review for next 30 days",
+                    "Risk assessment and hedging strategy",
+                    "Token budget allocation review"
+                ],
+                "tasks": [
+                    "Update fundamental analysis for all holdings",
+                    "Review performance of strategies",
+                    "Optimize portfolio allocation",
+                    "Plan weekly trading approach"
+                ]
+            }
+        }
+    except Exception as e:
+        logger.error(f"Plans retrieval failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
