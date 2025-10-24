@@ -13,10 +13,7 @@ from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from ..services.claude_agent import (
-    ResearchTracker, AnalysisLogger, ExecutionMonitor,
-    DailyStrategyEvaluator, ActivitySummarizer
-)
+from ..services.claude_agent.research_tracker import ResearchTracker
 
 logger = logging.getLogger(__name__)
 
@@ -139,15 +136,7 @@ async def get_container(request: Request):
     return request.app.state.container
 
 
-async def get_transparency_services(container):
-    """Get transparency service instances."""
-    return {
-        "research_tracker": await container.get("research_tracker"),
-        "analysis_logger": await container.get("analysis_logger"),
-        "execution_monitor": await container.get("execution_monitor"),
-        "strategy_evaluator": await container.get("daily_strategy_evaluator"),
-        "activity_summarizer": await container.get("activity_summarizer")
-    }
+# Remove the get_transparency_services function since we're not using it anymore
 
 
 # ============================================================================
@@ -441,8 +430,7 @@ async def get_research_activity(
     Shows what Claude has been researching, data sources used, and key findings.
     """
     try:
-        services = await get_transparency_services(container)
-        research_tracker = services["research_tracker"]
+        research_tracker = await container.get("research_tracker")
 
         # Get research history
         research_sessions = await research_tracker.get_research_history(
@@ -452,10 +440,13 @@ async def get_research_activity(
         # Get data source usage
         data_source_stats = await research_tracker.get_data_source_usage_stats()
 
-        # Get research effectiveness
-        effectiveness = await research_tracker.get_research_effectiveness(
-            account_type or "swing_trading", days=days
-        )
+        # Get research effectiveness (simplified for now)
+        research_sessions = await research_tracker.get_research_history(account_type=account_type)
+        effectiveness = {
+            "total_sessions": len(research_sessions),
+            "total_symbols_analyzed": sum(len(s.symbols_analyzed) for s in research_sessions),
+            "avg_confidence_score": sum(s.confidence_score for s in research_sessions) / len(research_sessions) if research_sessions else 0
+        }
 
         return ResearchActivityResponse(
             total_sessions=effectiveness["total_sessions"],
@@ -464,7 +455,6 @@ async def get_research_activity(
             key_findings=["Market analysis completed", "Technical indicators reviewed", "Fundamental data assessed"],  # Would come from sessions
             recent_sessions=[s.to_dict() for s in research_sessions[-5:]]
         )
-
     except Exception as e:
         logger.error(f"Failed to get research activity: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get research activity: {str(e)}")
@@ -484,8 +474,7 @@ async def get_analysis_activity(
     Shows Claude's decision-making process, confidence levels, and strategy evaluations.
     """
     try:
-        services = await get_transparency_services(container)
-        analysis_logger = services["analysis_logger"]
+        analysis_logger = await container.get("analysis_logger")
 
         # Get decision history
         decisions = await analysis_logger.get_decision_history()
@@ -523,8 +512,7 @@ async def get_execution_activity(
     Shows trade execution quality, slippage analysis, and risk compliance.
     """
     try:
-        services = await get_transparency_services(container)
-        execution_monitor = services["execution_monitor"]
+        execution_monitor = await container.get("execution_monitor")
 
         # Get execution history
         executions = await execution_monitor.get_execution_history()
@@ -560,8 +548,7 @@ async def get_daily_strategy_evaluation(
     Shows how Claude evaluated and refined strategies today.
     """
     try:
-        services = await get_transparency_services(container)
-        strategy_evaluator = services["strategy_evaluator"]
+        strategy_evaluator = await container.get("daily_strategy_evaluator")
 
         # Get daily reports
         reports = await strategy_evaluator.get_daily_reports(account_type=account_type)
@@ -600,8 +587,7 @@ async def get_daily_activity_summary(
     Comprehensive overview of what Claude accomplished today and plans for tomorrow.
     """
     try:
-        services = await get_transparency_services(container)
-        activity_summarizer = services["activity_summarizer"]
+        activity_summarizer = await container.get("activity_summarizer")
 
         # Get daily summaries
         summaries = await activity_summarizer.get_daily_summaries(account_type=account_type)
@@ -643,8 +629,7 @@ async def get_strategy_evolution_timeline(
     Shows how a specific strategy has evolved over time with refinements and improvements.
     """
     try:
-        services = await get_transparency_services(container)
-        strategy_evaluator = services["strategy_evaluator"]
+        strategy_evaluator = await container.get("daily_strategy_evaluator")
 
         timeline = await strategy_evaluator.get_strategy_evolution_timeline(strategy_name, days)
 

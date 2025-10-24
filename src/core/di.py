@@ -285,6 +285,34 @@ class DependencyContainer:
             return ResearchTracker(strategy_store)
 
         self._register_singleton("research_tracker", create_research_tracker)
+
+        # Analysis Logger Service
+        async def create_analysis_logger():
+            from ..services.claude_agent.analysis_logger import AnalysisLogger
+            return AnalysisLogger()
+
+        self._register_singleton("analysis_logger", create_analysis_logger)
+
+        # Execution Monitor Service
+        async def create_execution_monitor():
+            from ..services.claude_agent.execution_monitor import ExecutionMonitor
+            return ExecutionMonitor()
+
+        self._register_singleton("execution_monitor", create_execution_monitor)
+
+        # Daily Strategy Evaluator Service
+        async def create_daily_strategy_evaluator():
+            from ..services.claude_agent.daily_strategy_evaluator import DailyStrategyEvaluator
+            return DailyStrategyEvaluator()
+
+        self._register_singleton("daily_strategy_evaluator", create_daily_strategy_evaluator)
+
+        # Activity Summarizer Service
+        async def create_activity_summarizer():
+            from ..services.claude_agent.activity_summarizer import ActivitySummarizer
+            return ActivitySummarizer()
+
+        self._register_singleton("activity_summarizer", create_activity_summarizer)
         # Event Router Service
         async def create_event_router_service():
             from ..services.event_router_service import EventRouterService

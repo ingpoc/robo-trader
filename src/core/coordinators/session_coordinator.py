@@ -12,7 +12,7 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from loguru import logger
 
 from src.config import Config
-from ...auth.claude_auth import ClaudeAuthStatus, validate_claude_api
+from ...auth.claude_auth import ClaudeAuthStatus, validate_claude_sdk_auth
 from .base_coordinator import BaseCoordinator
 
 
@@ -35,7 +35,7 @@ class SessionCoordinator(BaseCoordinator):
         super().__init__(config)
         self.options = options
         self.client: Optional[ClaudeSDKClient] = None
-        self.claude_status: Optional[ClaudeAuthStatus] = None
+        self.claude_sdk_status: Optional[ClaudeAuthStatus] = None
 
     async def initialize(self) -> None:
         """Initialize session coordinator."""
@@ -44,21 +44,21 @@ class SessionCoordinator(BaseCoordinator):
 
     async def validate_authentication(self) -> ClaudeAuthStatus:
         """
-        Validate Claude API authentication.
+        Validate Claude Agent SDK authentication.
 
         Returns:
             ClaudeAuthStatus with validation results
         """
-        self.claude_status = await validate_claude_api()
-        if not self.claude_status.is_valid:
-            error_msg = f"Claude API authentication failed: {self.claude_status.error}"
+        self.claude_sdk_status = await validate_claude_sdk_auth()
+        if not self.claude_sdk_status.is_valid:
+            error_msg = f"Claude Agent SDK authentication failed: {self.claude_sdk_status.error}"
             self._log_error(error_msg)
             raise RuntimeError(error_msg)
 
-        auth_method = self.claude_status.account_info.get('auth_method', 'unknown')
-        self._log_info(f"Claude API authenticated successfully via {auth_method}")
+        auth_method = self.claude_sdk_status.account_info.get('auth_method', 'unknown')
+        self._log_info(f"Claude Agent SDK authenticated successfully via {auth_method}")
 
-        return self.claude_status
+        return self.claude_sdk_status
 
     async def start_session(self) -> None:
         """
@@ -77,12 +77,12 @@ class SessionCoordinator(BaseCoordinator):
         except Exception as e:
             self._log_error(f"Failed to initialize Claude SDK client: {e}", exc_info=True)
             self.client = None
-            self.claude_status = ClaudeAuthStatus(
+            self.claude_sdk_status = ClaudeAuthStatus(
                 is_valid=False,
                 api_key_present=False,
                 account_info={
                     "auth_method": "failed",
-                    "note": f"Initialization failed: {str(e)}"
+                    "note": f"SDK initialization failed: {str(e)}"
                 }
             )
 
@@ -100,8 +100,8 @@ class SessionCoordinator(BaseCoordinator):
                 self.client = None
 
     async def get_claude_status(self) -> Optional[ClaudeAuthStatus]:
-        """Get current Claude API status."""
-        return self.claude_status
+        """Get current Claude Agent SDK status."""
+        return self.claude_sdk_status
 
     def get_client(self) -> Optional[ClaudeSDKClient]:
         """Get the active Claude SDK client."""

@@ -13,7 +13,7 @@ from dataclasses import dataclass, asdict
 import json
 
 from loguru import logger
-from claude_agent_sdk import tool
+from claude_agent_sdk import tool, ClaudeSDKClient, ClaudeAgentOptions
 
 from src.config import Config
 from ..core.database_state import DatabaseStateManager
@@ -94,21 +94,17 @@ class RecommendationEngine:
             'temperature': 0.3  # Lower temperature for more consistent analysis
         }
 
-        # Use Claude API key from environment variable (not from config.json)
-        claude_api_key = os.getenv("ANTHROPIC_API_KEY")
-        if claude_api_key:
-            try:
-                from anthropic import AsyncAnthropic
-                self.claude_client = AsyncAnthropic(api_key=claude_api_key)
-                self.claude_model = claude_config['model']
-                self.claude_temperature = claude_config['temperature']
-                logger.info("Claude integration enabled for recommendation engine")
-            except ImportError:
-                logger.warning("Anthropic library not available - using rule-based analysis only")
-                self.claude_client = None
-        else:
-            self.claude_client = None
-            logger.warning("No Claude API key configured - recommendation engine will use rule-based analysis only")
+        # Initialize Claude Agent SDK client (no direct API keys needed)
+        # SDK handles authentication automatically via CLI
+        self.claude_client = None  # Will be initialized on first use
+        self.claude_model = claude_config['model']
+        self.claude_temperature = claude_config['temperature']
+        self.claude_options = ClaudeAgentOptions(
+            allowed_tools=[],  # No tools needed for analysis
+            system_prompt="You are an expert financial analyst providing detailed stock recommendations.",
+            max_turns=10
+        )
+        logger.info("Claude Agent SDK integration configured for recommendation engine")
 
         # Load recommendation engine configuration
         self.reco_config = getattr(config, 'recommendation_engine', {})
@@ -745,10 +741,12 @@ class RecommendationEngine:
         symbol: str,
         factors: RecommendationFactors
     ) -> Optional[Dict[str, Any]]:
-        """Get AI-powered recommendation analysis from Claude."""
+        """Get AI-powered recommendation analysis from Claude using SDK."""
         try:
+            # Initialize client on first use
             if not self.claude_client:
-                return None
+                self.claude_client = ClaudeSDKClient(options=self.claude_options)
+                await self.claude_client.__aenter__()
 
             # Gather comprehensive data for Claude analysis
             fundamental_data = await self.state_manager.get_fundamental_analysis(symbol, 1)
@@ -758,23 +756,22 @@ class RecommendationEngine:
             # Build comprehensive prompt for Claude
             prompt = self._build_claude_analysis_prompt(symbol, factors, fundamental_data, news_data, earnings_data)
 
-            # Get Claude's analysis
-            response = await self.claude_client.messages.create(
-                model=self.claude_model,
-                max_tokens=1500,
-                temperature=self.claude_temperature,
-                system="You are an expert financial analyst providing detailed stock recommendations. Analyze all provided data comprehensively and give clear BUY/SELL/HOLD recommendations with specific reasoning.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
+            # Use Claude Agent SDK query pattern
+            await self.claude_client.query(prompt)
+
+            # Get SDK response
+            response_text = ""
+            async for response in self.claude_client.receive_response():
+                if hasattr(response, 'content'):
+                    for block in response.content:
+                        if hasattr(block, 'text'):
+                            response_text += block.text
 
             # Parse Claude's response
-            analysis_text = response.content[0].text if response.content else ""
-            return self._parse_claude_response(analysis_text)
+            return self._parse_claude_response(response_text)
 
         except Exception as e:
-            logger.error(f"Failed to get Claude analysis for {symbol}: {e}")
+            logger.error(f"Failed to get Claude SDK analysis for {symbol}: {e}")
             return None
 
     def _build_claude_analysis_prompt(
