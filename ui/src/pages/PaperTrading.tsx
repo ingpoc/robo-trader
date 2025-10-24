@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { usePaperTrading } from '@/hooks/usePaperTrading'
 import { useAccount } from '@/contexts/AccountContext'
 import { AccountSelector } from '@/components/AccountSelector'
+import { CurrentStrategyPanel } from '@/features/paper-trading/components'
 import {
   DollarSign,
   TrendingUp,
@@ -29,6 +30,8 @@ import {
   Shield,
   AlertTriangle,
   CheckCircle,
+  Eye,
+  ArrowRight,
 } from 'lucide-react'
 
 export function PaperTrading() {
@@ -65,7 +68,7 @@ export function PaperTrading() {
 
   const [closeForm, setCloseForm] = useState<{ tradeId: string; exitPrice: string } | null>(null)
   const [modifyStopLossTarget, setModifyStopLossTarget] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('overview')  // Default to overview tab
   const [showRiskDialog, setShowRiskDialog] = useState(false)
   const [pendingTrade, setPendingTrade] = useState<any>(null)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
@@ -392,17 +395,16 @@ export function PaperTrading() {
 
       {/* Main Content - Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="swing">Swing Trading</TabsTrigger>
-          <TabsTrigger value="options">Options Trading</TabsTrigger>
-          <TabsTrigger value="ai-learning">AI Learning</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="execute">Execute Trade</TabsTrigger>
           <TabsTrigger value="positions">Positions</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="strategy">Strategy</TabsTrigger>
         </TabsList>
 
-        {/* Swing Trading Tab */}
-        <TabsContent value="swing" className="space-y-4">
+        {/* Overview Tab - Combining Swing & Options Performance */}
+        <TabsContent value="overview" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Unrealized P&L Card */}
             <Card>
@@ -488,156 +490,53 @@ export function PaperTrading() {
           </div>
         </TabsContent>
 
-        {/* Options Trading Tab */}
-        <TabsContent value="options" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Options Trading - Coming Soon</CardTitle>
-              <CardDescription>
-                Advanced options strategies, Greeks monitoring, and spread management for Claude's learning
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                <Shield className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Options Trading Interface</h3>
-                <p className="text-muted-foreground mb-4">
-                  This section will include options chains, Greeks dashboard, spread strategies, and premium tracking
-                  to help Claude master options trading through paper trading practice.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <h4 className="font-medium mb-2">Greeks Monitoring</h4>
-                    <p className="text-sm text-muted-foreground">Delta, Gamma, Theta, Vega tracking</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <h4 className="font-medium mb-2">Spread Strategies</h4>
-                    <p className="text-sm text-muted-foreground">Iron condors, call spreads, protective puts</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <h4 className="font-medium mb-2">Premium Flow</h4>
-                    <p className="text-sm text-muted-foreground">Collected vs paid premium tracking</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {/* Strategy Tab - Lightweight view with link to AI Transparency */}
+        <TabsContent value="strategy" className="space-y-4">
+          <CurrentStrategyPanel
+            accountId={selectedAccount?.account_id || ''}
+            accountType="swing"
+          />
 
-        {/* AI Learning Tab */}
-        <TabsContent value="ai-learning" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Claude's Performance */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-copper-500" />
-                  Claude's Learning Progress
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-4 bg-emerald-50 rounded-lg">
-                    <p className="text-2xl font-bold text-emerald-600">
-                      {accountOverview?.winRate?.toFixed(1)}%
-                    </p>
-                    <p className="text-sm text-emerald-700">Win Rate</p>
-                  </div>
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <p className="text-2xl font-bold text-blue-600">
-                      {metrics?.total_trades || 0}
-                    </p>
-                    <p className="text-sm text-blue-700">Total Trades</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Token Usage Today</span>
-                    <span className="font-medium">2,450 / 10,000</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2">
-                    <div className="bg-copper-500 h-2 rounded-full" style={{ width: '24.5%' }}></div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Strategy Effectiveness */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Strategy Performance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded">
-                    <span className="font-medium">Breakout Trading</span>
-                    <span className="text-emerald-600 font-bold">68% Win Rate</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded">
-                    <span className="font-medium">RSI Divergence</span>
-                    <span className="text-emerald-600 font-bold">72% Win Rate</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded">
-                    <span className="font-medium">Mean Reversion</span>
-                    <span className="text-rose-600 font-bold">45% Win Rate</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Daily Strategy Log */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-copper-500" />
-                Claude's Daily Strategy Log
+                <Eye className="w-5 h-5" />
+                View Complete AI Transparency
               </CardTitle>
               <CardDescription>
-                AI's self-reflection and learning insights from today's trading
+                See Claude's full decision-making process, prompt optimizations, and learning history
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="border-l-4 border-copper-500 pl-4">
-                <h4 className="font-semibold text-copper-800">What worked today:</h4>
-                <ul className="text-sm text-muted-foreground mt-2 space-y-1">
-                  <li>• RSI divergence at support levels worked 2/3 times</li>
-                  <li>• Swing trades held 2-3 days performed better than intraday</li>
-                  <li>• Stop losses at 2% below entry prevented larger losses</li>
-                </ul>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                For detailed insights into how Claude makes trading decisions, optimizes its data fetching,
+                and learns from each trade, visit the dedicated AI Transparency dashboard.
+              </p>
 
-              <div className="border-l-4 border-rose-500 pl-4">
-                <h4 className="font-semibold text-rose-800">What didn't work:</h4>
-                <ul className="text-sm text-muted-foreground mt-2 space-y-1">
-                  <li>• Breakout trades on low volume failed consistently</li>
-                  <li>• Averaging down increased losses in trending markets</li>
-                  <li>• Wide stop losses (5%+) led to premature exits</li>
-                </ul>
-              </div>
-
-              <div className="border-l-4 border-blue-500 pl-4">
-                <h4 className="font-semibold text-blue-800">Tomorrow's focus:</h4>
-                <ul className="text-sm text-muted-foreground mt-2 space-y-1">
-                  <li>• Watch for RSI 30 level breakouts with volume confirmation</li>
-                  <li>• Avoid averaging down - strict 2% stop loss rule</li>
-                  <li>• Focus on 2-3 day swing trades in large cap stocks</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-between items-center pt-4 border-t">
-                <div className="text-sm text-muted-foreground">
-                  Token usage: 2,450 / 10,000 remaining today
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                  <h4 className="font-medium mb-2">Trade Decisions</h4>
+                  <p className="text-sm text-muted-foreground">See Claude's reasoning for every trade</p>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    Ask Claude for Advice
-                  </Button>
-                  <Button size="sm" className="bg-copper-600 hover:bg-copper-700">
-                    Save Strategy Notes
-                  </Button>
+                <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg">
+                  <h4 className="font-medium mb-2">Prompt Optimization</h4>
+                  <p className="text-sm text-muted-foreground">How Claude improves data quality</p>
+                </div>
+                <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg">
+                  <h4 className="font-medium mb-2">Strategy Reflections</h4>
+                  <p className="text-sm text-muted-foreground">Daily learnings and insights</p>
                 </div>
               </div>
+
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => window.location.href = '/ai-transparency'}
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                Open AI Transparency Dashboard
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
