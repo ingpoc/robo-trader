@@ -39,7 +39,26 @@ export function usePaperTrading(accountId?: string) {
     queryFn: async () => {
       const response = await fetch(`/api/paper-trading/accounts/${accountId}/positions`)
       if (!response.ok) throw new Error('Failed to fetch positions')
-      return response.json() as Promise<OpenPositionResponse[]>
+      const data = await response.json()
+      // Extract positions array and transform field names
+      const positions = (data.positions || []).map((pos: any) => ({
+        trade_id: pos.id || `${pos.symbol}_${Date.now()}`,
+        symbol: pos.symbol,
+        trade_type: pos.action === 'SELL' ? 'SELL' : 'BUY',
+        quantity: pos.quantity,
+        entry_price: pos.entryPrice,
+        current_price: pos.ltp,
+        current_value: pos.quantity * pos.ltp,
+        unrealized_pnl: pos.pnl,
+        unrealized_pnl_pct: pos.pnlPercent,
+        stop_loss: pos.stopLoss,
+        target_price: pos.target,
+        entry_date: pos.entryDate,
+        days_held: pos.daysHeld,
+        strategy_rationale: pos.strategy,
+        ai_suggested: false,
+      }))
+      return positions as Promise<OpenPositionResponse[]>
     },
     enabled: !!accountId && accountId !== '',
     refetchInterval: 2000, // Refresh every 2 seconds for real-time price updates
@@ -51,7 +70,25 @@ export function usePaperTrading(accountId?: string) {
     queryFn: async () => {
       const response = await fetch(`/api/paper-trading/accounts/${accountId}/trades?limit=50`)
       if (!response.ok) throw new Error('Failed to fetch trade history')
-      return response.json() as Promise<ClosedTradeResponse[]>
+      const data = await response.json()
+      // Extract trades array and transform field names
+      const trades = (data.trades || []).map((trade: any) => ({
+        trade_id: trade.id,
+        symbol: trade.symbol,
+        trade_type: trade.action === 'SELL' ? 'SELL' : 'BUY',
+        quantity: trade.quantity,
+        entry_price: trade.entryPrice,
+        exit_price: trade.exitPrice,
+        realized_pnl: trade.pnl,
+        realized_pnl_pct: trade.pnlPercent,
+        entry_date: trade.date,
+        exit_date: trade.date,
+        holding_period_days: trade.holdTime ? parseInt(trade.holdTime) : 0,
+        reason_closed: trade.notes || '',
+        strategy_rationale: trade.strategy,
+        ai_suggested: false,
+      }))
+      return trades as Promise<ClosedTradeResponse[]>
     },
     enabled: !!accountId && accountId !== '',
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -65,7 +102,22 @@ export function usePaperTrading(accountId?: string) {
         `/api/paper-trading/accounts/${accountId}/performance?period=all-time`,
       )
       if (!response.ok) throw new Error('Failed to fetch performance metrics')
-      return response.json() as Promise<PerformanceMetricsResponse>
+      const data = await response.json()
+      // Extract performance object and transform field names
+      const perf = data.performance || {}
+      return {
+        total_trades: perf.totalTrades || 0,
+        winning_trades: perf.winningTrades || 0,
+        losing_trades: perf.losingTrades || 0,
+        win_rate: perf.winRate || 0,
+        avg_win: perf.avgWin || 0,
+        avg_loss: perf.avgLoss || 0,
+        profit_factor: perf.profitFactor || 0,
+        largest_win: perf.avgWin || 0,
+        largest_loss: perf.avgLoss || 0,
+        sharpe_ratio: perf.sharpeRatio,
+        period: 'all-time' as const,
+      } as PerformanceMetricsResponse
     },
     enabled: !!accountId && accountId !== '',
     refetchInterval: 60000, // Refresh every minute
@@ -168,8 +220,8 @@ export function usePaperTrading(accountId?: string) {
   const totalUnrealizedPnL =
     openPositions.data?.reduce((sum, pos) => sum + pos.unrealized_pnl, 0) || 0
   const unrealizedPnLPct =
-    accountOverview.data && accountOverview.data.balance > 0
-      ? (totalUnrealizedPnL / accountOverview.data.balance) * 100
+    accountOverview.data && accountOverview.data.currentBalance > 0
+      ? (totalUnrealizedPnL / accountOverview.data.currentBalance) * 100
       : 0
 
   const isLoading =

@@ -105,23 +105,23 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
       const accountData = await response.json()
       const account: Account = {
-        account_id: accountData.account_id,
+        account_id: accountData.accountId,
         account_name: 'Paper Trading - Swing Trading Account',
-        account_type: accountData.account_type,
-        strategy_type: accountData.strategy_type,
+        account_type: accountData.accountType,
+        strategy_type: accountData.activeStrategy,
         risk_level: 'moderate', // Default for now
-        balance: accountData.balance || 0,
-        buying_power: accountData.buying_power || 0,
-        deployed_capital: accountData.deployed_capital || 0,
-        total_pnl: accountData.total_pnl || 0,
-        total_pnl_pct: accountData.total_pnl_pct || 0,
-        monthly_pnl: accountData.monthly_pnl || 0,
-        monthly_pnl_pct: accountData.monthly_pnl_pct || 0,
-        open_positions_count: accountData.open_positions_count || 0,
-        today_trades: accountData.today_trades || 0,
-        win_rate: accountData.win_rate || 0,
-        created_at: accountData.created_at || new Date().toISOString(),
-        reset_date: accountData.reset_date || '',
+        balance: accountData.currentBalance || 0,
+        buying_power: accountData.marginAvailable || 0,
+        deployed_capital: accountData.deployedCapital || 0,
+        total_pnl: accountData.todayPnL || 0,
+        total_pnl_pct: accountData.monthlyROI || 0,
+        monthly_pnl: accountData.todayPnL || 0,
+        monthly_pnl_pct: accountData.monthlyROI || 0,
+        open_positions_count: accountData.openPositions || 0,
+        today_trades: accountData.closedTodayCount || 0,
+        win_rate: accountData.winRate || 0,
+        created_at: accountData.createdDate || new Date().toISOString(),
+        reset_date: '',
       }
 
       setAccounts([account])

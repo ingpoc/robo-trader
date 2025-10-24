@@ -4,10 +4,14 @@ import logging
 import os
 from typing import Dict, Any
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest, CloseTradeRequest
+from src.core.errors import TradingError
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +19,15 @@ router = APIRouter(prefix="/api", tags=["paper-trading"])
 limiter = Limiter(key_func=get_remote_address)
 
 paper_trading_limit = os.getenv("RATE_LIMIT_PAPER_TRADING", "20/minute")
+
+# Global DI container (will be set by app.py)
+_container: DependencyContainer = None
+
+
+def set_container(container: DependencyContainer):
+    """Set the DI container for this router."""
+    global _container
+    _container = container
 
 
 @router.get("/paper-trading/accounts")
@@ -429,3 +442,164 @@ async def get_paper_trading_performance(request: Request, account_id: str, perio
     except Exception as e:
         logger.error(f"Paper trading performance retrieval failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ============================================================================
+# TRADE EXECUTION ENDPOINTS - Phase 1 Implementation
+# ============================================================================
+
+
+@router.post("/paper-trading/accounts/{account_id}/trades/buy")
+@limiter.limit(paper_trading_limit)
+async def execute_buy_trade(
+    request: Request,
+    account_id: str,
+    trade_request: BuyTradeRequest
+) -> Dict[str, Any]:
+    """
+    Execute a buy trade on a paper trading account.
+
+    Args:
+        account_id: Paper trading account ID (e.g., 'swing-001')
+        trade_request: BuyTradeRequest with symbol and quantity
+
+    Returns:
+        Trade execution result with trade_id and status
+    """
+    try:
+        if not _container:
+            return JSONResponse(
+                {"error": "Service not initialized"},
+                status_code=503
+            )
+
+        # Get execution service
+        execution_service = await _container.get("paper_trading_execution_service")
+
+        # Execute trade
+        result = await execution_service.execute_buy_trade(
+            account_id=account_id,
+            symbol=trade_request.symbol,
+            quantity=trade_request.quantity,
+            order_type=trade_request.order_type,
+            price=trade_request.price
+        )
+
+        return result
+
+    except TradingError as e:
+        logger.error(f"Buy trade failed: {e.context.code}")
+        status_code = 500 if e.context.severity.value in ["critical", "high"] else 400
+        return JSONResponse(
+            content=e.to_dict(),
+            status_code=status_code
+        )
+    except Exception as e:
+        logger.exception(f"Buy trade execution error: {e}")
+        return JSONResponse(
+            {"error": "Trade execution failed", "details": str(e)},
+            status_code=500
+        )
+
+
+@router.post("/paper-trading/accounts/{account_id}/trades/sell")
+@limiter.limit(paper_trading_limit)
+async def execute_sell_trade(
+    request: Request,
+    account_id: str,
+    trade_request: SellTradeRequest
+) -> Dict[str, Any]:
+    """
+    Execute a sell trade on a paper trading account.
+
+    Args:
+        account_id: Paper trading account ID (e.g., 'swing-001')
+        trade_request: SellTradeRequest with symbol and quantity
+
+    Returns:
+        Trade execution result with trade_id, P&L, and status
+    """
+    try:
+        if not _container:
+            return JSONResponse(
+                {"error": "Service not initialized"},
+                status_code=503
+            )
+
+        # Get execution service
+        execution_service = await _container.get("paper_trading_execution_service")
+
+        # Execute trade
+        result = await execution_service.execute_sell_trade(
+            account_id=account_id,
+            symbol=trade_request.symbol,
+            quantity=trade_request.quantity,
+            order_type=trade_request.order_type,
+            price=trade_request.price
+        )
+
+        return result
+
+    except TradingError as e:
+        logger.error(f"Sell trade failed: {e.context.code}")
+        status_code = 500 if e.context.severity.value in ["critical", "high"] else 400
+        return JSONResponse(
+            content=e.to_dict(),
+            status_code=status_code
+        )
+    except Exception as e:
+        logger.exception(f"Sell trade execution error: {e}")
+        return JSONResponse(
+            {"error": "Trade execution failed", "details": str(e)},
+            status_code=500
+        )
+
+
+@router.post("/paper-trading/accounts/{account_id}/trades/{trade_id}/close")
+@limiter.limit(paper_trading_limit)
+async def close_trade(
+    request: Request,
+    account_id: str,
+    trade_id: str
+) -> Dict[str, Any]:
+    """
+    Close an existing open trade.
+
+    Args:
+        account_id: Paper trading account ID
+        trade_id: Trade ID to close
+
+    Returns:
+        Close operation result with exit price and realized P&L
+    """
+    try:
+        if not _container:
+            return JSONResponse(
+                {"error": "Service not initialized"},
+                status_code=503
+            )
+
+        # Get execution service
+        execution_service = await _container.get("paper_trading_execution_service")
+
+        # Close trade
+        result = await execution_service.close_trade(
+            account_id=account_id,
+            trade_id=trade_id
+        )
+
+        return result
+
+    except TradingError as e:
+        logger.error(f"Trade close failed: {e.context.code}")
+        status_code = 500 if e.context.severity.value in ["critical", "high"] else 400
+        return JSONResponse(
+            content=e.to_dict(),
+            status_code=status_code
+        )
+    except Exception as e:
+        logger.exception(f"Trade close error: {e}")
+        return JSONResponse(
+            {"error": "Trade close failed", "details": str(e)},
+            status_code=500
+        )

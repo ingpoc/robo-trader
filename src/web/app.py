@@ -318,6 +318,11 @@ async def startup_event():
     app.state.container = container
     logger.info("Container stored in app.state")
 
+    # Set container for paper trading routes
+    from .routes.paper_trading import set_container as set_paper_trading_container
+    set_paper_trading_container(container)
+    logger.info("Paper trading routes initialized with container")
+
     connection_manager = ConnectionManager()
     logger.info("ConnectionManager created")
 

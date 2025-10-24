@@ -48,6 +48,7 @@ from ..services.event_router_service import EventRouterService
 from ..services.claude_agent.tool_executor import ToolExecutor
 from ..services.claude_agent.response_validator import ResponseValidator
 from ..stores.claude_strategy_store import ClaudeStrategyStore
+from ..services.paper_trading_execution_service import PaperTradingExecutionService
 
 T = TypeVar('T')
 
@@ -239,6 +240,14 @@ class DependencyContainer:
             return executor
 
         self._register_singleton("paper_trade_executor", create_paper_trade_executor)
+
+        # Paper Trading Execution Service (new - handles buy/sell/close with DB persistence)
+        async def create_paper_trading_execution_service():
+            execution_service = PaperTradingExecutionService()
+            await execution_service.initialize()
+            return execution_service
+
+        self._register_singleton("paper_trading_execution_service", create_paper_trading_execution_service)
 
         # Claude Agent Services
         async def create_tool_executor():

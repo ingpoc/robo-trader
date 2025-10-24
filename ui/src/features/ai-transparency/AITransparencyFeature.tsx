@@ -31,94 +31,14 @@ export const AITransparencyFeature: React.FC = () => {
               <Eye className="w-6 h-6 text-copper-600 dark:text-copper-400" />
             </div>
             <div>
-              <h1 className="text-4xl lg:text-5xl font-bold text-warmgray-900 dark:text-warmgray-100 font-serif">
-                AI Transparency Center
+              <h1 className="text-3xl font-bold text-warmgray-900 dark:text-warmgray-100">
+                AI Transparency
               </h1>
-              <p className="text-lg text-warmgray-600 dark:text-warmgray-400 mt-2">
-                Complete visibility into Claude's learning and trading process
+              <p className="text-sm text-warmgray-600 dark:text-warmgray-400 mt-1">
+                Real-time view of Claude's decisions and learning
               </p>
             </div>
           </div>
-
-          {/* Feature Overview Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-l-4 border-l-blue-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-blue-500" />
-                  Research Tracking
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>
-                  See what data sources Claude uses, which symbols it analyzes, and key market insights discovered.
-                </CardDescription>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-purple-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-purple-500" />
-                  Decision Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>
-                  Understand Claude's step-by-step reasoning process, confidence levels, and trade decision logic.
-                </CardDescription>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-emerald-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-emerald-500" />
-                  Execution Monitoring
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>
-                  Monitor trade execution quality, slippage analysis, and risk compliance in real-time.
-                </CardDescription>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-orange-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-orange-500" />
-                  Learning Progress
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>
-                  Track how Claude evaluates strategies daily, implements refinements, and improves over time.
-                </CardDescription>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Trust Statement */}
-          <Card className="bg-gradient-to-r from-copper-50/50 to-emerald-50/50 dark:from-copper-950/50 dark:to-emerald-950/50 border-copper-200 dark:border-copper-800">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-4">
-                <div className="p-2 bg-copper-100 dark:bg-copper-900 rounded-lg flex-shrink-0">
-                  <Shield className="w-6 h-6 text-copper-600 dark:text-copper-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">
-                    Transparency You Can Trust
-                  </h3>
-                  <p className="text-warmgray-600 dark:text-warmgray-400">
-                    Every decision Claude makes is logged and explained. You can see exactly how it analyzes markets,
-                    evaluates strategies, executes trades, and learns from experience. No black boxes - just clear,
-                    comprehensive visibility into the AI's complete trading process.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Tabs Section */}

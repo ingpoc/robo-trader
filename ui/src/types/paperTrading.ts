@@ -4,21 +4,22 @@
  */
 
 export interface AccountOverviewResponse {
-  account_id: string
-  account_type: 'swing_trading' | 'options_trading'
-  strategy_type: string
-  balance: number
-  buying_power: number
-  deployed_capital: number
-  total_pnl: number
-  total_pnl_pct: number
-  monthly_pnl: number
-  monthly_pnl_pct: number
-  open_positions_count: number
-  today_trades: number
-  win_rate: number
-  created_at: string
-  reset_date: string
+  accountId: string
+  accountType: 'swing' | 'options'
+  currency: string
+  createdDate: string
+  initialCapital: number
+  currentBalance: number
+  totalInvested: number
+  marginAvailable: number
+  todayPnL: number
+  monthlyROI: number
+  winRate: number
+  activeStrategy: string
+  cashAvailable: number
+  deployedCapital: number
+  openPositions: number
+  closedTodayCount: number
 }
 
 export interface OpenPositionResponse {

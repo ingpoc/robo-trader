@@ -84,12 +84,12 @@ export function PaperTrading() {
     let riskLevel: 'low' | 'medium' | 'high' = 'low'
 
     // Buying power check
-    if (tradeForm.type === 'BUY' && tradeValue > accountOverview.buying_power) {
-      errors.push(`Insufficient buying power. Required: ₹${tradeValue.toLocaleString()}, Available: ₹${accountOverview.buying_power.toLocaleString()}`)
+    if (tradeForm.type === 'BUY' && tradeValue > accountOverview.marginAvailable) {
+      errors.push(`Insufficient buying power. Required: ₹${tradeValue.toLocaleString()}, Available: ₹${accountOverview.marginAvailable.toLocaleString()}`)
     }
 
     // Position size limits (5% of portfolio max)
-    const maxPositionSize = accountOverview.balance * 0.05
+    const maxPositionSize = accountOverview.currentBalance * 0.05
     if (tradeValue > maxPositionSize) {
       errors.push(`Position size exceeds 5% limit. Max allowed: ₹${maxPositionSize.toLocaleString()}`)
       riskLevel = 'high'
@@ -99,8 +99,8 @@ export function PaperTrading() {
     }
 
     // Portfolio risk check (10% max total exposure)
-    const currentExposure = accountOverview.deployed_capital
-    const maxPortfolioRisk = accountOverview.balance * 0.10
+    const currentExposure = accountOverview.deployedCapital
+    const maxPortfolioRisk = accountOverview.currentBalance * 0.10
     if (tradeForm.type === 'BUY' && currentExposure + tradeValue > maxPortfolioRisk) {
       errors.push(`Trade would exceed 10% portfolio risk limit`)
       riskLevel = 'high'
@@ -330,9 +330,9 @@ export function PaperTrading() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">₹{accountOverview.balance.toLocaleString()}</div>
+                <div className="text-2xl font-bold">₹{accountOverview.currentBalance.toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Buying Power: ₹{accountOverview.buying_power.toLocaleString()}
+                  Buying Power: ₹{accountOverview.marginAvailable.toLocaleString()}
                 </p>
               </CardContent>
             </Card>
@@ -345,10 +345,10 @@ export function PaperTrading() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  ₹{accountOverview.deployed_capital.toLocaleString()}
+                  ₹{accountOverview.deployedCapital.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {accountOverview.open_positions_count} position(s) open
+                  {accountOverview.openPositions} position(s) open
                 </p>
               </CardContent>
             </Card>
@@ -362,13 +362,13 @@ export function PaperTrading() {
               <CardContent>
                 <div
                   className={`text-2xl font-bold ${
-                    accountOverview.monthly_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    accountOverview.todayPnL >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}
                 >
-                  ₹{accountOverview.monthly_pnl.toLocaleString()}
+                  ₹{accountOverview.todayPnL.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {accountOverview.monthly_pnl_pct.toFixed(2)}%
+                  {((accountOverview.todayPnL / accountOverview.currentBalance) * 100).toFixed(2)}%
                 </p>
               </CardContent>
             </Card>
@@ -380,7 +380,7 @@ export function PaperTrading() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{accountOverview.win_rate.toFixed(1)}%</div>
+                <div className="text-2xl font-bold">{accountOverview?.winRate?.toFixed(1)}%</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Total Trades: {metrics?.total_trades || 0}
                 </p>
@@ -539,7 +539,7 @@ export function PaperTrading() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-center p-4 bg-emerald-50 rounded-lg">
                     <p className="text-2xl font-bold text-emerald-600">
-                      {accountOverview?.win_rate.toFixed(1)}%
+                      {accountOverview?.winRate?.toFixed(1)}%
                     </p>
                     <p className="text-sm text-emerald-700">Win Rate</p>
                   </div>
@@ -654,7 +654,7 @@ export function PaperTrading() {
                       <CheckCircle className="w-5 h-5 text-green-600" />
                       <div>
                         <p className="text-sm font-medium text-green-800">Buying Power</p>
-                        <p className="text-lg font-bold text-green-900">₹{accountOverview.buying_power.toLocaleString()}</p>
+                        <p className="text-lg font-bold text-green-900">₹{accountOverview.marginAvailable.toLocaleString()}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -666,7 +666,7 @@ export function PaperTrading() {
                       <Shield className="w-5 h-5 text-blue-600" />
                       <div>
                         <p className="text-sm font-medium text-blue-800">Max Position Size</p>
-                        <p className="text-lg font-bold text-blue-900">₹{(accountOverview.balance * 0.05).toLocaleString()}</p>
+                        <p className="text-lg font-bold text-blue-900">₹{(accountOverview.currentBalance * 0.05).toLocaleString()}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -678,7 +678,7 @@ export function PaperTrading() {
                       <AlertTriangle className="w-5 h-5 text-orange-600" />
                       <div>
                         <p className="text-sm font-medium text-orange-800">Portfolio Risk Limit</p>
-                        <p className="text-lg font-bold text-orange-900">₹{(accountOverview.balance * 0.10).toLocaleString()}</p>
+                        <p className="text-lg font-bold text-orange-900">₹{(accountOverview.currentBalance * 0.10).toLocaleString()}</p>
                       </div>
                     </div>
                   </CardContent>
