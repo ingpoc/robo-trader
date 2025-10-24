@@ -180,6 +180,9 @@ class AIPlanner:
                 # Store plan
                 await self._store_plan(plan)
 
+                # Log trade decisions if any are generated
+                await self._log_plan_trade_decisions(plan)
+
                 logger.info(f"Generated {horizon_days}-day trading plan")
                 return plan
 
@@ -695,6 +698,50 @@ class AIPlanner:
             return insights
         except Exception:
             return []
+
+    async def _log_plan_trade_decisions(self, plan: MultiDayPlan) -> None:
+        """Log trade decisions from the generated plan."""
+        try:
+            # Import here to avoid circular imports
+            from ..core.di import get_container
+
+            container = await get_container()
+            if not container:
+                logger.warning("Container not available for trade decision logging")
+                return
+
+            trade_decision_logger = await container.get("trade_decision_logger")
+            if not trade_decision_logger:
+                logger.warning("Trade decision logger not available")
+                return
+
+            # Extract trade decisions from strategic adjustments
+            for adjustment in plan.strategic_adjustments:
+                if "sector_rotation" in adjustment.get("adjustment_type", ""):
+                    # Log sector rotation decisions
+                    decision = {
+                        "trade_id": f"plan_{plan.created_at}_{adjustment.get('day', 1)}",
+                        "symbol": adjustment.get("description", "").split()[-1],  # Extract symbol from description
+                        "action": "BUY" if "Increase" in adjustment.get("description", "") else "HOLD",
+                        "confidence": 0.75,  # Default confidence for planning decisions
+                        "rationale": adjustment.get("rationale", ""),
+                        "strategy": "multi_day_plan",
+                        "timeframe": f"day_{adjustment.get('day', 1)}",
+                        "risk_assessment": {
+                            "risk_reward_ratio": 2.0,
+                            "position_size_pct": 0.05
+                        },
+                        "market_conditions": plan.market_condition_forecasts.get(f"day_{adjustment.get('day', 1)}", ""),
+                        "planning_context": {
+                            "plan_horizon": plan.planning_horizon_days,
+                            "risk_allocation": plan.risk_adjusted_allocations.get(f"day_{adjustment.get('day', 1)}", 0.8)
+                        }
+                    }
+                    await trade_decision_logger.log_decision(decision)
+                    logger.info(f"Logged trade decision from plan: {decision['trade_id']}")
+
+        except Exception as e:
+            logger.error(f"Failed to log plan trade decisions: {e}")
 
     async def _store_plan(self, plan: MultiDayPlan) -> None:
         """Store generated plan."""

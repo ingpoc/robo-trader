@@ -358,7 +358,16 @@ class AnalysisLogger:
         ]
 
         if not recent_decisions:
-            return {"error": "No decisions found in the specified period"}
+            # Return default values instead of error dict
+            return {
+                "period_days": days,
+                "total_decisions": 0,
+                "executed_decisions": 0,
+                "execution_rate": 0.0,
+                "avg_confidence_score": 0.0,
+                "avg_analysis_steps": 0.0,
+                "action_breakdown": {}
+            }
 
         # Calculate effectiveness metrics
         total_decisions = len(recent_decisions)

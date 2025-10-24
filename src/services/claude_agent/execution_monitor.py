@@ -372,7 +372,17 @@ class ExecutionMonitor:
         ]
 
         if not recent_executions:
-            return {"error": "No executions found in the specified period"}
+            # Return default values instead of error dict
+            return {
+                "period_days": days,
+                "total_executions": 0,
+                "successful_executions": 0,
+                "success_rate": 0.0,
+                "avg_slippage_bps": 0.0,
+                "avg_cost_pct": 0.0,
+                "risk_checks_pass_rate": 1.0,
+                "quality_score": 0.0
+            }
 
         # Calculate quality metrics
         total_executions = len(recent_executions)
