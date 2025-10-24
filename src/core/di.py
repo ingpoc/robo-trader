@@ -327,6 +327,16 @@ class DependencyContainer:
             return ActivitySummarizer(strategy_store)
 
         self._register_singleton("activity_summarizer", create_activity_summarizer)
+
+        # Trade Decision Logger Service
+        async def create_trade_decision_logger():
+            from ..services.claude_agent.trade_decision_logger import TradeDecisionLogger
+            trade_decision_logger = TradeDecisionLogger()
+            await trade_decision_logger.initialize()
+            return trade_decision_logger
+
+        self._register_singleton("trade_decision_logger", create_trade_decision_logger)
+
         # Event Router Service
         async def create_event_router_service():
             from ..services.event_router_service import EventRouterService
