@@ -308,6 +308,15 @@ class AIPlanner:
 
         return status
 
+    async def create_daily_plan(self) -> Optional[MultiDayPlan]:
+        """
+        Create a daily trading plan (1-day horizon).
+
+        Returns:
+            Daily plan or None if generation fails
+        """
+        return await self.generate_multi_day_plan(horizon_days=1)
+
     async def get_current_task_status(self) -> Dict[str, Any]:
         """
         Get current AI task status for UI display.
