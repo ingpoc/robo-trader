@@ -85,7 +85,7 @@ async def get_agent_config(request: Request, agent_name: str) -> Dict[str, Any]:
 @limiter.limit(agents_limit)
 async def update_agent_config(request: Request, agent_name: str, config_data: Dict[str, Any]) -> Dict[str, str]:
     """Update agent configuration."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -142,7 +142,7 @@ async def get_agent_features(request: Request) -> Dict[str, Any]:
 @limiter.limit(agents_limit)
 async def get_agent_feature(request: Request, feature_name: str) -> Dict[str, Any]:
     """Get specific agent feature."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -167,7 +167,7 @@ async def get_agent_feature(request: Request, feature_name: str) -> Dict[str, An
 @limiter.limit(agents_limit)
 async def update_agent_feature(request: Request, feature_name: str, feature_data: Dict[str, Any]) -> Dict[str, str]:
     """Update agent feature configuration."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)

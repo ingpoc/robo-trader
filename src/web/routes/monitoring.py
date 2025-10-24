@@ -20,7 +20,7 @@ default_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 @limiter.limit(default_limit)
 async def get_system_status(request: Request) -> Dict[str, Any]:
     """Get system monitoring status."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -45,7 +45,7 @@ async def get_system_status(request: Request) -> Dict[str, Any]:
 @limiter.limit(default_limit)
 async def get_scheduler_status(request: Request) -> Dict[str, Any]:
     """Get background scheduler status."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -70,7 +70,7 @@ async def get_scheduler_status(request: Request) -> Dict[str, Any]:
 @limiter.limit(default_limit)
 async def trigger_market_event(request: Request, event_data: Dict[str, Any]) -> Dict[str, str]:
     """Trigger a market event for testing."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -91,7 +91,7 @@ async def trigger_market_event(request: Request, event_data: Dict[str, Any]) -> 
 @limiter.limit(default_limit)
 async def emergency_stop(request: Request) -> Dict[str, str]:
     """Emergency stop all trading."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -114,7 +114,7 @@ async def emergency_stop(request: Request) -> Dict[str, str]:
 @limiter.limit(default_limit)
 async def resume_operations(request: Request) -> Dict[str, str]:
     """Resume operations after emergency stop."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -137,7 +137,7 @@ async def resume_operations(request: Request) -> Dict[str, str]:
 @limiter.limit(default_limit)
 async def trigger_news_monitoring(request: Request) -> Dict[str, str]:
     """Trigger news monitoring."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)

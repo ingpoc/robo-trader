@@ -213,12 +213,11 @@ class DependencyContainer:
         # Paper Trading Infrastructure
         async def create_paper_trading_store():
             from ..stores.paper_trading_store import PaperTradingStore
-            import os
-            # Use persistent path in /app/data for container environments
-            persistent_dir = "/app/data"
-            os.makedirs(persistent_dir, exist_ok=True)
-            db_path = os.path.join(persistent_dir, "paper_trading.db")
-            store = PaperTradingStore(db_path)
+            import aiosqlite
+            # Create a separate connection for paper trading store to avoid context manager issues
+            db_path = self.config.state_dir / "robo_trader.db"
+            connection = await aiosqlite.connect(str(db_path))
+            store = PaperTradingStore(connection)
             await store.initialize()
             return store
 

@@ -163,6 +163,14 @@ connection_manager = None
 service_client = None
 shutdown_event = asyncio.Event()
 
+# Initialization status tracking
+initialization_status = {
+    "orchestrator_initialized": False,
+    "bootstrap_completed": False,
+    "initialization_errors": [],
+    "last_error": None
+}
+
 # ============================================================================
 # Request Models
 # ============================================================================
@@ -236,11 +244,25 @@ async def get_ai_data_with_retry(orchestrator, connection_id: str, max_retries: 
 async def get_dashboard_data() -> Dict[str, Any]:
     """Get dashboard data for display."""
     if not container:
-        return {"error": "System not initialized"}
+        return {
+            "error": "System not initialized",
+            "initialization_status": initialization_status
+        }
 
     orchestrator = await container.get_orchestrator()
     if not orchestrator or not orchestrator.state_manager:
-        return {"error": "System not initialized"}
+        return {
+            "error": "System not initialized",
+            "initialization_status": initialization_status
+        }
+
+    # Check if initialization is complete
+    if not initialization_status["orchestrator_initialized"]:
+        return {
+            "error": "System initialization in progress",
+            "initialization_status": initialization_status,
+            "message": "Please wait for system initialization to complete"
+        }
 
     portfolio = await orchestrator.state_manager.get_portfolio()
 
@@ -269,6 +291,7 @@ async def get_dashboard_data() -> Dict[str, Any]:
             "environment": config.environment if config else "unknown",
             "max_turns": config.max_turns if config else 50
         },
+        "initialization_status": initialization_status,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
@@ -316,32 +339,62 @@ async def startup_event():
             logger.info("Orchestrator initialized")
             await orchestrator.start_session()
             logger.info("Orchestrator session started")
+            initialization_status["orchestrator_initialized"] = True
         except asyncio.TimeoutError:
-            logger.error("Orchestrator initialization timed out")
+            error_msg = "Orchestrator initialization timed out"
+            logger.error(error_msg)
+            initialization_status["initialization_errors"].append(error_msg)
+            initialization_status["last_error"] = error_msg
         except Exception as exc:
-            logger.error(f"Orchestrator initialization failed: {exc}", exc_info=True)
+            error_msg = f"Orchestrator initialization failed: {exc}"
+            logger.error(error_msg, exc_info=True)
+            initialization_status["initialization_errors"].append(error_msg)
+            initialization_status["last_error"] = error_msg
 
     async def bootstrap_state():
         """Prime initial analytics."""
         if not orchestrator:
             return
-        if config.agents.portfolio_scan.enabled:
-            try:
-                await asyncio.wait_for(orchestrator.run_portfolio_scan(), timeout=30.0)
-            except Exception as exc:
-                logger.warning(f"Portfolio scan failed: {exc}")
-        if config.agents.market_screening.enabled:
-            try:
-                await asyncio.wait_for(orchestrator.run_market_screening(), timeout=30.0)
-            except Exception as exc:
-                logger.warning(f"Market screening failed: {exc}")
+        try:
+            if config.agents.portfolio_scan.enabled:
+                try:
+                    await asyncio.wait_for(orchestrator.run_portfolio_scan(), timeout=30.0)
+                except Exception as exc:
+                    error_msg = f"Portfolio scan failed: {exc}"
+                    logger.warning(error_msg)
+                    initialization_status["initialization_errors"].append(error_msg)
+
+            if config.agents.market_screening.enabled:
+                try:
+                    await asyncio.wait_for(orchestrator.run_market_screening(), timeout=30.0)
+                except Exception as exc:
+                    error_msg = f"Market screening failed: {exc}"
+                    logger.warning(error_msg)
+                    initialization_status["initialization_errors"].append(error_msg)
+
+            initialization_status["bootstrap_completed"] = True
+            logger.info("Bootstrap state completed successfully")
+        except Exception as exc:
+            error_msg = f"Bootstrap state failed: {exc}"
+            logger.error(error_msg, exc_info=True)
+            initialization_status["initialization_errors"].append(error_msg)
+            initialization_status["last_error"] = error_msg
 
     try:
         orchestrator_task = asyncio.create_task(initialize_orchestrator())
         bootstrap_task = asyncio.create_task(bootstrap_state())
         logger.info("Background tasks created")
+
+        # Wait for orchestrator initialization to complete before proceeding
+        await orchestrator_task
+        await bootstrap_task
+        logger.info("Background initialization completed")
+
     except Exception as e:
-        logger.error(f"Failed to create background tasks: {e}", exc_info=True)
+        error_msg = f"Failed to create or complete background tasks: {e}"
+        logger.error(error_msg, exc_info=True)
+        initialization_status["initialization_errors"].append(error_msg)
+        initialization_status["last_error"] = error_msg
 
         # Claude Agent SDK best practices: Graceful degradation
         # If Claude initialization fails, continue with paper trading only
@@ -395,6 +448,8 @@ async def root():
         "frontend": "http://localhost:3000",
         "docs": "/docs",
         "websocket": "ws://localhost:8000/ws",
+        "health": "/api/health",
+        "initialization_status": initialization_status,
         "endpoints": {
             "dashboard": "/api/dashboard",
             "trading": "/api/manual-trade",
@@ -404,6 +459,80 @@ async def root():
         }
     }
 
+# ============================================================================
+# Health Check Endpoint
+# ============================================================================
+
+@app.get("/api/health")
+async def health_check(request: Request) -> Dict[str, Any]:
+    """Health check endpoint to verify system initialization."""
+    try:
+        container = request.app.state.container
+        if not container:
+            return JSONResponse({
+                "status": "unhealthy",
+                "error": "Container not initialized",
+                "initialization_status": initialization_status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, status_code=503)
+
+        # Test orchestrator access
+        orchestrator = await container.get_orchestrator()
+        if not orchestrator:
+            return JSONResponse({
+                "status": "degraded",
+                "error": "Orchestrator not available",
+                "initialization_status": initialization_status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, status_code=503)
+
+        # Test state manager access
+        if not hasattr(orchestrator, 'state_manager') or not orchestrator.state_manager:
+            return JSONResponse({
+                "status": "degraded",
+                "error": "State manager not available",
+                "initialization_status": initialization_status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, status_code=503)
+
+        # Check initialization status
+        if not initialization_status["orchestrator_initialized"]:
+            return JSONResponse({
+                "status": "degraded",
+                "error": "Orchestrator initialization incomplete",
+                "initialization_status": initialization_status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, status_code=503)
+
+        if initialization_status["initialization_errors"]:
+            return JSONResponse({
+                "status": "degraded",
+                "error": "Initialization errors detected",
+                "initialization_status": initialization_status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, status_code=503)
+
+        return {
+            "status": "healthy",
+            "message": "All systems operational",
+            "components": {
+                "container": "initialized",
+                "orchestrator": "running",
+                "state_manager": "available",
+                "initialization": "complete"
+            },
+            "initialization_status": initialization_status,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse({
+            "status": "unhealthy",
+            "error": str(e),
+            "initialization_status": initialization_status,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }, status_code=503)
 # ============================================================================
 # WebSocket Endpoint
 # ============================================================================

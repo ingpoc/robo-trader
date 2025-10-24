@@ -37,7 +37,7 @@ class TradeRequest(BaseModel):
 @limiter.limit(trade_limit)
 async def portfolio_scan(request: Request, background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """Trigger portfolio scan and load holdings from CSV file."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -67,7 +67,7 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks) ->
 @limiter.limit(trade_limit)
 async def market_screening(request: Request, background_tasks: BackgroundTasks) -> Dict[str, str]:
     """Trigger market screening."""
-    from ..app import container
+    container = request.app.state.container
 
     if not container:
         return JSONResponse({"error": "System not initialized"}, status_code=500)
@@ -85,7 +85,7 @@ async def market_screening(request: Request, background_tasks: BackgroundTasks) 
 @limiter.limit(trade_limit)
 async def manual_trade(request: Request, trade: TradeRequest) -> Dict[str, Any]:
     """Execute manual trade."""
-    from ..app import container
+    container = request.app.state.container
     import uuid
 
     if not container:
