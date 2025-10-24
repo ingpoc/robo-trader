@@ -31,23 +31,23 @@ from .coordinators import (
     StatusCoordinator,
     LifecycleCoordinator,
     BroadcastCoordinator,
-    # ClaudeAgentCoordinator,  # Commented out to avoid circular imports
+    ClaudeAgentCoordinator,  # Now imported directly
 )
 
-# Forward declarations for services to avoid import issues
-PortfolioService = None
-RiskService = None
-ExecutionService = None
-AnalyticsService = None
-LearningService = None
-StrategyEvolutionEngine = None
-MarketDataService = None
-FeatureManagementService = None
-EventRouterService = None
-QueueCoordinator = None
-ToolExecutor = None
-ResponseValidator = None
-ClaudeStrategyStore = None
+# Import services directly to avoid circular dependencies
+from ..services.portfolio_service import PortfolioService
+from ..services.risk_service import RiskService
+from ..services.execution_service import ExecutionService
+from ..services.analytics_service import AnalyticsService
+from ..services.learning_service import LearningService
+from ..services.strategy_evolution_engine import StrategyEvolutionEngine
+from ..services.market_data_service import MarketDataService
+from ..services.feature_management.service import FeatureManagementService
+from ..services.event_router_service import EventRouterService
+# from ..services.queue_management.core.queue_orchestration_layer import QueueCoordinator  # Not used in DI
+from ..services.claude_agent.tool_executor import ToolExecutor
+from ..services.claude_agent.response_validator import ResponseValidator
+from ..stores.claude_strategy_store import ClaudeStrategyStore
 
 T = TypeVar('T')
 
@@ -467,7 +467,7 @@ class DependencyContainer:
     async def get_risk_service(self) -> RiskService:
         """Get the risk service instance."""
         return await self.get("risk_service")
-    async def get_queue_coordinator(self) -> QueueCoordinator:
+    # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
         """Get the queue coordinator instance."""
         return await self.get("queue_coordinator")
 
@@ -619,7 +619,7 @@ class ServiceProvider:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_risk_service()
 
-    async def get_queue_coordinator(self) -> QueueCoordinator:
+    # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
         """Get the queue coordinator instance."""
         if not self._container:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")

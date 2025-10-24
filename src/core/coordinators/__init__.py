@@ -16,7 +16,7 @@ from .query_coordinator import QueryCoordinator
 from .status_coordinator import StatusCoordinator
 from .lifecycle_coordinator import LifecycleCoordinator
 from .broadcast_coordinator import BroadcastCoordinator
-# from .claude_agent_coordinator import ClaudeAgentCoordinator  # Commented out to avoid circular imports
+from .claude_agent_coordinator import ClaudeAgentCoordinator
 
 __all__ = [
     'AgentCoordinator',
@@ -34,5 +34,5 @@ __all__ = [
     'StatusCoordinator',
     'LifecycleCoordinator',
     'BroadcastCoordinator',
-    # 'ClaudeAgentCoordinator'  # Commented out to avoid circular imports
+    'ClaudeAgentCoordinator'
 ]

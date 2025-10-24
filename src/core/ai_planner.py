@@ -433,21 +433,26 @@ class AIPlanner:
             """
 
             try:
-                await asyncio.wait_for(self.client.query(query), timeout=45.0)
+                # Claude Agent SDK best practices: Use proper async context
+                async with self.client:
+                    await asyncio.wait_for(self.client.query(query), timeout=45.0)
+
+                    async for message in self.client.receive_response():
+                        if hasattr(message, 'content'):
+                            for block in message.content:
+                                if hasattr(block, 'text'):
+                                    try:
+                                        return json.loads(block.text)
+                                    except json.JSONDecodeError:
+                                        continue
+
+                return None
             except asyncio.TimeoutError:
                 logger.error("Multi-day planning query timed out")
                 return None
-
-            async for message in self.client.receive_response():
-                if hasattr(message, 'content'):
-                    for block in message.content:
-                        if hasattr(block, 'text'):
-                            try:
-                                return json.loads(block.text)
-                            except json.JSONDecodeError:
-                                continue
-
-            return None
+            except Exception as e:
+                logger.error(f"Claude SDK query failed: {e}")
+                return None
 
     async def _assess_market_conditions(self) -> Dict[str, Any]:
         """Assess current market conditions for planning."""
@@ -693,16 +698,19 @@ class AIPlanner:
         pass
 
     async def _ensure_client(self) -> None:
-        """Lazy initialization of Claude SDK client."""
+        """Lazy initialization of Claude SDK client following best practices."""
         if self.client is None:
+            # Claude Agent SDK best practices: Use proper options configuration
             options = ClaudeAgentOptions(
-                allowed_tools=[],
+                allowed_tools=[],  # No tools needed for planning queries
                 system_prompt=self._get_planning_prompt(),
-                max_turns=15
+                max_turns=15,
+                # SDK handles authentication automatically via Claude CLI or API key
+                # No need to manually specify model - SDK uses optimal defaults
             )
             self.client = ClaudeSDKClient(options=options)
             await self.client.__aenter__()
-            logger.info("AI Planner Claude client initialized")
+            logger.info("AI Planner Claude client initialized with SDK best practices")
 
     def _get_planning_prompt(self) -> str:
         """Get the system prompt for AI planning."""

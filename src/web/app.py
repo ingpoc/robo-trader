@@ -220,7 +220,11 @@ async def get_ai_data_with_retry(orchestrator, connection_id: str, max_retries: 
         except Exception as e:
             logger.error(f"Error retrieving AI data (attempt {attempt + 1}): {e}")
             if attempt == max_retries:
-                ai_status = {"status": "error", "error": str(e)}
+                # Claude Agent SDK best practices: Handle SDK-specific errors gracefully
+                if "Claude" in str(e) or "anthropic" in str(e).lower() or "open_process" in str(e):
+                    ai_status = {"status": "unavailable", "error": "AI agent temporarily unavailable - paper trading mode active"}
+                else:
+                    ai_status = {"status": "error", "error": str(e)}
                 recommendations = []
 
         if attempt < max_retries:
@@ -338,6 +342,15 @@ async def startup_event():
         logger.info("Background tasks created")
     except Exception as e:
         logger.error(f"Failed to create background tasks: {e}", exc_info=True)
+
+        # Claude Agent SDK best practices: Graceful degradation
+        # If Claude initialization fails, continue with paper trading only
+        if "Claude" in str(e) or "anthropic" in str(e).lower() or "open_process" in str(e):
+            logger.warning("Claude agent initialization failed - continuing with paper trading only")
+            logger.info("System will operate in paper trading mode without AI agent features")
+        else:
+            # Re-raise non-Claude related errors
+            raise
 
 
 @app.on_event("shutdown")

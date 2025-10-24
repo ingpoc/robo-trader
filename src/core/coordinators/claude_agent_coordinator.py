@@ -6,7 +6,17 @@ import json
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from anthropic import Anthropic
+# Claude Agent SDK imports only - no direct Anthropic API
+from claude_agent_sdk import (
+    ClaudeSDKClient,
+    ClaudeAgentOptions,
+    tool,
+    create_sdk_mcp_server,
+    ClaudeSDKError,
+    CLINotFoundError,
+    ProcessError,
+    CLIJSONDecodeError
+)
 
 from ...models.claude_agent import (
     SessionType, ClaudeSessionResult, StrategyLearning, ToolCall, ToolCallType
@@ -41,7 +51,8 @@ class ClaudeAgentCoordinator(BaseCoordinator):
         super().__init__(config, event_bus)
         self.strategy_store = strategy_store
         self.container = container
-        self.client: Optional[Anthropic] = None
+        self.client: Optional[ClaudeSDKClient] = None  # SDK client only
+        self.mcp_server = None  # MCP server for tools
         self.tool_executor: Optional[ToolExecutor] = None
         self.validator: Optional[ResponseValidator] = None
         self._session_history: List[Dict] = []
@@ -50,21 +61,148 @@ class ClaudeAgentCoordinator(BaseCoordinator):
         self._token_output = 0
 
     async def initialize(self) -> None:
-        """Initialize Claude Agent SDK coordinator."""
+        """Initialize Claude Agent SDK coordinator with proper MCP server pattern."""
         try:
-            self._log_info("Initializing ClaudeAgentCoordinator")
+            self._log_info("Initializing ClaudeAgentCoordinator with SDK")
 
-            # Initialize Anthropic client
-            api_key = self.config.integration.get("anthropic_api_key")
-            if not api_key or api_key == "your_anthropic_api_key_here":
-                raise TradingError(
-                    "Anthropic API key not configured",
-                    category=ErrorCategory.CONFIGURATION,
-                    severity=ErrorSeverity.CRITICAL,
-                    recoverable=False
-                )
+            # Create MCP server with tool functions (SDK best practice)
+            @tool("execute_trade", "Execute a paper trade (buy/sell equity or option)", {
+                "symbol": str, "action": str, "quantity": int, "entry_price": float, "strategy_rationale": str,
+                "stop_loss": float, "target_price": float
+            })
+            async def execute_trade_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+                """Execute trade tool for SDK."""
+                try:
+                    result = await self.tool_executor.execute("execute_trade", args)
+                    return {
+                        "content": [{"type": "text", "text": json.dumps(result)}]
+                    }
+                except Exception as e:
+                    return {
+                        "content": [{"type": "text", "text": f"Trade execution failed: {str(e)}"}],
+                        "is_error": True
+                    }
 
-            self.client = Anthropic(api_key=api_key)
+            @tool("close_position", "Close an open trading position", {
+                "trade_id": str, "exit_price": float, "reason": str
+            })
+            async def close_position_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+                """Close position tool for SDK."""
+                try:
+                    result = await self.tool_executor.execute("close_position", args)
+                    return {
+                        "content": [{"type": "text", "text": json.dumps(result)}]
+                    }
+                except Exception as e:
+                    return {
+                        "content": [{"type": "text", "text": f"Position close failed: {str(e)}"}],
+                        "is_error": True
+                    }
+
+            @tool("check_balance", "Get current account balance and buying power", {})
+            async def check_balance_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+                """Check balance tool for SDK."""
+                try:
+                    result = await self.tool_executor.execute("check_balance", args)
+                    return {
+                        "content": [{"type": "text", "text": json.dumps(result)}]
+                    }
+                except Exception as e:
+                    return {
+                        "content": [{"type": "text", "text": f"Balance check failed: {str(e)}"}],
+                        "is_error": True
+                    }
+
+            @tool("get_market_data", "Get current market data for a symbol", {"symbol": str})
+            async def get_market_data_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+                """Get market data tool for SDK."""
+                try:
+                    result = await self.tool_executor.execute("get_market_data", args)
+                    return {
+                        "content": [{"type": "text", "text": json.dumps(result)}]
+                    }
+                except Exception as e:
+                    return {
+                        "content": [{"type": "text", "text": f"Market data fetch failed: {str(e)}"}],
+                        "is_error": True
+                    }
+
+            @tool("analyze_portfolio", "Analyze current portfolio composition and risk", {})
+            async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+                """Analyze portfolio tool for SDK."""
+                try:
+                    result = await self.tool_executor.execute("analyze_portfolio", args)
+                    return {
+                        "content": [{"type": "text", "text": json.dumps(result)}]
+                    }
+                except Exception as e:
+                    return {
+                        "content": [{"type": "text", "text": f"Portfolio analysis failed: {str(e)}"}],
+                        "is_error": True
+                    }
+
+            @tool("get_open_positions", "Get all currently open trading positions", {})
+            async def get_open_positions_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+                """Get open positions tool for SDK."""
+                try:
+                    result = await self.tool_executor.execute("get_open_positions", args)
+                    return {
+                        "content": [{"type": "text", "text": json.dumps(result)}]
+                    }
+                except Exception as e:
+                    return {
+                        "content": [{"type": "text", "text": f"Open positions fetch failed: {str(e)}"}],
+                        "is_error": True
+                    }
+
+            @tool("calculate_risk_metrics", "Calculate portfolio risk metrics", {})
+            async def calculate_risk_metrics_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+                """Calculate risk metrics tool for SDK."""
+                try:
+                    result = await self.tool_executor.execute("calculate_risk_metrics", args)
+                    return {
+                        "content": [{"type": "text", "text": json.dumps(result)}]
+                    }
+                except Exception as e:
+                    return {
+                        "content": [{"type": "text", "text": f"Risk metrics calculation failed: {str(e)}"}],
+                        "is_error": True
+                    }
+
+            # Create MCP server with all tools
+            self.mcp_server = create_sdk_mcp_server(
+                name="trading_tools",
+                version="1.0.0",
+                tools=[
+                    execute_trade_tool,
+                    close_position_tool,
+                    check_balance_tool,
+                    get_market_data_tool,
+                    analyze_portfolio_tool,
+                    get_open_positions_tool,
+                    calculate_risk_metrics_tool
+                ]
+            )
+
+            # Configure SDK options (SDK best practice)
+            options = ClaudeAgentOptions(
+                mcp_servers={"trading": self.mcp_server},
+                allowed_tools=[
+                    "mcp__trading__execute_trade",
+                    "mcp__trading__close_position",
+                    "mcp__trading__check_balance",
+                    "mcp__trading__get_market_data",
+                    "mcp__trading__analyze_portfolio",
+                    "mcp__trading__get_open_positions",
+                    "mcp__trading__calculate_risk_metrics"
+                ],
+                system_prompt=self._build_system_prompt("swing_trading"),
+                max_turns=20
+            )
+
+            # Initialize SDK client
+            self.client = ClaudeSDKClient(options=options)
+            await self.client.__aenter__()
 
             # Initialize tool executor and validator
             risk_config = self.config.risk.__dict__ if hasattr(self.config, 'risk') else {}
@@ -73,12 +211,25 @@ class ClaudeAgentCoordinator(BaseCoordinator):
 
             self.validator = ResponseValidator(risk_config)
 
-            # Register tools
-            self._tools = self._build_tool_definitions()
-
             self._initialized = True
-            self._log_info("ClaudeAgentCoordinator initialized successfully")
+            self._log_info("ClaudeAgentCoordinator initialized successfully with SDK MCP server")
 
+        except CLINotFoundError:
+            self._log_error("Claude Code CLI not found. Please install Claude Code to use AI trading features.")
+            raise TradingError(
+                "Claude Code CLI not installed",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.CRITICAL,
+                recoverable=False
+            )
+        except ClaudeSDKError as e:
+            self._log_error(f"SDK initialization failed: {e}")
+            raise TradingError(
+                f"Claude SDK initialization failed: {e}",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.CRITICAL,
+                recoverable=False
+            )
         except Exception as e:
             self._log_error(f"Failed to initialize ClaudeAgentCoordinator: {e}")
             raise
@@ -89,12 +240,11 @@ class ClaudeAgentCoordinator(BaseCoordinator):
         context: Dict[str, Any]
     ) -> ClaudeSessionResult:
         """
-        Execute morning preparation session with multi-turn conversation.
+        Execute morning preparation session using Claude SDK query pattern.
 
-        CRITICAL FIX #1 & #2: Real tool execution + multi-turn support
-        - Tool results fed back to Claude for refinement
-        - Each tool execution triggers new Claude turn
-        - Continues until Claude stops using tools
+        SDK Best Practice: Use client.query() and client.receive_response() pattern
+        - Tool results are automatically fed back by SDK
+        - Multi-turn conversations handled by SDK
         """
         if not self.client or not self.tool_executor:
             raise TradingError(
@@ -106,92 +256,51 @@ class ClaudeAgentCoordinator(BaseCoordinator):
 
         session_id = f"session_{uuid.uuid4().hex[:16]}"
         start_time = datetime.utcnow()
-        total_input_tokens = 0
-        total_output_tokens = 0
 
         try:
             # Build optimized context
-            initial_prompt = self._build_morning_prompt(account_type, context)
+            prompt = self._build_morning_prompt(account_type, context)
 
-            # CRITICAL FIX #4: Enable prompt caching
-            messages = [{"role": "user", "content": initial_prompt}]
-            system_prompt = [
-                {
-                    "type": "text",
-                    "text": self._build_system_prompt(account_type),
-                    "cache_control": {"type": "ephemeral"}  # Cache system prompt
-                }
-            ]
+            # SDK query pattern (best practice)
+            await self.client.query(prompt)
 
+            # Collect responses and tool calls
             tool_calls_history = []
             all_decisions = []
-            turn_count = 0
-            max_turns = 10  # Prevent infinite loops
+            claude_responses = []
+            total_input_tokens = 0
+            total_output_tokens = 0
 
-            # Multi-turn conversation loop
-            while turn_count < max_turns:
-                turn_count += 1
+            # Process SDK responses
+            async for response in self.client.receive_response():
+                # Track response content
+                if hasattr(response, 'content'):
+                    claude_responses.append(str(response.content))
 
-                # Call Claude API with tools
-                response = self.client.messages.create(
-                    model="claude-3-5-sonnet-20250219",
-                    max_tokens=4096,
-                    system=system_prompt,
-                    tools=self._tools,
-                    messages=messages
-                )
-
-                # Track tokens
-                total_input_tokens += response.usage.input_tokens
-                total_output_tokens += response.usage.output_tokens
-
-                # Check if Claude wants to use tools
-                has_tool_calls = any(block.type == "tool_use" for block in response.content)
-
-                if not has_tool_calls:
-                    # Conversation complete
-                    logger.info(f"Claude finished trading session after {turn_count} turns")
-                    break
-
-                # Add assistant response to conversation
-                messages.append({"role": "assistant", "content": response.content})
-
-                # Execute all tool calls from this turn
-                tool_results = []
-
-                for content_block in response.content:
-                    if content_block.type == "tool_use":
-                        # CRITICAL FIX #1: Real tool execution with validation
-                        execution_result = await self.tool_executor.execute(
-                            tool_name=content_block.name,
-                            tool_input=content_block.input
+                # Track tool calls made by Claude
+                if hasattr(response, 'tool_calls'):
+                    for tool_call in response.tool_calls:
+                        # SDK automatically executes tools and feeds results back
+                        # We just track what happened
+                        tool_call_record = ToolCall(
+                            tool_name=ToolCallType(tool_call.name.replace("mcp__trading__", "")),
+                            input_data=tool_call.input,
+                            output_data=None,  # SDK handles execution
+                            error=None
                         )
-
-                        # Track tool call
-                        tool_call = ToolCall(
-                            tool_name=ToolCallType(content_block.name),
-                            input_data=content_block.input,
-                            output_data=execution_result.get("output"),
-                            error=execution_result.get("error")
-                        )
-                        tool_calls_history.append(tool_call)
+                        tool_calls_history.append(tool_call_record)
 
                         all_decisions.append({
-                            "tool": content_block.name,
-                            "input": content_block.input,
-                            "result": execution_result,
-                            "turn": turn_count
+                            "tool": tool_call.name,
+                            "input": tool_call.input,
+                            "result": "executed_by_sdk",
+                            "turn": len(all_decisions) + 1
                         })
 
-                        # Prepare tool result for Claude
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": content_block.id,
-                            "content": json.dumps(execution_result)
-                        })
-
-                # Add tool results back to conversation
-                messages.append({"role": "user", "content": tool_results})
+                # Track token usage if available
+                if hasattr(response, 'usage'):
+                    total_input_tokens += getattr(response.usage, 'input_tokens', 0)
+                    total_output_tokens += getattr(response.usage, 'output_tokens', 0)
 
             # Calculate duration
             end_time = datetime.utcnow()
@@ -203,7 +312,7 @@ class ClaudeAgentCoordinator(BaseCoordinator):
                 session_type=SessionType.MORNING_PREP,
                 account_type=account_type,
                 context_provided=context,
-                claude_response="Multi-turn session completed",
+                claude_response=" ".join(claude_responses) if claude_responses else "SDK session completed",
                 tool_calls=tool_calls_history,
                 decisions_made=all_decisions,
                 token_input=total_input_tokens,
@@ -223,15 +332,24 @@ class ClaudeAgentCoordinator(BaseCoordinator):
                 data={
                     "session_id": session_id,
                     "session_type": "morning_prep",
-                    "turns": turn_count,
+                    "turns": len(all_decisions),
                     "tool_calls": len(tool_calls_history),
                     "decisions": len(all_decisions)
                 }
             ))
 
-            self._log_info(f"Morning prep session completed: {session_id} ({turn_count} turns, {len(tool_calls_history)} tools)")
+            self._log_info(f"Morning prep session completed: {session_id} ({len(all_decisions)} decisions, {len(tool_calls_history)} tools)")
             return session_result
 
+        except ClaudeSDKError as e:
+            self._log_error(f"SDK session failed: {e}")
+            await self.event_bus.publish(Event(
+                id=str(uuid.uuid4()),
+                type=EventType.SYSTEM_ERROR,
+                source="ClaudeAgentCoordinator",
+                data={"error": str(e), "session_id": session_id}
+            ))
+            raise
         except Exception as e:
             self._log_error(f"Morning prep session failed: {e}")
             await self.event_bus.publish(Event(
@@ -248,9 +366,9 @@ class ClaudeAgentCoordinator(BaseCoordinator):
         context: Dict[str, Any]
     ) -> ClaudeSessionResult:
         """
-        Execute evening review session with real learning extraction.
+        Execute evening review session using Claude SDK query pattern.
 
-        CRITICAL FIX #3: Real learning extraction (not hardcoded)
+        SDK Best Practice: Use client.query() for learning extraction
         """
         if not self.client or not self.validator:
             raise TradingError(
@@ -266,27 +384,27 @@ class ClaudeAgentCoordinator(BaseCoordinator):
         try:
             prompt = self._build_evening_prompt(account_type, context)
 
-            # CRITICAL FIX #4: Enable prompt caching for evening session too
-            system_prompt = [
-                {
-                    "type": "text",
-                    "text": self._build_system_prompt(account_type),
-                    "cache_control": {"type": "ephemeral"}
-                }
-            ]
+            # SDK query pattern for evening review
+            await self.client.query(prompt)
 
-            response = self.client.messages.create(
-                model="claude-3-5-sonnet-20250219",
-                max_tokens=3000,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            # Collect responses
+            claude_responses = []
+            total_input_tokens = 0
+            total_output_tokens = 0
 
-            self._token_input += response.usage.input_tokens
-            self._token_output += response.usage.output_tokens
+            # Process SDK responses
+            async for response in self.client.receive_response():
+                # Track response content
+                if hasattr(response, 'content'):
+                    claude_responses.append(str(response.content))
 
-            # CRITICAL FIX #3: Use ResponseValidator to extract real learnings
-            response_text = response.content[0].text if response.content else ""
+                # Track token usage if available
+                if hasattr(response, 'usage'):
+                    total_input_tokens += getattr(response.usage, 'input_tokens', 0)
+                    total_output_tokens += getattr(response.usage, 'output_tokens', 0)
+
+            # Extract learnings from responses
+            response_text = " ".join(claude_responses) if claude_responses else ""
             learnings = await self.validator.parse_learnings(response_text)
 
             end_time = datetime.utcnow()
@@ -301,9 +419,9 @@ class ClaudeAgentCoordinator(BaseCoordinator):
                 tool_calls=[],
                 decisions_made=[],
                 learnings=learnings,
-                token_input=response.usage.input_tokens,
-                token_output=response.usage.output_tokens,
-                total_cost_usd=self._calculate_cost(response.usage.input_tokens, response.usage.output_tokens),
+                token_input=total_input_tokens,
+                token_output=total_output_tokens,
+                total_cost_usd=self._calculate_cost(total_input_tokens, total_output_tokens),
                 duration_ms=duration_ms
             )
 
@@ -323,53 +441,21 @@ class ClaudeAgentCoordinator(BaseCoordinator):
             self._log_info(f"Evening review session completed: {session_id}")
             return session_result
 
+        except ClaudeSDKError as e:
+            self._log_error(f"SDK evening review failed: {e}")
+            await self.event_bus.publish(Event(
+                id=str(uuid.uuid4()),
+                type=EventType.SYSTEM_ERROR,
+                source="ClaudeAgentCoordinator",
+                data={"error": str(e), "session_id": session_id}
+            ))
+            raise
         except Exception as e:
             self._log_error(f"Evening review session failed: {e}")
             raise
 
-    def _build_tool_definitions(self) -> List[Dict[str, Any]]:
-        """Build tool definitions for Claude."""
-        return [
-            {
-                "name": "execute_trade",
-                "description": "Execute a paper trade (buy/sell equity or option)",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "symbol": {"type": "string", "description": "Stock symbol (e.g., SBIN)"},
-                        "action": {"type": "string", "enum": ["buy", "sell"], "description": "Buy or sell"},
-                        "quantity": {"type": "integer", "minimum": 1, "description": "Number of shares"},
-                        "entry_price": {"type": "number", "minimum": 0, "description": "Entry/exit price"},
-                        "strategy_rationale": {"type": "string", "description": "Why this trade?"},
-                        "stop_loss": {"type": "number", "description": "Optional stop loss price"},
-                        "target_price": {"type": "number", "description": "Optional target price"}
-                    },
-                    "required": ["symbol", "action", "quantity", "entry_price", "strategy_rationale"]
-                }
-            },
-            {
-                "name": "close_position",
-                "description": "Close an open trading position",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "trade_id": {"type": "string", "description": "Trade ID to close"},
-                        "exit_price": {"type": "number", "minimum": 0, "description": "Exit price"},
-                        "reason": {"type": "string", "description": "Reason for closing"}
-                    },
-                    "required": ["trade_id", "exit_price", "reason"]
-                }
-            },
-            {
-                "name": "check_balance",
-                "description": "Get current account balance and buying power",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
-        ]
+    # Tool definitions removed - now using MCP server pattern with @tool decorators
+    # Tools are defined as functions above in initialize() method
 
     # NOTE: _execute_tool moved to ToolExecutor.execute()
     # Tool execution now happens in ToolExecutor with:
@@ -484,6 +570,9 @@ Provide detailed, actionable insights for continuous improvement. Focus on speci
     async def cleanup(self) -> None:
         """Cleanup coordinator resources."""
         self._log_info("ClaudeAgentCoordinator cleanup")
+        if self.client:
+            await self.client.__aexit__(None, None, None)
         self.client = None
+        self.mcp_server = None
         self.tool_executor = None
         self.validator = None

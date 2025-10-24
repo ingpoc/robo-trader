@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from ..core.event_bus import Event, EventType
 from ..models.scheduler import QueueName, TaskType
 from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ..core.di import DependencyContainer
+# from ..core.di import DependencyContainer  # Circular import - removed
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class EventRouterService:
     - Trigger validation and management
     """
 
-    def __init__(self, container: DependencyContainer):
+    def __init__(self, container=None):
         """Initialize event router service."""
         self.container = container
         self._triggers: Dict[str, EventTrigger] = {}
