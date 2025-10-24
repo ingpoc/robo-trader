@@ -11,6 +11,7 @@ from ...models.scheduler import QueueName, TaskType
 from .stores.task_store import TaskStore
 from .stores.stock_state_store import StockStateStore
 from .stores.strategy_log_store import StrategyLogStore
+from .monitors.monthly_reset_monitor import MonthlyResetMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +19,20 @@ logger = logging.getLogger(__name__)
 class BackgroundScheduler:
     """Event-driven background scheduler with database storage."""
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection):
+    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None):
         """Initialize event-driven background scheduler."""
         self.task_service = task_service
         self.event_bus = event_bus
         self.db = db_connection
+        self.config = config
 
         # Database stores
         self.task_store = TaskStore(db_connection)
         self.stock_state_store = StockStateStore(db_connection)
         self.strategy_log_store = StrategyLogStore(db_connection)
+
+        # Monitors
+        self.monthly_reset_monitor = MonthlyResetMonitor(self.config)
 
         # Execution state
         self._running = False
@@ -67,6 +72,9 @@ class BackgroundScheduler:
         # Initialize stores
         await self.stock_state_store.initialize()
         await self.strategy_log_store.initialize()
+
+        # Initialize monitors
+        await self.monthly_reset_monitor.initialize()
 
         # Start event listener
         self._event_listener_task = asyncio.create_task(self._event_listener())
@@ -263,6 +271,9 @@ class BackgroundScheduler:
             priority=8
         )
 
+        # Check for monthly reset
+        await self._check_monthly_reset()
+
     async def _get_portfolio_symbols(self) -> list:
         """Get all symbols from portfolio."""
         # This would query the portfolio service
@@ -280,6 +291,48 @@ class BackgroundScheduler:
     def _is_weekday(self, dt: datetime) -> bool:
         """Check if given datetime is a weekday (Monday-Friday)."""
         return dt.weekday() < 5  # 0=Monday, 4=Friday
+
+    async def _check_monthly_reset(self) -> None:
+        """Check and execute monthly performance reset if needed."""
+        try:
+            # Get paper trading account manager from container
+            from ...core.di import get_container
+            container = await get_container()
+            if not container:
+                logger.warning("Container not available for monthly reset check")
+                return
+
+            account_manager = await container.get("paper_trading_account_manager")
+            if not account_manager:
+                logger.warning("Paper trading account manager not available for monthly reset")
+                return
+
+            # Get current balances and closed trades for both account types
+            swing_balance = await account_manager.get_balance("swing")
+            options_balance = await account_manager.get_balance("options")
+
+            swing_trades = await account_manager.get_closed_trades("swing")
+            options_trades = await account_manager.get_closed_trades("options")
+
+            # Check for monthly reset (framework exists, needs activation)
+            initial_balance = 100000  # ₹1,00,000
+
+            # Check swing account reset
+            swing_reset = await self.monthly_reset_monitor.check_and_execute_reset(
+                account_manager, swing_balance, initial_balance, swing_trades, "swing"
+            )
+
+            # Check options account reset
+            options_reset = await self.monthly_reset_monitor.check_and_execute_reset(
+                account_manager, options_balance, initial_balance, options_trades, "options"
+            )
+
+            if swing_reset or options_reset:
+                logger.info("Monthly performance reset executed")
+                # Could emit event here for UI notification
+
+        except Exception as e:
+            logger.error(f"Error during monthly reset check: {e}")
 
     def get_status(self) -> Dict[str, Any]:
         """Get scheduler status."""

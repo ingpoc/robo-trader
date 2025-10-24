@@ -137,7 +137,7 @@ class DependencyContainer:
             event_bus = await self.get("event_bus")
             state_manager = await self.get("state_manager")
             # Use state_manager's connection pool as db_connection
-            return BackgroundScheduler(task_service, event_bus, state_manager._connection_pool)
+            return BackgroundScheduler(task_service, event_bus, state_manager._connection_pool, self.config)
 
         self._register_singleton("background_scheduler", create_background_scheduler)
 
@@ -289,28 +289,33 @@ class DependencyContainer:
         # Analysis Logger Service
         async def create_analysis_logger():
             from ..services.claude_agent.analysis_logger import AnalysisLogger
-            return AnalysisLogger()
+            strategy_store = await self.get("claude_strategy_store")
+            return AnalysisLogger(strategy_store)
 
         self._register_singleton("analysis_logger", create_analysis_logger)
 
         # Execution Monitor Service
         async def create_execution_monitor():
             from ..services.claude_agent.execution_monitor import ExecutionMonitor
-            return ExecutionMonitor()
+            strategy_store = await self.get("claude_strategy_store")
+            return ExecutionMonitor(strategy_store)
 
         self._register_singleton("execution_monitor", create_execution_monitor)
 
         # Daily Strategy Evaluator Service
         async def create_daily_strategy_evaluator():
             from ..services.claude_agent.daily_strategy_evaluator import DailyStrategyEvaluator
-            return DailyStrategyEvaluator()
+            strategy_store = await self.get("claude_strategy_store")
+            performance_calculator = await self.get("paper_trade_executor")  # Would need proper performance calculator
+            return DailyStrategyEvaluator(strategy_store, performance_calculator)
 
         self._register_singleton("daily_strategy_evaluator", create_daily_strategy_evaluator)
 
         # Activity Summarizer Service
         async def create_activity_summarizer():
             from ..services.claude_agent.activity_summarizer import ActivitySummarizer
-            return ActivitySummarizer()
+            strategy_store = await self.get("claude_strategy_store")
+            return ActivitySummarizer(strategy_store)
 
         self._register_singleton("activity_summarizer", create_activity_summarizer)
         # Event Router Service

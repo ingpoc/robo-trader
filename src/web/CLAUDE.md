@@ -4,6 +4,67 @@
 
 The web layer handles HTTP endpoints, WebSocket connections, and client communication. It must enforce error handling, rate limiting, and input validation for all requests.
 
+## Claude Agent SDK Integration (CRITICAL)
+
+### SDK-Only Web Endpoints (MANDATORY)
+
+All AI-related web endpoints must use **ONLY** Claude Agent SDK services. No direct Anthropic API calls are permitted.
+
+**AI Transparency Endpoints** (SDK-Only):
+- `/api/claude/transparency/research` - Research activity tracking
+- `/api/claude/transparency/analysis` - Analysis logging
+- `/api/claude/transparency/execution` - Execution monitoring
+- `/api/claude/transparency/daily-evaluation` - Strategy evaluation
+- `/api/claude/transparency/daily-summary` - Activity summarization
+
+**SDK Service Integration Pattern**:
+```python
+from src.services.claude_agent import (
+    ResearchTracker,
+    AnalysisLogger,
+    ExecutionMonitor,
+    DailyStrategyEvaluator,
+    ActivitySummarizer
+)
+
+class ClaudeAgentAPI:
+    def __init__(self, container):
+        self.container = container
+
+    async def get_research_activity(self, account_type: str):
+        """Get research activity using SDK-only ResearchTracker service."""
+        research_tracker = await self.container.get("research_tracker")
+        return await research_tracker.get_research_history(account_type=account_type)
+
+    async def get_analysis_activity(self, account_type: str):
+        """Get analysis activity using SDK-only AnalysisLogger service."""
+        analysis_logger = await self.container.get("analysis_logger")
+        return await analysis_logger.get_analysis_history(account_type=account_type)
+```
+
+**❌ FORBIDDEN - Direct API Usage in Web Layer:**
+```python
+# NEVER DO THIS in web endpoints
+from anthropic import AsyncAnthropic
+
+@app.get("/api/claude/direct")
+async def direct_claude_call():
+    client = AsyncAnthropic(api_key="sk-ant-...")
+    response = await client.messages.create(...)
+    return response
+```
+
+**Service Registration Requirements**:
+All transparency services must be registered in the DI container:
+```python
+# In src/core/di.py
+await container.register_singleton(ResearchTracker, "research_tracker")
+await container.register_singleton(AnalysisLogger, "analysis_logger")
+await container.register_singleton(ExecutionMonitor, "execution_monitor")
+await container.register_singleton(DailyStrategyEvaluator, "daily_strategy_evaluator")
+await container.register_singleton(ActivitySummarizer, "activity_summarizer")
+```
+
 ---
 
 ## Web Layer Architecture

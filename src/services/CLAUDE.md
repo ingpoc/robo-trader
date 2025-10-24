@@ -4,6 +4,62 @@
 
 Services layer contains domain-specific business logic. Each service manages one core responsibility and communicates with other services through the EventBus, never directly.
 
+## Claude Agent SDK Integration (CRITICAL)
+
+### SDK-Only Services (MANDATORY)
+
+All AI-related services must use **ONLY** Claude Agent SDK. No direct Anthropic API calls are permitted.
+
+**Transparency Services** (SDK-Only):
+- `analysis_logger.py` - Logs AI analysis decisions
+- `research_tracker.py` - Tracks research activities
+- `execution_monitor.py` - Monitors trade execution
+- `daily_strategy_evaluator.py` - Evaluates daily strategies
+- `activity_summarizer.py` - Summarizes AI activities
+
+**SDK Integration Pattern**:
+```python
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+
+class AIService:
+    def __init__(self, container):
+        self.container = container
+        self.sdk_client = None  # Initialize on first use
+
+    async def _ensure_sdk_client(self):
+        """Lazy initialization of SDK client."""
+        if not self.sdk_client:
+            options = ClaudeAgentOptions(
+                allowed_tools=[],  # Define allowed tools
+                system_prompt="AI service prompt",
+                max_turns=20
+            )
+            self.sdk_client = ClaudeSDKClient(options=options)
+            await self.sdk_client.__aenter__()
+
+    async def perform_ai_task(self, prompt: str) -> Dict[str, Any]:
+        """Perform AI task using SDK only."""
+        await self._ensure_sdk_client()
+        await self.sdk_client.query(prompt)
+
+        response_text = ""
+        async for response in self.sdk_client.receive_response():
+            if hasattr(response, 'content'):
+                for block in response.content:
+                    if hasattr(block, 'text'):
+                        response_text += block.text
+
+        return self._parse_response(response_text)
+```
+
+**❌ FORBIDDEN - Direct API Usage:**
+```python
+# NEVER DO THIS in services
+from anthropic import AsyncAnthropic
+client = AsyncAnthropic(api_key="sk-ant-...")
+response = await client.messages.create(...)
+```
+
 ---
 
 ## Service Architecture

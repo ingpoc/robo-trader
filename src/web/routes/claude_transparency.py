@@ -79,28 +79,34 @@ async def get_analysis_transparency(request: Request) -> Dict[str, Any]:
         if not container:
             return JSONResponse({"error": "System not initialized"}, status_code=500)
 
-        research_tracker = await container.get("research_tracker")
+        analysis_logger = await container.get("analysis_logger")
 
-        if not research_tracker:
-            return JSONResponse({"error": "Research tracker not available"}, status_code=500)
+        if not analysis_logger:
+            return JSONResponse({"error": "Analysis logger not available"}, status_code=500)
 
-        # Get analysis effectiveness
-        swing_effectiveness = await research_tracker.get_research_effectiveness("swing", days=7)
-        options_effectiveness = await research_tracker.get_research_effectiveness("options", days=7)
+        # Get analysis effectiveness from analysis logger
+        try:
+            analysis_effectiveness = await analysis_logger.get_analysis_effectiveness(days=7)
+        except Exception as e:
+            logger.warning(f"Could not get analysis effectiveness: {e}")
+            analysis_effectiveness = {"error": "Analysis effectiveness not available"}
+
+        try:
+            decision_history = await analysis_logger.get_decision_history(limit=10)
+        except Exception as e:
+            logger.warning(f"Could not get decision history: {e}")
+            decision_history = []
+
+        try:
+            strategy_evaluations = await analysis_logger.get_strategy_evaluations(limit=5)
+        except Exception as e:
+            logger.warning(f"Could not get strategy evaluations: {e}")
+            strategy_evaluations = []
 
         analysis_data = {
-            "swing_trading": swing_effectiveness,
-            "options_trading": options_effectiveness,
-            "overall_metrics": {
-                "total_sessions_7d": (swing_effectiveness.get("total_sessions", 0) +
-                                   options_effectiveness.get("total_sessions", 0)),
-                "avg_confidence_7d": (swing_effectiveness.get("avg_confidence_score", 0) +
-                                    options_effectiveness.get("avg_confidence_score", 0)) / 2,
-                "total_findings_7d": (swing_effectiveness.get("total_findings", 0) +
-                                    options_effectiveness.get("total_findings", 0)),
-                "total_recommendations_7d": (swing_effectiveness.get("total_recommendations", 0) +
-                                           options_effectiveness.get("total_recommendations", 0))
-            },
+            "analysis_effectiveness": analysis_effectiveness,
+            "decision_history": decision_history,
+            "strategy_evaluations": strategy_evaluations,
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 

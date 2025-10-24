@@ -4,6 +4,52 @@
 
 **Architecture Reference**: See @documentation/ARCHITECTURE_PATTERNS.md for detailed patterns and implementation guidelines.
 
+## Claude Agent SDK Architecture (CRITICAL)
+
+### SDK-Only Architecture (MANDATORY)
+
+**CRITICAL RULE**: This application uses **ONLY** Claude Agent SDK for all AI functionality. No direct Anthropic API calls are permitted.
+
+**Authentication**: Claude Code CLI authentication only (no API keys)
+**Implementation**: All AI features use `ClaudeSDKClient` and MCP server pattern
+**Tools**: Registered via `@tool` decorators in MCP servers
+**Sessions**: Managed through SDK client lifecycle
+
+**✅ CORRECT - SDK Implementation:**
+```python
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, tool
+
+# MCP server with tools
+@tool("analyze_portfolio")
+async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    # Tool implementation
+    return {"content": [{"type": "text", "text": json.dumps(result)}]}
+
+# SDK client usage
+options = ClaudeAgentOptions(mcp_servers={"trading": mcp_server})
+client = ClaudeSDKClient(options=options)
+await client.query(prompt)
+response = await client.receive_response()
+```
+
+**❌ VIOLATION - Direct API Usage:**
+```python
+# NEVER DO THIS
+from anthropic import AsyncAnthropic
+client = AsyncAnthropic(api_key="sk-ant-...")
+response = await client.messages.create(...)
+```
+
+**Why SDK-Only?**
+- Consistent authentication via Claude CLI
+- Proper tool execution patterns
+- Built-in session management
+- MCP server standardization
+- No API key management complexity
+- Official Claude integration patterns
+
+**Verification**: All AI code must import from `claude_agent_sdk` only. Direct `anthropic` imports are forbidden.
+
 ---
 
 ## Core Architectural Patterns (23 Patterns)
@@ -429,6 +475,7 @@ Never break existing public APIs. When refactoring, maintain import paths (use w
 | Three-queue scheduler needed | Implement PortfolioQueue, DataFetcherQueue, AIAnalysisQueue | Three Separate Scheduler Queues |
 | Event-driven triggering needed | NEWS_FETCHED → AI analysis, EARNINGS_FETCHED → fundamentals update | Event-Driven Triggering |
 | Monthly capital reset needed | Run MonthlyResetMonitor daily, reset on 1st, save performance history | Monthly Reset Monitor |
+| AI functionality needed | Use Claude Agent SDK only - NO direct Anthropic API calls | SDK-Only Architecture |
 
 ---
 
@@ -463,6 +510,7 @@ Every code submission MUST pass:
 - [ ] **Service Integration**: Inherit EventHandler for services reacting to events
 - [ ] **Atomic Writes**: Use temp files and os.replace() for data consistency
 - [ ] **Systematic Debugging**: Use 4-phase process when fixing issues (root cause first)
+- [ ] **SDK-Only Architecture**: NO direct Anthropic API calls - use Claude Agent SDK only
 
 ---
 

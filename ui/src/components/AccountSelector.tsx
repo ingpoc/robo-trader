@@ -147,12 +147,12 @@ export function AccountSelector({ className }: AccountSelectorProps) {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Balance</p>
-                  <p className="font-bold">₹{selectedAccount.balance.toLocaleString()}</p>
+                  <p className="font-bold">₹{(selectedAccount.balance || 0).toLocaleString()}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">P&L</p>
-                  <p className={`font-bold ${selectedAccount.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    ₹{selectedAccount.total_pnl.toLocaleString()}
+                  <p className={`font-bold ${(selectedAccount.total_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    ₹{(selectedAccount.total_pnl || 0).toLocaleString()}
                   </p>
                 </div>
               </div>

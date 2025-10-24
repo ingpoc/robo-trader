@@ -4,6 +4,52 @@
 
 This file contains backend-specific patterns, service organization, and layer-specific rules that complement the project-wide patterns in the root CLAUDE.md.
 
+## Claude Agent SDK Architecture (CRITICAL)
+
+### SDK-Only Architecture (MANDATORY)
+
+**CRITICAL RULE**: This application uses **ONLY** Claude Agent SDK for all AI functionality. No direct Anthropic API calls are permitted.
+
+**Authentication**: Claude Code CLI authentication only (no API keys)
+**Implementation**: All AI features use `ClaudeSDKClient` and MCP server pattern
+**Tools**: Registered via `@tool` decorators in MCP servers
+**Sessions**: Managed through SDK client lifecycle
+
+**✅ CORRECT - SDK Implementation:**
+```python
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, tool
+
+# MCP server with tools
+@tool("analyze_portfolio")
+async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    # Tool implementation
+    return {"content": [{"type": "text", "text": json.dumps(result)}]}
+
+# SDK client usage
+options = ClaudeAgentOptions(mcp_servers={"trading": mcp_server})
+client = ClaudeSDKClient(options=options)
+await client.query(prompt)
+response = await client.receive_response()
+```
+
+**❌ VIOLATION - Direct API Usage:**
+```python
+# NEVER DO THIS
+from anthropic import AsyncAnthropic
+client = AsyncAnthropic(api_key="sk-ant-...")
+response = await client.messages.create(...)
+```
+
+**Why SDK-Only?**
+- Consistent authentication via Claude CLI
+- Proper tool execution patterns
+- Built-in session management
+- MCP server standardization
+- No API key management complexity
+- Official Claude integration patterns
+
+**Verification**: All AI code must import from `claude_agent_sdk` only. Direct `anthropic` imports are forbidden.
+
 ## Backend Architecture Layers
 
 ### 1. Core Layer (`src/core/`)

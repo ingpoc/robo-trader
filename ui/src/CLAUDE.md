@@ -4,6 +4,80 @@
 
 Frontend architecture focuses on component organization, real-time data updates, and maintainable UI code. This file complements the root CLAUDE.md with React/TypeScript-specific patterns.
 
+## Claude Agent SDK Integration (CRITICAL)
+
+### SDK-Only Frontend Architecture (MANDATORY)
+
+All AI-related frontend features must consume **ONLY** Claude Agent SDK services through backend APIs. No direct Anthropic API calls are permitted.
+
+**AI Transparency Features** (SDK-Only):
+- `features/ai-transparency/` - Claude trading transparency center
+- `features/dashboard/` - AI insights and recommendations
+- `features/agents/` - Multi-agent coordination monitoring
+
+**SDK Service Consumption Pattern**:
+```typescript
+// features/ai-transparency/hooks/useAITransparency.ts
+export const useAITransparency = () => {
+  const [data, setData] = useState<AITransparencyData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Consume SDK-only backend APIs
+    fetch('/api/claude/transparency/research')
+      .then(response => response.json())
+      .then(data => setData(data))
+      .catch(error => setError(error.message));
+  }, []);
+
+  return { data, error };
+};
+
+// AITransparencyFeature.tsx
+const AITransparencyFeature = () => {
+  const { data, error } = useAITransparency();
+
+  if (error) return <ErrorCard message={error} />;
+  if (!data) return <LoadingSpinner />;
+
+  return (
+    <div>
+      {/* Display SDK-powered AI transparency data */}
+      <TradeDecisionLog trades={data.trades} />
+      <StrategyReflections reflections={data.reflections} />
+    </div>
+  );
+};
+```
+
+**❌ FORBIDDEN - Direct API Usage in Frontend:**
+```typescript
+// NEVER DO THIS in frontend code
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+  apiKey: 'sk-ant-...', // NEVER expose API keys in frontend
+});
+
+const response = await client.messages.create({
+  model: 'claude-3-sonnet-20240229',
+  max_tokens: 1000,
+  messages: [{ role: 'user', content: 'Hello' }],
+});
+```
+
+**Backend API Consumption Only**:
+- All AI features consume backend APIs that use SDK services
+- Backend APIs registered in `src/web/claude_agent_api.py`
+- SDK services registered in DI container
+- No API keys or direct Claude calls in frontend
+
+**Security Benefits**:
+- API keys never exposed to frontend
+- All AI calls go through authenticated backend
+- Rate limiting and validation on backend
+- Consistent error handling and logging
+
 ## Frontend Architecture
 
 ### 1. Pages (`ui/src/pages/`)
