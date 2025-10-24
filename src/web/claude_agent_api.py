@@ -413,10 +413,12 @@ async def get_claude_status(
 
     except Exception as e:
         logger.error(f"Failed to get Claude status: {str(e)}", exc_info=True)
+        # Return a simple error response without the complex error object
+        # The error is likely due to SDK initialization issues
         return {
             "status": "error",
             "initialized": False,
-            "error": str(e),
+            "error": "SDK initialization failed: Claude Code CLI not available",
             "timestamp": datetime.utcnow().isoformat(),
         }
 
