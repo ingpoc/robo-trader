@@ -9,6 +9,7 @@ from .analysis_logger import AnalysisLogger, AnalysisStep, TradeDecisionLog, Str
 from .execution_monitor import ExecutionMonitor, ExecutionStep, TradeExecutionLog, RiskCheckResult
 from .daily_strategy_evaluator import DailyStrategyEvaluator, StrategyPerformanceMetrics, StrategyRefinement, DailyStrategyReport
 from .activity_summarizer import ActivitySummarizer, DailyActivitySummary, WeeklyActivitySummary
+from .trade_decision_logger import TradeDecisionLogger
 
 __all__ = [
     # Research tracking
@@ -38,4 +39,7 @@ __all__ = [
     "ActivitySummarizer",
     "DailyActivitySummary",
     "WeeklyActivitySummary",
+
+    # Trade decision logging
+    "TradeDecisionLogger",
 ]
