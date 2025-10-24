@@ -62,6 +62,16 @@ class EventType(Enum):
     SYSTEM_ERROR = "system.error"
     SYSTEM_MAINTENANCE = "system.maintenance"
 
+    # Prompt Optimization events
+    PROMPT_OPTIMIZED = "prompt.optimized"
+    PROMPT_QUALITY_ANALYSIS = "prompt.quality_analysis"
+    CLAUDE_SESSION_STARTED = "claude.session_started"
+    CLAUDE_DATA_QUALITY_ANALYSIS = "claude.data_quality_analysis"
+    STRATEGY_FORMED = "strategy.formed"
+    DATA_ACQUISITION_COMPLETED = "data.acquisition_completed"
+    MARKET_OPEN = "market.open"
+    MARKET_CLOSE = "market.close"
+
 
 @dataclass
 class Event:

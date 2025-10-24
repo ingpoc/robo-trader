@@ -49,6 +49,8 @@ from ..services.claude_agent.tool_executor import ToolExecutor
 from ..services.claude_agent.response_validator import ResponseValidator
 from ..stores.claude_strategy_store import ClaudeStrategyStore
 from ..services.paper_trading_execution_service import PaperTradingExecutionService
+from ..services.prompt_optimization_service import PromptOptimizationService
+from ..services.claude_agent.prompt_optimization_tools import PromptOptimizationTools
 
 T = TypeVar('T')
 
@@ -367,6 +369,33 @@ class DependencyContainer:
             return feature_service
 
         self._register_singleton("feature_management_service", create_feature_management_service)
+
+        # Prompt Optimization Service
+        async def create_prompt_optimization_service():
+            from ..background_scheduler.clients.perplexity_client import PerplexityClient
+            event_bus = await self.get("event_bus")
+
+            # Create Perplexity client
+            perplexity_client = PerplexityClient()
+
+            # Create prompt optimization service
+            prompt_service = PromptOptimizationService(
+                config=self.config.get("prompt_optimization", {}),
+                event_bus=event_bus,
+                container=self,
+                perplexity_client=perplexity_client
+            )
+            await prompt_service.initialize()
+            return prompt_service
+
+        self._register_singleton("prompt_optimization_service", create_prompt_optimization_service)
+
+        # Prompt Optimization Tools for Claude MCP
+        async def create_prompt_optimization_tools():
+            prompt_service = await self.get("prompt_optimization_service")
+            return PromptOptimizationTools(prompt_service)
+
+        self._register_singleton("prompt_optimization_tools", create_prompt_optimization_tools)
 
         # Coordinators
         async def create_session_coordinator():

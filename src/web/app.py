@@ -36,6 +36,7 @@ from .claude_agent_api import router as claude_agent_router
 from .queues_api import router as queues_router
 from .websocket_differ import WebSocketDiffer
 from .connection_manager import ConnectionManager
+from .broadcast_throttler import BroadcastThrottler, ThrottleConfig
 
 # Import route modules
 from .routes import (
@@ -50,6 +51,7 @@ from .routes.news_earnings import router as news_earnings_router
 from .routes.claude_transparency import router as claude_transparency_router
 from .routes.config import router as config_router
 from .routes.logs import router as logs_router
+from .routes.prompt_optimization import router as prompt_optimization_router
 
 # ============================================================================
 # FastAPI Application Setup
@@ -154,6 +156,7 @@ app.include_router(news_earnings_router)
 app.include_router(claude_transparency_router)
 app.include_router(config_router)
 app.include_router(logs_router)
+app.include_router(prompt_optimization_router)
 
 # ============================================================================
 # Global State

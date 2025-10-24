@@ -164,5 +164,30 @@
       "priority": "medium",
       "max_retries": 2
     }
+  },
+  "prompt_optimization": {
+    "max_optimization_attempts": 3,
+    "quality_threshold": 8.0,
+    "enable_real_time_optimization": true,
+    "min_data_quality_for_trading": 7.0,
+    "optimization_timeout_seconds": 120,
+    "enable_auto_prompt_evolution": true,
+    "track_prompt_performance": true,
+    "cache_optimized_prompts": true,
+    "cache_duration_hours": 24,
+    "log_optimization_details": true,
+    "enable_a_b_testing": false,
+    "ab_test_sample_size": 10
+  },
+  "claude_agent": {
+    "daily_token_budget": 15000,
+    "enable_prompt_optimization": true,
+    "log_data_quality_analysis": true,
+    "transparency_level": "full",
+    "session_timeout_minutes": 30,
+    "max_concurrent_sessions": 2,
+    "enable_real_time_optimization": true,
+    "save_optimization_history": true,
+    "auto_improve_low_quality_prompts": true
   }
 }
