@@ -47,6 +47,7 @@ from .routes import (
 )
 from .routes.paper_trading import router as paper_trading_router
 from .routes.news_earnings import router as news_earnings_router
+from .routes.claude_transparency import router as claude_transparency_router
 from .routes.config import router as config_router
 from .routes.logs import router as logs_router
 
@@ -150,6 +151,7 @@ app.include_router(agents_router)
 app.include_router(analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(news_earnings_router)
+app.include_router(claude_transparency_router)
 app.include_router(config_router)
 app.include_router(logs_router)
 
@@ -542,22 +544,41 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""
     client_id = None
     try:
-        await connection_manager.connect(websocket, "unknown")
+        client_id = await connection_manager.connect(websocket)
+
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connection_established",
+            "client_id": client_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": "WebSocket connection established successfully"
+        })
 
         while True:
             data = await websocket.receive_json()
 
             if data.get("type") == "ping":
-                await websocket.send_json({"type": "pong"})
+                await websocket.send_json({
+                    "type": "pong",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+            elif data.get("type") == "subscribe":
+                # Handle subscription requests
+                await websocket.send_json({
+                    "type": "subscription_confirmed",
+                    "channels": data.get("channels", ["dashboard", "portfolio"]),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
 
     except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected: {client_id}")
         if client_id:
-            await connection_manager.disconnect(websocket, client_id)
+            await connection_manager.disconnect(websocket)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for {client_id}: {e}")
         if connection_manager:
             try:
-                await connection_manager.disconnect(websocket, client_id or "unknown")
+                await connection_manager.disconnect(websocket)
             except:
                 pass
 

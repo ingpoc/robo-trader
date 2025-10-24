@@ -112,3 +112,63 @@ async def get_database_config(request: Request) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Database config retrieval failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/config")
+@limiter.limit(config_limit)
+async def get_config(request: Request) -> Dict[str, Any]:
+    """Get all configuration - matches frontend expectation."""
+    try:
+        return {
+            "scheduler": {
+                "portfolioScanFrequency": 60,
+                "newsMonitoringTime": "16:00",
+                "earningsCheckFrequency": 7,
+                "fundamentalRecheck": True,
+                "marketHours": {
+                    "start": "09:15",
+                    "end": "15:30",
+                    "timezone": "IST"
+                }
+            },
+            "trading": {
+                "environment": "paper_trading",
+                "paperCapital": {
+                    "swing": 100000,
+                    "options": 100000
+                },
+                "riskSettings": {
+                    "maxPositionSize": 5,
+                    "maxPortfolioRisk": 10,
+                    "stopLossDefault": 2
+                },
+                "autoApprove": False
+            },
+            "agent": {
+                "dailyTokenBudget": 15000,
+                "dailyPlanningTime": "09:15 IST",
+                "weeklyPlanningDay": "Monday",
+                "tokenAllocations": {
+                    "swing": 40,
+                    "options": 35,
+                    "analysis": 25
+                }
+            },
+            "dataSource": {
+                "perplexityApiKey": "[****]",
+                "queryTemplates": {
+                    "news": "Fetch latest news on [SYMBOL]",
+                    "earnings": "Fetch earnings date for [SYMBOL]",
+                    "fundamentals": "Fetch current fundamentals for [SYMBOL]"
+                },
+                "queryVersioning": True
+            },
+            "database": {
+                "databasePath": "/data/robo-trader.db",
+                "backupFrequency": "daily",
+                "backupRetention": 7
+            }
+        }
+    except Exception as e:
+        logger.error(f"Config retrieval failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

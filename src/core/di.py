@@ -257,6 +257,9 @@ class DependencyContainer:
             store = ClaudeStrategyStore(self.config)
             await store.initialize()
             return store
+
+        self._register_singleton("claude_strategy_store", create_claude_strategy_store)
+
         # Claude SDK Authentication
         async def create_claude_sdk_auth():
             from ..services.claude_agent.sdk_auth import ClaudeSDKAuth
@@ -265,6 +268,7 @@ class DependencyContainer:
             return sdk_auth
 
         self._register_singleton("claude_sdk_auth", create_claude_sdk_auth)
+
         # Claude Agent MCP Server
         async def create_claude_agent_mcp_server():
             from ..services.claude_agent.mcp_server import ClaudeAgentMCPServer
@@ -273,6 +277,14 @@ class DependencyContainer:
             return mcp_server
 
         self._register_singleton("claude_agent_mcp_server", create_claude_agent_mcp_server)
+
+        # Research Tracker Service
+        async def create_research_tracker():
+            from ..services.claude_agent.research_tracker import ResearchTracker
+            strategy_store = await self.get("claude_strategy_store")
+            return ResearchTracker(strategy_store)
+
+        self._register_singleton("research_tracker", create_research_tracker)
         # Event Router Service
         async def create_event_router_service():
             from ..services.event_router_service import EventRouterService

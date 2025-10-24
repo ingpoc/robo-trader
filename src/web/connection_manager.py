@@ -43,39 +43,42 @@ class ConnectionManager:
         self._cleanup_task: Optional[asyncio.Task] = None
         self._cleanup_interval_seconds = 10
 
-    async def connect(self, websocket: WebSocket) -> str:
+    async def connect(self, websocket: WebSocket, client_id: Optional[str] = None) -> str:
         """
         Add a new WebSocket connection.
 
         Args:
             websocket: WebSocket instance to add
+            client_id: Optional client identifier
 
         Returns:
             connection_id: Unique identifier for this connection
         """
         await websocket.accept()
 
-        connection_id = f"ws_{id(websocket)}"
+        connection_id = client_id or f"ws_{id(websocket)}"
 
         async with self._lock:
             self.active_connections[connection_id] = websocket
             self._generation_counter += 1
 
-        logger.debug(f"WebSocket connected: {connection_id} (total: {len(self.active_connections)})")
+        logger.info(f"WebSocket connected: {connection_id} (total: {len(self.active_connections)})")
 
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
         return connection_id
 
-    async def disconnect(self, websocket: WebSocket) -> None:
+    async def disconnect(self, websocket: WebSocket, connection_id: Optional[str] = None) -> None:
         """
         Remove a WebSocket connection.
 
         Args:
             websocket: WebSocket instance to remove
+            connection_id: Optional connection identifier
         """
-        connection_id = f"ws_{id(websocket)}"
+        if connection_id is None:
+            connection_id = f"ws_{id(websocket)}"
 
         async with self._lock:
             removed = self.active_connections.pop(connection_id, None)
@@ -84,7 +87,7 @@ class ConnectionManager:
                 self._generation_counter += 1
 
         if removed:
-            logger.debug(f"WebSocket disconnected: {connection_id} (remaining: {len(self.active_connections)})")
+            logger.info(f"WebSocket disconnected: {connection_id} (remaining: {len(self.active_connections)})")
 
     async def broadcast(self, message: Dict[str, Any]) -> BroadcastResult:
         """
