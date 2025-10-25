@@ -10,15 +10,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Home, Newspaper, Users, TrendingUp, Settings, Settings2, FileText, X, Wifi, WifiOff, User, LogOut, Bell, Palette } from 'lucide-react'
+import { Home, Newspaper, Users, Settings, FileText, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet, Eye, Database } from 'lucide-react'
 
 const menuItems = [
   { path: '/', label: 'Overview', icon: Home },
   { path: '/news-earnings', label: 'News & Earnings', icon: Newspaper },
   { path: '/agents', label: 'Agents', icon: Users },
-  { path: '/trading', label: 'Trading', icon: TrendingUp },
+  { path: '/paper-trading', label: 'Paper Trading', icon: Wallet },
+  { path: '/ai-transparency', label: 'AI Transparency', icon: Eye },
+  { path: '/system-health', label: 'System Health', icon: Database },
   { path: '/config', label: 'Config', icon: Settings },
-  { path: '/agent-config', label: 'Agent Config', icon: Settings2 },
   { path: '/logs', label: 'Logs', icon: FileText },
 ]
 

@@ -1,0 +1,19 @@
+FROM localhost/robo-trader-base:latest
+
+# Copy service-specific code
+COPY containers/paper-trading/run.sh /app/run.sh
+COPY containers/paper-trading/config.json /app/config/service-config.json
+
+# Set service-specific environment
+ENV SERVICE_NAME=paper-trading
+ENV SERVICE_PORT=8008
+
+# Expose port
+EXPOSE 8008
+
+# Health check for paper trading service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8008/health || exit 1
+
+# Run the paper trading service
+CMD ["/app/run.sh"]

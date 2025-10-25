@@ -1,25 +1,34 @@
-# Agents package
+"""
+Robo Trader Agents Package
 
-from .server import create_agents_mcp_server
-from .portfolio_analyzer import create_portfolio_analyzer_tool
-from .technical_analyst import create_technical_analyst_tool
-from .fundamental_screener import create_fundamental_screener_tool
-from .risk_manager import create_risk_manager_tool
-from .execution_agent import create_execution_agent_tool
-from .market_monitor import create_market_monitor_tool
-from .educational_agent import create_educational_tools
-from .alert_agent import create_alert_tools
-from .strategy_agent import create_strategy_tools
+This package contains specialized AI agents for different trading functions.
+Agents collaborate through the multi-agent framework for comprehensive analysis.
+"""
+
+from .alert_agent import AlertAgent
+from .educational_agent import EducationalAgent
+from .execution_agent import ExecutionAgent
+from .fundamental_screener import FundamentalScreener
+from .market_monitor import MarketMonitor
+from .portfolio_analyzer import PortfolioAnalyzer
+from .recommendation_agent import RecommendationAgent
+from .risk_manager import RiskManager
+from .strategy_agent import StrategyAgent
+from .technical_analyst import TechnicalAnalyst
+from .server import AgentServer
+from .collaboration_coordinator import CollaborationCoordinator
 
 __all__ = [
-    "create_agents_mcp_server",
-    "create_portfolio_analyzer_tool",
-    "create_technical_analyst_tool",
-    "create_fundamental_screener_tool",
-    "create_risk_manager_tool",
-    "create_execution_agent_tool",
-    "create_market_monitor_tool",
-    "create_educational_tools",
-    "create_alert_tools",
-    "create_strategy_tools",
+    'AlertAgent',
+    'EducationalAgent',
+    'ExecutionAgent',
+    'FundamentalScreener',
+    'MarketMonitor',
+    'PortfolioAnalyzer',
+    'RecommendationAgent',
+    'RiskManager',
+    'StrategyAgent',
+    'TechnicalAnalyst',
+    'AgentServer',
+    'CollaborationCoordinator'
 ]

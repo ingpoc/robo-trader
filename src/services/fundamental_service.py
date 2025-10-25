@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import asdict
 
 from loguru import logger
-from ..config import Config
+from src.config import Config
 from ..core.database_state import DatabaseStateManager
 from ..core.state_models import FundamentalAnalysis
 from ..core.perplexity_client import (

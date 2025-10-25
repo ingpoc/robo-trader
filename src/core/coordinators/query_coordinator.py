@@ -18,7 +18,7 @@ from claude_agent_sdk import (
 )
 from loguru import logger
 
-from ...config import Config
+from src.config import Config
 from .base_coordinator import BaseCoordinator
 from .session_coordinator import SessionCoordinator
 

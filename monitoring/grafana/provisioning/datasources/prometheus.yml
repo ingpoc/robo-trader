@@ -1,0 +1,19 @@
+# Grafana Datasource - Prometheus
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://robo-trader-prometheus:9090
+    password: ''
+    user: ''
+    database: ''
+    basicAuth: false
+    isDefault: true
+    jsonData:
+      tlsSkipVerify: true
+    readOnly: false
+    editable: true

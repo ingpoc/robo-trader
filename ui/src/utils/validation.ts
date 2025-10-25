@@ -19,6 +19,10 @@ export const tradeSchema = z.object({
     required_error: 'Please select order type',
   }),
   price: z.number().positive('Price must be greater than 0').optional(),
+  strategy_tag: z.string().optional(),
+  stop_loss: z.number().positive('Stop loss must be greater than 0').optional(),
+  target_price: z.number().positive('Target price must be greater than 0').optional(),
+  rationale: z.string().min(1, 'Trading rationale is required'),
 }).refine((data) => {
   // If order type is LIMIT, price is required
   if (data.order_type === 'LIMIT') {

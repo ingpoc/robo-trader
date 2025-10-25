@@ -6,13 +6,15 @@ and improve testability and maintainability.
 """
 
 import asyncio
+import logging
 from typing import Dict, Any, Optional, Type, TypeVar, Generic
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
-from ..config import Config
+logger = logging.getLogger(__name__)
+
+from src.config import Config
 from .orchestrator import RoboTraderOrchestrator
-from ..mcp.broker import ZerodhaBroker
 from .database_state import DatabaseStateManager
 from .background_scheduler import BackgroundScheduler
 from .conversation_manager import ConversationManager
@@ -21,11 +23,7 @@ from .ai_planner import AIPlanner
 from .resource_manager import ResourceManager
 from .event_bus import EventBus, initialize_event_bus
 from .safety_layer import SafetyLayer
-from ..services.portfolio_service import PortfolioService
-from ..services.risk_service import RiskService
-from ..services.execution_service import ExecutionService
-from ..services.analytics_service import AnalyticsService
-from ..services.learning_service import LearningService
+# Services imported locally to avoid circular imports
 from .coordinators import (
     SessionCoordinator,
     QueryCoordinator,
@@ -33,7 +31,26 @@ from .coordinators import (
     StatusCoordinator,
     LifecycleCoordinator,
     BroadcastCoordinator,
+    ClaudeAgentCoordinator,  # Now imported directly
 )
+
+# Import services directly to avoid circular dependencies
+from ..services.portfolio_service import PortfolioService
+from ..services.risk_service import RiskService
+from ..services.execution_service import ExecutionService
+from ..services.analytics_service import AnalyticsService
+from ..services.learning_service import LearningService
+from ..services.strategy_evolution_engine import StrategyEvolutionEngine
+from ..services.market_data_service import MarketDataService
+from ..services.feature_management.service import FeatureManagementService
+from ..services.event_router_service import EventRouterService
+# from ..services.queue_management.core.queue_orchestration_layer import QueueCoordinator  # Not used in DI
+from ..services.claude_agent.tool_executor import ToolExecutor
+from ..services.claude_agent.response_validator import ResponseValidator
+from ..stores.claude_strategy_store import ClaudeStrategyStore
+from ..services.paper_trading_execution_service import PaperTradingExecutionService
+from ..services.prompt_optimization_service import PromptOptimizationService
+from ..services.claude_agent.prompt_optimization_tools import PromptOptimizationTools
 
 T = TypeVar('T')
 
@@ -98,12 +115,6 @@ class DependencyContainer:
 
         self._register_singleton("state_manager", create_state_manager)
 
-        # Broker - singleton
-        async def create_broker():
-            return ZerodhaBroker(self.config)
-
-        self._register_singleton("broker", create_broker)
-
         # AI Planner
         async def create_ai_planner():
             state_manager = await self.get("state_manager")
@@ -111,11 +122,25 @@ class DependencyContainer:
 
         self._register_singleton("ai_planner", create_ai_planner)
 
+        # Task Service
+        async def create_task_service():
+            from ..stores.scheduler_task_store import SchedulerTaskStore
+            from ..services.scheduler.task_service import SchedulerTaskService
+
+            # Get database connection from state manager
+            state_manager = await self.get("state_manager")
+            task_store = SchedulerTaskStore(state_manager._connection_pool)
+            return SchedulerTaskService(task_store)
+
+        self._register_singleton("task_service", create_task_service)
+
         # Background Scheduler
         async def create_background_scheduler():
+            task_service = await self.get("task_service")
+            event_bus = await self.get("event_bus")
             state_manager = await self.get("state_manager")
-            # Orchestrator will be injected later to avoid circular dependency
-            return BackgroundScheduler(self.config, state_manager)
+            # Use state_manager's connection pool as db_connection
+            return BackgroundScheduler(task_service, event_bus, state_manager._connection_pool, self.config)
 
         self._register_singleton("background_scheduler", create_background_scheduler)
 
@@ -154,8 +179,7 @@ class DependencyContainer:
         # Execution Service
         async def create_execution_service():
             event_bus = await self.get("event_bus")
-            broker = await self.get("broker")
-            execution_service = ExecutionService(self.config, event_bus, broker)
+            execution_service = ExecutionService(self.config, event_bus)
             await execution_service.initialize()
             return execution_service
 
@@ -179,6 +203,200 @@ class DependencyContainer:
 
         self._register_singleton("learning_service", create_learning_service)
 
+        # Strategy Evolution Engine
+        async def create_strategy_evolution_engine():
+            from ..services.strategy_evolution_engine import StrategyEvolutionEngine
+            event_bus = await self.get("event_bus")
+            engine = StrategyEvolutionEngine(self.config, event_bus)
+            await engine.initialize()
+            return engine
+
+        self._register_singleton("strategy_evolution_engine", create_strategy_evolution_engine)
+
+        # Paper Trading Infrastructure
+        async def create_paper_trading_store():
+            from ..stores.paper_trading_store import PaperTradingStore
+            import aiosqlite
+            # Create a separate connection for paper trading store to avoid context manager issues
+            db_path = self.config.state_dir / "robo_trader.db"
+            connection = await aiosqlite.connect(str(db_path))
+            store = PaperTradingStore(connection)
+            await store.initialize()
+            return store
+
+        self._register_singleton("paper_trading_store", create_paper_trading_store)
+
+        async def create_paper_trading_account_manager():
+            from ..services.paper_trading.account_manager import PaperTradingAccountManager
+            store = await self.get("paper_trading_store")
+            manager = PaperTradingAccountManager(store)
+            return manager
+
+        self._register_singleton("paper_trading_account_manager", create_paper_trading_account_manager)
+
+        async def create_paper_trade_executor():
+            from ..services.paper_trading.trade_executor import PaperTradeExecutor
+            store = await self.get("paper_trading_store")
+            account_manager = await self.get("paper_trading_account_manager")
+            executor = PaperTradeExecutor(store, account_manager)
+            return executor
+
+        self._register_singleton("paper_trade_executor", create_paper_trade_executor)
+
+        # Paper Trading Execution Service (new - handles buy/sell/close with DB persistence)
+        async def create_paper_trading_execution_service():
+            execution_service = PaperTradingExecutionService()
+            await execution_service.initialize()
+            return execution_service
+
+        self._register_singleton("paper_trading_execution_service", create_paper_trading_execution_service)
+
+        # Claude Agent Services
+        async def create_tool_executor():
+            risk_config = self.config.risk.__dict__ if hasattr(self.config, 'risk') else {}
+            return ToolExecutor(self, risk_config)
+
+        self._register_singleton("tool_executor", create_tool_executor)
+
+        async def create_response_validator():
+            risk_config = self.config.risk.__dict__ if hasattr(self.config, 'risk') else {}
+            return ResponseValidator(risk_config)
+
+        self._register_singleton("response_validator", create_response_validator)
+
+        async def create_claude_strategy_store():
+            store = ClaudeStrategyStore(self.config)
+            await store.initialize()
+            return store
+
+        self._register_singleton("claude_strategy_store", create_claude_strategy_store)
+
+        # Claude SDK Authentication
+        async def create_claude_sdk_auth():
+            from ..services.claude_agent.sdk_auth import ClaudeSDKAuth
+            sdk_auth = ClaudeSDKAuth(self)
+            await sdk_auth.initialize()
+            return sdk_auth
+
+        self._register_singleton("claude_sdk_auth", create_claude_sdk_auth)
+
+        # Claude Agent MCP Server
+        async def create_claude_agent_mcp_server():
+            from ..services.claude_agent.mcp_server import ClaudeAgentMCPServer
+            mcp_server = ClaudeAgentMCPServer(self)
+            await mcp_server.initialize()
+            return mcp_server
+
+        self._register_singleton("claude_agent_mcp_server", create_claude_agent_mcp_server)
+
+        # Research Tracker Service
+        async def create_research_tracker():
+            from ..services.claude_agent.research_tracker import ResearchTracker
+            strategy_store = await self.get("claude_strategy_store")
+            return ResearchTracker(strategy_store)
+
+        self._register_singleton("research_tracker", create_research_tracker)
+
+        # Analysis Logger Service
+        async def create_analysis_logger():
+            from ..services.claude_agent.analysis_logger import AnalysisLogger
+            strategy_store = await self.get("claude_strategy_store")
+            return AnalysisLogger(strategy_store)
+
+        self._register_singleton("analysis_logger", create_analysis_logger)
+
+        # Execution Monitor Service
+        async def create_execution_monitor():
+            from ..services.claude_agent.execution_monitor import ExecutionMonitor
+            strategy_store = await self.get("claude_strategy_store")
+            return ExecutionMonitor(strategy_store)
+
+        self._register_singleton("execution_monitor", create_execution_monitor)
+
+        # Daily Strategy Evaluator Service
+        async def create_daily_strategy_evaluator():
+            from ..services.claude_agent.daily_strategy_evaluator import DailyStrategyEvaluator
+            strategy_store = await self.get("claude_strategy_store")
+            performance_calculator = await self.get("paper_trade_executor")  # Would need proper performance calculator
+            return DailyStrategyEvaluator(strategy_store, performance_calculator)
+
+        self._register_singleton("daily_strategy_evaluator", create_daily_strategy_evaluator)
+
+        # Activity Summarizer Service
+        async def create_activity_summarizer():
+            from ..services.claude_agent.activity_summarizer import ActivitySummarizer
+            strategy_store = await self.get("claude_strategy_store")
+            return ActivitySummarizer(strategy_store)
+
+        self._register_singleton("activity_summarizer", create_activity_summarizer)
+
+        # Trade Decision Logger Service
+        async def create_trade_decision_logger():
+            from ..services.claude_agent.trade_decision_logger import TradeDecisionLogger
+            trade_decision_logger = TradeDecisionLogger()
+            await trade_decision_logger.initialize()
+            return trade_decision_logger
+
+        self._register_singleton("trade_decision_logger", create_trade_decision_logger)
+
+        # Event Router Service
+        async def create_event_router_service():
+            from ..services.event_router_service import EventRouterService
+            event_router_service = EventRouterService(self)
+            await event_router_service.initialize()
+            return event_router_service
+
+        self._register_singleton("event_router_service", create_event_router_service)
+
+
+        self._register_singleton("claude_strategy_store", create_claude_strategy_store)
+
+        # Feature Management Service
+        async def create_feature_management_service():
+            event_bus = await self.get("event_bus")
+            feature_service = FeatureManagementService(self.config, event_bus)
+            await feature_service.initialize()
+            
+            # Set up service integrations
+            background_scheduler = await self.get("background_scheduler")
+            feature_service.set_background_scheduler(background_scheduler)
+            
+            # Get coordinators for integration
+            if hasattr(self, '_singletons') and "claude_agent_coordinator" in self._singletons:
+                agent_coordinator = await self.get("claude_agent_coordinator")
+                feature_service.set_agent_coordinator(agent_coordinator)
+            
+            return feature_service
+
+        self._register_singleton("feature_management_service", create_feature_management_service)
+
+        # Prompt Optimization Service
+        async def create_prompt_optimization_service():
+            from ..background_scheduler.clients.perplexity_client import PerplexityClient
+            event_bus = await self.get("event_bus")
+
+            # Create Perplexity client
+            perplexity_client = PerplexityClient()
+
+            # Create prompt optimization service
+            prompt_service = PromptOptimizationService(
+                config=self.config.get("prompt_optimization", {}),
+                event_bus=event_bus,
+                container=self,
+                perplexity_client=perplexity_client
+            )
+            await prompt_service.initialize()
+            return prompt_service
+
+        self._register_singleton("prompt_optimization_service", create_prompt_optimization_service)
+
+        # Prompt Optimization Tools for Claude MCP
+        async def create_prompt_optimization_tools():
+            prompt_service = await self.get("prompt_optimization_service")
+            return PromptOptimizationTools(prompt_service)
+
+        self._register_singleton("prompt_optimization_tools", create_prompt_optimization_tools)
+
         # Coordinators
         async def create_session_coordinator():
             return SessionCoordinator(self.config)
@@ -193,9 +411,17 @@ class DependencyContainer:
 
         async def create_task_coordinator():
             state_manager = await self.get("state_manager")
-            return TaskCoordinator(self.config, state_manager)
+            event_bus = await self.get("event_bus")
+            return TaskCoordinator(self.config, state_manager, event_bus)
 
         self._register_singleton("task_coordinator", create_task_coordinator)
+
+        async def create_portfolio_coordinator():
+            from src.core.coordinators.portfolio_coordinator import PortfolioCoordinator
+            state_manager = await self.get("state_manager")
+            return PortfolioCoordinator(self.config, state_manager)
+
+        self._register_singleton("portfolio_coordinator", create_portfolio_coordinator)
 
         async def create_status_coordinator():
             state_manager = await self.get("state_manager")
@@ -223,6 +449,22 @@ class DependencyContainer:
 
         self._register_singleton("broadcast_coordinator", create_broadcast_coordinator)
 
+        async def create_queue_coordinator():
+            return QueueCoordinator(self.config, self)
+
+        self._register_singleton("queue_coordinator", create_queue_coordinator)
+
+        async def create_claude_agent_coordinator():
+            event_bus = await self.get("event_bus")
+            strategy_store = await self.get("claude_strategy_store")
+            tool_executor = await self.get("tool_executor")
+            response_validator = await self.get("response_validator")
+            coordinator = ClaudeAgentCoordinator(self.config, event_bus, strategy_store, self)
+            await coordinator.initialize()
+            return coordinator
+
+        self._register_singleton("claude_agent_coordinator", create_claude_agent_coordinator)
+
         # Orchestrator - created last due to dependencies
         async def create_orchestrator():
             logger.info("Creating orchestrator - getting coordinators...")
@@ -246,6 +488,7 @@ class DependencyContainer:
             orchestrator.session_coordinator = session_coordinator
             orchestrator.query_coordinator = query_coordinator
             orchestrator.task_coordinator = task_coordinator
+            orchestrator.portfolio_coordinator = await self.get("portfolio_coordinator")
             orchestrator.status_coordinator = status_coordinator
             orchestrator.lifecycle_coordinator = lifecycle_coordinator
             orchestrator.broadcast_coordinator = broadcast_coordinator
@@ -287,10 +530,6 @@ class DependencyContainer:
         """Get the orchestrator instance."""
         return await self.get("orchestrator")
 
-    async def get_broker(self) -> ZerodhaBroker:
-        """Get the broker instance."""
-        return await self.get("broker")
-
     async def get_state_manager(self) -> DatabaseStateManager:
         """Get the state manager instance."""
         return await self.get("state_manager")
@@ -298,6 +537,9 @@ class DependencyContainer:
     async def get_resource_manager(self) -> ResourceManager:
         """Get the resource manager instance."""
         return await self.get("resource_manager")
+    async def get_claude_sdk_auth(self):
+        """Get the Claude SDK authentication instance."""
+        return await self.get("claude_sdk_auth")
 
     async def get_event_bus(self) -> EventBus:
         """Get the event bus instance."""
@@ -306,6 +548,9 @@ class DependencyContainer:
     async def get_safety_layer(self) -> SafetyLayer:
         """Get the safety layer instance."""
         return await self.get("safety_layer")
+    async def get_claude_agent_mcp_server(self):
+        """Get the Claude Agent MCP server instance."""
+        return await self.get("claude_agent_mcp_server")
 
     async def get_portfolio_service(self) -> PortfolioService:
         """Get the portfolio service instance."""
@@ -314,10 +559,20 @@ class DependencyContainer:
     async def get_risk_service(self) -> RiskService:
         """Get the risk service instance."""
         return await self.get("risk_service")
+    # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
+        """Get the queue coordinator instance."""
+        return await self.get("queue_coordinator")
 
     async def get_execution_service(self) -> ExecutionService:
         """Get the execution service instance."""
         return await self.get("execution_service")
+    async def get_event_router_service(self) -> "EventRouterService":
+        """Get the event router service instance."""
+        return await self.get("event_router_service")
+
+    async def get_market_data_service(self) -> MarketDataService:
+        """Get the market data service instance."""
+        return await self.get("market_data_service")
 
     async def get_analytics_service(self) -> AnalyticsService:
         """Get the analytics service instance."""
@@ -326,6 +581,7 @@ class DependencyContainer:
     async def get_learning_service(self) -> LearningService:
         """Get the learning service instance."""
         return await self.get("learning_service")
+
 
     async def cleanup(self) -> None:
         """Cleanup all services."""
@@ -349,10 +605,11 @@ class DependencyContainer:
 
         # Cleanup services in reverse order
         services_to_cleanup = [
-            "learning_service", "analytics_service", "execution_service",
-            "risk_service", "portfolio_service", "safety_layer", "event_bus",
-            "learning_engine", "conversation_manager", "background_scheduler",
-            "ai_planner", "broker", "state_manager", "resource_manager"
+            "market_data_service", "learning_service", "analytics_service",
+            "execution_service", "risk_service", "portfolio_service", "feature_management_service",
+            "strategy_evolution_engine", "event_router_service",
+            "safety_layer", "event_bus", "learning_engine", "conversation_manager",
+            "background_scheduler", "ai_planner", "state_manager", "resource_manager"
         ]
 
         for service_name in services_to_cleanup:
@@ -414,18 +671,17 @@ class ServiceProvider:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_orchestrator()
 
-    async def get_broker(self) -> ZerodhaBroker:
-        """Get the broker instance."""
-        if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
-        return await self._container.get_broker()
-
     async def get_state_manager(self) -> DatabaseStateManager:
         """Get the state manager instance."""
         if not self._container:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_state_manager()
 
+    async def get_claude_sdk_auth(self):
+        """Get the Claude SDK authentication instance."""
+        if not self._container:
+            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+        return await self._container.get_claude_sdk_auth()
     async def get_event_bus(self) -> EventBus:
         """Get the event bus instance."""
         if not self._container:
@@ -437,6 +693,11 @@ class ServiceProvider:
         if not self._container:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_safety_layer()
+    async def get_claude_agent_mcp_server(self):
+        """Get the Claude Agent MCP server instance."""
+        if not self._container:
+            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+        return await self._container.get_claude_agent_mcp_server()
 
     async def get_portfolio_service(self) -> PortfolioService:
         """Get the portfolio service instance."""
@@ -450,11 +711,22 @@ class ServiceProvider:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_risk_service()
 
+    # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
+        """Get the queue coordinator instance."""
+        if not self._container:
+            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+        return await self._container.get_queue_coordinator()
+
     async def get_execution_service(self) -> ExecutionService:
         """Get the execution service instance."""
         if not self._container:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_execution_service()
+    async def get_event_router_service(self) -> "EventRouterService":
+        """Get the event router service instance."""
+        if not self._container:
+            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+        return await self._container.get_event_router_service()
 
     async def get_analytics_service(self) -> AnalyticsService:
         """Get the analytics service instance."""
@@ -510,3 +782,8 @@ async def cleanup_container():
 
 # Import logger at the end to avoid circular imports
 from loguru import logger
+
+# Add missing imports for the new services
+import os
+import base64
+from cryptography.fernet import Fernet

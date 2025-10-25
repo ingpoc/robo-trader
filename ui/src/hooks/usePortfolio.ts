@@ -9,8 +9,8 @@ export function usePortfolio() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: dashboardAPI.getDashboardData,
-    refetchInterval: 10000,
-    retry: 3,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   })
 
   const portfolioScan = useMutation({
