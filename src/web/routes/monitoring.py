@@ -3,10 +3,18 @@
 import logging
 import os
 from typing import Dict, Any
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +26,8 @@ default_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 
 @router.get("/monitoring/status")
 @limiter.limit(default_limit)
-async def get_system_status(request: Request) -> Dict[str, Any]:
+async def get_system_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get system monitoring status."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -36,19 +40,16 @@ async def get_system_status(request: Request) -> Dict[str, Any]:
                 "event_bus": "active"
             }
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Status retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/monitoring/scheduler")
 @limiter.limit(default_limit)
-async def get_scheduler_status(request: Request) -> Dict[str, Any]:
+async def get_scheduler_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get background scheduler status."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -61,19 +62,16 @@ async def get_scheduler_status(request: Request) -> Dict[str, Any]:
             "status": "running",
             "tasks": getattr(background_scheduler, '_tasks', [])
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Scheduler status failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.post("/monitoring/trigger-event")
 @limiter.limit(default_limit)
-async def trigger_market_event(request: Request, event_data: Dict[str, Any]) -> Dict[str, str]:
+async def trigger_market_event(request: Request, event_data: Dict[str, Any], container: DependencyContainer = Depends(get_container)) -> Dict[str, str]:
     """Trigger a market event for testing."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         event_bus = await container.get("event_bus")
@@ -82,19 +80,16 @@ async def trigger_market_event(request: Request, event_data: Dict[str, Any]) -> 
 
         logger.info(f"Market event triggered: {event_data}")
         return {"status": "Event triggered"}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Event trigger failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.post("/emergency/stop")
 @limiter.limit(default_limit)
-async def emergency_stop(request: Request) -> Dict[str, str]:
+async def emergency_stop(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, str]:
     """Emergency stop all trading."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -105,19 +100,16 @@ async def emergency_stop(request: Request) -> Dict[str, str]:
 
         logger.warning("EMERGENCY STOP triggered")
         return {"status": "Emergency stop executed"}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Emergency stop failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.post("/emergency/resume")
 @limiter.limit(default_limit)
-async def resume_operations(request: Request) -> Dict[str, str]:
+async def resume_operations(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, str]:
     """Resume operations after emergency stop."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -128,19 +120,16 @@ async def resume_operations(request: Request) -> Dict[str, str]:
 
         logger.info("Operations resumed")
         return {"status": "Operations resumed"}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Resume failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.post("/trigger-news-monitoring")
 @limiter.limit(default_limit)
-async def trigger_news_monitoring(request: Request) -> Dict[str, str]:
+async def trigger_news_monitoring(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, str]:
     """Trigger news monitoring."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -150,6 +139,7 @@ async def trigger_news_monitoring(request: Request) -> Dict[str, str]:
             await background_scheduler.run_news_monitoring()
 
         return {"status": "News monitoring triggered"}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"News monitoring trigger failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")

@@ -3,10 +3,18 @@
 import logging
 import os
 from typing import Dict, Any
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +26,7 @@ config_limit = os.getenv("RATE_LIMIT_CONFIG", "10/minute")
 
 @router.get("/config/scheduler")
 @limiter.limit(config_limit)
-async def get_scheduler_config(request: Request) -> Dict[str, Any]:
+async def get_scheduler_config(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get scheduler configuration."""
     try:
         return {
@@ -32,14 +40,15 @@ async def get_scheduler_config(request: Request) -> Dict[str, Any]:
                 "timezone": "IST"
             }
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Scheduler config retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/config/trading")
 @limiter.limit(config_limit)
-async def get_trading_config(request: Request) -> Dict[str, Any]:
+async def get_trading_config(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get trading configuration."""
     try:
         return {
@@ -55,14 +64,15 @@ async def get_trading_config(request: Request) -> Dict[str, Any]:
             },
             "autoApprove": False
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Trading config retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/config/agent")
 @limiter.limit(config_limit)
-async def get_agent_config(request: Request) -> Dict[str, Any]:
+async def get_agent_config(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get AI agent configuration."""
     try:
         return {
@@ -75,14 +85,15 @@ async def get_agent_config(request: Request) -> Dict[str, Any]:
                 "analysis": 25
             }
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Agent config retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/config/data-source")
 @limiter.limit(config_limit)
-async def get_data_source_config(request: Request) -> Dict[str, Any]:
+async def get_data_source_config(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get data source configuration."""
     try:
         return {
@@ -94,14 +105,15 @@ async def get_data_source_config(request: Request) -> Dict[str, Any]:
             },
             "queryVersioning": True
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Data source config retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/config/database")
 @limiter.limit(config_limit)
-async def get_database_config(request: Request) -> Dict[str, Any]:
+async def get_database_config(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get database configuration."""
     try:
         return {
@@ -109,14 +121,15 @@ async def get_database_config(request: Request) -> Dict[str, Any]:
             "backupFrequency": "daily",
             "backupRetention": 7
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Database config retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/config")
 @limiter.limit(config_limit)
-async def get_config(request: Request) -> Dict[str, Any]:
+async def get_config(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get all configuration - matches frontend expectation."""
     try:
         return {
@@ -169,6 +182,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
                 "backupRetention": 7
             }
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Config retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")

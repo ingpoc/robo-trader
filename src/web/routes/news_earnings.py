@@ -4,10 +4,18 @@ import logging
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +27,7 @@ news_earnings_limit = os.getenv("RATE_LIMIT_NEWS_EARNINGS", "20/minute")
 
 @router.get("/news-earnings/{symbol}")
 @limiter.limit(news_earnings_limit)
-async def get_news_earnings(request: Request, symbol: str, news_limit: int = 10, earnings_limit: int = 5) -> Dict[str, Any]:
+async def get_news_earnings(request: Request, symbol: str, news_limit: int = 10, earnings_limit: int = 5, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get news and earnings data for a symbol - matches frontend expectation."""
     try:
         # Mock news data
@@ -62,14 +70,15 @@ async def get_news_earnings(request: Request, symbol: str, news_limit: int = 10,
             "earnings": earnings_data,
             "lastUpdated": datetime.now(timezone.utc).isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"News and earnings retrieval failed for {symbol}: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/earnings/upcoming")
 @limiter.limit(news_earnings_limit)
-async def get_upcoming_earnings(request: Request, days_ahead: int = 60) -> Dict[str, Any]:
+async def get_upcoming_earnings(request: Request, days_ahead: int = 60, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get upcoming earnings calendar - matches frontend expectation."""
     try:
         upcoming_earnings = [
@@ -121,14 +130,15 @@ async def get_upcoming_earnings(request: Request, days_ahead: int = 60) -> Dict[
             "daysAhead": days_ahead,
             "lastUpdated": datetime.now(timezone.utc).isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Upcoming earnings retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/ai/recommendations")
 @limiter.limit(news_earnings_limit)
-async def get_ai_recommendations(request: Request) -> Dict[str, Any]:
+async def get_ai_recommendations(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get AI-powered stock recommendations - matches frontend expectation."""
     try:
         recommendations = [
@@ -177,6 +187,7 @@ async def get_ai_recommendations(request: Request) -> Dict[str, Any]:
             "modelVersion": "claude-3.5-sonnet",
             "disclaimer": "AI-generated recommendations are for educational purposes only"
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"AI recommendations retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
