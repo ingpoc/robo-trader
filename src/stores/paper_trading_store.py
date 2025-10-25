@@ -134,6 +134,16 @@ class PaperTradingStore:
             return PaperTradingAccount.from_dict(dict(row))
         return None
 
+    async def get_all_accounts(self) -> List[PaperTradingAccount]:
+        """Get all paper trading accounts."""
+        self.db_connection.row_factory = aiosqlite.Row
+        cursor = await self.db_connection.execute(
+            "SELECT * FROM paper_trading_accounts ORDER BY created_at DESC"
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [PaperTradingAccount.from_dict(dict(row)) for row in rows]
+
     async def update_account_balance(self, account_id: str, new_balance: float, buying_power: float) -> None:
         """Update account balance and buying power."""
         now = datetime.utcnow().isoformat()

@@ -140,33 +140,13 @@ async def get_dashboard_alerts(request: Request) -> Dict[str, Any]:
 
 @router.get("/claude-agent/recommendations")
 @limiter.limit(dashboard_limit)
-async def get_claude_recommendations(request: Request) -> Dict[str, Any]:
-    """Get Claude AI trading recommendations."""
+async def get_claude_recommendations(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+    """Get Claude AI trading recommendations from database."""
     try:
+        # TODO: Implement recommendations from database
+        # Use the same endpoint as /api/ai/recommendations for consistency
         return {
-            "recommendations": [
-                {
-                    "symbol": "HDFC",
-                    "action": "BUY",
-                    "price": 2800,
-                    "confidence": 92,
-                    "rationale": "Strong uptrend, support holding"
-                },
-                {
-                    "symbol": "LT",
-                    "action": "SELL",
-                    "price": 1950,
-                    "confidence": 85,
-                    "rationale": "Bearish divergence, resistance failed"
-                },
-                {
-                    "symbol": "INFY",
-                    "action": "BUY",
-                    "price": 3200,
-                    "confidence": 78,
-                    "rationale": "Accumulation near support"
-                }
-            ]
+            "recommendations": []
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -176,19 +156,14 @@ async def get_claude_recommendations(request: Request) -> Dict[str, Any]:
 
 @router.get("/claude-agent/strategy-metrics")
 @limiter.limit(dashboard_limit)
-async def get_strategy_metrics(request: Request) -> Dict[str, Any]:
-    """Get strategy effectiveness metrics."""
+async def get_strategy_metrics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+    """Get strategy effectiveness metrics from database."""
     try:
+        # TODO: Calculate strategy metrics from paper_trades table
+        # Group by strategy_tag, calculate win rate and trade count
         return {
-            "working": [
-                {"name": "Momentum Breakout", "winRate": 68, "trades": 22},
-                {"name": "RSI Support Bounce", "winRate": 72, "trades": 18},
-                {"name": "Protective Hedges", "winRate": 85, "trades": 12}
-            ],
-            "failing": [
-                {"name": "Averaging Down", "winRate": 40, "trades": 15},
-                {"name": "Gap Fade", "winRate": 35, "trades": 8}
-            ]
+            "working": [],
+            "failing": []
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -198,16 +173,28 @@ async def get_strategy_metrics(request: Request) -> Dict[str, Any]:
 
 @router.get("/claude-agent/status")
 @limiter.limit(dashboard_limit)
-async def get_claude_status(request: Request) -> Dict[str, Any]:
-    """Get Claude AI agent status."""
+async def get_claude_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+    """Get Claude AI agent status from orchestrator."""
     try:
+        orchestrator = await container.get_orchestrator()
+        claude_auth_status = await orchestrator.get_claude_status()
+        config = await container.get("config")
+
+        # Get token budget from config
+        daily_budget = 15000
+        if config and hasattr(config, 'claude_agent'):
+            daily_budget = getattr(config.claude_agent, 'daily_token_budget', 15000)
+
+        # TODO: Get actual token usage from claude_token_usage table
+        # TODO: Get trades count from paper_trades table for today
+
         return {
-            "status": "active",
-            "tokensUsed": 8500,
-            "tokensBudget": 15000,
-            "tradesExecutedToday": 3,
-            "nextScheduledTask": "Evening review 16:30 IST",
-            "lastAction": "2 minutes ago"
+            "status": "idle" if claude_auth_status else "not_configured",
+            "tokensUsed": 0,
+            "tokensBudget": daily_budget,
+            "tradesExecutedToday": 0,
+            "nextScheduledTask": None,
+            "lastAction": None
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -217,18 +204,51 @@ async def get_claude_status(request: Request) -> Dict[str, Any]:
 
 @router.get("/system/health")
 @limiter.limit(dashboard_limit)
-async def get_system_health(request: Request) -> Dict[str, Any]:
-    """Get system health status."""
+async def get_system_health(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+    """Get system health status from orchestrator."""
     try:
+        orchestrator = await container.get_orchestrator()
+        system_status = await orchestrator.get_system_status()
+
+        # Transform to frontend format
+        components = {}
+
+        # Scheduler status
+        if "scheduler_status" in system_status:
+            scheduler = system_status["scheduler_status"]
+            components["scheduler"] = {
+                "status": "healthy" if scheduler.get("running") else "stopped",
+                "lastRun": scheduler.get("last_run_time", "unknown")
+            }
+
+        # Database status
+        components["database"] = {
+            "status": "connected",  # If we got here, DB is connected
+            "connections": 1  # TODO: Get actual connection count
+        }
+
+        # WebSocket status
+        components["websocket"] = {
+            "status": "connected",
+            "clients": 0  # TODO: Get from connection_manager
+        }
+
+        # Claude agent status
+        if "claude_status" in system_status and system_status["claude_status"]:
+            claude = system_status["claude_status"]
+            components["claudeAgent"] = {
+                "status": "active" if claude.get("authenticated") else "inactive",
+                "tasksCompleted": 0  # TODO: Track task completion
+            }
+        else:
+            components["claudeAgent"] = {
+                "status": "not_configured",
+                "tasksCompleted": 0
+            }
+
         return {
             "status": "healthy",
-            "components": {
-                "scheduler": {"status": "healthy", "lastRun": "11:13:19 AM"},
-                "newsMonitor": {"status": "healthy", "lastRun": "2 hours ago"},
-                "database": {"status": "connected", "connections": 10},
-                "websocket": {"status": "connected", "clients": 1},
-                "claudeAgent": {"status": "active", "tasksCompleted": 12}
-            },
+            "components": components,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except TradingError as e:
@@ -239,18 +259,22 @@ async def get_system_health(request: Request) -> Dict[str, Any]:
 
 @router.get("/scheduler/status")
 @limiter.limit(dashboard_limit)
-async def get_scheduler_status(request: Request) -> Dict[str, Any]:
-    """Get scheduler status - matches frontend expectation."""
+async def get_scheduler_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+    """Get scheduler status from background scheduler."""
     try:
-        from datetime import timedelta
+        orchestrator = await container.get_orchestrator()
+        system_status = await orchestrator.get_system_status()
+
+        scheduler_status = system_status.get("scheduler_status", {})
+
         return {
-            "status": "healthy",
-            "lastRun": datetime.now(timezone.utc).isoformat(),
-            "nextRun": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
-            "tasksQueued": 5,
-            "tasksCompleted": 12,
-            "tasksFailed": 0,
-            "uptime": "2 days, 4 hours"
+            "status": "healthy" if scheduler_status.get("running") else "stopped",
+            "lastRun": scheduler_status.get("last_run_time", None),
+            "nextRun": None,  # TODO: Get next scheduled run time
+            "tasksQueued": 0,  # TODO: Get from queue coordinator
+            "tasksCompleted": 0,  # TODO: Track completed tasks
+            "tasksFailed": 0,  # TODO: Track failed tasks
+            "uptime": None  # TODO: Track scheduler uptime
         }
     except TradingError as e:
         return await handle_trading_error(e)

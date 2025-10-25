@@ -55,6 +55,10 @@ class PaperTradingAccountManager:
         """Get account by ID."""
         return await self.store.get_account(account_id)
 
+    async def get_all_accounts(self) -> List[PaperTradingAccount]:
+        """Get all paper trading accounts."""
+        return await self.store.get_all_accounts()
+
     async def get_account_balance(self, account_id: str) -> Dict[str, float]:
         """Get account balance details."""
         account = await self.get_account(account_id)

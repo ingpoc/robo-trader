@@ -181,33 +181,13 @@ export function QuickTradeForm() {
     setPendingTrade(null)
   }
 
-  // Mock risk assessment - in real app this would come from backend
-  const getRiskAssessment = (trade: TradeFormData) => {
-    const totalValue = trade.price && trade.quantity ? trade.price * trade.quantity : trade.quantity || 0
-
-    if (totalValue > 10000) {
-      return {
-        level: 'high' as const,
-        warnings: [
-          'Large position size may impact portfolio significantly',
-          'Consider market volatility before execution',
-          'Ensure sufficient margin requirements are met'
-        ]
-      }
-    } else if (totalValue > 5000) {
-      return {
-        level: 'medium' as const,
-        warnings: [
-          'Moderate position size - monitor closely',
-          'Check current market conditions'
-        ]
-      }
-    }
-    return {
-      level: 'low' as const,
-      warnings: []
-    }
-  }
+  // TODO: Phase 2 - Implement backend risk assessment endpoint
+  // Should call /api/risk/assess with trade parameters
+  // Backend will calculate risk level based on:
+  // - Account balance and available capital
+  // - Portfolio concentration and diversification
+  // - Market volatility and conditions
+  // - Position sizing relative to account size
 
   return (
     <TooltipProvider>
@@ -402,8 +382,6 @@ export function QuickTradeForm() {
           onConfirm={handleConfirmTrade}
           onCancel={handleCancelTrade}
           isExecuting={executeTrade.isPending}
-          riskLevel={getRiskAssessment(pendingTrade).level}
-          riskWarnings={getRiskAssessment(pendingTrade).warnings}
         />
       )}
       </Card>

@@ -52,6 +52,7 @@ from .routes.claude_transparency import router as claude_transparency_router
 from .routes.config import router as config_router
 from .routes.logs import router as logs_router
 from .routes.prompt_optimization import router as prompt_optimization_router
+from .routes.symbols import router as symbols_router
 
 # ============================================================================
 # FastAPI Application Setup
@@ -154,6 +155,7 @@ app.include_router(analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(news_earnings_router)
 app.include_router(claude_transparency_router)
+app.include_router(symbols_router)
 app.include_router(config_router)
 app.include_router(logs_router)
 app.include_router(prompt_optimization_router)
