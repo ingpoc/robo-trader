@@ -12,6 +12,11 @@ from slowapi.util import get_remote_address
 from src.core.di import DependencyContainer
 from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest, CloseTradeRequest
 from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +24,6 @@ router = APIRouter(prefix="/api", tags=["paper-trading"])
 limiter = Limiter(key_func=get_remote_address)
 
 paper_trading_limit = os.getenv("RATE_LIMIT_PAPER_TRADING", "20/minute")
-
-# Global DI container (will be set by app.py)
-_container: DependencyContainer = None
-
-
-def set_container(container: DependencyContainer):
-    """Set the DI container for this router."""
-    global _container
-    _container = container
 
 
 @router.get("/paper-trading/accounts")
@@ -60,8 +56,7 @@ async def get_paper_trading_accounts(request: Request) -> Dict[str, Any]:
             ]
         }
     except Exception as e:
-        logger.error(f"Paper trading accounts retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/account")
@@ -80,8 +75,7 @@ async def get_paper_trading_account(request: Request) -> Dict[str, Any]:
             "marginAvailable": 27500
         }
     except Exception as e:
-        logger.error(f"Paper trading account retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/accounts/{account_id}/status")
@@ -116,8 +110,7 @@ async def get_paper_trading_account_status(request: Request, account_id: str) ->
                 "breakEvenRange": "±2%"
             }
     except Exception as e:
-        logger.error(f"Paper trading account status retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/accounts/{account_id}/open-positions")
@@ -165,8 +158,7 @@ async def get_open_positions(request: Request, account_id: str) -> Dict[str, Any
         ]
         return {"positions": positions}
     except Exception as e:
-        logger.error(f"Open positions retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/accounts/{account_id}/closed-trades")
@@ -214,8 +206,7 @@ async def get_closed_trades(request: Request, account_id: str) -> Dict[str, Any]
         ]
         return {"trades": trades}
     except Exception as e:
-        logger.error(f"Closed trades retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/accounts/{account_id}/overview")
@@ -262,8 +253,7 @@ async def get_paper_trading_account_overview(request: Request, account_id: str) 
                 "breakEvenRange": "±2%"
             }
     except Exception as e:
-        logger.error(f"Paper trading account overview retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/accounts/{account_id}/positions")
@@ -314,8 +304,7 @@ async def get_paper_trading_positions(request: Request, account_id: str) -> Dict
         ]
         return {"positions": positions}
     except Exception as e:
-        logger.error(f"Paper trading positions retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/accounts/{account_id}/trades")
@@ -372,8 +361,7 @@ async def get_paper_trading_trades(request: Request, account_id: str, limit: int
         ]
         return {"trades": trades[:limit]}
     except Exception as e:
-        logger.error(f"Paper trading trades retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 @router.get("/paper-trading/accounts/{account_id}/performance")
@@ -440,8 +428,7 @@ async def get_paper_trading_performance(request: Request, account_id: str, perio
 
         return {"performance": performance_data}
     except Exception as e:
-        logger.error(f"Paper trading performance retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
 
 
 # ============================================================================
@@ -454,7 +441,8 @@ async def get_paper_trading_performance(request: Request, account_id: str, perio
 async def execute_buy_trade(
     request: Request,
     account_id: str,
-    trade_request: BuyTradeRequest
+    trade_request: BuyTradeRequest,
+    container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """
     Execute a buy trade on a paper trading account.
@@ -467,14 +455,8 @@ async def execute_buy_trade(
         Trade execution result with trade_id and status
     """
     try:
-        if not _container:
-            return JSONResponse(
-                {"error": "Service not initialized"},
-                status_code=503
-            )
-
         # Get execution service
-        execution_service = await _container.get("paper_trading_execution_service")
+        execution_service = await container.get("paper_trading_execution_service")
 
         # Execute trade
         result = await execution_service.execute_buy_trade(
@@ -488,18 +470,9 @@ async def execute_buy_trade(
         return result
 
     except TradingError as e:
-        logger.error(f"Buy trade failed: {e.context.code}")
-        status_code = 500 if e.context.severity.value in ["critical", "high"] else 400
-        return JSONResponse(
-            content=e.to_dict(),
-            status_code=status_code
-        )
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.exception(f"Buy trade execution error: {e}")
-        return JSONResponse(
-            {"error": "Trade execution failed", "details": str(e)},
-            status_code=500
-        )
+        return await handle_unexpected_error(e, "execute_buy_trade")
 
 
 @router.post("/paper-trading/accounts/{account_id}/trades/sell")
@@ -507,7 +480,8 @@ async def execute_buy_trade(
 async def execute_sell_trade(
     request: Request,
     account_id: str,
-    trade_request: SellTradeRequest
+    trade_request: SellTradeRequest,
+    container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """
     Execute a sell trade on a paper trading account.
@@ -520,14 +494,8 @@ async def execute_sell_trade(
         Trade execution result with trade_id, P&L, and status
     """
     try:
-        if not _container:
-            return JSONResponse(
-                {"error": "Service not initialized"},
-                status_code=503
-            )
-
         # Get execution service
-        execution_service = await _container.get("paper_trading_execution_service")
+        execution_service = await container.get("paper_trading_execution_service")
 
         # Execute trade
         result = await execution_service.execute_sell_trade(
@@ -541,18 +509,9 @@ async def execute_sell_trade(
         return result
 
     except TradingError as e:
-        logger.error(f"Sell trade failed: {e.context.code}")
-        status_code = 500 if e.context.severity.value in ["critical", "high"] else 400
-        return JSONResponse(
-            content=e.to_dict(),
-            status_code=status_code
-        )
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.exception(f"Sell trade execution error: {e}")
-        return JSONResponse(
-            {"error": "Trade execution failed", "details": str(e)},
-            status_code=500
-        )
+        return await handle_unexpected_error(e, "execute_sell_trade")
 
 
 @router.post("/paper-trading/accounts/{account_id}/trades/{trade_id}/close")
@@ -560,7 +519,8 @@ async def execute_sell_trade(
 async def close_trade(
     request: Request,
     account_id: str,
-    trade_id: str
+    trade_id: str,
+    container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """
     Close an existing open trade.
@@ -573,14 +533,8 @@ async def close_trade(
         Close operation result with exit price and realized P&L
     """
     try:
-        if not _container:
-            return JSONResponse(
-                {"error": "Service not initialized"},
-                status_code=503
-            )
-
         # Get execution service
-        execution_service = await _container.get("paper_trading_execution_service")
+        execution_service = await container.get("paper_trading_execution_service")
 
         # Close trade
         result = await execution_service.close_trade(
@@ -591,15 +545,6 @@ async def close_trade(
         return result
 
     except TradingError as e:
-        logger.error(f"Trade close failed: {e.context.code}")
-        status_code = 500 if e.context.severity.value in ["critical", "high"] else 400
-        return JSONResponse(
-            content=e.to_dict(),
-            status_code=status_code
-        )
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.exception(f"Trade close error: {e}")
-        return JSONResponse(
-            {"error": "Trade close failed", "details": str(e)},
-            status_code=500
-        )
+        return await handle_unexpected_error(e, "close_trade")
