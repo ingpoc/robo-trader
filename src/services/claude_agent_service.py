@@ -251,6 +251,12 @@ class ClaudeAgentService(EventHandler):
         paper_store = await self.container.get("paper_trading_store")
         open_trades = await paper_store.get_open_trades(account_id)
 
+        # Get symbols to analyze (open positions + watchlist)
+        symbols = list(set([t.symbol for t in open_trades[:10]]))  # From open positions
+
+        # Fetch optimized data using prompt optimization service
+        optimized_market_data = await self._fetch_optimized_market_data(symbols, account_type)
+
         # Get historical learnings for context
         recent_sessions = await self.strategy_store.get_recent_sessions(account_type, limit=3)
         historical_learnings = []
@@ -277,13 +283,18 @@ class ClaudeAgentService(EventHandler):
             for t in open_trades[:5]  # Limit to top 5
         ]
 
-        # Build optimized context with historical learnings
+        # Build optimized context with historical learnings and optimized data
         context = await context_builder.build_morning_context(
             account_data=account_data,
             open_positions=open_positions_data,
-            market_data=None,  # Could be added later
-            earnings_today=None  # Could be added later
+            market_data=optimized_market_data.get("news"),  # Optimized news data
+            earnings_today=optimized_market_data.get("earnings")  # Optimized earnings data
         )
+
+        # Add optimized fundamentals and data quality metrics
+        context["fundamentals_data"] = optimized_market_data.get("fundamentals")
+        context["data_quality_summary"] = optimized_market_data.get("quality_summary")
+        context["data_acquisition_method"] = "claude_optimized_prompts"
 
         # Add historical learnings for learning loop
         if historical_learnings:
@@ -374,6 +385,91 @@ class ClaudeAgentService(EventHandler):
                     source="ClaudeAgentService",
                     data={"error": "Token budget exhausted", "remaining": remaining}
                 ))
+
+    async def _fetch_optimized_market_data(self, symbols: list, account_type: str) -> Dict[str, Any]:
+        """Fetch market data using Claude's optimized prompts."""
+        if not symbols:
+            return {
+                "news": None,
+                "earnings": None,
+                "fundamentals": None,
+                "quality_summary": {}
+            }
+
+        try:
+            # Get prompt optimization service
+            prompt_service = await self.container.get("prompt_optimization_service")
+
+            # Create session ID for tracking
+            session_id = f"morning_prep_{account_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+
+            optimized_data = {}
+            quality_summary = {}
+
+            # Fetch optimized data for each data type
+            data_types = ["news", "earnings", "fundamentals"]
+
+            for data_type in data_types:
+                try:
+                    logger.info(f"Fetching optimized {data_type} data for {len(symbols)} symbols")
+
+                    # Get optimized data with quality check
+                    data, quality_score, final_prompt, optimization_metadata = await prompt_service.get_optimized_data(
+                        data_type=data_type,
+                        symbols=symbols,
+                        session_id=session_id,
+                        force_optimization=False  # Let Claude decide if optimization needed
+                    )
+
+                    optimized_data[data_type] = data
+                    quality_summary[data_type] = {
+                        "quality_score": quality_score,
+                        "optimization_attempts": len(optimization_metadata.get("attempts", [])),
+                        "optimization_triggered": optimization_metadata.get("optimization_triggered", False),
+                        "prompt_optimized": optimization_metadata.get("optimization_successful", False)
+                    }
+
+                    # Emit data quality event for transparency
+                    await self.event_bus.publish(Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.CLAUDE_DATA_QUALITY_ANALYSIS,
+                        source="ClaudeAgentService",
+                        data={
+                            "session_id": session_id,
+                            "data_type": data_type,
+                            "quality_score": quality_score,
+                            "symbols_count": len(symbols),
+                            "optimization_metadata": optimization_metadata
+                        }
+                    ))
+
+                    logger.info(f"Fetched {data_type} with quality score {quality_score}/10")
+
+                except Exception as e:
+                    logger.error(f"Failed to get optimized {data_type} data: {e}")
+                    optimized_data[data_type] = None
+                    quality_summary[data_type] = {
+                        "quality_score": 0.0,
+                        "error": str(e),
+                        "optimization_attempts": 0
+                    }
+
+            return {
+                "news": optimized_data.get("news"),
+                "earnings": optimized_data.get("earnings"),
+                "fundamentals": optimized_data.get("fundamentals"),
+                "quality_summary": quality_summary,
+                "session_id": session_id
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to fetch optimized market data: {e}")
+            return {
+                "news": None,
+                "earnings": None,
+                "fundamentals": None,
+                "quality_summary": {"error": str(e)}
+            }
 
     async def close(self) -> None:
         """Cleanup service."""

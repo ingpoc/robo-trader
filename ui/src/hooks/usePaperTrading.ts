@@ -1,9 +1,11 @@
 /**
  * Custom hooks for paper trading functionality
+ * Phase 2: WebSocket real-time updates integration
  */
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { wsClient } from '../api/websocket'
 import type {
   AccountOverviewResponse,
   OpenPositionResponse,
@@ -17,6 +19,8 @@ import type {
 /**
  * Hook for managing paper trading account and positions.
  * Provides queries and mutations for all paper trading operations.
+ *
+ * Phase 2: Now includes WebSocket real-time position updates!
  */
 export function usePaperTrading(accountId?: string) {
   const queryClient = useQueryClient()
@@ -33,7 +37,48 @@ export function usePaperTrading(accountId?: string) {
     refetchInterval: 5000, // Refresh every 5 seconds for real-time P&L updates
   })
 
+  // Phase 2: WebSocket listener for real-time position updates
+  useEffect(() => {
+    if (!accountId) return
+
+    // Subscribe to WebSocket position updates
+    const unsubscribe = wsClient.subscribe((message: any) => {
+      if (message.type === 'paper_trading_position_update' && message.account_id === accountId) {
+        // Real-time position update received from backend!
+        const { positions: updatedPositions } = message
+
+        // Update positions in React Query cache
+        queryClient.setQueryData(['paper-positions', accountId], (oldData: any) => {
+          if (!oldData) return oldData
+
+          // Merge updated positions with existing data
+          return oldData.map((pos: OpenPositionResponse) => {
+            const update = updatedPositions.find((p: any) => p.trade_id === pos.trade_id)
+            if (update) {
+              // Real-time update from Zerodha!
+              return {
+                ...pos,
+                current_price: update.current_price,
+                unrealized_pnl: update.unrealized_pnl,
+                unrealized_pnl_pct: update.unrealized_pnl_pct,
+                current_value: update.current_value,
+              }
+            }
+            return pos
+          })
+        })
+
+        console.log(`[WebSocket] Real-time position update for ${message.symbol}: ${updatedPositions.length} positions updated`)
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [accountId, queryClient])
+
   // Query: Get open positions
+  // Phase 2: Reduced polling from 2s to 30s (WebSocket handles real-time updates now!)
   const openPositions = useQuery({
     queryKey: ['paper-positions', accountId],
     queryFn: async () => {
@@ -42,13 +87,13 @@ export function usePaperTrading(accountId?: string) {
       const data = await response.json()
       // Extract positions array and transform field names
       const positions = (data.positions || []).map((pos: any) => ({
-        trade_id: pos.id || `${pos.symbol}_${Date.now()}`,
+        trade_id: pos.trade_id || pos.id || `${pos.symbol}_${Date.now()}`,
         symbol: pos.symbol,
-        trade_type: pos.action === 'SELL' ? 'SELL' : 'BUY',
+        trade_type: pos.tradeType || pos.action === 'SELL' ? 'SELL' : 'BUY',
         quantity: pos.quantity,
         entry_price: pos.entryPrice,
         current_price: pos.ltp,
-        current_value: pos.quantity * pos.ltp,
+        current_value: pos.currentValue || pos.quantity * pos.ltp,
         unrealized_pnl: pos.pnl,
         unrealized_pnl_pct: pos.pnlPercent,
         stop_loss: pos.stopLoss,
@@ -61,7 +106,7 @@ export function usePaperTrading(accountId?: string) {
       return positions as Promise<OpenPositionResponse[]>
     },
     enabled: !!accountId && accountId !== '',
-    refetchInterval: 2000, // Refresh every 2 seconds for real-time price updates
+    refetchInterval: 30000, // Phase 2: Reduced from 2s to 30s (WebSocket provides real-time updates)
   })
 
   // Query: Get trade history

@@ -5,6 +5,10 @@ export type TaskStatus = 'pending' | 'executing' | 'completed' | 'failed' | 'can
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'critical';
 
+export interface TaskMetadata {
+  [key: string]: string | number | boolean | string[] | undefined;
+}
+
 export interface QueueTask {
   id: string;
   queue_type: QueueType;
@@ -19,7 +23,7 @@ export interface QueueTask {
   retry_count: number;
   max_retries: number;
   execution_time_ms?: number;
-  metadata: Record<string, any>;
+  metadata: TaskMetadata;
 }
 
 export interface QueueStatus {
@@ -66,7 +70,7 @@ export interface TaskExecutionHistory {
   execution_time_ms?: number;
   error_message?: string;
   retry_count: number;
-  metadata: Record<string, any>;
+  metadata: TaskMetadata;
 }
 
 export interface QueuePerformanceMetrics {
@@ -98,7 +102,7 @@ export interface QueueTriggerRequest {
   queue_type: QueueType;
   task_type?: string;
   priority?: TaskPriority;
-  metadata?: Record<string, any>;
+  metadata?: TaskMetadata;
 }
 
 export interface QueueConfigurationUpdate {
@@ -129,9 +133,15 @@ export interface QueueStats {
 }
 
 // WebSocket event types for real-time updates
+export type QueueWebSocketEventData =
+  | QueueStatus
+  | QueueTask
+  | QueuePerformanceMetrics
+  | { queue_type: QueueType; old_config: QueueConfiguration; new_config: QueueConfiguration };
+
 export interface QueueWebSocketEvent {
   type: 'queue_status_update' | 'task_status_update' | 'performance_metrics_update' | 'configuration_change';
-  data: any;
+  data: QueueWebSocketEventData;
   timestamp: string;
 }
 

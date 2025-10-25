@@ -6,6 +6,7 @@ import { Toaster } from '@/components/common/Toaster'
 import { GlobalErrorBoundary } from '@/components/common/GlobalErrorBoundary'
 import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBoundary'
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
+import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { AccountProvider } from '@/contexts/AccountContext'
 import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
@@ -183,6 +184,9 @@ function AppContent() {
         </div>
 
         <Toaster />
+
+        {/* Claude AI Status Indicator - Fixed bottom left */}
+        <ClaudeStatusIndicator />
       </div>
     </WebSocketErrorBoundary>
   )
