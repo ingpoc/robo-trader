@@ -17,6 +17,10 @@ from ..dependencies import get_database, get_current_user, get_container
 from ..services.prompt_optimization_service import PromptOptimizationService
 from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ..core.di import DependencyContainer
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 from loguru import logger
 
 router = APIRouter(prefix="/api/prompts", tags=["prompt-optimization"])
@@ -78,9 +82,10 @@ async def get_active_prompt(
                 "is_active": True
             }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Failed to get active prompt: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get active prompt: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 @router.get("/optimization-history/{data_type}")
@@ -114,9 +119,10 @@ async def get_optimization_history(
             "period_days": days
         }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Failed to get optimization history: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get optimization history: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 @router.get("/attempts/{prompt_id}")
@@ -180,9 +186,10 @@ async def get_prompt_attempts(
 
     except HTTPException:
         raise
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Failed to get prompt attempts: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get prompt attempts: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 @router.get("/quality-trends")
@@ -203,9 +210,10 @@ async def get_quality_trends(
             "data_types": list(trends.keys())
         }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Failed to get quality trends: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get quality trends: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 @router.get("/session-prompts/{session_id}")
@@ -255,9 +263,10 @@ async def get_session_prompt_usage(
                 "total_prompts": len(session_prompts)
             }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Failed to get session prompt usage: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get session prompt usage: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 @router.post("/trigger-optimization")
@@ -305,9 +314,10 @@ async def trigger_manual_optimization(
             "message": "Optimization started in background"
         }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Manual optimization failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Manual optimization failed: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 @router.get("/optimization-status/{session_id}")
@@ -349,9 +359,10 @@ async def get_optimization_status(
                 "last_update": row[2]
             }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Failed to get optimization status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get optimization status: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 @router.get("/performance-summary")
@@ -423,9 +434,10 @@ async def get_performance_summary(
                 ]
             }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Failed to get performance summary: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get performance summary: {str(e)}")
+        return await handle_unexpected_error(e, "prompt_optimization_endpoint")
 
 
 def _parse_json_field(field: Any) -> Any:
