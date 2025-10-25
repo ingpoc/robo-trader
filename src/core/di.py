@@ -265,7 +265,9 @@ class DependencyContainer:
             from ..services.paper_trading.trade_executor import PaperTradeExecutor
             store = await self.get("paper_trading_store")
             account_manager = await self.get("paper_trading_account_manager")
-            executor = PaperTradeExecutor(store, account_manager)
+            market_data_service = await self.get("market_data_service")  # Phase 3: Inject for real-time prices
+            executor = PaperTradeExecutor(store, account_manager, market_data_service)
+            logger.info("PaperTradeExecutor created with MarketDataService for Phase 3 real-time execution prices")
             return executor
 
         self._register_singleton("paper_trade_executor", create_paper_trade_executor)
