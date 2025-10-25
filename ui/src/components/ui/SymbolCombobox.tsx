@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Check, ChevronsUpDown, TrendingUp, TrendingDown } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Check, ChevronsUpDown, TrendingUp, TrendingDown, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import {
@@ -15,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { symbolsAPI } from '@/api/endpoints'
 import type { SymbolData } from '@/types/api'
 
 interface SymbolComboboxProps {
@@ -28,20 +30,6 @@ interface SymbolComboboxProps {
 const RECENT_SYMBOLS_KEY = 'recent-symbols'
 const MAX_RECENT_SYMBOLS = 5
 
-// Mock data for demonstration - in real app this would come from API
-const mockSymbols: SymbolData[] = [
-  { symbol: 'RELIANCE', name: 'Reliance Industries Ltd', price: 2456.75, change: 23.45, changePercent: 0.96 },
-  { symbol: 'TCS', name: 'Tata Consultancy Services Ltd', price: 3876.20, change: -12.30, changePercent: -0.32 },
-  { symbol: 'HDFCBANK', name: 'HDFC Bank Ltd', price: 1654.80, change: 8.90, changePercent: 0.54 },
-  { symbol: 'ICICIBANK', name: 'ICICI Bank Ltd', price: 987.65, change: -5.40, changePercent: -0.54 },
-  { symbol: 'INFY', name: 'Infosys Ltd', price: 1432.10, change: 15.75, changePercent: 1.11 },
-  { symbol: 'ITC', name: 'ITC Ltd', price: 432.85, change: 2.15, changePercent: 0.50 },
-  { symbol: 'KOTAKBANK', name: 'Kotak Mahindra Bank Ltd', price: 1789.45, change: -7.20, changePercent: -0.40 },
-  { symbol: 'LT', name: 'Larsen & Toubro Ltd', price: 3456.90, change: 28.60, changePercent: 0.84 },
-  { symbol: 'MARUTI', name: 'Maruti Suzuki India Ltd', price: 12345.60, change: -45.30, changePercent: -0.37 },
-  { symbol: 'WIPRO', name: 'Wipro Ltd', price: 567.80, change: 3.25, changePercent: 0.58 },
-]
-
 export function SymbolCombobox({
   value,
   onValueChange,
@@ -53,11 +41,24 @@ export function SymbolCombobox({
   const [searchQuery, setSearchQuery] = useState('')
   const [recentSymbols, setRecentSymbols] = useState<SymbolData[]>([])
 
+  // Fetch symbols from API
+  const { data: symbolsData, isLoading } = useQuery({
+    queryKey: ['symbols', searchQuery],
+    queryFn: async () => {
+      const response = await symbolsAPI.searchSymbols(searchQuery, 20)
+      return response
+    },
+    staleTime: 60000, // 1 minute
+    enabled: open, // Only fetch when dropdown is open
+  })
+
+  const symbols = symbolsData?.symbols || []
+
   // Load recent symbols from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem(RECENT_SYMBOLS_KEY)
     if (stored) {
-      try {
+      try:
         setRecentSymbols(JSON.parse(stored))
       } catch (error) {
         console.error('Failed to parse recent symbols:', error)
@@ -78,21 +79,12 @@ export function SymbolCombobox({
     saveRecentSymbols(updated)
   }
 
-  // Filter symbols based on search query
-  const filteredSymbols = useMemo(() => {
-    if (!searchQuery) return mockSymbols.slice(0, 10) // Show first 10 when no search
-
-    const query = searchQuery.toLowerCase()
-    return mockSymbols.filter(symbol =>
-      symbol.symbol.toLowerCase().includes(query) ||
-      symbol.name.toLowerCase().includes(query)
-    )
-  }, [searchQuery])
-
-  const selectedSymbol = mockSymbols.find(symbol => symbol.symbol === value)
+  const selectedSymbol = symbols.find(symbol => symbol.symbol === value) ||
+                         recentSymbols.find(symbol => symbol.symbol === value)
 
   const handleSelect = (symbolValue: string) => {
-    const symbol = mockSymbols.find(s => s.symbol === symbolValue)
+    const symbol = symbols.find(s => s.symbol === symbolValue) ||
+                   recentSymbols.find(s => s.symbol === symbolValue)
     if (symbol) {
       addToRecent(symbol)
       onValueChange(symbolValue)
@@ -137,87 +129,96 @@ export function SymbolCombobox({
             onValueChange={setSearchQuery}
           />
           <CommandList>
-            <CommandEmpty>No symbols found.</CommandEmpty>
+            {isLoading ? (
+              <div className="flex items-center justify-center p-4">
+                <Loader2 className="h-6 w-6 animate-spin text-warmgray-400" />
+                <span className="ml-2 text-sm text-warmgray-500">Loading symbols...</span>
+              </div>
+            ) : (
+              <>
+                <CommandEmpty>No symbols found.</CommandEmpty>
 
-            {/* Recent Symbols */}
-            {recentSymbols.length > 0 && !searchQuery && (
-              <CommandGroup heading="Recent">
-                {recentSymbols.map((symbol) => (
-                  <CommandItem
-                    key={`recent-${symbol.symbol}`}
-                    value={symbol.symbol}
-                    onSelect={() => handleSelect(symbol.symbol)}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Check
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          value === symbol.symbol ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                      <div>
-                        <div className="font-medium">{symbol.symbol}</div>
-                        <div className="text-sm text-warmgray-500 truncate max-w-[200px]">{symbol.name}</div>
+                {/* Recent Symbols */}
+                {recentSymbols.length > 0 && !searchQuery && (
+                  <CommandGroup heading="Recent">
+                    {recentSymbols.map((symbol) => (
+                      <CommandItem
+                        key={`recent-${symbol.symbol}`}
+                        value={symbol.symbol}
+                        onSelect={() => handleSelect(symbol.symbol)}
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              value === symbol.symbol ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div>
+                            <div className="font-medium">{symbol.symbol}</div>
+                            <div className="text-sm text-warmgray-500 truncate max-w-[200px]">{symbol.name}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-medium">{formatPrice(symbol.price)}</div>
+                          <div className={cn(
+                            "text-sm flex items-center gap-1",
+                            symbol.change >= 0 ? "text-green-600" : "text-red-600"
+                          )}>
+                            {symbol.change >= 0 ? (
+                              <TrendingUp className="h-3 w-3" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3" />
+                            )}
+                            {formatChange(symbol.change, symbol.changePercent)}
+                          </div>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {/* Search Results */}
+                <CommandGroup heading={searchQuery ? "Search Results" : "Popular Symbols"}>
+                  {symbols.map((symbol) => (
+                    <CommandItem
+                      key={symbol.symbol}
+                      value={symbol.symbol}
+                      onSelect={() => handleSelect(symbol.symbol)}
+                      className="flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            value === symbol.symbol ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <div>
+                          <div className="font-medium">{symbol.symbol}</div>
+                          <div className="text-sm text-warmgray-500 truncate max-w-[200px]">{symbol.name}</div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium">{formatPrice(symbol.price)}</div>
-                      <div className={cn(
-                        "text-sm flex items-center gap-1",
-                        symbol.change >= 0 ? "text-green-600" : "text-red-600"
-                      )}>
-                        {symbol.change >= 0 ? (
-                          <TrendingUp className="h-3 w-3" />
-                        ) : (
-                          <TrendingDown className="h-3 w-3" />
-                        )}
-                        {formatChange(symbol.change, symbol.changePercent)}
+                      <div className="text-right">
+                        <div className="font-medium">{formatPrice(symbol.price)}</div>
+                        <div className={cn(
+                          "text-sm flex items-center gap-1",
+                          symbol.change >= 0 ? "text-emerald-600" : "text-rose-600"
+                        )}>
+                          {symbol.change >= 0 ? (
+                            <TrendingUp className="h-3 w-3" />
+                          ) : (
+                            <TrendingDown className="h-3 w-3" />
+                          )}
+                          {formatChange(symbol.change, symbol.changePercent)}
+                        </div>
                       </div>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
             )}
-
-            {/* Search Results */}
-            <CommandGroup heading={searchQuery ? "Search Results" : "Popular Symbols"}>
-              {filteredSymbols.map((symbol) => (
-                <CommandItem
-                  key={symbol.symbol}
-                  value={symbol.symbol}
-                  onSelect={() => handleSelect(symbol.symbol)}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === symbol.symbol ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    <div>
-                      <div className="font-medium">{symbol.symbol}</div>
-                      <div className="text-sm text-warmgray-500 truncate max-w-[200px]">{symbol.name}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium">{formatPrice(symbol.price)}</div>
-                    <div className={cn(
-                      "text-sm flex items-center gap-1",
-                      symbol.change >= 0 ? "text-emerald-600" : "text-rose-600"
-                    )}>
-                      {symbol.change >= 0 ? (
-                        <TrendingUp className="h-3 w-3" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3" />
-                      )}
-                      {formatChange(symbol.change, symbol.changePercent)}
-                    </div>
-                  </div>
-                </CommandItem>
-              ))}
-            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
