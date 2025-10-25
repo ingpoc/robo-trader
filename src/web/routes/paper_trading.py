@@ -319,126 +319,102 @@ async def get_paper_trading_positions(
 
 @router.get("/paper-trading/accounts/{account_id}/trades")
 @limiter.limit(paper_trading_limit)
-async def get_paper_trading_trades(request: Request, account_id: str, limit: int = 50) -> Dict[str, Any]:
-    """Get trades for paper trading account - matches frontend expectation."""
+async def get_paper_trading_trades(
+    request: Request,
+    account_id: str,
+    limit: int = 50,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get REAL closed trades for paper trading account."""
     try:
-        trades = [
-            {
-                "id": "trade_1",
-                "date": "2025-10-24",
-                "symbol": "RELIANCE",
-                "action": "BUY",
-                "entryPrice": 2950,
-                "exitPrice": 2980,
-                "quantity": 5,
-                "holdTime": "2h 30m",
-                "pnl": 150,
-                "pnlPercent": 1.02,
-                "strategy": "Momentum Breakout",
-                "notes": "Good breakout confirmation",
+        # Get account manager from DI container
+        account_manager = await container.get("paper_trading_account_manager")
+
+        # Fetch real closed trades from database
+        closed_trades = await account_manager.get_closed_trades(
+            account_id=account_id,
+            limit=limit
+        )
+
+        # Convert to frontend format
+        trades = []
+        for trade in closed_trades:
+            # Calculate hold time in readable format
+            hold_days = trade.holding_period_days
+            if hold_days < 1:
+                hold_time = "< 1 day"
+            elif hold_days == 1:
+                hold_time = "1 day"
+            else:
+                hold_time = f"{hold_days} days"
+
+            trades.append({
+                "id": trade.trade_id,
+                "date": trade.exit_date,
+                "symbol": trade.symbol,
+                "action": trade.trade_type,
+                "entryPrice": trade.entry_price,
+                "exitPrice": trade.exit_price,
+                "quantity": trade.quantity,
+                "holdTime": hold_time,
+                "pnl": trade.realized_pnl,
+                "pnlPercent": trade.realized_pnl_pct,
+                "strategy": trade.strategy_rationale,
+                "notes": trade.reason_closed,
                 "status": "closed"
-            },
-            {
-                "id": "trade_2",
-                "date": "2025-10-23",
-                "symbol": "SBIN",
-                "action": "SELL",
-                "entryPrice": 620,
-                "exitPrice": 615,
-                "quantity": 10,
-                "holdTime": "4h 15m",
-                "pnl": -50,
-                "pnlPercent": -0.81,
-                "strategy": "RSI Support",
-                "notes": "Failed to hold support",
-                "status": "closed"
-            },
-            {
-                "id": "trade_3",
-                "date": "2025-10-22",
-                "symbol": "MARUTI",
-                "action": "BUY",
-                "entryPrice": 13200,
-                "exitPrice": 13450,
-                "quantity": 2,
-                "holdTime": "1h 45m",
-                "pnl": 500,
-                "pnlPercent": 1.89,
-                "strategy": "RSI Support Bounce",
-                "notes": "Perfect bounce entry",
-                "status": "closed"
-            }
-        ]
-        return {"trades": trades[:limit]}
+            })
+
+        logger.info(f"Retrieved {len(trades)} closed trades for account {account_id}")
+        return {"trades": trades}
+
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
+        return await handle_unexpected_error(e, "get_paper_trading_trades")
 
 
 @router.get("/paper-trading/accounts/{account_id}/performance")
 @limiter.limit(paper_trading_limit)
-async def get_paper_trading_performance(request: Request, account_id: str, period: str = "all-time") -> Dict[str, Any]:
-    """Get performance data for paper trading account - matches frontend expectation."""
+async def get_paper_trading_performance(
+    request: Request,
+    account_id: str,
+    period: str = "all-time",
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get REAL performance data for paper trading account."""
     try:
-        account_type = "swing" if "swing" in account_id else "options"
+        # Get account manager from DI container
+        account_manager = await container.get("paper_trading_account_manager")
 
-        if period == "30d":
-            performance_data = {
-                "period": "30d",
-                "totalReturn": 2.5,
-                "totalReturnPercent": 2.5,
-                "winRate": 65,
-                "totalTrades": 12,
-                "winningTrades": 8,
-                "losingTrades": 4,
-                "avgWin": 450,
-                "avgLoss": -320,
-                "profitFactor": 1.8,
-                "maxDrawdown": -1200,
-                "sharpeRatio": 1.2,
-                "volatility": 8.5,
-                "benchmarkReturn": 1.8,
-                "alpha": 0.7
-            }
-        elif period == "all-time":
-            performance_data = {
-                "period": "all-time",
-                "totalReturn": 2500,
-                "totalReturnPercent": 2.5,
-                "winRate": 65,
-                "totalTrades": 45,
-                "winningTrades": 29,
-                "losingTrades": 16,
-                "avgWin": 420,
-                "avgLoss": -280,
-                "profitFactor": 1.9,
-                "maxDrawdown": -2500,
-                "sharpeRatio": 1.1,
-                "volatility": 9.2,
-                "benchmarkReturn": 1.5,
-                "alpha": 1.0
-            }
-        else:
-            performance_data = {
-                "period": period,
-                "totalReturn": 0,
-                "totalReturnPercent": 0,
-                "winRate": 0,
-                "totalTrades": 0,
-                "winningTrades": 0,
-                "losingTrades": 0,
-                "avgWin": 0,
-                "avgLoss": 0,
-                "profitFactor": 0,
-                "maxDrawdown": 0,
-                "sharpeRatio": 0,
-                "volatility": 0,
-                "benchmarkReturn": 0,
-                "alpha": 0
-            }
+        # Get real performance metrics
+        metrics = await account_manager.get_performance_metrics(account_id, period=period)
 
+        # Format for frontend (camelCase keys)
+        performance_data = {
+            "period": period,
+            "totalReturn": metrics.get("total_pnl", 0),
+            "totalReturnPercent": metrics.get("total_pnl_percentage", 0),
+            "winRate": metrics.get("win_rate", 0),
+            "totalTrades": metrics.get("total_trades", 0),
+            "winningTrades": metrics.get("winning_trades", 0),
+            "losingTrades": metrics.get("losing_trades", 0),
+            "avgWin": metrics.get("avg_win", 0),
+            "avgLoss": metrics.get("avg_loss", 0),
+            "profitFactor": metrics.get("profit_factor", 0),
+            "maxDrawdown": 0,  # TODO: Add drawdown calculation
+            "sharpeRatio": metrics.get("sharpe_ratio"),
+            "volatility": 0,  # TODO: Add volatility calculation
+            "benchmarkReturn": 0,  # TODO: Add benchmark comparison
+            "alpha": 0  # TODO: Add alpha calculation
+        }
+
+        logger.info(f"Retrieved performance metrics for {account_id} (period={period}): Total P&L=₹{metrics.get('total_pnl', 0)}, Win Rate={metrics.get('win_rate', 0)}%")
         return {"performance": performance_data}
+
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
+        return await handle_unexpected_error(e, "get_paper_trading_performance")
 
 
 # ============================================================================
