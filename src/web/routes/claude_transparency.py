@@ -4,10 +4,18 @@ import logging
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +27,9 @@ transparency_limit = os.getenv("RATE_LIMIT_TRANSPARENCY", "20/minute")
 
 @router.get("/transparency/research")
 @limiter.limit(transparency_limit)
-async def get_research_transparency(request: Request) -> Dict[str, Any]:
+async def get_research_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's research activities transparency - matches frontend expectation."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         research_tracker = await container.get("research_tracker")
 
@@ -64,20 +68,17 @@ async def get_research_transparency(request: Request) -> Dict[str, Any]:
 
         return {"research": research_data}
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Research transparency retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")
 
 
 @router.get("/transparency/analysis")
 @limiter.limit(transparency_limit)
-async def get_analysis_transparency(request: Request) -> Dict[str, Any]:
+async def get_analysis_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's analysis activities transparency."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         analysis_logger = await container.get("analysis_logger")
 
@@ -112,20 +113,17 @@ async def get_analysis_transparency(request: Request) -> Dict[str, Any]:
 
         return {"analysis": analysis_data}
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Analysis transparency retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")
 
 
 @router.get("/transparency/execution")
 @limiter.limit(transparency_limit)
-async def get_execution_transparency(request: Request) -> Dict[str, Any]:
+async def get_execution_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's trade execution transparency."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         # Get Claude agent service for execution data
         claude_agent_service = await container.get("claude_agent_service")
@@ -168,20 +166,17 @@ async def get_execution_transparency(request: Request) -> Dict[str, Any]:
 
         return {"execution": execution_data}
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Execution transparency retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")
 
 
 @router.get("/transparency/daily-evaluation")
 @limiter.limit(transparency_limit)
-async def get_daily_evaluation_transparency(request: Request) -> Dict[str, Any]:
+async def get_daily_evaluation_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's daily strategy evaluation transparency."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         strategy_store = await container.get("claude_strategy_store")
 
@@ -234,20 +229,17 @@ async def get_daily_evaluation_transparency(request: Request) -> Dict[str, Any]:
 
         return {"daily_evaluation": evaluation_data}
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Daily evaluation transparency retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")
 
 
 @router.get("/transparency/daily-summary")
 @limiter.limit(transparency_limit)
-async def get_daily_summary_transparency(request: Request) -> Dict[str, Any]:
+async def get_daily_summary_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's daily activity summary transparency."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         # Get various components for summary
         research_tracker = await container.get("research_tracker")
@@ -286,20 +278,17 @@ async def get_daily_summary_transparency(request: Request) -> Dict[str, Any]:
 
         return {"daily_summary": summary_data}
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Daily summary transparency retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")
 
 
 @router.get("/transparency/trade-decisions")
 @limiter.limit(transparency_limit)
-async def get_trade_decisions(request: Request) -> Dict[str, Any]:
+async def get_trade_decisions(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's trade decision logs for AI transparency."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         trade_decision_logger = await container.get("trade_decision_logger")
 
@@ -315,20 +304,17 @@ async def get_trade_decisions(request: Request) -> Dict[str, Any]:
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Trade decisions retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")
 
 
 @router.get("/transparency/data-quality-summary")
 @limiter.limit(transparency_limit)
-async def get_data_quality_summary(request: Request) -> Dict[str, Any]:
+async def get_data_quality_summary(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get data quality summary from most recent Claude session."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         # Get the most recent session's data quality metrics
         # This is stored when ClaudeAgentService fetches optimized data
@@ -368,20 +354,17 @@ async def get_data_quality_summary(request: Request) -> Dict[str, Any]:
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Data quality summary retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")
 
 
 @router.get("/current-strategy/{account_type}")
 @limiter.limit(transparency_limit)
-async def get_current_strategy(request: Request, account_type: str) -> Dict[str, Any]:
+async def get_current_strategy(request: Request, account_type: str, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get current trading strategy for account type."""
     try:
-        from ..app import container
-
-        if not container:
-            return JSONResponse({"error": "System not initialized"}, status_code=500)
 
         if account_type not in ["swing", "options"]:
             return JSONResponse({"error": "Invalid account type"}, status_code=400)
@@ -417,6 +400,7 @@ async def get_current_strategy(request: Request, account_type: str) -> Dict[str,
             "session_id": session.session_id if hasattr(session, 'session_id') else None
         }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Current strategy retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "claude_transparency_endpoint")

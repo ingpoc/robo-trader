@@ -4,10 +4,19 @@ import logging
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_validation_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +36,11 @@ async def api_dashboard(request: Request) -> Dict[str, Any]:
 
 @router.get("/portfolio")
 @limiter.limit(dashboard_limit)
-async def get_portfolio(request: Request) -> Dict[str, Any]:
+async def get_portfolio(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get portfolio data with lazy bootstrap."""
-    from ..app import container
-
-    if not container:
-        logger.error("System not initialized")
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
-
     try:
         orchestrator = await container.get_orchestrator()
         if not orchestrator or not orchestrator.state_manager:
@@ -48,8 +54,13 @@ async def get_portfolio(request: Request) -> Dict[str, Any]:
                 logger.debug("Triggering portfolio bootstrap")
                 await orchestrator.run_portfolio_scan()
                 portfolio = await orchestrator.state_manager.get_portfolio()
-            except Exception as exc:
-                logger.warning(f"Bootstrap failed: {exc}")
+            except TradingError as e:
+                logger.warning(f"Bootstrap failed with trading error: {e}")
+                # Continue to check if portfolio is now available
+            except ValueError as e:
+                logger.warning(f"Bootstrap failed with validation error: {e}")
+            except Exception as e:
+                logger.warning(f"Bootstrap failed with unexpected error: {e}")
 
         if not portfolio:
             logger.warning("No portfolio data available")
@@ -58,9 +69,15 @@ async def get_portfolio(request: Request) -> Dict[str, Any]:
         logger.info("Portfolio retrieved successfully")
         return portfolio.to_dict()
 
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except ValueError as e:
+        return await handle_validation_error(e)
+    except KeyError as e:
+        logger.error(f"Orchestrator not found in container: {e}")
+        return JSONResponse({"error": "System not properly initialized"}, status_code=500)
     except Exception as e:
-        logger.error(f"Portfolio retrieval failed: {e}", exc_info=True)
-        return JSONResponse({"error": f"Failed to retrieve portfolio: {str(e)}"}, status_code=500)
+        return await handle_unexpected_error(e, "get_portfolio")
 
 
 @router.get("/dashboard/portfolio-summary")
@@ -88,9 +105,10 @@ async def get_portfolio_summary(request: Request) -> Dict[str, Any]:
                 "activePositions": 8
             }
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Portfolio summary retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_portfolio_summary")
 
 
 @router.get("/dashboard/alerts")
@@ -114,9 +132,10 @@ async def get_dashboard_alerts(request: Request) -> Dict[str, Any]:
                 }
             ]
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Alerts retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_dashboard_alerts")
 
 
 @router.get("/claude-agent/recommendations")
@@ -149,9 +168,10 @@ async def get_claude_recommendations(request: Request) -> Dict[str, Any]:
                 }
             ]
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Recommendations retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_claude_recommendations")
 
 
 @router.get("/claude-agent/strategy-metrics")
@@ -170,9 +190,10 @@ async def get_strategy_metrics(request: Request) -> Dict[str, Any]:
                 {"name": "Gap Fade", "winRate": 35, "trades": 8}
             ]
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Strategy metrics retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_strategy_metrics")
 
 
 @router.get("/claude-agent/status")
@@ -188,9 +209,10 @@ async def get_claude_status(request: Request) -> Dict[str, Any]:
             "nextScheduledTask": "Evening review 16:30 IST",
             "lastAction": "2 minutes ago"
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Claude status retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_claude_status")
 
 
 @router.get("/system/health")
@@ -209,9 +231,10 @@ async def get_system_health(request: Request) -> Dict[str, Any]:
             },
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"System health retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_system_health")
 
 
 @router.get("/scheduler/status")
@@ -229,6 +252,7 @@ async def get_scheduler_status(request: Request) -> Dict[str, Any]:
             "tasksFailed": 0,
             "uptime": "2 days, 4 hours"
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Scheduler status retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_scheduler_status")

@@ -3,11 +3,19 @@
 import logging
 import os
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +43,8 @@ class TradeRequest(BaseModel):
 
 @router.post("/portfolio-scan")
 @limiter.limit(trade_limit)
-async def portfolio_scan(request: Request, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Trigger portfolio scan and load holdings from CSV file."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -58,38 +62,32 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks) ->
             "result": result,
             "timestamp": str(__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat())
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Portfolio scan failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.post("/market-screening")
 @limiter.limit(trade_limit)
-async def market_screening(request: Request, background_tasks: BackgroundTasks) -> Dict[str, str]:
+async def market_screening(request: Request, background_tasks: BackgroundTasks, container: DependencyContainer = Depends(get_container)) -> Dict[str, str]:
     """Trigger market screening."""
-    container = request.app.state.container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
         background_tasks.add_task(orchestrator.run_market_screening)
         return {"status": "Market screening started"}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Market screening failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.post("/manual-trade")
 @limiter.limit(trade_limit)
-async def manual_trade(request: Request, trade: TradeRequest) -> Dict[str, Any]:
+async def manual_trade(request: Request, trade: TradeRequest, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Execute manual trade."""
-    container = request.app.state.container
     import uuid
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -109,6 +107,7 @@ async def manual_trade(request: Request, trade: TradeRequest) -> Dict[str, Any]:
             "risk_decision": "approved"
         }
 
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Manual trade failed: {e}", exc_info=True)
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")

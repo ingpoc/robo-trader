@@ -4,10 +4,18 @@ import logging
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +27,8 @@ default_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 
 @router.get("/analytics/portfolio-deep")
 @limiter.limit(default_limit)
-async def portfolio_deep_analytics(request: Request) -> Dict[str, Any]:
+async def portfolio_deep_analytics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get deep portfolio analytics."""
-    from ..app import container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         orchestrator = await container.get_orchestrator()
@@ -37,19 +41,16 @@ async def portfolio_deep_analytics(request: Request) -> Dict[str, Any]:
             "portfolio": analytics.to_dict() if hasattr(analytics, 'to_dict') else analytics,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Analytics failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "analytics_endpoint")
 
 
 @router.get("/analytics/trades")
 @limiter.limit(default_limit)
-async def get_trades_analytics(request: Request) -> Dict[str, Any]:
+async def get_trades_analytics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get trades analytics."""
-    from ..app import container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         return {
@@ -57,19 +58,16 @@ async def get_trades_analytics(request: Request) -> Dict[str, Any]:
             "trades": [],
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Trades analytics failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "analytics_endpoint")
 
 
 @router.get("/alerts")
 @limiter.limit(default_limit)
-async def get_risk_alerts(request: Request, user_id: Optional[str] = None) -> Dict[str, Any]:
+async def get_risk_alerts(request: Request, user_id: Optional[str] = None, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get risk alerts."""
-    from ..app import container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
 
     try:
         alerts = [
@@ -83,9 +81,10 @@ async def get_risk_alerts(request: Request, user_id: Optional[str] = None) -> Di
             }
         ]
         return {"alerts": alerts}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Alerts retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "analytics_endpoint")
 
 
 @router.get("/monitor/status")
@@ -107,9 +106,10 @@ async def get_risk_monitoring_status(
             "alerts_count": 0,
             "status": "healthy"
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Monitoring status failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "analytics_endpoint")
 
 
 @router.get("/portfolio/risk-metrics")
@@ -132,14 +132,15 @@ async def get_portfolio_risk_metrics(
             "alpha": 2.1,
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Risk metrics failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "analytics_endpoint")
 
 
 @router.get("/analytics/performance/30d")
 @limiter.limit(default_limit)
-async def get_performance_30d(request: Request) -> Dict[str, Any]:
+async def get_performance_30d(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get 30-day performance analytics - matches frontend expectation."""
     try:
         performance_data = {
@@ -182,14 +183,15 @@ async def get_performance_30d(request: Request) -> Dict[str, Any]:
         }
 
         return {"performance": performance_data}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"30-day performance analytics failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "analytics_endpoint")
 
 
 @router.get("/alerts/active")
 @limiter.limit(default_limit)
-async def get_active_alerts(request: Request) -> Dict[str, Any]:
+async def get_active_alerts(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get active alerts - matches frontend expectation."""
     try:
         alerts = [
@@ -239,6 +241,7 @@ async def get_active_alerts(request: Request) -> Dict[str, Any]:
             "info": len([a for a in alerts if a["severity"] == "low"]),
             "lastUpdated": datetime.now(timezone.utc).isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Active alerts retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "analytics_endpoint")

@@ -4,10 +4,18 @@ import logging
 import os
 from typing import Dict, Any
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +27,7 @@ logs_limit = os.getenv("RATE_LIMIT_LOGS", "20/minute")
 
 @router.get("/logs")
 @limiter.limit(logs_limit)
-async def get_system_logs(request: Request) -> Dict[str, Any]:
+async def get_system_logs(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get system logs."""
     try:
         now = datetime.now(timezone.utc)
@@ -91,14 +99,15 @@ async def get_system_logs(request: Request) -> Dict[str, Any]:
             "totalCount": len(logs),
             "timestamp": now.isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Logs retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/logs/errors")
 @limiter.limit(logs_limit)
-async def get_error_logs(request: Request) -> Dict[str, Any]:
+async def get_error_logs(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get error summary and recent errors."""
     try:
         now = datetime.now(timezone.utc)
@@ -131,14 +140,15 @@ async def get_error_logs(request: Request) -> Dict[str, Any]:
             "recentErrors": errors,
             "timestamp": now.isoformat()
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Error logs retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
 
 
 @router.get("/logs/performance")
 @limiter.limit(logs_limit)
-async def get_performance_metrics(request: Request) -> Dict[str, Any]:
+async def get_performance_metrics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get system performance metrics."""
     try:
         return {
@@ -152,6 +162,7 @@ async def get_performance_metrics(request: Request) -> Dict[str, Any]:
             "memoryUsage": "450MB (28% of 1.6GB)",
             "diskUsage": "2.3GB (23% of 10GB)"
         }
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Performance metrics retrieval failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "route_endpoint")
