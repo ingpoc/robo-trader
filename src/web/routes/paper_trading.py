@@ -30,6 +30,108 @@ paper_trading_limit = os.getenv("RATE_LIMIT_PAPER_TRADING", "20/minute")
 # ACCOUNT MANAGEMENT ENDPOINTS - Phase 1 Implementation (REAL DATA)
 # ============================================================================
 
+@router.post("/paper-trading/accounts/create")
+@limiter.limit(paper_trading_limit)
+async def create_paper_trading_account(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Create a new paper trading account."""
+    try:
+        account_manager = await container.get("paper_trading_account_manager")
+
+        # Parse request body
+        body = await request.json()
+        account_name = body.get("account_name", "Paper Trading Account")
+        initial_balance = body.get("initial_balance", 100000.0)
+        strategy_type = body.get("strategy_type", "swing")
+
+        # Import AccountType enum
+        from src.models.paper_trading import AccountType, RiskLevel
+
+        # Map strategy_type string to enum
+        strategy_map = {
+            "swing": AccountType.SWING,
+            "day": AccountType.DAY_TRADING,
+            "options": AccountType.OPTIONS,
+        }
+        strategy_enum = strategy_map.get(strategy_type.lower(), AccountType.SWING)
+
+        # Create account
+        account = await account_manager.create_account(
+            account_name=account_name,
+            initial_balance=initial_balance,
+            strategy_type=strategy_enum,
+            risk_level=RiskLevel.MODERATE
+        )
+
+        logger.info(f"Created new paper trading account: {account.account_id}")
+
+        return {
+            "success": True,
+            "account": {
+                "accountId": account.account_id,
+                "accountName": account.account_name,
+                "initialBalance": account.initial_balance,
+                "currentBalance": account.current_balance,
+                "strategyType": strategy_type,
+                "createdAt": account.created_at.isoformat() if hasattr(account, 'created_at') else datetime.now(timezone.utc).isoformat()
+            }
+        }
+
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "create_paper_trading_account")
+
+
+@router.delete("/paper-trading/accounts/{account_id}")
+@limiter.limit(paper_trading_limit)
+async def delete_paper_trading_account(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Delete a paper trading account."""
+    try:
+        store = await container.get("paper_trading_store")
+
+        # Get account to verify it exists
+        account = await store.get_account(account_id)
+        if not account:
+            return {
+                "success": False,
+                "error": f"Account {account_id} not found"
+            }
+
+        # Check if there are open positions
+        open_trades = await store.get_open_trades(account_id)
+        if open_trades:
+            return {
+                "success": False,
+                "error": f"Cannot delete account with {len(open_trades)} open positions. Close all positions first."
+            }
+
+        # Delete account from database
+        await store.db_connection.execute(
+            "DELETE FROM paper_trading_accounts WHERE account_id = ?",
+            (account_id,)
+        )
+        await store.db_connection.commit()
+
+        logger.info(f"Deleted paper trading account: {account_id}")
+
+        return {
+            "success": True,
+            "message": f"Account {account_id} deleted successfully"
+        }
+
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "delete_paper_trading_account")
+
+
 @router.get("/paper-trading/accounts")
 @limiter.limit(paper_trading_limit)
 async def get_paper_trading_accounts(

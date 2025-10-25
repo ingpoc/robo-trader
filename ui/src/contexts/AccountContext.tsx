@@ -158,19 +158,38 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     try {
       setError(null)
 
-      // Generate account ID
-      const accountId = `paper_${accountData.strategy_type}_${Date.now()}`
+      // Call backend API to create account
+      const response = await fetch('/api/paper-trading/accounts/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          account_name: accountData.account_name,
+          initial_balance: accountData.initial_balance,
+          strategy_type: accountData.strategy_type,
+        }),
+      })
 
-      // For now, we'll create a local account object
-      // In a full implementation, this would call a backend endpoint
+      if (!response.ok) {
+        throw new Error('Failed to create account')
+      }
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to create account')
+      }
+
+      // Create account object from response
       const newAccount: Account = {
-        account_id: accountId,
-        account_name: accountData.account_name,
+        account_id: data.account.accountId,
+        account_name: data.account.accountName,
         account_type: accountData.strategy_type === 'swing' ? 'swing_trading' : 'options_trading',
         strategy_type: accountData.strategy_type,
         risk_level: accountData.risk_level,
-        balance: accountData.initial_balance,
-        buying_power: accountData.initial_balance,
+        balance: data.account.currentBalance,
+        buying_power: data.account.currentBalance,
         deployed_capital: 0,
         total_pnl: 0,
         total_pnl_pct: 0,
@@ -179,7 +198,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         open_positions_count: 0,
         today_trades: 0,
         win_rate: 0,
-        created_at: new Date().toISOString(),
+        created_at: data.account.createdAt,
         reset_date: '',
       }
 
@@ -193,11 +212,25 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteAccount = async (accountId: string) => {
-    try {
+    try:
       setError(null)
 
-      // For now, just remove from local state
-      // In a full implementation, this would call a backend endpoint
+      // Call backend API to delete account
+      const response = await fetch(`/api/paper-trading/accounts/${accountId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete account')
+      }
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to delete account')
+      }
+
+      // Remove from local state
       setAccounts(prev => prev.filter(acc => acc.account_id !== accountId))
 
       // If deleted account was selected, select another one
