@@ -4,9 +4,55 @@
 
 **Architecture Reference**: See @documentation/ARCHITECTURE_PATTERNS.md for detailed patterns and implementation guidelines.
 
+## Claude Agent SDK Architecture (CRITICAL)
+
+### SDK-Only Architecture (MANDATORY)
+
+**CRITICAL RULE**: This application uses **ONLY** Claude Agent SDK for all AI functionality. No direct Anthropic API calls are permitted.
+
+**Authentication**: Claude Code CLI authentication only (no API keys)
+**Implementation**: All AI features use `ClaudeSDKClient` and MCP server pattern
+**Tools**: Registered via `@tool` decorators in MCP servers
+**Sessions**: Managed through SDK client lifecycle
+
+**✅ CORRECT - SDK Implementation:**
+```python
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, tool
+
+# MCP server with tools
+@tool("analyze_portfolio")
+async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    # Tool implementation
+    return {"content": [{"type": "text", "text": json.dumps(result)}]}
+
+# SDK client usage
+options = ClaudeAgentOptions(mcp_servers={"trading": mcp_server})
+client = ClaudeSDKClient(options=options)
+await client.query(prompt)
+response = await client.receive_response()
+```
+
+**❌ VIOLATION - Direct API Usage:**
+```python
+# NEVER DO THIS
+from anthropic import AsyncAnthropic
+client = AsyncAnthropic(api_key="sk-ant-...")
+response = await client.messages.create(...)
+```
+
+**Why SDK-Only?**
+- Consistent authentication via Claude CLI
+- Proper tool execution patterns
+- Built-in session management
+- MCP server standardization
+- No API key management complexity
+- Official Claude integration patterns
+
+**Verification**: All AI code must import from `claude_agent_sdk` only. Direct `anthropic` imports are forbidden.
+
 ---
 
-## <� Core Architectural Patterns
+## Core Architectural Patterns (23 Patterns)
 
 ### 1. Coordinator Pattern (Responsibility: Service Orchestration)
 
@@ -19,8 +65,44 @@ Use focused coordinator classes inheriting from `BaseCoordinator` for each major
 - `StatusCoordinator` - System status aggregation
 - `LifecycleCoordinator` - Emergency operations
 - `BroadcastCoordinator` - UI state broadcasting
+- `ClaudeAgentCoordinator` - AI agent session management
+- `AgentCoordinator` - Multi-agent coordination and lifecycle
+- `MessageCoordinator` - Inter-agent communication routing
+- `QueueCoordinator` - Queue management and orchestration
 
 **Rule**: Each coordinator has single responsibility, async `initialize()`/`cleanup()`, delegates to services. Thin `RoboTraderOrchestrator` facade only coordinates coordinators.
+
+### 11. Per-Stock State Tracking (Responsibility: Smart Scheduling)
+
+Track last fetch dates per stock to eliminate redundant API calls and enable intelligent scheduling.
+
+**Implementation**: `StockStateStore` persists state to `data/stock_scheduler_state.json` with methods for checking fetch needs.
+
+**Rule**: Always check `needs_news_fetch()` or `needs_fundamentals_check()` before making API calls. Update state immediately after successful fetches.
+
+### 12. Exponential Backoff & Retry (Responsibility: API Resilience)
+
+Implement exponential backoff with jitter for rate-limited external APIs, plus automatic key rotation.
+
+**Implementation**: `RetryHandler` with configurable backoff strategy, `PerplexityClient` with key rotation.
+
+**Rule**: All external API calls must use retry logic with exponential backoff. Never make HTTP requests without retry protection.
+
+### 13. Strategy Learning & Logging (Responsibility: AI Improvement)
+
+Persist daily trading strategy reflections to create feedback loop for Claude's learning.
+
+**Implementation**: `StrategyLogStore` tracks what worked/didn't work, enables performance insights.
+
+**Rule**: Log strategies after each trading session. Use insights for tomorrow's focus areas.
+
+### 14. Performance Metrics Calculation (Responsibility: Trading Analytics)
+
+Comprehensive P&L, win rate, drawdown calculations for both individual trades and account-level metrics.
+
+**Implementation**: `PerformanceCalculator` provides standardized metrics across the system.
+
+**Rule**: Always use calculator for metrics, never calculate P&L inline. Include drawdown protection.
 
 ### 2. Dependency Injection Container (Responsibility: Service Lifecycle)
 
@@ -89,62 +171,222 @@ Single `Config` class loaded once at startup, passed to all services via DI.
 
 **Rule**: Load from `config/config.json` and environment variables. Initialize once. Pass to container, never modify after.
 
+### 13. Strategy Learning & Logging (Responsibility: AI Improvement)
+
+Persist daily trading strategy reflections to create feedback loop for Claude's learning.
+
+**Implementation**: `StrategyLogStore` tracks what worked/didn't work, enables performance insights.
+
+**Rule**: Log strategies after each trading session. Use insights for tomorrow's focus areas.
+
+### 14. Performance Metrics Calculation (Responsibility: Trading Analytics)
+
+Comprehensive P&L, win rate, drawdown calculations for both individual trades and account-level metrics.
+
+**Implementation**: `PerformanceCalculator` provides standardized metrics across the system.
+
+**Rule**: Always use calculator for metrics, never calculate P&L inline. Include drawdown protection.
+
+### 15. Feature Management Pattern (Responsibility: Dynamic Configuration)
+
+Dynamic feature flags and dependency management for runtime system behavior control.
+
+**Implementation**: `FeatureManagementService` provides feature CRUD operations, dependency resolution, and real-time updates.
+
+**Rule**: Use feature flags for new functionality, implement dependency validation, broadcast changes via events.
+
+### 16. Three-Queue Architecture (Responsibility: Task Processing)
+
+Specialized queues for different task types with event-driven triggering between queues.
+
+**Implementation**: Portfolio Queue, Data Fetcher Queue, and AI Analysis Queue with orchestrated workflows.
+
+**Rule**: Use appropriate queue for task type, implement event-driven triggers, monitor queue health.
+
+### 17. Multi-Agent Framework (Responsibility: AI Coordination)
+
+Framework for coordinating multiple specialized AI agents with Claude SDK integration.
+
+**Implementation**: `MultiAgentFramework` with specialized coordinators for agent lifecycle, task management, and communication.
+
+**Rule**: Register agents with clear capabilities, use structured message protocols, implement consensus building.
+
+### 18. Service Integration Pattern (Responsibility: Service Communication)
+
+Event-driven service integration with handlers reacting to domain events.
+
+**Implementation**: Services inherit from `EventHandler`, implement `handle_event()`, subscribe to relevant events.
+
+**Rule**: Use events for cross-service communication, implement proper cleanup, never make direct service calls.
+
+### 19. Container Networking Pattern (Responsibility: Deployment)
+
+Reliable container-to-container communication using container names instead of DNS names.
+
+**Implementation**: Use `robo-trader-<service-name>` format for all service URLs and environment variables.
+
+**Rule**: Always use container names, never use `.orb.local` DNS names, document networking configuration.
+
+### 20. WebSocket Differential Updates (Responsibility: Real-time UI)
+
+Efficient real-time updates by sending only changed data to clients.
+
+**Implementation**: Calculate diffs between current and previous state, send `{type, data: {...changes}}` format.
+
+**Rule**: Send differential updates only, include correlation IDs, implement client-side patch application.
+
+### 21. Strategy Evolution Engine (Responsibility: AI Improvement)
+
+AI-driven strategy optimization and parameter evolution based on performance feedback.
+
+**Implementation**: Genetic algorithms, A/B testing framework, performance-based parameter tuning.
+
+**Rule**: Track strategy performance, use statistical significance testing, implement rollback mechanisms.
+
+### 22. Atomic Write Pattern (Responsibility: Data Consistency)
+
+Ensure data consistency during concurrent writes using atomic file operations.
+
+**Implementation**: Write to temporary file first, use `os.replace()` for atomic operation, validate before commit.
+
+**Rule**: Always use atomic writes for persistence, implement validation, cleanup temporary files on failure.
+
+### 23. Monthly Reset Monitor (Responsibility: Paper Trading Capital Management)
+
+Automatically reset paper trading account capital on the 1st of each month while preserving performance history.
+
+**Implementation**: `MonthlyResetMonitor` runs daily, checks if it's the 1st, captures monthly metrics, resets balance.
+
+**Rule**: Reset happens on 1st of month only. Preserve closed trades and strategy learnings. Track monthly P&L in history file. Emit reset event for UI broadcast.
+
+**Process**:
+1. Daily check if today is the 1st of month
+2. If yes: Calculate monthly performance (P&L, trades, win rate, max drawdown)
+3. Save metrics to `monthly_performance_history.json` (atomic write)
+4. Reset account balance to initial amount (₹1,00,000)
+5. Emit `ACCOUNT_RESET` event with monthly summary
+6. UI updates show monthly results and capital reset confirmation
+
 ---
 
-## =� Code Quality Standards
+## Code Quality Standards
 
 ### Modularization (ENFORCED)
 
--  Max 350 lines per file (was 400, tightened for clarity)
--  Max 10 methods per class
--  One responsibility per class/module
--  Clear public interfaces
+- ✅ Max 350 lines per file (tight focus)
+- ✅ Max 10 methods per class (cohesion)
+- ✅ One responsibility per class/module (SRP)
+- ✅ Clear, minimal public interfaces
+- ❌ NEVER monolithic files over 350 lines
+- ❌ NEVER god objects with 10+ methods
 
 ### Async/File Operations - MANDATORY
 
--  Use `aiofiles` for ALL file I/O in async methods
--  Lazy loading: Init with `_data = None`, load on first access
--  Atomic writes: Write to temp file, then `os.replace()`
-- L NEVER use `open()`, `json.load()`, `json.dump()` in async methods
-- L NEVER block I/O in `__init__()`
+- ✅ Use `aiofiles` for ALL file I/O in async methods
+- ✅ Lazy loading: Init with `_data = None`, load on first access
+- ✅ Atomic writes: Write to temp file, then `os.replace()`
+- ✅ Proper async context manager usage
+- ❌ NEVER `open()`, `json.load()`, `json.dump()` in async code
+- ❌ NEVER block I/O in `__init__()` methods
+- ❌ NEVER sync operations in async context
 
 ### Error Handling - MANDATORY
 
--  Use specific exception types (not generic `Exception`)
--  Catch errors at entry points, handle gracefully
--  Log with context (category, severity, code)
-- L NEVER bare `except Exception:` without specific handling
-- L NEVER silent error suppression
+- ✅ Use specific exception types (not generic `Exception`)
+- ✅ Inherit from `TradingError` for domain errors
+- ✅ Catch at entry points, handle gracefully
+- ✅ Log with category, severity, code
+- ✅ Include recoverable flag and retry guidance
+- ❌ NEVER bare `except Exception:` without specific handling
+- ❌ NEVER silent error suppression `except: pass`
+- ❌ NEVER expose stack traces to UI/clients
 
 ### Background Tasks & Timeouts - CRITICAL
 
--  Wrap timeouts with cancellation: `await asyncio.wait_for(task, timeout=5.0)` when cancelling
--  All tasks have error handlers
--  All external API calls handle rate limits
-- L NEVER `await task` after `.cancel()` without `wait_for()` wrapper
-- L NEVER start background tasks without error monitoring
+- ✅ Wrap task cancellation: `await asyncio.wait_for(task, timeout=5.0)`
+- ✅ All background tasks must have error handlers
+- ✅ All external API calls must handle rate limits
+- ✅ Use exponential backoff for retries
+- ✅ Emit events on task completion/failure
+- ❌ NEVER `await task` after `.cancel()` without `wait_for()` wrapper
+- ❌ NEVER start background tasks without monitoring
+- ❌ NEVER ignore TimeoutError or CancelledError
 
 ### Testing Requirements
 
--  Aim for 80%+ coverage on domain logic
--  Mock all external dependencies (APIs, database)
--  Integration tests for coordinator interactions
--  No tests needed for simple getters/property access
+- ✅ Aim for 80%+ coverage on domain logic
+- ✅ Mock all external dependencies (APIs, databases)
+- ✅ Integration tests for coordinator interactions
+- ✅ Test error scenarios and edge cases
+- ❌ DON'T test simple getters/property access
+- ❌ DON'T write integration tests without mocking
 
 ### Documentation Standards
 
--  Module docstring explaining responsibility
--  Class docstrings with purpose
--  Method docstrings with args, returns, raises
--  Type hints on all functions
+- ✅ Module docstring: Purpose and public API
+- ✅ Class docstring: Responsibility and usage
+- ✅ Method docstring: Args, returns, raises
+- ✅ Type hints on ALL functions (no `Any`)
+- ✅ Examples in docstrings for complex logic
+- ❌ NEVER skip type hints
+- ❌ NEVER use `Any` without explicit reason
 
 ---
 
-## = Critical Permanent Rules
+## Testing & Debugging Patterns
+
+### Testing Methodology: Systematic Debugging (4-Phase Process)
+
+When issues are discovered, follow this mandatory 4-phase debugging approach:
+
+**Phase 1: Root Cause Investigation**
+- Read error messages completely
+- Reproduce issue consistently
+- Check recent code changes
+- Gather evidence from multiple components
+- Trace data flow backward to source
+
+**Phase 2: Pattern Analysis**
+- Find working examples in codebase
+- Compare against reference implementations
+- Identify all differences (no matter how small)
+- Understand dependencies and assumptions
+
+**Phase 3: Hypothesis and Testing**
+- Form single clear hypothesis
+- Test with SMALLEST possible change
+- One variable at a time
+- Verify before continuing
+
+**Phase 4: Implementation**
+- Create failing test case first
+- Fix root cause (not symptoms)
+- One change at a time
+- Verify fix works
+
+**Critical Rule**: If 3+ fixes fail → STOP and question architecture (don't continue fixing symptoms)
+
+### Input Validation Pattern Discovery
+
+**Root Cause**: Negative quantities were accepted
+**Investigation**: TradeRequest had no validators
+**Solution**: Added Pydantic Field constraints
+**Documentation**: Updated src/web/CLAUDE.md with comprehensive validation patterns
+
+### Pydantic v2 Compatibility Discovery
+
+**Root Cause**: Server wouldn't start after adding validation
+**Investigation**: Used `regex=` parameter (deprecated in Pydantic v2)
+**Solution**: Changed to `pattern=` parameter
+**Documentation**: Added Pydantic v2 syntax examples and common mistakes
+
+---
+
+## Critical Permanent Rules
 
 ### 1. No Code Duplication
 
-Consolidate repeated patterns into shared utilities. Example: 8 Perplexity API calls � 1 unified `PerplexityClient`.
+Consolidate repeated patterns into shared utilities. Example: 8 Perplexity API calls → 1 unified `PerplexityClient`.
 
 ### 2. Single Responsibility Per File
 
@@ -166,9 +408,49 @@ NEVER auto-generate summary documents after work completes. WAIT for explicit us
 
 Never break existing public APIs. When refactoring, maintain import paths (use wrapper if needed). Test with existing code before deployment.
 
+### 7. Feature Management (CRITICAL)
+
+**Rule**: Use feature flags for all new functionality with proper dependency management.
+
+**Implementation**: Use `FeatureManagementService` for dynamic feature control, validate dependencies before activation.
+
+**Why**:
+- Enables safe rollout of new features
+- Provides emergency disable capability
+- Supports A/B testing and gradual deployment
+- Allows feature experimentation without code deployment
+
+### 8. Container Networking (CRITICAL)
+
+**Rule**: All inter-service communication MUST use container names, NOT `.orb.local` DNS names.
+
+**Format**: `http://robo-trader-<service-name>:<port>` (e.g., `http://robo-trader-postgres:5432`)
+
+**Why**:
+- `.orb.local` only works in OrbStack, fails in standard Docker
+- Container names work reliably across Docker, Docker Compose, OrbStack
+- Avoids DNS resolution failures and service communication timeouts
+
+**Where to Update**:
+- `docker-compose.yml` - service environment variables (DATABASE_URL, RABBITMQ_URL, SERVICE_URLs)
+- `monitoring/prometheus.yml` - scrape targets
+- `monitoring/grafana/provisioning/datasources/prometheus.yml` - datasource URLs
+- Service code (if hardcoding URLs) - use ENV variables instead
+
+**Naming Convention**: `robo-trader-<service-name>` (always use this exact format for new services)
+
+**See**: @documentation/CONTAINER_NETWORKING.md for troubleshooting and detailed guide.
+
+**Restart Scripts Available**:
+- `./restart_server.sh` - Complete restart with automatic cache prevention
+- `./scripts/restart-safe.sh [service] [--rebuild]` - Safe restart with optional rebuild
+- `./scripts/safe-build.sh [service] [force]` - Build single service safely
+- `./scripts/rebuild-all.sh` - Nuclear option: remove all and rebuild from scratch
+- `./scripts/verify-cache.sh [service]` - Verify no stale code in containers
+
 ---
 
-## =� Quick Reference - What to Do
+## Quick Reference - What to Do
 
 | Situation | Pattern | Reference |
 |-----------|---------|-----------|
@@ -181,10 +463,23 @@ Never break existing public APIs. When refactoring, maintain import paths (use w
 | Building UI component | Feature folder with one component per file | Frontend Organization |
 | Need real-time updates | Send changed data only via `differential_update` | WebSocket Diffs |
 | Managing distributed state | Use `StateCoordinator`, emit change events | State Management |
+| Centralizing configuration | Single `Config` class, load once, pass via DI | Centralized Configuration |
+| Consolidating API calls | One client per API, key rotation, retry logic | API Client Pattern (src/core) |
+| Parsing external data | 3-layer fallback: structured → regex → basic | Fallback Parsing (src/core) |
+| Services receiving events | Inherit `EventHandler`, implement handler, cleanup | Event Handler Pattern (src/services) |
+| HTTP endpoints & WebSockets | Middleware error handling, rate limiting | Web Layer (src/web) |
+| Smart scheduling needed | Check `StockStateStore.needs_news_fetch()` before API calls | Per-Stock State Tracking |
+| API resilience needed | Use `retry_on_rate_limit()` with exponential backoff | Exponential Backoff & Retry |
+| Strategy learning needed | Log daily reflections in `StrategyLogStore` | Strategy Learning & Logging |
+| Performance metrics needed | Use `PerformanceCalculator` for all P&L calculations | Performance Metrics Calculation |
+| Three-queue scheduler needed | Implement PortfolioQueue, DataFetcherQueue, AIAnalysisQueue | Three Separate Scheduler Queues |
+| Event-driven triggering needed | NEWS_FETCHED → AI analysis, EARNINGS_FETCHED → fundamentals update | Event-Driven Triggering |
+| Monthly capital reset needed | Run MonthlyResetMonitor daily, reset on 1st, save performance history | Monthly Reset Monitor |
+| AI functionality needed | Use Claude Agent SDK only - NO direct Anthropic API calls | SDK-Only Architecture |
 
 ---
 
-## � Pre-Commit Checklist
+## Pre-Commit Checklist
 
 Every code submission MUST pass:
 
@@ -196,10 +491,30 @@ Every code submission MUST pass:
 - [ ] **Testing**: Testable design, mocks for externals, 80%+ coverage for domain logic
 - [ ] **Documentation**: Module/class/method docstrings, type hints
 - [ ] **Backward Compat**: Old imports still work, no breaking changes
+- [ ] **Input Validation**: Pydantic models with Field constraints on all requests
+- [ ] **Pydantic v2**: Uses `pattern=` (NOT `regex=`), proper constraints (`gt=`, `le=`, etc.)
+- [ ] **Negative Input Handling**: Numeric fields have `gt=0` or appropriate lower bound
+- [ ] **API Clients**: Single client per API, key rotation, exponential backoff (src/core)
+- [ ] **Parsing**: Multi-layer fallback if parsing external data (src/core)
+- [ ] **Services**: Inherit EventHandler if reacting to events, proper cleanup (src)
+- [ ] **Web Layer**: Error middleware + rate limiting + input validation (src/web)
+- [ ] **Container Networking**: All URLs use container names, not .orb.local
+- [ ] **Smart Scheduling**: Check stock state before API calls, update after fetches
+- [ ] **API Resilience**: All external calls use retry with exponential backoff
+- [ ] **Strategy Learning**: Log daily reflections, use insights for improvement
+- [ ] **Performance Metrics**: Use PerformanceCalculator for all trading metrics
+- [ ] **Three-Queue Architecture**: Implement separate Portfolio, Data Fetcher, and AI Analysis queues
+- [ ] **Event-Driven Workflows**: Automatic triggering between scheduler queues
+- [ ] **Feature Management**: Use feature flags for new functionality with dependency validation
+- [ ] **Multi-Agent Coordination**: Register agents with capabilities, use structured communication
+- [ ] **Service Integration**: Inherit EventHandler for services reacting to events
+- [ ] **Atomic Writes**: Use temp files and os.replace() for data consistency
+- [ ] **Systematic Debugging**: Use 4-phase process when fixing issues (root cause first)
+- [ ] **SDK-Only Architecture**: NO direct Anthropic API calls - use Claude Agent SDK only
 
 ---
 
-## <� Development Workflow
+## Development Workflow
 
 ### Before Writing Code
 
@@ -226,7 +541,7 @@ Every code submission MUST pass:
 
 ---
 
-## =� Key Files Reference
+## Key Files Reference
 
 - `src/core/orchestrator.py` - Main facade (thin, delegates to coordinators)
 - `src/core/coordinators/` - Focused service coordinators
@@ -234,6 +549,14 @@ Every code submission MUST pass:
 - `src/core/event_bus.py` - Event infrastructure (343 lines)
 - `src/core/errors.py` - Error hierarchy with context (219 lines)
 - `src/core/background_scheduler/` - Modularized scheduler (8 focused domains)
+   - `clients/perplexity_client.py` - Unified API client with key rotation
+   - `clients/retry_handler.py` - Exponential backoff & retry logic
+   - `stores/stock_state_store.py` - Per-stock state tracking
+   - `stores/strategy_log_store.py` - Daily strategy learning logs
+   - `processors/earnings_processor.py` - Fallback parsing strategy
+- `src/services/` - Domain services with EventHandler pattern
+- `src/services/paper_trading/performance_calculator.py` - Trading metrics calculation
+- `src/web/app.py` - FastAPI with middleware error handling & rate limiting
 - `config/config.json` - Runtime configuration
 - `ui/src/pages/` - Top-level pages
 - `ui/src/features/` - Feature-specific components
@@ -241,7 +564,7 @@ Every code submission MUST pass:
 
 ---
 
-## 📝 Maintaining CLAUDE.md Files
+## Maintaining CLAUDE.md Files
 
 ### When to Update CLAUDE.md
 
@@ -323,7 +646,7 @@ ui/src/CLAUDE.md (Frontend Guidelines)
 
 ---
 
-## =� When in Doubt
+## When in Doubt
 
 1. Read `@documentation/ARCHITECTURE_PATTERNS.md` for detailed implementation
 2. Check existing pattern in codebase for similar functionality
@@ -336,5 +659,4 @@ ui/src/CLAUDE.md (Frontend Guidelines)
 
 **Key Philosophy**: Patterns exist to maintain code quality and prevent debugging overhead. Coordinators + DI + Events = loosely coupled, highly testable, scalable architecture.
 
-**Remember**: "Focused coordinators, injected dependencies, event-driven communication, rich error context. No duplication. Always."
-
+**Remember**: "Focused coordinators, injected dependencies, event-driven communication, rich error context. Smart scheduling, resilient APIs, strategy learning. Three-queue architecture, event-driven workflows. No duplication. Always."

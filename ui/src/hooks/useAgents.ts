@@ -10,7 +10,8 @@ export function useAgents() {
   const { data: agentsData, isLoading } = useQuery({
     queryKey: ['agents'],
     queryFn: agentsAPI.getStatus,
-    refetchInterval: 5000,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   })
 
   const updateConfig = useMutation({

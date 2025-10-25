@@ -14,10 +14,10 @@ import json
 import aiosqlite
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 from ..core.state_models import OrderCommand, ExecutionReport
 from ..core.event_bus import EventBus, Event, EventType, EventHandler
-from ..mcp.broker import ZerodhaBroker
+# from ..mcp.broker import ZerodhaBroker  # Commented out - no live trading
 
 
 class OrderStatus(Enum):
@@ -64,10 +64,10 @@ class ExecutionService(EventHandler):
     - Order state machine
     """
 
-    def __init__(self, config: Config, event_bus: EventBus, broker: ZerodhaBroker):
+    def __init__(self, config: Config, event_bus: EventBus, broker=None):
         self.config = config
         self.event_bus = event_bus
-        self.broker = broker
+        self.broker = broker  # Optional for paper trading only
         self.db_path = config.state_dir / "execution.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -80,6 +80,7 @@ start_service "risk-service"
 start_service "execution-service"
 start_service "analytics-service"
 start_service "learning-service"
+start_service "paper-trading"
 
 # 6. Safety layer
 start_service "safety-layer"

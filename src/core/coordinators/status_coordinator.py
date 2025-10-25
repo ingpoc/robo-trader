@@ -10,7 +10,7 @@ from typing import Dict, Any
 
 from loguru import logger
 
-from ...config import Config
+from src.config import Config
 from ...core.database_state import DatabaseStateManager
 from ...core.ai_planner import AIPlanner
 from ...core.background_scheduler import BackgroundScheduler

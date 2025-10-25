@@ -6,14 +6,16 @@ import { ChevronDown, ChevronRight, AlertTriangle, Info, XCircle, CheckCircle } 
 interface AlertItemProps {
   alert: {
     id: string
-    title: string
+    title?: string
     message: string
-    severity: 'critical' | 'high' | 'medium' | 'low'
+    severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
     timestamp: string
     symbol?: string
     actionable?: boolean
     details?: string
     category?: string
+    type?: string
+    acknowledged?: boolean
   }
   onAction: (params: { alertId: string, action: string }) => void
   isHandlingAction: boolean
@@ -47,17 +49,27 @@ const severityConfig = {
     textColor: 'text-copper-900',
     icon: Info,
     iconColor: 'text-copper-600'
+  },
+  info: {
+    bgColor: 'bg-blue-50 border-blue-200',
+    badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
+    textColor: 'text-blue-900',
+    icon: Info,
+    iconColor: 'text-blue-600'
   }
 }
 
 export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const config = severityConfig[alert.severity]
+  const config = severityConfig[alert.severity] || severityConfig.info
   const Icon = config.icon
 
   const handleAction = (action: string) => {
     onAction({ alertId: alert.id, action })
   }
+
+  // Provide default title if not present
+  const alertTitle = alert.title || alert.message.substring(0, 50) + (alert.message.length > 50 ? '...' : '')
 
   return (
     <div className={`p-4 border rounded-xl transition-all duration-300 hover:shadow-md ${config.bgColor} group`}>
@@ -86,7 +98,7 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <h4 className={`text-sm font-bold ${config.textColor} mb-2 leading-tight`}>
-                {alert.title}
+                {alertTitle}
               </h4>
               <p className="text-sm text-warmgray-700 leading-relaxed mb-2">
                 {alert.message}

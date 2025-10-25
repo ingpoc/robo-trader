@@ -21,7 +21,8 @@ export const useNewsEarnings = () => {
   const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get(API_ENDPOINTS.dashboard),
-    refetchInterval: REFRESH_INTERVALS.dashboard,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   })
 
   // Fetch news and earnings data for selected symbol
@@ -34,21 +35,24 @@ export const useNewsEarnings = () => {
     queryKey: ['news-earnings', selectedSymbol],
     queryFn: () => newsEarningsAPI.getNewsAndEarnings(selectedSymbol),
     enabled: !!selectedSymbol,
-    refetchInterval: REFRESH_INTERVALS.newsEarnings,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   })
 
   // Fetch upcoming earnings for all portfolio symbols
   const { data: upcomingEarningsData, refetch: refetchUpcoming } = useQuery({
     queryKey: ['upcoming-earnings'],
     queryFn: () => newsEarningsAPI.getUpcomingEarnings(60),
-    refetchInterval: REFRESH_INTERVALS.upcomingEarnings,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   })
 
   // Fetch recommendations
   const { data: recommendationsData, refetch: refetchRecommendations } = useQuery({
     queryKey: ['recommendations'],
     queryFn: () => api.get(API_ENDPOINTS.recommendations),
-    refetchInterval: REFRESH_INTERVALS.recommendations,
+    staleTime: 60000,
+    gcTime: 10 * 60 * 1000,
   })
 
   // Extract portfolio symbols and set initial symbol

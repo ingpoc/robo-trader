@@ -1,22 +1,30 @@
 """
 Task persistence layer for Background Scheduler.
 
-Handles loading and saving background tasks to persistent storage.
+Handles loading and saving background tasks to the database.
+Migrated from file-based storage to database storage.
 """
 
 import json
-from pathlib import Path
-from typing import Dict
 from datetime import datetime
+from typing import Dict
+from pathlib import Path
 
-import aiofiles
 from loguru import logger
 
 from ..models import BackgroundTask, TaskType, TaskPriority
 
 
 class TaskStore:
-    """Manages task persistence with atomic writes."""
+    """Manages task persistence with database storage."""
+
+    def __init__(self, db_connection):
+        """Initialize store with database connection.
+
+        Args:
+            db_connection: Active database connection
+        """
+        self.db = db_connection
 
     @staticmethod
     def _to_datetime(value):
@@ -30,113 +38,129 @@ class TaskStore:
         return value
 
     @staticmethod
-    async def load_tasks(state_dir: Path) -> Dict[str, BackgroundTask]:
-        """Load all tasks from persistent storage.
+    async def load_tasks(db_connection) -> Dict[str, BackgroundTask]:
+        """Load all tasks from database storage.
 
         Args:
-            state_dir: Directory containing scheduler_tasks.json
+            db_connection: Active database connection
 
         Returns:
             Dictionary of task_id -> BackgroundTask
         """
         tasks = {}
         try:
-            tasks_file = state_dir / "scheduler_tasks.json"
-            if tasks_file.exists():
-                async with aiofiles.open(tasks_file, 'r', encoding='utf-8') as f:
-                    content = await f.read()
-                    tasks_data = json.loads(content)
+            query = """
+                SELECT task_id, task_type, priority, execute_at, interval_seconds,
+                       max_retries, retry_count, last_executed, next_execution,
+                       is_active, metadata
+                FROM scheduler_background_tasks
+                WHERE is_active = TRUE
+                ORDER BY execute_at ASC
+            """
 
-                for task_data in tasks_data:
-                    task = BackgroundTask(
-                        task_id=task_data["task_id"],
-                        task_type=TaskType(task_data["task_type"]),
-                        priority=TaskPriority(task_data["priority"]),
-                        execute_at=TaskStore._to_datetime(task_data["execute_at"]),
-                        interval_seconds=task_data.get("interval_seconds"),
-                        metadata=task_data.get("metadata", {}),
-                        is_active=task_data.get("is_active", True),
-                        retry_count=task_data.get("retry_count", 0),
-                        max_retries=task_data.get("max_retries", 3)
-                    )
+            cursor = await db_connection.execute(query)
+            rows = await cursor.fetchall()
 
-                    if task_data.get("last_executed"):
-                        task.last_executed = TaskStore._to_datetime(task_data["last_executed"])
-                    if task_data.get("next_execution"):
-                        task.next_execution = TaskStore._to_datetime(task_data["next_execution"])
+            for row in rows:
+                task = BackgroundTask(
+                    task_id=row[0],
+                    task_type=TaskType(row[1]),
+                    priority=TaskPriority(row[2]),
+                    execute_at=TaskStore._to_datetime(row[3]),
+                    interval_seconds=row[4],
+                    max_retries=row[5] or 3,
+                    retry_count=row[6] or 0,
+                    last_executed=TaskStore._to_datetime(row[7]) if row[7] else None,
+                    next_execution=TaskStore._to_datetime(row[8]) if row[8] else None,
+                    is_active=row[9],
+                    metadata=row[10] or {}
+                )
+                tasks[task.task_id] = task
 
-                    tasks[task.task_id] = task
-
-                logger.info(f"Loaded {len(tasks)} tasks from storage")
+            logger.info(f"Loaded {len(tasks)} tasks from database")
         except Exception as e:
-            logger.error(f"Failed to load tasks: {e}")
+            logger.error(f"Failed to load tasks from database: {e}")
 
         return tasks
 
     @staticmethod
-    async def save_all_tasks(state_dir: Path, tasks: Dict[str, BackgroundTask]) -> None:
-        """Save all tasks to persistent storage with atomic write.
-
-        Uses temp file + rename pattern for atomic writes as per project rules.
+    async def save_all_tasks(db_connection, tasks: Dict[str, BackgroundTask]) -> None:
+        """Save all tasks to database storage.
 
         Args:
-            state_dir: Directory to store scheduler_tasks.json
+            db_connection: Active database connection
             tasks: Dictionary of all tasks to persist
         """
         try:
-            tasks_file = state_dir / "scheduler_tasks.json"
-            temp_file = state_dir / "scheduler_tasks.json.tmp"
+            # Clear existing tasks
+            await db_connection.execute("DELETE FROM scheduler_background_tasks")
 
-            tasks_data = []
-            for t in tasks.values():
-                task_dict = {
-                    "task_id": t.task_id,
-                    "task_type": t.task_type.value,
-                    "priority": t.priority.value,
-                    "execute_at": t.execute_at.isoformat() if hasattr(t.execute_at, 'isoformat') else t.execute_at,
-                    "interval_seconds": t.interval_seconds,
-                    "metadata": t.metadata,
-                    "is_active": t.is_active,
-                    "retry_count": t.retry_count,
-                    "max_retries": t.max_retries
-                }
-                if t.last_executed:
-                    task_dict["last_executed"] = t.last_executed.isoformat() if hasattr(t.last_executed, 'isoformat') else t.last_executed
-                if t.next_execution:
-                    task_dict["next_execution"] = t.next_execution.isoformat() if hasattr(t.next_execution, 'isoformat') else t.next_execution
+            # Insert all tasks
+            for task in tasks.values():
+                query = """
+                    INSERT INTO scheduler_background_tasks (
+                        task_id, task_type, priority, execute_at, interval_seconds,
+                        max_retries, retry_count, last_executed, next_execution,
+                        is_active, metadata, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
 
-                tasks_data.append(task_dict)
+                await db_connection.execute(
+                    query,
+                    (
+                        task.task_id,
+                        task.task_type.value,
+                        task.priority.value,
+                        task.execute_at.isoformat() if hasattr(task.execute_at, 'isoformat') else task.execute_at,
+                        task.interval_seconds,
+                        task.max_retries,
+                        task.retry_count,
+                        task.last_executed.isoformat() if task.last_executed and hasattr(task.last_executed, 'isoformat') else task.last_executed,
+                        task.next_execution.isoformat() if task.next_execution and hasattr(task.next_execution, 'isoformat') else task.next_execution,
+                        task.is_active,
+                        json.dumps(task.metadata),
+                        datetime.now().isoformat(),
+                        datetime.now().isoformat()
+                    ),
+                )
 
-            async with aiofiles.open(temp_file, 'w', encoding='utf-8') as f:
-                await f.write(json.dumps(tasks_data, indent=2, ensure_ascii=False))
-
-            import os
-            os.replace(temp_file, tasks_file)
+            await db_connection.commit()
+            logger.info(f"Saved {len(tasks)} tasks to database")
 
         except Exception as e:
-            logger.error(f"Failed to save tasks: {e}")
+            logger.error(f"Failed to save tasks to database: {e}")
+            await db_connection.rollback()
 
     @staticmethod
-    async def save_task(state_dir: Path, tasks: Dict[str, BackgroundTask]) -> None:
-        """Save all tasks to persistent storage.
+    async def save_task(db_connection, tasks: Dict[str, BackgroundTask]) -> None:
+        """Save all tasks to database storage.
 
         This is called after each task modification.
 
         Args:
-            state_dir: Directory to store scheduler_tasks.json
+            db_connection: Active database connection
             tasks: Dictionary of all tasks to persist
         """
-        await TaskStore.save_all_tasks(state_dir, tasks)
+        await TaskStore.save_all_tasks(db_connection, tasks)
 
     @staticmethod
-    async def delete_task(state_dir: Path, tasks: Dict[str, BackgroundTask], task_id: str) -> None:
-        """Delete a task from persistent storage.
+    async def delete_task(db_connection, tasks: Dict[str, BackgroundTask], task_id: str) -> None:
+        """Delete a task from database storage.
 
         Args:
-            state_dir: Directory containing scheduler_tasks.json
+            db_connection: Active database connection
             tasks: Dictionary of all tasks
             task_id: ID of task to delete
         """
-        if task_id in tasks:
-            del tasks[task_id]
-            await TaskStore.save_all_tasks(state_dir, tasks)
+        try:
+            if task_id in tasks:
+                del tasks[task_id]
+
+            query = "DELETE FROM scheduler_background_tasks WHERE task_id = ?"
+            await db_connection.execute(query, (task_id,))
+            await db_connection.commit()
+
+            logger.info(f"Deleted task {task_id} from database")
+        except Exception as e:
+            logger.error(f"Failed to delete task {task_id}: {e}")
+            await db_connection.rollback()

@@ -7,11 +7,22 @@ export function useAlerts() {
   const queryClient = useQueryClient()
   const addToast = useDashboardStore((state) => state.addToast)
 
-  const { data: alertsData, isLoading } = useQuery({
+  const { data: alertsData, isLoading, error } = useQuery({
     queryKey: ['alerts'],
     queryFn: alertsAPI.getActive,
-    refetchInterval: 10000, // Refresh every 10 seconds for active alerts
-    retry: 2,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+    retry: (failureCount, error) => {
+      // Don't retry on 404s or auth errors
+      if (error instanceof Error && (error.message.includes('404') || error.message.includes('401'))) {
+        return false
+      }
+      return failureCount < 3
+    },
+    onError: (error) => {
+      console.warn('Failed to load alerts:', error)
+      // Don't show toast for alerts - they're not critical
+    }
   })
 
   const handleAction = useMutation({
@@ -37,6 +48,7 @@ export function useAlerts() {
   return {
     alerts: alertsData?.alerts || [],
     isLoading,
+    error,
     handleAction: handleAction.mutate,
     isHandlingAction: handleAction.isPending,
   }

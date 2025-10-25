@@ -80,10 +80,21 @@ export interface DashboardData {
   alerts: Alert[]
   ai_status: AIStatus
   timestamp: string
-  intents?: any[]
+  intents?: Intent[]
 }
 
 // Trading Types
+export interface Intent {
+  id: string
+  symbol: string
+  action: 'buy' | 'sell' | 'hold'
+  quantity?: number
+  confidence?: number
+  reasoning?: string
+  status: 'pending' | 'approved' | 'rejected' | 'expired'
+  created_at: string
+}
+
 export interface TradeRequest {
   symbol: string
   side: 'BUY' | 'SELL'
@@ -112,11 +123,15 @@ export interface AgentStatus {
   tasks_completed?: number
 }
 
+export interface AgentConfigSettings {
+  [key: string]: string | number | boolean | undefined
+}
+
 export interface AgentConfig {
   id: string
   name: string
   enabled: boolean
-  config: Record<string, any>
+  config: AgentConfigSettings
   last_updated: string
 }
 
@@ -126,13 +141,19 @@ export interface AgentFeaturesConfig {
 
 export interface AgentFeatureConfig {
   enabled: boolean
-  config: Record<string, any>
+  config: AgentConfigSettings
   use_claude?: boolean
   frequency_seconds?: number
   priority?: number
 }
 
 // Performance Types
+export interface ChartDataPoint {
+  timestamp: string
+  value: number
+  label?: string
+}
+
 export interface PerformanceData {
   timestamp: string
   portfolio_value: number
@@ -141,7 +162,7 @@ export interface PerformanceData {
   sharpe_ratio?: number
   max_drawdown?: number
   win_rate?: number
-  chart_data?: any[]
+  chart_data?: ChartDataPoint[]
 }
 
 // Additional types for better type safety
@@ -153,8 +174,14 @@ export interface UpcomingEarnings {
   days_until?: number
 }
 
+export interface ErrorDetails {
+  code?: string
+  field?: string
+  [key: string]: string | number | boolean | undefined
+}
+
 export interface ErrorResponse {
   message: string
   status?: number
-  details?: any
+  details?: ErrorDetails
 }

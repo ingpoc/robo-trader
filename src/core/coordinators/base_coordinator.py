@@ -10,7 +10,7 @@ from typing import Optional
 
 from loguru import logger
 
-from ...config import Config
+from src.config import Config
 from ..event_bus import EventBus
 
 

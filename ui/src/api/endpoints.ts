@@ -1,3 +1,14 @@
+import type {
+  QueueType,
+  QueueStatus,
+  QueueTask,
+  TaskExecutionHistory,
+  QueuePerformanceMetrics,
+  QueueStats,
+  TaskFilter,
+  QueueTriggerRequest,
+  QueueConfigurationUpdate,
+} from '@/types/queue'
 import { api } from './client'
 import type {
   DashboardData,
@@ -212,4 +223,75 @@ export const newsEarningsAPI = {
 export const symbolsAPI = {
   searchSymbols: (query: string, limit: number = 20) =>
     api.get<{ symbols: SymbolData[], total: number }>(`/api/symbols/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+}
+
+export const queueAPI = {
+  // Get all queue statuses
+  getQueueStatuses: () =>
+    api.get<{ queues: QueueStatus[], stats: QueueStats }>('/api/queues/status'),
+
+  // Get specific queue status
+  getQueueStatus: (queueType: QueueType) =>
+    api.get<{ queue: QueueStatus }>('/api/queues/status/${queueType}'),
+
+  // Get queue tasks with filtering
+  getQueueTasks: (filters?: TaskFilter) => {
+    const params = new URLSearchParams();
+    if (filters?.queue_type) params.append('queue_type', filters.queue_type);
+    if (filters?.status?.length) params.append('status', filters.status.join(','));
+    if (filters?.priority?.length) params.append('priority', filters.priority.join(','));
+    if (filters?.task_type?.length) params.append('task_type', filters.task_type.join(','));
+    if (filters?.date_range) {
+      params.append('start_date', filters.date_range.start);
+      params.append('end_date', filters.date_range.end);
+    }
+    return api.get<{ tasks: QueueTask[], total: number }>(`/api/queues/tasks?${params}`);
+  },
+
+  // Get task execution history
+  getTaskHistory: (queueType?: QueueType, limit: number = 100) =>
+    api.get<{ history: TaskExecutionHistory[] }>(`/api/queues/history?queue_type=${queueType || ''}&limit=${limit}`),
+
+  // Get queue performance metrics
+  getPerformanceMetrics: (queueType?: QueueType, hours: number = 24) =>
+    api.get<{ metrics: QueuePerformanceMetrics[] }>(`/api/queues/metrics?queue_type=${queueType || ''}&hours=${hours}`),
+
+  // Trigger manual task execution
+  triggerTask: (request: QueueTriggerRequest) =>
+    api.post<{ task_id: string; status: string }>('/api/queues/trigger', request),
+
+  // Update queue configuration
+  updateConfiguration: (update: QueueConfigurationUpdate) =>
+    api.put<{ status: string; configuration: QueueConfiguration }>('/api/queues/config', update),
+
+  // Get queue configuration
+  getConfiguration: (queueType: QueueType) =>
+    api.get<{ configuration: QueueConfiguration }>(`/api/queues/config/${queueType}`),
+
+  // Pause/resume queue
+  pauseQueue: (queueType: QueueType) =>
+    api.post<{ status: string }>('/api/queues/pause', { queue_type: queueType }),
+
+  resumeQueue: (queueType: QueueType) =>
+    api.post<{ status: string }>('/api/queues/resume', { queue_type: queueType }),
+
+  // Cancel task
+  cancelTask: (taskId: string) =>
+    api.post<{ status: string }>(`/api/queues/tasks/${taskId}/cancel`),
+
+  // Retry failed task
+  retryTask: (taskId: string) =>
+    api.post<{ status: string }>(`/api/queues/tasks/${taskId}/retry`),
+
+  // Clear completed tasks
+  clearCompletedTasks: (queueType?: QueueType) =>
+    api.post<{ status: string; cleared_count: number }>('/api/queues/clear-completed', { queue_type: queueType }),
+
+  // Get queue health status
+  getHealthStatus: () =>
+    api.get<{
+      overall_health: 'healthy' | 'warning' | 'critical';
+      queue_health: Record<QueueType, 'healthy' | 'warning' | 'critical'>;
+      issues: string[];
+    }>('/api/queues/health'),
 }

@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: robo-trader-postgres
+    environment:
+      POSTGRES_DB: robo_trader
+      POSTGRES_USER: robo_trader
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-robo_trader}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "robo_trader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "dev.orbstack.domains=postgres.orb.local"
+    networks:
+      - robo-trader-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: robo-trader-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    labels:
+      - "dev.orbstack.domains=redis.orb.local"
+    networks:
+      - robo-trader-network
+
+  # ============================================================================
+  # MONOLITHIC APPLICATION
+  # ============================================================================
+
+  robo-trader-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: robo-trader-app
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: 8000
+
+      # Database
+      DATABASE_URL: postgresql://robo_trader:${DB_PASSWORD:-robo_trader}@robo-trader-postgres:5432/robo_trader
+
+      # Cache
+      REDIS_URL: redis://robo-trader-redis:6379/0
+
+      # API Keys
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ZERODHA_API_KEY: ${ZERODHA_API_KEY}
+      ZERODHA_API_SECRET: ${ZERODHA_API_SECRET}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY}
+      BROKER_API_KEY: ${BROKER_API_KEY}
+
+      # Python
+      PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./config:/app/config
+
+    labels:
+      - "dev.orbstack.domains=app.orb.local"
+
+    networks:
+      - robo-trader-network
+
+  # ============================================================================
+  # FRONTEND (Optional - can be served separately)
+  # ============================================================================
+
+  # Uncomment to run frontend in Docker (optional)
+  # frontend:
+  #   build:
+  #     context: ./ui
+  #     dockerfile: Dockerfile
+  #   container_name: robo-trader-frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     REACT_APP_API_URL: http://robo-trader-app:8000
+  #   depends_on:
+  #     - robo-trader-app
+  #   networks:
+  #     - robo-trader-network
+
+networks:
+  robo-trader-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres-data:
+  redis-data:

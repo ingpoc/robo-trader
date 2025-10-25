@@ -43,19 +43,20 @@ class ConnectionManager:
         self._cleanup_task: Optional[asyncio.Task] = None
         self._cleanup_interval_seconds = 10
 
-    async def connect(self, websocket: WebSocket) -> str:
+    async def connect(self, websocket: WebSocket, client_id: Optional[str] = None) -> str:
         """
         Add a new WebSocket connection.
 
         Args:
             websocket: WebSocket instance to add
+            client_id: Optional client identifier
 
         Returns:
             connection_id: Unique identifier for this connection
         """
         await websocket.accept()
 
-        connection_id = f"ws_{id(websocket)}"
+        connection_id = client_id or f"ws_{id(websocket)}"
 
         async with self._lock:
             self.active_connections[connection_id] = websocket
@@ -68,14 +69,16 @@ class ConnectionManager:
 
         return connection_id
 
-    async def disconnect(self, websocket: WebSocket) -> None:
+    async def disconnect(self, websocket: WebSocket, connection_id: Optional[str] = None) -> None:
         """
         Remove a WebSocket connection.
 
         Args:
             websocket: WebSocket instance to remove
+            connection_id: Optional connection identifier
         """
-        connection_id = f"ws_{id(websocket)}"
+        if connection_id is None:
+            connection_id = f"ws_{id(websocket)}"
 
         async with self._lock:
             removed = self.active_connections.pop(connection_id, None)
@@ -212,7 +215,7 @@ class ConnectionManager:
                 self._generation_counter += 1
 
         if removed_count > 0:
-            logger.info(f"Cleaned up {removed_count} dead WebSocket connections")
+            logger.debug(f"Cleaned up {removed_count} dead WebSocket connections")
 
         return removed_count
 
@@ -244,7 +247,7 @@ class ConnectionManager:
 
     async def shutdown(self) -> None:
         """Gracefully shutdown connection manager."""
-        logger.info("Shutting down WebSocket ConnectionManager")
+        logger.debug("Shutting down WebSocket ConnectionManager")
 
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
@@ -258,4 +261,4 @@ class ConnectionManager:
             self.active_connections.clear()
             self._dead_connections.clear()
 
-        logger.info(f"ConnectionManager shutdown complete ({connection_count} connections closed)")
+        logger.debug(f"ConnectionManager shutdown complete ({connection_count} connections closed)")

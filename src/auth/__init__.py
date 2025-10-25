@@ -7,6 +7,6 @@ Handles:
 - Zerodha OAuth (future)
 """
 
-from .claude_auth import validate_claude_api, get_claude_status
+from .claude_auth import validate_claude_sdk_auth, get_claude_sdk_status, get_claude_sdk_status_cached, ClaudeAuthStatus, require_claude_api, invalidate_status_cache
 
-__all__ = ["validate_claude_api", "get_claude_status"]
+__all__ = ["validate_claude_sdk_auth", "get_claude_sdk_status", "get_claude_sdk_status_cached", "ClaudeAuthStatus", "require_claude_api", "invalidate_status_cache"]

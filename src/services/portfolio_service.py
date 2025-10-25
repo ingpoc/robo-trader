@@ -13,7 +13,7 @@ import json
 import aiosqlite
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 from ..core.state_models import PortfolioState
 from ..core.event_bus import EventBus, Event, EventType, EventHandler
 

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from ..config import Config
+from src.config import Config
 
 
 async def fetch_live_holdings_from_broker(broker) -> Optional[List[Dict[str, Any]]]:

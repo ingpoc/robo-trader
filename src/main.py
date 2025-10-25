@@ -10,7 +10,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from .config import load_config
+from src.config import load_config
 from .core.di import initialize_container, cleanup_container
 from .core.orchestrator import RoboTraderOrchestrator
 
@@ -41,7 +41,7 @@ def main():
         # Start web server (this will run its own event loop)
         from .web.app import run_web_server
         logger.info(f"Starting web server on {args.host}:{args.port}")
-        run_web_server(host=args.host, port=args.port)
+        run_web_server()
         return  # Exit here, uvicorn handles the event loop
 
     # For CLI commands, run async main

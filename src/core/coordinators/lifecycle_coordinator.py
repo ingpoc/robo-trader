@@ -7,7 +7,7 @@ Extracted from RoboTraderOrchestrator lines 424-445.
 
 from loguru import logger
 
-from ...config import Config
+from src.config import Config
 from ...core.background_scheduler import BackgroundScheduler
 from .base_coordinator import BaseCoordinator
 

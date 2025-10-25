@@ -54,7 +54,8 @@ export function NewsEarnings() {
   const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get('/api/dashboard'),
-    refetchInterval: 10000,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   })
 
   // Fetch news and earnings data for selected symbol
@@ -62,14 +63,16 @@ export function NewsEarnings() {
     queryKey: ['news-earnings', selectedSymbol],
     queryFn: () => newsEarningsAPI.getNewsAndEarnings(selectedSymbol),
     enabled: !!selectedSymbol,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   })
 
   // Fetch upcoming earnings for all portfolio symbols
   const { data: upcomingEarningsData, isLoading: upcomingLoading } = useQuery({
     queryKey: ['upcoming-earnings'],
     queryFn: () => newsEarningsAPI.getUpcomingEarnings(60), // Next 60 days
-    refetchInterval: 300000, // Refetch every 5 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   })
 
   // Extract portfolio symbols

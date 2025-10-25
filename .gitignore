@@ -58,3 +58,4 @@ verify_setup.sh
 docs/_build/
 ui/playwright-report/
 ui/test-results/
+documentation/

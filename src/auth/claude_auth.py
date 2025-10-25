@@ -1,14 +1,14 @@
 """
-Claude API Authentication and Validation
+Claude Agent SDK Authentication and Validation
 
-Ensures the system has valid Claude API access and displays status.
+Ensures the system has valid Claude Agent SDK access and displays status.
+SDK uses Claude Code CLI for authentication, no direct API keys needed.
 """
 
 import os
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
 
-from anthropic import Anthropic, APIError, AuthenticationError
 from loguru import logger
 
 
@@ -44,18 +44,15 @@ class ClaudeAuthStatus:
         }
 
 
-async def validate_claude_api(api_key: Optional[str] = None) -> ClaudeAuthStatus:
+async def validate_claude_sdk_auth() -> ClaudeAuthStatus:
     """
-    Validate Claude authentication for the Claude Agent SDK.
+    Validate Claude Agent SDK authentication.
 
-    IMPORTANT: The Claude Agent SDK uses Claude Code CLI, NOT direct API calls.
+    The Claude Agent SDK uses Claude Code CLI for authentication, NOT direct API calls.
     The SDK communicates with the 'claude' CLI command, which handles auth internally.
 
     Authentication method:
     - Claude Code CLI authentication (uses Claude subscription or OAuth)
-
-    Args:
-        api_key: Ignored - SDK does not use API keys directly.
 
     Returns:
         ClaudeAuthStatus with validation results
@@ -63,7 +60,7 @@ async def validate_claude_api(api_key: Optional[str] = None) -> ClaudeAuthStatus
     cli_status = await check_claude_code_cli_auth()
     if cli_status["authenticated"]:
         auth_method = cli_status.get("auth_method", "subscription")
-        logger.info(f"✓ Claude Agent SDK will use Claude Code CLI auth via {auth_method}")
+        logger.info(f"✓ Claude Agent SDK authenticated via Claude Code CLI ({auth_method})")
         rate_limit_info = cli_status.get("rate_limit_info", {})
 
         return ClaudeAuthStatus(
@@ -72,21 +69,22 @@ async def validate_claude_api(api_key: Optional[str] = None) -> ClaudeAuthStatus
             account_info={
                 "auth_method": f"claude_code_cli_{auth_method}",
                 "subscription": "active" if auth_method == "subscription" else "oauth",
-                "note": "SDK uses CLI authentication",
+                "note": "SDK uses CLI authentication only",
                 **cli_status
             },
             rate_limit_info=rate_limit_info
         )
 
-    logger.error("Claude Code CLI not authenticated")
+    logger.error("Claude Agent SDK not authenticated - Claude Code CLI not available")
     return ClaudeAuthStatus(
         is_valid=False,
         api_key_present=False,
         error=(
-            "Claude Code CLI not authenticated. To use your Claude subscription:\n"
-            "1. Run: claude auth login\n"
-            "2. Follow browser authentication flow\n"
-            "3. Restart the application"
+            "Claude Agent SDK not authenticated. To enable AI features:\n"
+            "1. Install Claude Code: https://docs.anthropic.com/claude/docs/desktop-setup\n"
+            "2. Run: claude auth login\n"
+            "3. Follow browser authentication flow\n"
+            "4. Restart the application"
         )
     )
 
@@ -243,14 +241,14 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
         }
 
 
-async def get_claude_status() -> ClaudeAuthStatus:
+async def get_claude_sdk_status() -> ClaudeAuthStatus:
     """
-    Get current Claude API status.
-    
+    Get current Claude Agent SDK status.
+
     Returns:
-        ClaudeAuthStatus with current connection state
+        ClaudeAuthStatus with current SDK connection state
     """
-    return await validate_claude_api()
+    return await validate_claude_sdk_auth()
 
 
 def require_claude_api(func):
@@ -278,23 +276,23 @@ _cached_status: Optional[ClaudeAuthStatus] = None
 _cache_duration_seconds = 300  # 5 minutes
 
 
-async def get_claude_status_cached() -> ClaudeAuthStatus:
-    """Get Claude status with caching to reduce API calls."""
+async def get_claude_sdk_status_cached() -> ClaudeAuthStatus:
+    """Get Claude Agent SDK status with caching to reduce CLI calls."""
     global _cached_status
-    
+
     if _cached_status is None:
-        _cached_status = await validate_claude_api()
+        _cached_status = await validate_claude_sdk_auth()
         return _cached_status
-    
+
     # Check cache age
     from datetime import datetime
     cache_time = datetime.fromisoformat(_cached_status.checked_at)
     age_seconds = (datetime.now(timezone.utc) - cache_time).total_seconds()
-    
+
     if age_seconds > _cache_duration_seconds:
-        logger.debug("Claude status cache expired, refreshing")
-        _cached_status = await validate_claude_api()
-    
+        logger.debug("Claude SDK status cache expired, refreshing")
+        _cached_status = await validate_claude_sdk_auth()
+
     return _cached_status
 
 
