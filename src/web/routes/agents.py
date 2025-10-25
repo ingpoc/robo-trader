@@ -4,10 +4,18 @@ import logging
 import os
 from typing import Dict, Any
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from src.core.di import DependencyContainer
+from src.core.errors import TradingError
+from ..dependencies import get_container
+from ..utils.error_handlers import (
+    handle_trading_error,
+    handle_unexpected_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +27,19 @@ agents_limit = os.getenv("RATE_LIMIT_AGENTS", "20/minute")
 
 @router.get("/agents/status")
 @limiter.limit(agents_limit)
-async def get_agents_status(request: Request) -> Dict[str, Any]:
+async def get_agents_status(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get all agents' status."""
-    from ..app import container
-
-    if not container:
-        return JSONResponse({"error": "System not initialized"}, status_code=500)
-
     try:
         orchestrator = await container.get_orchestrator()
         agents_status = await orchestrator.get_agents_status()
         return agents_status or {"agents": []}
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        logger.error(f"Agents status failed: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return await handle_unexpected_error(e, "get_agents_status")
 
 
 @router.get("/agents")
