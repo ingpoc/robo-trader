@@ -194,6 +194,16 @@ class DependencyContainer:
 
         self._register_singleton("analytics_service", create_analytics_service)
 
+        # Market Data Service (real-time price tracking)
+        async def create_market_data_service():
+            event_bus = await self.get("event_bus")
+            # Broker is optional for paper trading
+            market_data_service = MarketDataService(self.config, event_bus, broker=None)
+            await market_data_service.initialize()
+            return market_data_service
+
+        self._register_singleton("market_data_service", create_market_data_service)
+
         # Learning Service
         async def create_learning_service():
             event_bus = await self.get("event_bus")
@@ -226,10 +236,27 @@ class DependencyContainer:
 
         self._register_singleton("paper_trading_store", create_paper_trading_store)
 
+        # Paper Trading Price Monitor (Phase 2: Real-Time WebSocket Updates)
+        # IMPORTANT: Register BEFORE account_manager to avoid circular dependency
+        async def create_paper_trading_price_monitor():
+            from ..services.paper_trading.price_monitor import PaperTradingPriceMonitor
+            event_bus = await self.get("event_bus")
+            store = await self.get("paper_trading_store")
+            broadcast_coordinator = await self.get("broadcast_coordinator")
+            price_monitor = PaperTradingPriceMonitor(event_bus, store, broadcast_coordinator)
+            await price_monitor.initialize()
+            logger.info("PaperTradingPriceMonitor initialized - real-time WebSocket updates enabled")
+            return price_monitor
+
+        self._register_singleton("paper_trading_price_monitor", create_paper_trading_price_monitor)
+
         async def create_paper_trading_account_manager():
             from ..services.paper_trading.account_manager import PaperTradingAccountManager
             store = await self.get("paper_trading_store")
-            manager = PaperTradingAccountManager(store)
+            market_data_service = await self.get("market_data_service")  # Inject MarketDataService for Zerodha
+            price_monitor = await self.get("paper_trading_price_monitor")  # Inject PriceMonitor for WebSocket
+            manager = PaperTradingAccountManager(store, market_data_service, price_monitor)
+            logger.info("PaperTradingAccountManager created with Zerodha MarketDataService and PriceMonitor")
             return manager
 
         self._register_singleton("paper_trading_account_manager", create_paper_trading_account_manager)
@@ -238,7 +265,9 @@ class DependencyContainer:
             from ..services.paper_trading.trade_executor import PaperTradeExecutor
             store = await self.get("paper_trading_store")
             account_manager = await self.get("paper_trading_account_manager")
-            executor = PaperTradeExecutor(store, account_manager)
+            market_data_service = await self.get("market_data_service")  # Phase 3: Inject for real-time prices
+            executor = PaperTradeExecutor(store, account_manager, market_data_service)
+            logger.info("PaperTradeExecutor created with MarketDataService for Phase 3 real-time execution prices")
             return executor
 
         self._register_singleton("paper_trade_executor", create_paper_trade_executor)

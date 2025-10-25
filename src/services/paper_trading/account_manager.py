@@ -1,69 +1,32 @@
 """Paper trading account management service."""
 
 import logging
-import os
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-
-import httpx
 
 from ...models.paper_trading import PaperTradingAccount, AccountType, RiskLevel
 from ...stores.paper_trading_store import PaperTradingStore
 from ...web.paper_trading_api import OpenPositionResponse, ClosedTradeResponse
 from .performance_calculator import PerformanceCalculator
+from ...services.market_data_service import SubscriptionMode, MarketDataProvider
 
 logger = logging.getLogger(__name__)
 
 
-class MarketDataClient:
-    """Client for fetching real-time market data."""
-
-    def __init__(self):
-        self.base_url = os.getenv("MARKET_DATA_URL", "http://localhost:8004/api/market-data")
-        self.timeout = httpx.Timeout(5.0)  # 5 second timeout
-
-    async def get_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get real-time quote for a symbol."""
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{self.base_url}/quote/{symbol}")
-                response.raise_for_status()
-                data = response.json()
-                return data.get("ltp") if isinstance(data, dict) else data
-        except Exception as e:
-            logger.warning(f"Failed to fetch quote for {symbol}: {e}")
-            return None
-
-    async def get_quotes(self, symbols: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
-        """Get real-time quotes for multiple symbols."""
-        if not symbols:
-            return {}
-
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                symbols_str = ",".join(symbols)
-                response = await client.get(f"{self.base_url}/quotes?symbols={symbols_str}")
-                response.raise_for_status()
-                data = response.json()
-
-                quotes = {}
-                if isinstance(data, dict) and "quotes" in data:
-                    for quote in data["quotes"]:
-                        if isinstance(quote, dict) and "symbol" in quote:
-                            quotes[quote["symbol"]] = quote.get("ltp")
-                return quotes
-        except Exception as e:
-            logger.warning(f"Failed to fetch quotes for {symbols}: {e}")
-            return {symbol: None for symbol in symbols}
-
-
 class PaperTradingAccountManager:
-    """Manage paper trading accounts."""
+    """Manage paper trading accounts with REAL-TIME market data from Zerodha."""
 
-    def __init__(self, store: PaperTradingStore):
-        """Initialize manager."""
+    def __init__(self, store: PaperTradingStore, market_data_service=None, price_monitor=None):
+        """Initialize manager with MarketDataService integration.
+
+        Args:
+            store: PaperTradingStore for database operations
+            market_data_service: MarketDataService for real-time prices (optional, injected via DI)
+            price_monitor: PaperTradingPriceMonitor for WebSocket updates (optional, injected via DI)
+        """
         self.store = store
-        self.market_data_client = MarketDataClient()
+        self.market_data_service = market_data_service  # Injected from DI container
+        self.price_monitor = price_monitor  # Injected for WebSocket broadcasting
 
     async def create_account(
         self,
@@ -190,7 +153,11 @@ class PaperTradingAccountManager:
         """Convert account to dictionary."""
         return account.to_dict()
     async def get_open_positions(self, account_id: str) -> List[OpenPositionResponse]:
-        """Get all open positions for account."""
+        """Get all open positions with REAL-TIME prices from Zerodha Kite."""
+        # Register account for real-time price monitoring (Phase 2: WebSocket updates)
+        if self.price_monitor:
+            await self.price_monitor.register_account(account_id)
+
         # Get open trades from store
         open_trades = await self.store.get_open_trades(account_id)
 
@@ -200,21 +167,42 @@ class PaperTradingAccountManager:
         # Get unique symbols for batch quote fetching
         symbols = list(set(trade.symbol for trade in open_trades))
 
-        # Fetch current prices for all symbols
-        current_prices = await self.market_data_client.get_quotes(symbols)
+        # Fetch current prices from MarketDataService (Zerodha Kite integration)
+        current_prices = {}
+        if self.market_data_service:
+            try:
+                # Subscribe to market data for all symbols if not already subscribed
+                for symbol in symbols:
+                    # Check if already subscribed, if not subscribe
+                    subscriptions = await self.market_data_service.get_active_subscriptions()
+                    if symbol not in subscriptions:
+                        await self.market_data_service.subscribe_market_data(
+                            symbol=symbol,
+                            mode=SubscriptionMode.LTP,  # Last Traded Price only for efficiency
+                            provider=MarketDataProvider.ZERODHA_KITE  # Use Zerodha Kite API
+                        )
+                        logger.info(f"Subscribed to Zerodha market data for {symbol}")
+
+                # Get current market data for all symbols
+                market_data_map = await self.market_data_service.get_multiple_market_data(symbols)
+                for symbol, market_data in market_data_map.items():
+                    if market_data:
+                        current_prices[symbol] = market_data.ltp
+                        logger.debug(f"Got real-time price for {symbol}: ₹{market_data.ltp}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch market data from Zerodha: {e}. Using entry prices as fallback.")
 
         # Convert to response format
         positions = []
         for trade in open_trades:
             # Get current price from market data, fallback to entry price if unavailable
             current_price = current_prices.get(trade.symbol, trade.entry_price)
-            if current_price is None:
-                current_price = trade.entry_price
-                logger.warning(f"Market data unavailable for {trade.symbol}, using entry price")
+            if current_price == trade.entry_price:
+                logger.warning(f"Market data unavailable for {trade.symbol}, using entry price ₹{trade.entry_price}")
 
-            # Calculate unrealized P&L
+            # Calculate unrealized P&L with current market price
             unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
-            unrealized_pnl_pct = (unrealized_pnl / (trade.entry_price * trade.quantity)) * 100
+            unrealized_pnl_pct = (unrealized_pnl / (trade.entry_price * trade.quantity)) * 100 if trade.entry_price > 0 else 0.0
 
             # Calculate days held
             days_held = PerformanceCalculator.calculate_days_held(trade.entry_timestamp)
@@ -225,9 +213,9 @@ class PaperTradingAccountManager:
                 trade_type=trade.trade_type.value,
                 quantity=trade.quantity,
                 entry_price=trade.entry_price,
-                current_price=current_price,
+                current_price=current_price,  # Real-time from Zerodha!
                 current_value=current_price * trade.quantity,
-                unrealized_pnl=unrealized_pnl,
+                unrealized_pnl=unrealized_pnl,  # Calculated with live price
                 unrealized_pnl_pct=unrealized_pnl_pct,
                 stop_loss=trade.stop_loss,
                 target_price=trade.target_price,
@@ -237,6 +225,7 @@ class PaperTradingAccountManager:
                 ai_suggested=False  # TODO: Add this field to trade model
             ))
 
+        logger.info(f"Retrieved {len(positions)} open positions with real-time prices from Zerodha")
         return positions
 
     async def get_closed_trades(self, account_id: str, month: Optional[int] = None, year: Optional[int] = None, symbol: Optional[str] = None, limit: int = 50) -> List[ClosedTradeResponse]:
