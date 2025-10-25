@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 from ...models.paper_trading import PaperTrade, TradeType, TradeStatus
+from ...models.market_data import SubscriptionMode, MarketDataProvider
 from ...stores.paper_trading_store import PaperTradingStore
 from .account_manager import PaperTradingAccountManager
 
@@ -185,6 +186,20 @@ class PaperTradeExecutor:
         # Update account balance (deduct from buying power)
         await self.account_manager.lock_buying_power(account_id, trade_value)
 
+        # Phase 4: Auto-subscribe to market data for real-time price tracking
+        if self.market_data_service:
+            try:
+                subscriptions = await self.market_data_service.get_active_subscriptions()
+                if symbol not in subscriptions:
+                    await self.market_data_service.subscribe_market_data(
+                        symbol=symbol,
+                        mode=SubscriptionMode.LTP,  # Last Traded Price for efficiency
+                        provider=MarketDataProvider.ZERODHA_KITE
+                    )
+                    logger.info(f"Auto-subscribed to market data for {symbol} after BUY execution")
+            except Exception as e:
+                logger.warning(f"Failed to auto-subscribe to market data for {symbol}: {e}")
+
         logger.info(f"BUY trade executed: {symbol} {quantity}@₹{execution_price} (market price from Zerodha)")
 
         return {
@@ -228,6 +243,20 @@ class PaperTradeExecutor:
 
         # Update account balance (add to buying power)
         await self.account_manager.unlock_buying_power(account_id, trade_value)
+
+        # Phase 4: Auto-subscribe to market data for real-time price tracking
+        if self.market_data_service:
+            try:
+                subscriptions = await self.market_data_service.get_active_subscriptions()
+                if symbol not in subscriptions:
+                    await self.market_data_service.subscribe_market_data(
+                        symbol=symbol,
+                        mode=SubscriptionMode.LTP,  # Last Traded Price for efficiency
+                        provider=MarketDataProvider.ZERODHA_KITE
+                    )
+                    logger.info(f"Auto-subscribed to market data for {symbol} after SELL execution")
+            except Exception as e:
+                logger.warning(f"Failed to auto-subscribe to market data for {symbol}: {e}")
 
         logger.info(f"SELL trade executed: {symbol} {quantity}@{exit_price}")
 
@@ -310,6 +339,22 @@ class PaperTradeExecutor:
             )
 
         logger.info(f"Position closed: {trade.symbol} P&L: ₹{realized_pnl} (exit price: ₹{actual_exit_price} from market)")
+
+        # Phase 4: Auto-unsubscribe from market data if no more positions for this symbol
+        if self.market_data_service:
+            try:
+                # Check if there are any remaining open positions for this symbol
+                remaining_trades = await self.store.get_open_trades(trade.account_id)
+                symbol_still_active = any(t.symbol == trade.symbol for t in remaining_trades)
+
+                if not symbol_still_active:
+                    # No more positions for this symbol - unsubscribe to save resources
+                    subscriptions = await self.market_data_service.get_active_subscriptions()
+                    if trade.symbol in subscriptions:
+                        await self.market_data_service.unsubscribe_market_data(trade.symbol)
+                        logger.info(f"Auto-unsubscribed from market data for {trade.symbol} (no more positions)")
+            except Exception as e:
+                logger.warning(f"Failed to auto-unsubscribe from market data for {trade.symbol}: {e}")
 
         return {
             "success": True,
