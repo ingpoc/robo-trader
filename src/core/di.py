@@ -194,6 +194,16 @@ class DependencyContainer:
 
         self._register_singleton("analytics_service", create_analytics_service)
 
+        # Market Data Service (real-time price tracking)
+        async def create_market_data_service():
+            event_bus = await self.get("event_bus")
+            # Broker is optional for paper trading
+            market_data_service = MarketDataService(self.config, event_bus, broker=None)
+            await market_data_service.initialize()
+            return market_data_service
+
+        self._register_singleton("market_data_service", create_market_data_service)
+
         # Learning Service
         async def create_learning_service():
             event_bus = await self.get("event_bus")

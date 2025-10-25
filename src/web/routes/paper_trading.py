@@ -211,100 +211,110 @@ async def get_closed_trades(request: Request, account_id: str) -> Dict[str, Any]
 
 @router.get("/paper-trading/accounts/{account_id}/overview")
 @limiter.limit(paper_trading_limit)
-async def get_paper_trading_account_overview(request: Request, account_id: str) -> Dict[str, Any]:
-    """Get paper trading account overview - matches frontend expectation."""
+async def get_paper_trading_account_overview(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get paper trading account overview with REAL account data."""
     try:
-        account_type = "swing" if "swing" in account_id else "options"
-        if account_type == "swing":
-            return {
-                "accountId": account_id,
-                "accountType": "swing",
-                "currency": "INR",
-                "createdDate": "2025-01-01",
-                "initialCapital": 100000,
-                "currentBalance": 102500,
-                "totalInvested": 75000,
-                "marginAvailable": 27500,
-                "todayPnL": 500,
-                "monthlyROI": 2.5,
-                "winRate": 65,
-                "activeStrategy": "Momentum + RSI",
-                "cashAvailable": 27500,
-                "deployedCapital": 75000,
-                "openPositions": 5,
-                "closedTodayCount": 2
-            }
-        else:  # options
-            return {
-                "accountId": account_id,
-                "accountType": "options",
-                "currency": "INR",
-                "createdDate": "2025-01-01",
-                "initialCapital": 100000,
-                "currentBalance": 98500,
-                "totalInvested": 55000,
-                "marginAvailable": 43500,
-                "premiumCollected": 5500,
-                "premiumPaid": 2000,
-                "monthlyROI": -1.5,
-                "hedgeEffectiveness": 92,
-                "openPositions": 3,
-                "maxLoss": 8000,
-                "breakEvenRange": "±2%"
-            }
+        # Get account manager from DI container
+        account_manager = await container.get("paper_trading_account_manager")
+
+        # Fetch account from database
+        account = await account_manager.get_account(account_id)
+
+        if not account:
+            # If account doesn't exist, create it
+            account = await account_manager.create_account(
+                account_name=f"Paper Trading Account {account_id}",
+                initial_balance=100000.0,
+                account_id=account_id
+            )
+            logger.info(f"Created new paper trading account: {account_id}")
+
+        # Get performance metrics
+        metrics = await account_manager.get_performance_metrics(account_id, period="all-time")
+
+        # Get open positions count
+        positions = await account_manager.get_open_positions(account_id)
+        open_positions_count = len(positions)
+
+        # Calculate deployed capital from open positions
+        deployed_capital = sum(pos.entry_price * pos.quantity for pos in positions)
+
+        # Build overview response
+        overview = {
+            "accountId": account.account_id,
+            "accountType": account.strategy_type.value if hasattr(account.strategy_type, 'value') else str(account.strategy_type),
+            "currency": "INR",
+            "createdDate": account.created_at.isoformat() if hasattr(account, 'created_at') else "2025-01-01",
+            "initialCapital": account.initial_balance,
+            "currentBalance": account.current_balance,
+            "totalInvested": deployed_capital,
+            "marginAvailable": account.buying_power,
+            "todayPnL": metrics.get("realized_pnl", 0) + metrics.get("unrealized_pnl", 0),
+            "monthlyROI": metrics.get("monthly_roi", 0),
+            "winRate": metrics.get("win_rate", 0),
+            "activeStrategy": "AI-Driven Strategy",
+            "cashAvailable": account.buying_power,
+            "deployedCapital": deployed_capital,
+            "openPositions": open_positions_count,
+            "closedTodayCount": 0  # TODO: Calculate from closed trades today
+        }
+
+        logger.info(f"Retrieved account overview for {account_id}: Balance=₹{account.current_balance}, Open Positions={open_positions_count}")
+        return overview
+
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
+        return await handle_unexpected_error(e, "get_paper_trading_account_overview")
 
 
 @router.get("/paper-trading/accounts/{account_id}/positions")
 @limiter.limit(paper_trading_limit)
-async def get_paper_trading_positions(request: Request, account_id: str) -> Dict[str, Any]:
-    """Get positions for paper trading account - matches frontend expectation."""
+async def get_paper_trading_positions(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get positions for paper trading account with REAL-TIME prices and P&L."""
     try:
-        positions = [
-            {
-                "symbol": "HDFC",
-                "entryDate": "2025-10-20",
-                "entryPrice": 2750,
-                "quantity": 10,
-                "ltp": 2800,
-                "pnl": 500,
-                "pnlPercent": 1.82,
-                "daysHeld": 4,
-                "target": 2900,
-                "stopLoss": 2650,
-                "strategy": "Momentum Breakout"
-            },
-            {
-                "symbol": "INFY",
-                "entryDate": "2025-10-22",
-                "entryPrice": 3150,
-                "quantity": 5,
-                "ltp": 3200,
-                "pnl": 250,
-                "pnlPercent": 1.59,
-                "daysHeld": 2,
-                "target": 3350,
-                "stopLoss": 3050,
-                "strategy": "RSI Support"
-            },
-            {
-                "symbol": "TCS",
-                "entryDate": "2025-10-21",
-                "entryPrice": 4450,
-                "quantity": 3,
-                "ltp": 4420,
-                "pnl": -90,
-                "pnlPercent": -0.67,
-                "daysHeld": 3,
-                "target": 4650,
-                "stopLoss": 4350,
-                "strategy": "Support Bounce"
-            }
-        ]
+        # Get account manager from DI container
+        account_manager = await container.get("paper_trading_account_manager")
+
+        # Fetch open positions with real-time prices
+        # This method fetches current market prices and calculates unrealized P&L!
+        positions_data = await account_manager.get_open_positions(account_id)
+
+        # Convert to dict format - field names already match frontend expectations
+        positions = []
+        for pos in positions_data:
+            positions.append({
+                "trade_id": pos.trade_id,
+                "symbol": pos.symbol,
+                "entryDate": pos.entry_date,
+                "entryPrice": pos.entry_price,
+                "quantity": pos.quantity,
+                "ltp": pos.current_price,  # Real-time price from market data!
+                "pnl": pos.unrealized_pnl,  # Calculated with current price
+                "pnlPercent": pos.unrealized_pnl_pct,
+                "daysHeld": pos.days_held,
+                "target": pos.target_price,
+                "stopLoss": pos.stop_loss,
+                "strategy": pos.strategy_rationale,
+                "currentValue": pos.current_value,
+                "tradeType": pos.trade_type
+            })
+
+        logger.info(f"Retrieved {len(positions)} open positions for account {account_id} with real-time prices")
         return {"positions": positions}
+
+    except TradingError as e:
+        return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_paper_trading_endpoint")
+        return await handle_unexpected_error(e, "get_paper_trading_positions")
 
 
 @router.get("/paper-trading/accounts/{account_id}/trades")
