@@ -62,10 +62,15 @@
     "require_manual_approval_live": true
   },
   "integration": {
-    "zerodha_api_key": "your_api_key_here",
-    "zerodha_api_secret": "your_api_secret_here",
+    "zerodha_api_key": "${ZERODHA_API_KEY}",
+    "zerodha_api_secret": "${ZERODHA_API_SECRET}",
     "zerodha_access_token": null,
     "zerodha_request_token": null,
+    "zerodha_redirect_urls": {
+      "development": "http://localhost:8000/api/auth/zerodha/callback",
+      "docker": "http://robo-trader-app:8000/api/auth/zerodha/callback",
+      "production": "https://your-domain.com/api/auth/zerodha/callback"
+    },
     "anthropic_api_key": "your_anthropic_api_key_here",
     "perplexity_api_keys": [
       "your_perplexity_api_key_1_here",

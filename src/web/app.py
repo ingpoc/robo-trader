@@ -48,6 +48,7 @@ from .routes import (
 )
 from .routes.paper_trading import router as paper_trading_router
 from .routes.news_earnings import router as news_earnings_router
+from .routes.zerodha_auth import router as zerodha_auth_router
 from .routes.claude_transparency import router as claude_transparency_router
 from .routes.config import router as config_router
 from .routes.logs import router as logs_router
@@ -154,6 +155,7 @@ app.include_router(agents_router)
 app.include_router(analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(news_earnings_router)
+app.include_router(zerodha_auth_router)
 app.include_router(claude_transparency_router)
 app.include_router(symbols_router)
 app.include_router(config_router)

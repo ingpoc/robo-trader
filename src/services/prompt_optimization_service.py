@@ -15,14 +15,14 @@ import uuid
 import aiofiles
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, TYPE_CHECKING
 
 from ..core.event_bus import EventHandler, Event, EventType, EventBus
 from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ..core.di import DependencyContainer
-from ..background_scheduler.clients.perplexity_client import PerplexityClient
-from ..models.claude_agent import ClaudeSessionResult
-from ..auth.claude_auth import get_claude_status_cached
+from ..core.background_scheduler.clients.perplexity_client import PerplexityClient
+
+if TYPE_CHECKING:
+    from ..core.di import DependencyContainer
 from loguru import logger
 
 
@@ -42,7 +42,7 @@ class PromptOptimizationService(EventHandler):
         self,
         config: Dict[str, Any],
         event_bus: EventBus,
-        container: DependencyContainer,
+        container: Any,  # Will be DependencyContainer at runtime
         perplexity_client: PerplexityClient
     ):
         """Initialize service."""

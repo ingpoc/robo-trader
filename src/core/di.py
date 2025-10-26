@@ -129,7 +129,7 @@ class DependencyContainer:
 
             # Get database connection from state manager
             state_manager = await self.get("state_manager")
-            task_store = SchedulerTaskStore(state_manager._connection_pool)
+            task_store = SchedulerTaskStore(state_manager.db._connection_pool)
             return SchedulerTaskService(task_store)
 
         self._register_singleton("task_service", create_task_service)
@@ -140,7 +140,7 @@ class DependencyContainer:
             event_bus = await self.get("event_bus")
             state_manager = await self.get("state_manager")
             # Use state_manager's connection pool as db_connection
-            return BackgroundScheduler(task_service, event_bus, state_manager._connection_pool, self.config)
+            return BackgroundScheduler(task_service, event_bus, state_manager.db._connection_pool, self.config)
 
         self._register_singleton("background_scheduler", create_background_scheduler)
 
@@ -279,6 +279,17 @@ class DependencyContainer:
             return execution_service
 
         self._register_singleton("paper_trading_execution_service", create_paper_trading_execution_service)
+
+        # Zerodha OAuth Service
+        async def create_zerodha_oauth_service():
+            from ..services.zerodha_oauth_service import ZerodhaOAuthService
+            event_bus = await self.get("event_bus")
+            oauth_service = ZerodhaOAuthService(self.config, event_bus)
+            await oauth_service.initialize()
+            logger.info("Zerodha OAuth Service initialized")
+            return oauth_service
+
+        self._register_singleton("zerodha_oauth_service", create_zerodha_oauth_service)
 
         # Claude Agent Services
         async def create_tool_executor():

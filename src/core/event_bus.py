@@ -72,6 +72,14 @@ class EventType(Enum):
     MARKET_OPEN = "market.open"
     MARKET_CLOSE = "market.close"
 
+    # OAuth events
+    OAUTH_INITIATED = "oauth.initiated"
+    OAUTH_SUCCESS = "oauth.success"
+    OAUTH_ERROR = "oauth.error"
+    OAUTH_LOGOUT = "oauth.logout"
+    OAUTH_TOKEN_EXPIRED = "oauth.token_expired"
+    OAUTH_TOKEN_REFRESHED = "oauth.token_refreshed"
+
 
 @dataclass
 class Event:
