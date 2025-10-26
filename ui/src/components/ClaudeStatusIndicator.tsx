@@ -34,7 +34,7 @@ export function ClaudeStatusIndicator() {
 
   const getClaudeIcon = () => {
     // Main Claude icon that changes based on status
-    // Larger icon sizes for prominence
+    // Using actual Claude images for online/thinking states
     switch (status) {
       case 'unavailable':
         // Offline - Grayed out circle
@@ -50,30 +50,22 @@ export function ClaudeStatusIndicator() {
           </svg>
         )
       case 'idle':
-        // Available - Green circle
+        // Available/Connected - Claude online image
         return (
-          <svg
+          <img
+            src="/Claude_online.svg"
+            alt="Claude Online"
             className="w-6 h-6 text-green-500"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            {/* Claude circle - green when available */}
-            <circle cx="12" cy="12" r="10" fill="currentColor" />
-          </svg>
+          />
         )
       case 'analyzing':
-        // Analyzing - Orange/yellow with pulse
+        // Analyzing/Thinking - Claude online image with pulse animation
         return (
-          <svg
+          <img
+            src="/Claude_online.svg"
+            alt="Claude Analyzing"
             className="w-6 h-6 text-orange-500 animate-pulse"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            {/* Claude circle - orange pulsing when analyzing */}
-            <circle cx="12" cy="12" r="10" fill="currentColor" />
-          </svg>
+          />
         )
       default:
         return (
