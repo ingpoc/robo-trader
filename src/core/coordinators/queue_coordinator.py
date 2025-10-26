@@ -39,6 +39,7 @@ class QueueCoordinator(BaseCoordinator):
         self.event_router_service: Optional[EventRouterService] = None
         self.event_bus: Optional[EventBus] = None
         self._queues_running = False
+        self._broadcast_coordinator = None
 
     async def initialize(self) -> None:
         """Initialize coordinator and dependencies."""
@@ -48,12 +49,15 @@ class QueueCoordinator(BaseCoordinator):
             # Get dependencies from container
             self.event_router_service = await self.container.get("event_router_service")
             self.event_bus = await self.container.get("event_bus")
+            self._broadcast_coordinator = await self.container.get("broadcast_coordinator")
 
             # Subscribe to relevant events
             if self.event_bus:
-                self.event_bus.subscribe(EventType.TASK_COMPLETED, self._handle_task_completed)
+                # Note: EventType.TASK_COMPLETED doesn't exist in current EventType enum
+                # self.event_bus.subscribe(EventType.TASK_COMPLETED, self._handle_task_completed)
                 self.event_bus.subscribe(EventType.MARKET_NEWS, self._handle_market_event)
-                self.event_bus.subscribe(EventType.EARNINGS_ANNOUNCEMENT, self._handle_earnings_event)
+                # Note: EventType.EARNINGS_ANNOUNCEMENT doesn't exist, using MARKET_EARNINGS
+                self.event_bus.subscribe(EventType.MARKET_EARNINGS, self._handle_earnings_event)
 
             # Start event router service
             if self.event_router_service:
@@ -61,6 +65,9 @@ class QueueCoordinator(BaseCoordinator):
 
             self._initialized = True
             self._log_info("QueueCoordinator initialized successfully")
+
+            # Broadcast initial queue status
+            await self.get_queue_status()
 
         except Exception as e:
             self._log_error(f"Failed to initialize QueueCoordinator: {e}", exc_info=True)
@@ -89,9 +96,11 @@ class QueueCoordinator(BaseCoordinator):
 
             # Unsubscribe from events
             if self.event_bus:
-                self.event_bus.unsubscribe(EventType.TASK_COMPLETED)
+                # Note: EventType.TASK_COMPLETED doesn't exist in current EventType enum
+                # self.event_bus.unsubscribe(EventType.TASK_COMPLETED)
                 self.event_bus.unsubscribe(EventType.MARKET_NEWS)
-                self.event_bus.unsubscribe(EventType.EARNINGS_ANNOUNCEMENT)
+                # Note: EventType.EARNINGS_ANNOUNCEMENT doesn't exist, using MARKET_EARNINGS
+                self.event_bus.unsubscribe(EventType.MARKET_EARNINGS)
 
         except Exception as e:
             self._log_error(f"Error during QueueCoordinator cleanup: {e}")
@@ -113,6 +122,9 @@ class QueueCoordinator(BaseCoordinator):
             self._queues_running = True
             self._log_info("Queues started successfully")
 
+            # Broadcast queue status update
+            await self.get_queue_status()
+
         except Exception as e:
             self._log_error(f"Failed to start queues: {e}")
             raise TradingError(
@@ -128,6 +140,9 @@ class QueueCoordinator(BaseCoordinator):
             return
 
         await self._stop_queues()
+
+        # Broadcast queue status update
+        await self.get_queue_status()
 
     async def _stop_queues(self) -> None:
         """Internal method to stop queues."""
@@ -283,8 +298,19 @@ class QueueCoordinator(BaseCoordinator):
     async def get_queue_status(self) -> Dict[str, Any]:
         """Get status of all queues."""
         try:
-            # This would aggregate status from all queue services
-            return {
+            # Get actual queue services status
+            from ...services.queue_management.main import QueueManagementService
+
+            # Try to get queue management service from container
+            queue_service = None
+            try:
+                if hasattr(self, 'container') and self.container:
+                    queue_service = await self.container.get("queue_management_service")
+            except:
+                pass
+
+            # Aggregate status from all queue services
+            status_data = {
                 "coordinator_running": self._initialized,
                 "queues_running": self._queues_running,
                 "event_router_status": (
@@ -293,6 +319,70 @@ class QueueCoordinator(BaseCoordinator):
                 ),
                 "timestamp": datetime.utcnow().isoformat()
             }
+
+            # Get detailed queue information
+            queues = {}
+            total_queues = 0
+            running_queues = 0
+
+            # Add coordinator status
+            queues["coordinator"] = {
+                "running": self._queues_running,
+                "status": "healthy" if self._initialized else "not_initialized",
+                "type": "coordinator"
+            }
+            total_queues += 1
+            if self._queues_running:
+                running_queues += 1
+
+            # Add event router status
+            if self.event_router_service:
+                router_status = self.event_router_service.get_status()
+                is_running = router_status.get("running", False)
+                queues["event_router"] = {
+                    "running": is_running,
+                    "status": "healthy" if is_running else "stopped",
+                    "type": "event_router",
+                    "details": router_status
+                }
+                total_queues += 1
+                if is_running:
+                    running_queues += 1
+
+            # Add actual queue services if available
+            if queue_service:
+                try:
+                    service_status = await queue_service.get_status()
+                    for queue_name, queue_info in service_status.get("queues", {}).items():
+                        queues[queue_name] = {
+                            "running": queue_info.get("running", False),
+                            "status": queue_info.get("status", "unknown"),
+                            "type": "queue_service",
+                            "details": queue_info
+                        }
+                        total_queues += 1
+                        if queue_info.get("running", False):
+                            running_queues += 1
+                except Exception as e:
+                    self._log_warning(f"Could not get queue service status: {e}")
+
+            stats = {
+                "total_queues": total_queues,
+                "running_queues": running_queues,
+                "timestamp": status_data["timestamp"]
+            }
+
+            # Broadcast queue status update via WebSocket
+            if self._broadcast_coordinator:
+                queue_data = {
+                    "queues": queues,
+                    "stats": stats,
+                    "timestamp": status_data["timestamp"]
+                }
+
+                await self._broadcast_coordinator.broadcast_queue_status_update(queue_data)
+
+            return status_data
 
         except Exception as e:
             self._log_error(f"Failed to get queue status: {e}")

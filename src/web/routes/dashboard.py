@@ -188,13 +188,27 @@ async def get_claude_status(request: Request, container: DependencyContainer = D
         # TODO: Get actual token usage from claude_token_usage table
         # TODO: Get trades count from paper_trades table for today
 
+        # Determine status based on actual SDK connection state
+        if not claude_auth_status or not claude_auth_status.is_valid:
+            status = "disconnected"
+        else:
+            # Check if SDK client is actually connected to CLI process
+            sdk_connected = claude_auth_status.account_info.get("sdk_connected", False)
+            cli_process_running = claude_auth_status.account_info.get("cli_process_running", False)
+
+            if sdk_connected and cli_process_running:
+                status = "connected/idle"  # SDK client is connected to running CLI process
+            else:
+                status = "authenticated"  # CLI is authenticated but no active SDK session
+
         return {
-            "status": "idle" if claude_auth_status else "not_configured",
+            "status": status,
             "tokensUsed": 0,
             "tokensBudget": daily_budget,
             "tradesExecutedToday": 0,
             "nextScheduledTask": None,
-            "lastAction": None
+            "lastAction": None,
+            "auth_method": claude_auth_status.account_info.get("auth_method") if claude_auth_status else None
         }
     except TradingError as e:
         return await handle_trading_error(e)

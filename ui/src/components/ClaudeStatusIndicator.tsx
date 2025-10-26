@@ -1,11 +1,8 @@
 import React from 'react'
 import { useClaudeStatus } from '@/hooks/useClaudeStatus'
-import { useWebSocketStatus } from '@/hooks/useWebSocketStatus'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export function ClaudeStatusIndicator() {
-  const { status, message, currentTask } = useClaudeStatus()
-  const { status: wsStatus } = useWebSocketStatus()
+   const { status } = useClaudeStatus()
 
   const getStatusConfig = () => {
     switch (status) {
@@ -14,10 +11,20 @@ export function ClaudeStatusIndicator() {
           label: 'Offline',
           description: 'Claude AI agent is not configured or disconnected',
         }
+      case 'authenticated':
+        return {
+          label: 'Authenticated',
+          description: 'CLI is authenticated but SDK not connected',
+        }
       case 'idle':
         return {
           label: 'Available',
           description: 'Claude AI agent is connected and ready',
+        }
+      case 'connected/idle':
+        return {
+          label: 'SDK Connected',
+          description: 'Claude SDK is actively connected to CLI process',
         }
       case 'analyzing':
         return {
@@ -49,6 +56,15 @@ export function ClaudeStatusIndicator() {
             <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.4" />
           </svg>
         )
+      case 'authenticated':
+        // CLI authenticated but no SDK connection - Claude online image
+        return (
+          <img
+            src="/Claude_online.svg"
+            alt="Claude Authenticated"
+            className="w-6 h-6 text-green-500"
+          />
+        )
       case 'idle':
         // Available/Connected - Claude online image
         return (
@@ -56,6 +72,15 @@ export function ClaudeStatusIndicator() {
             src="/Claude_online.svg"
             alt="Claude Online"
             className="w-6 h-6 text-green-500"
+          />
+        )
+      case 'connected/idle':
+        // SDK actively connected - Claude online image with green tint
+        return (
+          <img
+            src="/Claude_online.svg"
+            alt="Claude SDK Connected"
+            className="w-6 h-6 text-green-600"
           />
         )
       case 'analyzing':
@@ -136,70 +161,9 @@ export function ClaudeStatusIndicator() {
     }
   }
 
-  const statusConfig = getStatusConfig()
-
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          className={`
-            flex items-center justify-center gap-2
-            p-2 rounded transition-all duration-300 hover:scale-110
-            cursor-pointer
-          `}
-          role="status"
-          aria-label={`Claude status: ${statusConfig.label}, WebSocket: ${wsStatus}`}
-        >
-          {/* Claude Status Icon - Just the circle, no WebSocket icon */}
-          {getClaudeIcon()}
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-xs">
-        <div className="space-y-3">
-          <div>
-            <div className="font-semibold text-sm mb-1">{statusConfig.label}</div>
-            <p className="text-xs text-gray-300">
-              {statusConfig.description}
-            </p>
-          </div>
-
-          {message && (
-            <div>
-              <div className="text-xs font-semibold text-gray-300 mb-1">Status</div>
-              <p className="text-xs text-gray-400">
-                {message}
-              </p>
-            </div>
-          )}
-
-          {currentTask && (
-            <div>
-              <div className="text-xs font-semibold text-gray-300 mb-1">Current Task</div>
-              <p className="text-xs text-gray-400 italic">
-                {currentTask}
-              </p>
-            </div>
-          )}
-
-          <div className="border-t border-gray-700 pt-2">
-            <div className="text-xs font-semibold text-gray-300 mb-2">Claude Status</div>
-            <div className="space-y-1 text-xs text-gray-400">
-              <p>⚫ <span className="font-semibold">Offline</span> - Gray icon, not connected</p>
-              <p>🟢 <span className="font-semibold">Available</span> - Green icon, ready</p>
-              <p>🟠 <span className="font-semibold">Analyzing</span> - Orange pulsing icon</p>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-700 pt-2">
-            <div className="text-xs font-semibold text-gray-300 mb-2">WebSocket Status</div>
-            <div className="space-y-1 text-xs text-gray-400">
-              <p>🟢 <span className="font-semibold">Connected</span> - WiFi full bars</p>
-              <p>🟡 <span className="font-semibold">Connecting</span> - WiFi pulsing</p>
-              <p>🔴 <span className="font-semibold">Disconnected</span> - WiFi disabled</p>
-            </div>
-          </div>
-        </div>
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex items-center justify-center">
+      {getClaudeIcon()}
+    </div>
   )
 }

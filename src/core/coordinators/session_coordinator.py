@@ -36,11 +36,17 @@ class SessionCoordinator(BaseCoordinator):
         self.options = options
         self.client: Optional[ClaudeSDKClient] = None
         self.claude_sdk_status: Optional[ClaudeAuthStatus] = None
+        self._broadcast_coordinator = None
 
     async def initialize(self) -> None:
         """Initialize session coordinator."""
         self._log_info("Initializing SessionCoordinator")
         self._initialized = True
+
+    def set_broadcast_coordinator(self, broadcast_coordinator) -> None:
+        """Set broadcast coordinator for UI updates."""
+        self._broadcast_coordinator = broadcast_coordinator
+        self._log_info("Broadcast coordinator set for status updates")
 
     async def validate_authentication(self) -> ClaudeAuthStatus:
         """
@@ -121,6 +127,61 @@ class SessionCoordinator(BaseCoordinator):
 
     async def get_claude_status(self) -> Optional[ClaudeAuthStatus]:
         """Get current Claude Agent SDK status."""
+        # Always refresh authentication status first
+        if not self.claude_sdk_status:
+            await self.validate_authentication()
+
+        # Check if we have a valid authentication status
+        if self.claude_sdk_status and self.claude_sdk_status.is_valid:
+            # Check if SDK client is actually connected to CLI process
+            is_connected = False
+            if self.client and hasattr(self.client, '_transport') and hasattr(self.client, '_query'):
+                is_connected = (
+                    self.client._transport is not None and
+                    self.client._query is not None and
+                    hasattr(self.client._transport, 'is_ready') and
+                    self.client._transport.is_ready()
+                )
+
+            # Update the status with actual connection state
+            self.claude_sdk_status = ClaudeAuthStatus(
+                is_valid=True,  # Authentication is valid, connection state separate
+                api_key_present=self.claude_sdk_status.api_key_present,
+                account_info={
+                    **self.claude_sdk_status.account_info,
+                    "sdk_connected": is_connected,
+                    "cli_process_running": is_connected
+                },
+                checked_at=self.claude_sdk_status.checked_at,
+                rate_limit_info=self.claude_sdk_status.rate_limit_info
+            )
+
+            # Broadcast status update to UI via broadcast coordinator
+            if hasattr(self, '_broadcast_coordinator') and self._broadcast_coordinator:
+                from datetime import datetime, timezone
+                status_data = {
+                    "status": "connected/idle" if is_connected else "authenticated",
+                    "auth_method": self.claude_sdk_status.account_info.get("auth_method"),
+                    "sdk_connected": is_connected,
+                    "cli_process_running": is_connected,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "account_info": self.claude_sdk_status.account_info
+                }
+                await self._broadcast_coordinator.broadcast_claude_status_update(status_data)
+        else:
+            # Not authenticated - broadcast offline status
+            if hasattr(self, '_broadcast_coordinator') and self._broadcast_coordinator:
+                from datetime import datetime, timezone
+                status_data = {
+                    "status": "disconnected",
+                    "auth_method": "none",
+                    "sdk_connected": False,
+                    "cli_process_running": False,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "account_info": {"error": "Not authenticated"}
+                }
+                await self._broadcast_coordinator.broadcast_claude_status_update(status_data)
+
         return self.claude_sdk_status
 
     def get_client(self) -> Optional[ClaudeSDKClient]:

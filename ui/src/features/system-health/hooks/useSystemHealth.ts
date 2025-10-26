@@ -1,9 +1,10 @@
 /**
  * System Health Hook
- * Aggregates system health data from various monitoring sources
+ * Aggregates system health data from WebSocket broadcasts
  */
 
 import { useState, useEffect } from 'react'
+import { wsClient } from '@/api/websocket'
 
 export const useSystemHealth = () => {
   const [schedulerStatus, setSchedulerStatus] = useState<any>(null)
@@ -14,20 +15,11 @@ export const useSystemHealth = () => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const fetchHealthData = async () => {
-      try {
-        setIsLoading(true)
-
-        // Fetch real system health from backend
-        const response = await fetch('/api/system/health')
-        if (!response.ok) {
-          throw new Error('Failed to fetch system health')
-        }
-
-        const data = await response.json()
-
-        // Transform backend response to frontend format
-        const components = data.components || {}
+    // Subscribe to WebSocket for real-time system health updates
+    const unsubscribe = wsClient.subscribe((message: any) => {
+      // Check for system health updates from backend
+      if (message.type === 'system_health_update') {
+        const components = message.components || {}
 
         setSchedulerStatus({
           healthy: components.scheduler?.status === 'healthy',
@@ -35,8 +27,8 @@ export const useSystemHealth = () => {
         })
 
         setQueueHealth({
-          healthy: true,  // TODO: Get from components
-          totalTasks: 0  // TODO: Get from components
+          healthy: components.queue?.status === 'healthy',
+          totalTasks: components.queue?.totalTasks || 0
         })
 
         setDbHealth({
@@ -45,25 +37,42 @@ export const useSystemHealth = () => {
         })
 
         setResources({
-          cpu: 0,  // TODO: Implement resource monitoring
-          memory: 0,
-          disk: 0
+          cpu: components.resources?.cpu || 0,
+          memory: components.resources?.memory || 0,
+          disk: components.resources?.disk || 0
         })
 
         setErrors([])
-      } catch (err) {
-        console.error('Failed to fetch system health:', err)
-        setErrors(['Failed to fetch system health data'])
-      } finally {
         setIsLoading(false)
       }
+
+      // Handle queue status updates from queue_status_update messages
+      // This provides more detailed queue information
+      if (message.type === 'queue_status_update') {
+        const stats = message.stats || {}
+        setQueueHealth({
+          healthy: true, // Assume healthy if we get status updates
+          totalTasks: stats.totalTasks || stats.total_queues || 0,
+          runningQueues: stats.running_queues || 0,
+          totalQueues: stats.total_queues || 0
+        })
+        setIsLoading(false)
+      }
+
+      // Check for system health errors
+      if (message.type === 'system_health_error') {
+        console.error('System health error:', message.error)
+        setErrors([message.error || 'System health monitoring error'])
+        setIsLoading(false)
+      }
+    })
+
+    // Set initial loading state
+    setIsLoading(true)
+
+    return () => {
+      unsubscribe()
     }
-
-    fetchHealthData()
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchHealthData, 30000)
-    return () => clearInterval(interval)
   }, [])
 
   return {

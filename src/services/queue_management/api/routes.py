@@ -24,7 +24,7 @@ class TaskRequest(BaseModel):
 class OrchestrationRequest(BaseModel):
     """Request model for orchestration operations."""
     queues: List[QueueName]
-    mode: str = Field(default="sequential", regex="^(sequential|parallel)$")
+    mode: str = Field(default="sequential", pattern="^(sequential|parallel)$")
 
 
 class RecommendationRequest(BaseModel):

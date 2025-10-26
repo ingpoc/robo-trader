@@ -30,7 +30,7 @@ export function useQueueStatuses() {
       const response = await queueAPI.getQueueStatuses()
       return response
     },
-    refetchInterval: 5000, // Refresh every 5 seconds
+    refetchInterval: false, // Disable polling - use WebSocket instead
     onSuccess: (data) => {
       setQueues(data.queues)
       setStats(data.stats)
@@ -53,7 +53,7 @@ export function useQueueTasks(filters?: TaskFilter) {
       const response = await queueAPI.getQueueTasks(filters)
       return response
     },
-    refetchInterval: 2000, // Refresh every 2 seconds for tasks
+    refetchInterval: false, // Disable polling - use WebSocket instead
     onSuccess: (data) => {
       setTasks(data.tasks)
       setLoading(false)
@@ -75,7 +75,7 @@ export function useTaskHistory(queueType?: QueueType, limit = 100) {
       const response = await queueAPI.getTaskHistory(queueType, limit)
       return response
     },
-    refetchInterval: 10000, // Refresh every 10 seconds for history
+    refetchInterval: false, // Disable polling - use WebSocket instead
     onSuccess: (data) => {
       setExecutionHistory(data.history)
       setLoading(false)
@@ -97,7 +97,7 @@ export function useQueueMetrics(queueType?: QueueType, hours = 24) {
       const response = await queueAPI.getPerformanceMetrics(queueType, hours)
       return response
     },
-    refetchInterval: 30000, // Refresh every 30 seconds for metrics
+    refetchInterval: false, // Disable polling - use WebSocket instead
     onSuccess: (data) => {
       setPerformanceMetrics(data.metrics)
       setLoading(false)
@@ -117,7 +117,7 @@ export function useQueueHealth() {
       const response = await queueAPI.getHealthStatus()
       return response
     },
-    refetchInterval: 15000, // Refresh every 15 seconds for health
+    refetchInterval: false, // Disable polling - use WebSocket instead
   })
 }
 
@@ -242,18 +242,17 @@ export function useQueueWebSocket() {
         if (event.type?.startsWith('queue_') ||
             event.type?.startsWith('task_') ||
             event.type?.startsWith('performance_') ||
-            event.type?.startsWith('configuration_')) {
+            event.type?.startsWith('configuration_') ||
+            event.type === 'system_health_update') {
           handleWebSocketEvent(event)
         }
       }
 
-      // Use the existing WebSocket subscription pattern
-      // Note: The current WebSocket implementation is designed for dashboard data
-      // For queue-specific events, we would need to extend the WebSocket client
-      // to support multiple event types or create a separate queue WebSocket connection
+      // Subscribe to the WebSocket client for queue events
+      const unsubscribe = wsClient.subscribe(handleQueueEvent)
 
       return () => {
-        // Cleanup would be handled by the WebSocket client
+        unsubscribe()
       }
     }
   }, [isConnected, handleWebSocketEvent])

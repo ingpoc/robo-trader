@@ -571,6 +571,24 @@ async def websocket_endpoint(websocket: WebSocket):
             "message": "WebSocket connection established successfully"
         })
 
+        # Broadcast current status to the newly connected client
+        if container:
+            try:
+                orchestrator = await container.get_orchestrator()
+                if orchestrator:
+                    # Trigger status broadcasts for the new client
+                    await orchestrator.get_system_status()  # This broadcasts system health
+                    await orchestrator.get_claude_status()  # This broadcasts Claude status
+
+                    # Also broadcast queue status
+                    queue_coordinator = await container.get('queue_coordinator')
+                    if queue_coordinator:
+                        await queue_coordinator.get_queue_status()  # This broadcasts queue status
+
+                    logger.info(f"Broadcast initial status updates to client {client_id}")
+            except Exception as e:
+                logger.warning(f"Failed to broadcast initial status to client {client_id}: {e}")
+
         while True:
             data = await websocket.receive_json()
 

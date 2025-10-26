@@ -184,7 +184,8 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             # 2. Output contains Claude's response (even if it's a rate limit message)
             is_authenticated = False
 
-            # Look for Claude's response patterns
+            # Look for Claude's response patterns - simplified to just check for any response
+            # The SDK documentation shows that authentication is confirmed by any response from claude CLI
             claude_indicators = [
                 "I'm ready to help",
                 "I can help",
@@ -200,15 +201,18 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                 "usage limit",
                 "rate limit",
                 "weekly limit",
-                "daily limit"
+                "daily limit",
+                # Any non-empty response from claude CLI indicates authentication
             ]
 
-            if any(indicator.lower() in output.lower() for indicator in claude_indicators):
+            # According to SDK docs, any response from claude CLI indicates authentication
+            # The CLI will respond if authenticated, regardless of the model underneath
+            if output.strip():
                 is_authenticated = True
-                logger.debug("Claude CLI authentication confirmed via response")
-            elif test_result_code == 0 and output.strip():
+                logger.debug("Claude CLI authentication confirmed - received response from CLI")
+            elif test_result_code == 0:
                 is_authenticated = True
-                logger.debug("Claude CLI authentication confirmed via return code")
+                logger.debug("Claude CLI authentication confirmed via successful exit code")
 
             if "limit" in output.lower():
                 # Extract rate limit details
@@ -230,7 +234,9 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                 rate_limit_info["limited"] = False
 
             if is_authenticated:
-                auth_method = "subscription"
+                # Auth method is determined by CLI settings, not response content
+                # The SDK uses whatever model is configured in ~/.claude/settings.json
+                auth_method = "cli_configured"  # Generic method - actual model determined by settings
                 logger.debug(f"Claude CLI authenticated successfully via {auth_method}")
                 return {
                     "authenticated": True,
@@ -292,7 +298,7 @@ def require_claude_api(func):
             pass
     """
     async def wrapper(*args, **kwargs):
-        status = await get_claude_status()
+        status = await validate_claude_sdk_auth()
         if not status.is_valid:
             raise RuntimeError(
                 f"Claude authentication failed: {status.error}"

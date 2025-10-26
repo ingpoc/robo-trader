@@ -452,7 +452,11 @@ class DependencyContainer:
 
         # Coordinators
         async def create_session_coordinator():
-            return SessionCoordinator(self.config)
+            session_coordinator = SessionCoordinator(self.config)
+            # Wire up broadcast coordinator for status updates
+            broadcast_coordinator = await self.get("broadcast_coordinator")
+            session_coordinator.set_broadcast_coordinator(broadcast_coordinator)
+            return session_coordinator
 
         self._register_singleton("session_coordinator", create_session_coordinator)
 
@@ -481,12 +485,14 @@ class DependencyContainer:
             ai_planner = await self.get("ai_planner")
             background_scheduler = await self.get("background_scheduler")
             session_coordinator = await self.get("session_coordinator")
+            broadcast_coordinator = await self.get("broadcast_coordinator")
             return StatusCoordinator(
                 self.config,
                 state_manager,
                 ai_planner,
                 background_scheduler,
-                session_coordinator
+                session_coordinator,
+                broadcast_coordinator
             )
 
         self._register_singleton("status_coordinator", create_status_coordinator)
@@ -503,6 +509,7 @@ class DependencyContainer:
         self._register_singleton("broadcast_coordinator", create_broadcast_coordinator)
 
         async def create_queue_coordinator():
+            from .coordinators.queue_coordinator import QueueCoordinator
             return QueueCoordinator(self.config, self)
 
         self._register_singleton("queue_coordinator", create_queue_coordinator)
@@ -545,6 +552,7 @@ class DependencyContainer:
             orchestrator.status_coordinator = status_coordinator
             orchestrator.lifecycle_coordinator = lifecycle_coordinator
             orchestrator.broadcast_coordinator = broadcast_coordinator
+            orchestrator.queue_coordinator = await self.get("queue_coordinator")
 
             orchestrator.state_manager = state_manager
             orchestrator.ai_planner = ai_planner
@@ -560,6 +568,10 @@ class DependencyContainer:
             await status_coordinator.initialize()
             await lifecycle_coordinator.initialize()
             await broadcast_coordinator.initialize()
+
+            # Initialize queue coordinator
+            queue_coordinator = await self.get("queue_coordinator")
+            await queue_coordinator.initialize()
             logger.info("All coordinators initialized successfully")
 
             # Now initialize the orchestrator (which depends on coordinators)

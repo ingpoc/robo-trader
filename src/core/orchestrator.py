@@ -37,6 +37,7 @@ class RoboTraderOrchestrator:
         self.status_coordinator = None
         self.lifecycle_coordinator = None
         self.broadcast_coordinator = None
+        self.queue_coordinator = None
 
         self.state_manager = None
         self.ai_planner = None
