@@ -100,6 +100,7 @@ class RoboTraderOrchestrator:
             system_prompt=self._get_system_prompt(),
             cwd=self.config.project_dir,
             max_turns=self.config.max_turns,
+            setting_sources=["user"],  # Load ~/.claude/settings.json for global CLI settings
         )
 
         self.session_coordinator.options = self.options

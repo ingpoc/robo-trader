@@ -19,6 +19,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 from loguru import logger
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -56,8 +57,153 @@ from .routes.prompt_optimization import router as prompt_optimization_router
 from .routes.symbols import router as symbols_router
 
 # ============================================================================
+# Global Variables
+# ============================================================================
+
+# Background task status tracking
+initialization_status = {
+    "orchestrator_initialized": False,
+    "bootstrap_completed": False,
+    "initialization_errors": [],
+    "last_error": None
+}
+
+# Event for shutdown coordination
+shutdown_event = asyncio.Event()
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+async def bootstrap_state(orchestrator, config):
+    """Bootstrap the application state after orchestrator initialization."""
+    try:
+        portfolio = await orchestrator.state_manager.get_portfolio()
+
+        if not portfolio and orchestrator and config and config.agents.portfolio_scan.enabled:
+            logger.debug("Triggering bootstrap portfolio scan")
+            await orchestrator.run_portfolio_scan()
+            portfolio = await orchestrator.state_manager.get_portfolio()
+
+        logger.info("Bootstrap state completed successfully")
+    except Exception as exc:
+        logger.warning(f"Bootstrap failed: {exc}")
+        # Don't fail initialization for bootstrap issues
+
+async def initialize_orchestrator(config, container, connection_manager):
+    """Initialize orchestrator in background."""
+    try:
+        logger.info("Starting orchestrator initialization...")
+
+        # Get orchestrator from container
+        orchestrator = await container.get_orchestrator()
+
+        await asyncio.wait_for(orchestrator.initialize(), timeout=60.0)
+        logger.info("Orchestrator initialized")
+
+        await orchestrator.start_session()
+        logger.info("Orchestrator session started")
+
+        initialization_status["orchestrator_initialized"] = True
+
+        # Run bootstrap state
+        logger.info("Running bootstrap state...")
+        await bootstrap_state(orchestrator, config)
+        initialization_status["bootstrap_completed"] = True
+        logger.info("Bootstrap state completed successfully")
+    except asyncio.TimeoutError:
+        error_msg = "Orchestrator initialization timed out"
+        logger.error(error_msg)
+        initialization_status["initialization_errors"].append(error_msg)
+        initialization_status["last_error"] = error_msg
+    except Exception as exc:
+        error_msg = f"Orchestrator initialization failed: {exc}"
+        logger.error(error_msg, exc_info=True)
+        initialization_status["initialization_errors"].append(error_msg)
+        initialization_status["last_error"] = error_msg
+
+# ============================================================================
 # FastAPI Application Setup
 # ============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events."""
+    global config, container, connection_manager, service_client
+
+    # Startup
+    logger.info("=== STARTUP EVENT STARTED ===")
+
+    config = load_config()
+    logger.info("Config loaded successfully")
+
+    logger.info("Initializing DI container...")
+    container = await initialize_container(config)
+    logger.info("DI container initialized")
+
+    app.state.container = container
+    logger.info("Container stored in app.state")
+
+    # Set container for paper trading routes
+    from .routes.paper_trading import set_container as set_paper_trading_container
+    set_paper_trading_container(container)
+    logger.info("Paper trading routes initialized with container")
+
+    connection_manager = ConnectionManager()
+    logger.info("ConnectionManager created")
+
+    logger.info("Getting orchestrator from container...")
+    orchestrator = await container.get_orchestrator()
+    logger.info("Orchestrator retrieved")
+
+    # Set orchestrator initialization status
+    initialization_status["orchestrator_initialized"] = True
+
+    logger.info("Wiring WebSocket broadcasting...")
+    orchestrator.broadcast_coordinator.set_broadcast_callback(
+        lambda data: asyncio.create_task(
+            connection_manager.broadcast(data)
+        )
+    )
+    logger.info("WebSocket broadcasting wired")
+
+    # Run bootstrap state
+    logger.info("Running bootstrap state...")
+    await bootstrap_state(orchestrator, config)
+    initialization_status["bootstrap_completed"] = True
+    logger.info("Bootstrap state completed successfully")
+
+    logger.info("Background tasks created...")
+    logger.info("Background tasks created")
+
+    logger.info("Background initialization completed")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutdown initiated")
+    shutdown_event.set()
+
+    try:
+        if service_client:
+            logger.info("Closing HTTP client...")
+            await service_client.aclose()
+
+        if connection_manager:
+            logger.info("Closing WebSocket connections...")
+            await connection_manager.broadcast({
+                "type": "shutdown",
+                "message": "Server shutting down",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+
+        await cleanup_container()
+        logger.info("DI container cleanup completed")
+
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+
+    logger.info("Shutdown completed")
 
 app = FastAPI(
     title="Robo Trader API",
@@ -65,6 +211,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Rate Limiting Configuration
@@ -171,14 +318,6 @@ container: Optional[DependencyContainer] = None
 connection_manager = None
 service_client = None
 shutdown_event = asyncio.Event()
-
-# Initialization status tracking
-initialization_status = {
-    "orchestrator_initialized": False,
-    "bootstrap_completed": False,
-    "initialization_errors": [],
-    "last_error": None
-}
 
 # ============================================================================
 # Request Models
@@ -313,149 +452,6 @@ async def get_dashboard_data() -> Dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-# ============================================================================
-# Lifecycle Events
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the system on startup."""
-    global config, container, connection_manager, service_client
-
-    logger.info("=== STARTUP EVENT STARTED ===")
-
-    config = load_config()
-    logger.info("Config loaded successfully")
-
-    logger.info("Initializing DI container...")
-    container = await initialize_container(config)
-    logger.info("DI container initialized")
-
-    app.state.container = container
-    logger.info("Container stored in app.state")
-
-    # Set container for paper trading routes
-    from .routes.paper_trading import set_container as set_paper_trading_container
-    set_paper_trading_container(container)
-    logger.info("Paper trading routes initialized with container")
-
-    connection_manager = ConnectionManager()
-    logger.info("ConnectionManager created")
-
-    logger.info("Getting orchestrator from container...")
-    orchestrator = await container.get_orchestrator()
-    logger.info("Orchestrator retrieved")
-
-    logger.info("Wiring WebSocket broadcasting...")
-    async def broadcast_to_ui_impl(message: Dict[str, Any]):
-        result = await connection_manager.broadcast(message)
-        logger.debug(f"Broadcast: {result.successful_sends}/{result.total_connections}")
-
-    orchestrator.broadcast_coordinator.set_broadcast_callback(broadcast_to_ui_impl)
-    logger.info("WebSocket broadcasting wired")
-
-    async def initialize_orchestrator():
-        """Initialize orchestrator in background."""
-        try:
-            logger.info("Starting orchestrator initialization...")
-            await asyncio.wait_for(orchestrator.initialize(), timeout=60.0)
-            logger.info("Orchestrator initialized")
-            await orchestrator.start_session()
-            logger.info("Orchestrator session started")
-            initialization_status["orchestrator_initialized"] = True
-        except asyncio.TimeoutError:
-            error_msg = "Orchestrator initialization timed out"
-            logger.error(error_msg)
-            initialization_status["initialization_errors"].append(error_msg)
-            initialization_status["last_error"] = error_msg
-        except Exception as exc:
-            error_msg = f"Orchestrator initialization failed: {exc}"
-            logger.error(error_msg, exc_info=True)
-            initialization_status["initialization_errors"].append(error_msg)
-            initialization_status["last_error"] = error_msg
-
-    async def bootstrap_state():
-        """Prime initial analytics."""
-        if not orchestrator:
-            return
-        try:
-            if config.agents.portfolio_scan.enabled:
-                try:
-                    await asyncio.wait_for(orchestrator.run_portfolio_scan(), timeout=30.0)
-                except Exception as exc:
-                    error_msg = f"Portfolio scan failed: {exc}"
-                    logger.warning(error_msg)
-                    initialization_status["initialization_errors"].append(error_msg)
-
-            if config.agents.market_screening.enabled:
-                try:
-                    await asyncio.wait_for(orchestrator.run_market_screening(), timeout=30.0)
-                except Exception as exc:
-                    error_msg = f"Market screening failed: {exc}"
-                    logger.warning(error_msg)
-                    initialization_status["initialization_errors"].append(error_msg)
-
-            initialization_status["bootstrap_completed"] = True
-            logger.info("Bootstrap state completed successfully")
-        except Exception as exc:
-            error_msg = f"Bootstrap state failed: {exc}"
-            logger.error(error_msg, exc_info=True)
-            initialization_status["initialization_errors"].append(error_msg)
-            initialization_status["last_error"] = error_msg
-
-    try:
-        orchestrator_task = asyncio.create_task(initialize_orchestrator())
-        bootstrap_task = asyncio.create_task(bootstrap_state())
-        logger.info("Background tasks created")
-
-        # Wait for orchestrator initialization to complete before proceeding
-        await orchestrator_task
-        await bootstrap_task
-        logger.info("Background initialization completed")
-
-    except Exception as e:
-        error_msg = f"Failed to create or complete background tasks: {e}"
-        logger.error(error_msg, exc_info=True)
-        initialization_status["initialization_errors"].append(error_msg)
-        initialization_status["last_error"] = error_msg
-
-        # Claude Agent SDK best practices: Graceful degradation
-        # If Claude initialization fails, continue with paper trading only
-        if "Claude" in str(e) or "anthropic" in str(e).lower() or "open_process" in str(e):
-            logger.warning("Claude agent initialization failed - continuing with paper trading only")
-            logger.info("System will operate in paper trading mode without AI agent features")
-        else:
-            # Re-raise non-Claude related errors
-            raise
-
-
-@app.on_event("shutdown")
-async def shutdown_handler():
-    """Cleanup resources on shutdown."""
-    global container, connection_manager, service_client
-    logger.info("Shutdown initiated")
-
-    shutdown_event.set()
-
-    try:
-        if service_client:
-            logger.info("Closing HTTP client...")
-            await service_client.aclose()
-
-        if connection_manager:
-            logger.info("Closing WebSocket connections...")
-            await connection_manager.broadcast({
-                "type": "shutdown",
-                "message": "Server shutting down",
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-
-        await cleanup_container()
-
-    except Exception as e:
-        logger.error(f"Shutdown error: {e}", exc_info=True)
-
-    logger.info("Shutdown complete")
 
 # ============================================================================
 # Root Endpoint

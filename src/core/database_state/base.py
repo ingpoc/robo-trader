@@ -325,6 +325,37 @@ class DatabaseConnection:
             FOREIGN KEY (recommendation_id) REFERENCES recommendations(id)
         );
 
+        -- Stock Scheduler State
+        CREATE TABLE IF NOT EXISTS stock_scheduler_state (
+            symbol TEXT PRIMARY KEY,
+            last_news_check DATE,
+            last_earnings_check DATE,
+            last_fundamentals_check DATE,
+            last_portfolio_update DATETIME,
+            needs_fundamentals_recheck BOOLEAN DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+
+        -- Strategy Logs
+        CREATE TABLE IF NOT EXISTS strategy_logs (
+            id INTEGER PRIMARY KEY,
+            strategy_type TEXT NOT NULL,
+            date TEXT NOT NULL,
+            what_worked TEXT,  -- JSON
+            what_didnt_work TEXT,  -- JSON
+            tomorrows_focus TEXT,  -- JSON
+            market_observations TEXT,  -- JSON
+            trades_executed INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            pnl_realized REAL DEFAULT 0.0,
+            token_usage TEXT,  -- JSON
+            metadata TEXT,  -- JSON
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(strategy_type, date)
+        );
+
         -- Checkpoints
         CREATE TABLE IF NOT EXISTS checkpoints (
             id TEXT PRIMARY KEY,
@@ -363,6 +394,11 @@ class DatabaseConnection:
         CREATE INDEX IF NOT EXISTS idx_analysis_performance_recommendation ON analysis_performance(recommendation_id);
         CREATE INDEX IF NOT EXISTS idx_analysis_performance_accuracy ON analysis_performance(accuracy_score DESC);
         CREATE INDEX IF NOT EXISTS idx_analysis_performance_symbol_date ON analysis_performance(symbol, prediction_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_stock_scheduler_state_symbol ON stock_scheduler_state(symbol);
+        CREATE INDEX IF NOT EXISTS idx_stock_scheduler_state_updated_at ON stock_scheduler_state(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_strategy_logs_strategy_type ON strategy_logs(strategy_type);
+        CREATE INDEX IF NOT EXISTS idx_strategy_logs_date ON strategy_logs(date DESC);
+        CREATE INDEX IF NOT EXISTS idx_strategy_logs_strategy_type_date ON strategy_logs(strategy_type, date DESC);
         """
 
         await self._connection_pool.executescript(schema)

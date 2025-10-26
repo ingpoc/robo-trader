@@ -552,7 +552,21 @@ class DependencyContainer:
             orchestrator.conversation_manager = conversation_manager
             orchestrator.learning_engine = learning_engine
 
-            logger.info("Orchestrator created (initialization deferred until first use)")
+            # Initialize all coordinators BEFORE initializing orchestrator
+            logger.info("Initializing coordinators...")
+            await session_coordinator.initialize()
+            await query_coordinator.initialize()
+            await task_coordinator.initialize()
+            await status_coordinator.initialize()
+            await lifecycle_coordinator.initialize()
+            await broadcast_coordinator.initialize()
+            logger.info("All coordinators initialized successfully")
+
+            # Now initialize the orchestrator (which depends on coordinators)
+            logger.info("Initializing orchestrator...")
+            await orchestrator.initialize()
+            logger.info("Orchestrator initialized successfully")
+
             return orchestrator
 
         self._register_singleton("orchestrator", create_orchestrator)
