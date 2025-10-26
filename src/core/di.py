@@ -82,6 +82,12 @@ class DependencyContainer:
     async def _register_core_services(self) -> None:
         """Register all core services with the container."""
 
+        # Config - singleton (access to configuration)
+        async def create_config():
+            return self.config
+
+        self._register_singleton("config", create_config)
+
         # Resource Manager - singleton (initialized first for cleanup tracking)
         async def create_resource_manager():
             return ResourceManager()
@@ -279,6 +285,13 @@ class DependencyContainer:
             return execution_service
 
         self._register_singleton("paper_trading_execution_service", create_paper_trading_execution_service)
+
+        # Performance Calculator (paper trading metrics)
+        async def create_performance_calculator():
+            from ..services.paper_trading.performance_calculator import PerformanceCalculator
+            return PerformanceCalculator()
+
+        self._register_singleton("performance_calculator", create_performance_calculator)
 
         # Zerodha OAuth Service
         async def create_zerodha_oauth_service():

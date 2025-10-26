@@ -44,29 +44,49 @@ class SessionCoordinator(BaseCoordinator):
 
     async def validate_authentication(self) -> ClaudeAuthStatus:
         """
-        Validate Claude Agent SDK authentication.
+        Validate Claude Agent SDK authentication (non-blocking, graceful degradation).
 
         Returns:
             ClaudeAuthStatus with validation results
+
+        Note: This method does NOT raise exceptions on auth failure.
+              It logs warnings and allows the system to continue in degraded mode.
         """
         self.claude_sdk_status = await validate_claude_sdk_auth()
         if not self.claude_sdk_status.is_valid:
-            error_msg = f"Claude Agent SDK authentication failed: {self.claude_sdk_status.error}"
-            self._log_error(error_msg)
-            raise RuntimeError(error_msg)
-
-        auth_method = self.claude_sdk_status.account_info.get('auth_method', 'unknown')
-        self._log_info(f"Claude Agent SDK authenticated successfully via {auth_method}")
+            error_msg = f"Claude Agent SDK authentication unavailable: {self.claude_sdk_status.error}"
+            self._log_warning(error_msg)
+            self._log_warning("System will continue in paper trading mode without AI features")
+            # DO NOT RAISE - allow system to continue with degraded functionality
+        else:
+            auth_method = self.claude_sdk_status.account_info.get('auth_method', 'unknown')
+            self._log_info(f"Claude Agent SDK authenticated successfully via {auth_method}")
 
         return self.claude_sdk_status
 
+    def is_authenticated(self) -> bool:
+        """Check if Claude SDK authentication is valid and ready."""
+        return (
+            self.claude_sdk_status is not None
+            and self.claude_sdk_status.is_valid
+        )
+
     async def start_session(self) -> None:
         """
-        Start an interactive session with Claude SDK.
+        Start an interactive session with Claude SDK (gracefully handles auth failures).
 
         For web applications, this maintains a long-lived client.
         For CLI applications, prefer using the session context manager.
+
+        Note: If authentication is not available, this method logs a warning
+        but does not raise an exception - the system continues in degraded mode.
         """
+        # Skip if not authenticated - allow graceful degradation
+        if not self.is_authenticated():
+            self._log_warning("Skipping Claude SDK session start - authentication unavailable")
+            self._log_info("System will operate in paper trading mode without AI features")
+            return
+
         if not self.options:
             raise RuntimeError("ClaudeAgentOptions not set. Initialize orchestrator first.")
 

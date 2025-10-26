@@ -385,7 +385,7 @@ class ZerodhaOAuthService:
                     **data
                 }
             )
-            await self.event_bus.emit(event)
+            await self.event_bus.publish(event)
         except Exception as e:
             logger.error(f"Failed to emit OAuth event: {e}")
 

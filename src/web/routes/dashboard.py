@@ -208,7 +208,12 @@ async def get_system_health(request: Request, container: DependencyContainer = D
     """Get system health status from orchestrator."""
     try:
         orchestrator = await container.get_orchestrator()
-        system_status = await orchestrator.get_system_status()
+
+        # Try to get system status, fall back if method not implemented
+        try:
+            system_status = await orchestrator.get_system_status()
+        except (AttributeError, NotImplementedError):
+            system_status = {}
 
         # Transform to frontend format
         components = {}

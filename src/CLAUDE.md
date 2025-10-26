@@ -397,7 +397,7 @@ event = Event(
     source="ExecutionService",
     data={"order_id": order_id, "symbol": symbol, "quantity": qty}
 )
-await self.event_bus.emit(event)
+await self.event_bus.publish(event)
 ```
 
 ### ❌ DON'T
@@ -407,7 +407,7 @@ await self.event_bus.emit(event)
 order = await place_order(...)
 
 # WRONG - Custom event types
-await event_bus.emit({"type": "order_placed", "data": {...}})
+await event_bus.publish({"type": "order_placed", "data": {...}})
 ```
 
 ---

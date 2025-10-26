@@ -166,7 +166,7 @@ async def _handle_portfolio_change(self, event: Event) -> None:
         # Process change
 
         # Emit follow-up event if needed
-        await self.event_bus.emit(Event(
+        await self.event_bus.publish(Event(
             id=str(uuid.uuid4()),
             type=EventType.PORTFOLIO_ANALYZED,
             source=self.__class__.__name__,
@@ -309,7 +309,7 @@ TIMEOUT_SECONDS = 30
 | Task | Pattern | Reference |
 |------|---------|-----------|
 | React to events | Inherit `EventHandler`, implement `handle_event()` | Event Handler Pattern |
-| Emit event | Create `Event`, await `event_bus.emit()` | Event Structure |
+| Emit event | Create `Event`, await `event_bus.publish()` | Event Structure |
 | Handle error | Raise specific error type, inherit from `TradingError` | Error Handling |
 | Async file I/O | Use `aiofiles` with `async with` | Async Pattern |
 | Initialize service | Implement `initialize()` and `cleanup()` | Service Structure |

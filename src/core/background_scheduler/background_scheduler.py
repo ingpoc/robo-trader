@@ -343,6 +343,42 @@ class BackgroundScheduler:
             "market_close_time": self.market_close_time.isoformat()
         }
 
+    async def get_scheduler_status(self) -> Dict[str, Any]:
+        """Get detailed scheduler status for system health monitoring."""
+        try:
+            # Get task counts from task store
+            tasks_processed = 0
+            tasks_failed = 0
+            try:
+                # Query task store for metrics if available
+                if hasattr(self.task_store, 'get_task_count'):
+                    tasks_processed = await self.task_store.get_task_count(status="completed")
+                    tasks_failed = await self.task_store.get_task_count(status="failed")
+            except Exception as e:
+                logger.warning(f"Could not get task metrics: {e}")
+
+            return {
+                "running": self._running,
+                "event_driven": True,
+                "last_run_time": datetime.now().isoformat(),
+                "uptime_seconds": 0,  # TODO: Track uptime when scheduler starts
+                "tasks_processed": tasks_processed,
+                "tasks_failed": tasks_failed,
+                "market_open_time": self.market_open_time.isoformat(),
+                "market_close_time": self.market_close_time.isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error getting scheduler status: {e}")
+            return {
+                "running": self._running,
+                "event_driven": True,
+                "last_run_time": datetime.now().isoformat(),
+                "uptime_seconds": 0,
+                "tasks_processed": 0,
+                "tasks_failed": 0,
+                "error": str(e)
+            }
+
     async def trigger_manual_execution(self, event_type: str, event_data: Dict[str, Any]) -> None:
         """Manually trigger event-based execution."""
         event = Event(

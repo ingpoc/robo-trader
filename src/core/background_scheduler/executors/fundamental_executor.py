@@ -71,7 +71,7 @@ class FundamentalExecutor:
             success = await self.store.store_earnings_fundamentals(symbols, parsed_data)
 
             if success:
-                await self.event_bus.emit(
+                await self.event_bus.publish(
                     Event(
                         id=str(uuid.uuid4()),
                         type=EventType.MARKET_DATA_UPDATE,
@@ -123,7 +123,7 @@ class FundamentalExecutor:
             success = await self.store.store_market_news(news_items)
 
             if success:
-                await self.event_bus.emit(
+                await self.event_bus.publish(
                     Event(
                         id=str(uuid.uuid4()),
                         type=EventType.MARKET_DATA_UPDATE,
@@ -173,7 +173,7 @@ class FundamentalExecutor:
             success = await self.store.store_deep_fundamentals(symbols, parsed_data)
 
             if success:
-                await self.event_bus.emit(
+                await self.event_bus.publish(
                     Event(
                         id=str(uuid.uuid4()),
                         type=EventType.MARKET_DATA_UPDATE,

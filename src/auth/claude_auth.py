@@ -149,16 +149,17 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             version = stdout.decode().strip()
             logger.debug(f"Claude CLI version: {version}")
 
-            # Test if authentication is working by attempting a minimal query
-            # Use asyncio subprocess for non-blocking execution
+            # Test if authentication is working by attempting a simple text input
+            # Claude Code 2.0+ responds to any input if authenticated
+            # Use echo to pipe input instead of --print which is for file operations
             test_process = await asyncio.create_subprocess_exec(
-                "claude", "--print", "test",
+                "bash", "-c", "echo 'test' | claude",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
 
             try:
-                test_stdout, test_stderr = await asyncio.wait_for(test_process.communicate(), timeout=5.0)
+                test_stdout, test_stderr = await asyncio.wait_for(test_process.communicate(), timeout=10.0)
                 test_result_code = test_process.returncode
             except asyncio.TimeoutError:
                 test_process.kill()
@@ -176,6 +177,32 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             # Parse the output for rate limit information
             output = test_stdout.decode() + test_stderr.decode()
             rate_limit_info = {}
+
+            # Check if response contains Claude's output (indicating auth success)
+            # Authentication is successful if:
+            # 1. Return code is 0 (success), OR
+            # 2. Output contains Claude's response (even if it's a rate limit message)
+            is_authenticated = False
+
+            # Look for Claude's response patterns
+            claude_indicators = [
+                "I'm ready to help",
+                "I can help",
+                "I'm Claude",
+                "I'm here to help",
+                "limit reached",
+                "usage limit",
+                "rate limit",
+                "weekly limit",
+                "daily limit"
+            ]
+
+            if any(indicator.lower() in output.lower() for indicator in claude_indicators):
+                is_authenticated = True
+                logger.debug("Claude CLI authentication confirmed via response")
+            elif test_result_code == 0 and output.strip():
+                is_authenticated = True
+                logger.debug("Claude CLI authentication confirmed via return code")
 
             if "limit" in output.lower():
                 # Extract rate limit details
@@ -196,9 +223,7 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             else:
                 rate_limit_info["limited"] = False
 
-            # Check if we got a response (even if it's a rate limit error)
-            # Rate limit errors mean authentication is working
-            if test_result_code == 0 or "limit" in output.lower():
+            if is_authenticated:
                 auth_method = "subscription"
                 logger.debug(f"Claude CLI authenticated successfully via {auth_method}")
                 return {

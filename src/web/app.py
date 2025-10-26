@@ -284,8 +284,17 @@ async def get_dashboard_data() -> Dict[str, Any]:
             logger.warning(f"Bootstrap failed: {exc}")
 
     intents = await orchestrator.state_manager.get_all_intents()
-    screening = await orchestrator.state_manager.get_screening_results()
-    strategy = await orchestrator.state_manager.get_strategy_results()
+
+    # Get screening and strategy results with fallback to None if not implemented
+    try:
+        screening = await orchestrator.state_manager.get_screening_results()
+    except (NotImplementedError, AttributeError):
+        screening = None
+
+    try:
+        strategy = await orchestrator.state_manager.get_strategy_results()
+    except (NotImplementedError, AttributeError):
+        strategy = None
 
     portfolio_dict = portfolio.to_dict() if portfolio else None
     analytics = portfolio_dict.get("risk_aggregates") if portfolio_dict else None
