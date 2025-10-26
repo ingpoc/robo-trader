@@ -1,86 +1,91 @@
 /**
  * System Health Hook
- * Aggregates system health data from WebSocket broadcasts
+ * Uses centralized system status store for consistent state management
  */
 
-import { useState, useEffect } from 'react'
-import { wsClient } from '@/api/websocket'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 
 export const useSystemHealth = () => {
-  const [schedulerStatus, setSchedulerStatus] = useState<any>(null)
-  const [queueHealth, setQueueHealth] = useState<any>(null)
-  const [dbHealth, setDbHealth] = useState<any>(null)
-  const [resources, setResources] = useState<any>(null)
-  const [errors, setErrors] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const {
+    systemStatus,
+    isConnected,
+    errors,
+    lastUpdate,
+    getOverallHealth,
+    getComponentHealth
+  } = useSystemStatusStore()
 
-  useEffect(() => {
-    // Subscribe to WebSocket for real-time system health updates
-    const unsubscribe = wsClient.subscribe((message: any) => {
-      // Check for system health updates from backend
-      if (message.type === 'system_health_update') {
-        const components = message.components || {}
+  // WebSocket is now initialized globally in App.tsx, so no need to initialize here
+  // This hook now only reads from the store
 
-        setSchedulerStatus({
-          healthy: components.scheduler?.status === 'healthy',
-          lastRun: components.scheduler?.lastRun || new Date().toISOString()
-        })
+  // Extract component-specific data
+  const schedulerStatus = getComponentHealth('scheduler')
+  const queueHealth = getComponentHealth('queue')
+  const dbHealth = getComponentHealth('database')
+  const resources = getComponentHealth('resources')
+  const websocketHealth = getComponentHealth('websocket')
+  const claudeHealth = getComponentHealth('claudeAgent')
 
-        setQueueHealth({
-          healthy: components.queue?.status === 'healthy',
-          totalTasks: components.queue?.totalTasks || 0
-        })
+  
+  // Format data for compatibility with existing components
+  const formattedData = {
+    scheduler: schedulerStatus ? {
+      healthy: schedulerStatus.status === 'healthy',
+      lastRun: schedulerStatus.lastRun,
+      activeJobs: schedulerStatus.activeJobs,
+      completedJobs: schedulerStatus.completedJobs
+    } : null,
 
-        setDbHealth({
-          healthy: components.database?.status === 'connected',
-          activeConnections: components.database?.connections || 0
-        })
+    queue: queueHealth ? {
+      healthy: ['healthy', 'idle'].includes(queueHealth.status),
+      totalTasks: queueHealth.totalTasks,
+      runningQueues: queueHealth.runningQueues,
+      totalQueues: queueHealth.totalQueues
+    } : null,
 
-        setResources({
-          cpu: components.resources?.cpu || 0,
-          memory: components.resources?.memory || 0,
-          disk: components.resources?.disk || 0
-        })
+    database: dbHealth ? {
+      healthy: dbHealth.status === 'connected',
+      activeConnections: dbHealth.connections,
+      portfolioLoaded: dbHealth.portfolioLoaded
+    } : null,
 
-        setErrors([])
-        setIsLoading(false)
-      }
+    resources: resources ? {
+      cpu: resources.cpu,
+      memory: resources.memory,
+      disk: resources.disk
+    } : null,
 
-      // Handle queue status updates from queue_status_update messages
-      // This provides more detailed queue information
-      if (message.type === 'queue_status_update') {
-        const stats = message.stats || {}
-        setQueueHealth({
-          healthy: true, // Assume healthy if we get status updates
-          totalTasks: stats.totalTasks || stats.total_queues || 0,
-          runningQueues: stats.running_queues || 0,
-          totalQueues: stats.total_queues || 0
-        })
-        setIsLoading(false)
-      }
+    websocket: websocketHealth ? {
+      healthy: websocketHealth.status === 'connected',
+      clients: websocketHealth.clients
+    } : null,
 
-      // Check for system health errors
-      if (message.type === 'system_health_error') {
-        console.error('System health error:', message.error)
-        setErrors([message.error || 'System health monitoring error'])
-        setIsLoading(false)
-      }
-    })
-
-    // Set initial loading state
-    setIsLoading(true)
-
-    return () => {
-      unsubscribe()
-    }
-  }, [])
+    claudeAgent: claudeHealth ? {
+      healthy: ['active', 'authenticated'].includes(claudeHealth.status),
+      status: claudeHealth.status,
+      authMethod: claudeHealth.authMethod,
+      tasksCompleted: claudeHealth.tasksCompleted
+    } : null
+  }
 
   return {
-    schedulerStatus,
-    queueHealth,
-    dbHealth,
-    resources,
+    // System-wide data
+    overallHealth: getOverallHealth(),
+    isConnected,
+    lastUpdate,
     errors,
-    isLoading,
+    isLoading: systemStatus === null,
+
+    // Component-specific data (formatted for existing UI)
+    schedulerStatus: formattedData.scheduler,
+    queueHealth: formattedData.queue,
+    dbHealth: formattedData.database,
+    resources: formattedData.resources,
+    websocketHealth: formattedData.websocket,
+    claudeHealth: formattedData.claudeAgent,
+
+    // Raw data access
+    rawSystemStatus: systemStatus,
+    getComponentHealth
   }
 }

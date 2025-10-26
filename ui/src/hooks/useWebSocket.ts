@@ -55,9 +55,18 @@ export function useWebSocket() {
   }, [])
 
   useEffect(() => {
-    // Only connect if not already connected
-    if (wsClient.isConnected()) {
-      return
+    // Only connect if not already connected and not connecting
+    if (wsClient.isConnected() || wsClient.getConnectionInfo().state === 'connecting') {
+      // Still register callbacks even if already connected
+      const unsubscribe = wsClient.subscribe(handleDataUpdate)
+      const unsubscribeConnect = wsClient.onConnect(handleConnect)
+      const unsubscribeError = wsClient.onError(handleError)
+
+      return () => {
+        unsubscribe()
+        unsubscribeConnect()
+        unsubscribeError()
+      }
     }
 
     // Set initial status

@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/utils/cn'
-import { useDashboardStore } from '@/store/dashboardStore'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 import { Button } from '@/components/ui/Button'
 import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator'
 import {
@@ -29,7 +29,7 @@ interface NavigationProps {
 }
 
 export function Navigation({ onClose }: NavigationProps) {
-  const isConnected = useDashboardStore((state) => state.isConnected)
+  const isConnected = useSystemStatusStore((state) => state.isConnected)
 
   return (
     <nav

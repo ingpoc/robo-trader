@@ -6,7 +6,7 @@ import { Toaster } from '@/components/common/Toaster'
 import { GlobalErrorBoundary } from '@/components/common/GlobalErrorBoundary'
 import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBoundary'
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 import { AccountProvider } from '@/contexts/AccountContext'
 import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
 import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
@@ -30,7 +30,32 @@ const queryClient = new QueryClient({
 })
 
 function AppContent() {
-  useWebSocket()
+  // Initialize WebSocket connection globally for the entire app
+  const initializeWebSocket = useSystemStatusStore((state) => state.initializeWebSocket)
+
+  React.useEffect(() => {
+    // Add a small delay to ensure proper cleanup on page refresh
+    const timeoutId = setTimeout(() => {
+      const cleanup = initializeWebSocket()
+
+      // Add page unload cleanup
+      const handleBeforeUnload = () => {
+        if (cleanup) cleanup()
+      }
+
+      window.addEventListener('beforeunload', handleBeforeUnload)
+
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload)
+        if (cleanup) cleanup()
+      }
+    }, 100) // 100ms delay
+
+    return () => {
+      clearTimeout(timeoutId)
+    }
+  }, [initializeWebSocket])
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Keyboard navigation for sidebar and global shortcuts

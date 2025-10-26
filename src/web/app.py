@@ -165,6 +165,13 @@ async def lifespan(app: FastAPI):
             connection_manager.broadcast(data)
         )
     )
+
+    # Set connection manager on status coordinator for real WebSocket client count
+    if orchestrator.status_coordinator:
+        orchestrator.status_coordinator.set_connection_manager(connection_manager)
+        orchestrator.status_coordinator.set_container(container)
+        logger.info("Connection manager set on status coordinator")
+
     logger.info("WebSocket broadcasting wired")
 
     # Run bootstrap state
