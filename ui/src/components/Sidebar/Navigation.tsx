@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { cn } from '@/utils/cn'
 import { useDashboardStore } from '@/store/dashboardStore'
 import { Button } from '@/components/ui/Button'
+import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -126,25 +127,31 @@ export function Navigation({ onClose }: NavigationProps) {
       </div>
 
       <div
-        className="flex items-center gap-3 h-16 px-6 border-t border-warmgray-200 dark:border-warmgray-700 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 dark:from-warmgray-900/80 dark:to-warmgray-800/60 text-xs"
+        className="flex items-center justify-between h-16 px-6 border-t border-warmgray-200 dark:border-warmgray-700 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 dark:from-warmgray-900/80 dark:to-warmgray-800/60 text-xs gap-6"
         role="status"
         aria-live="polite"
-        aria-label="Connection status"
+        aria-label="System status"
       >
-        {isConnected ? (
-          <Wifi className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
-        ) : (
-          <WifiOff className="w-5 h-5 text-warmgray-400 dark:text-warmgray-500" />
-        )}
-        <span
-          className={cn(
-            'font-bold transition-colors duration-200',
-            isConnected ? 'text-emerald-700 dark:text-emerald-300' : 'text-warmgray-500 dark:text-warmgray-400'
+        {/* WebSocket Status */}
+        <div className="flex items-center gap-3">
+          {isConnected ? (
+            <Wifi className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+          ) : (
+            <WifiOff className="w-5 h-5 text-warmgray-400 dark:text-warmgray-500" />
           )}
-          id="connection-status"
-        >
-          {isConnected ? 'Connected' : 'Offline'}
-        </span>
+          <span
+            className={cn(
+              'font-bold transition-colors duration-200',
+              isConnected ? 'text-emerald-700 dark:text-emerald-300' : 'text-warmgray-500 dark:text-warmgray-400'
+            )}
+            id="connection-status"
+          >
+            {isConnected ? 'Connected' : 'Offline'}
+          </span>
+        </div>
+
+        {/* Claude Status - Integrated seamlessly */}
+        <ClaudeStatusIndicator />
       </div>
     </nav>
   )
