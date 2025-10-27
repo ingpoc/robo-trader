@@ -40,7 +40,7 @@ export const SystemHealthFeature: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Status Cards */}
+        {/* Quick Status Cards - Enhanced with detailed metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className={schedulerStatus?.healthy ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-red-500'}>
             <CardHeader className="pb-3">
@@ -50,8 +50,10 @@ export const SystemHealthFeature: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{schedulerStatus?.healthy ? 'Healthy' : 'Error'}</p>
-              <p className="text-sm text-warmgray-600 mt-1">Last run: {schedulerStatus?.lastRun}</p>
+              <p className="text-2xl font-bold">{schedulerStatus?.totalSchedulers || 0}</p>
+              <p className="text-sm text-warmgray-600 mt-1">
+                {schedulerStatus?.runningSchedulers || 0} running • {schedulerStatus?.activeJobs || 0} active jobs
+              </p>
             </CardContent>
           </Card>
 
@@ -63,8 +65,10 @@ export const SystemHealthFeature: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{queueHealth?.totalTasks || 0}</p>
-              <p className="text-sm text-warmgray-600 mt-1">Total tasks queued</p>
+              <p className="text-2xl font-bold">{queueHealth?.totalQueues || 0}</p>
+              <p className="text-sm text-warmgray-600 mt-1">
+                {queueHealth?.runningQueues || 0} active • {queueHealth?.totalTasks || 0} total tasks
+              </p>
             </CardContent>
           </Card>
 
@@ -77,7 +81,9 @@ export const SystemHealthFeature: React.FC = () => {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{dbHealth?.healthy ? 'Connected' : 'Error'}</p>
-              <p className="text-sm text-warmgray-600 mt-1">Connections: {dbHealth?.activeConnections || 0}</p>
+              <p className="text-sm text-warmgray-600 mt-1">
+                {dbHealth?.portfolioLoaded ? 'Portfolio loaded' : `${dbHealth?.activeConnections || 0} connections`}
+              </p>
             </CardContent>
           </Card>
 

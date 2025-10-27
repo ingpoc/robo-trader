@@ -27,20 +27,24 @@ export const useSystemHealth = () => {
   const claudeHealth = getComponentHealth('claudeAgent')
 
   
-  // Format data for compatibility with existing components
+  // Format data for compatibility with enhanced components
   const formattedData = {
     scheduler: schedulerStatus ? {
       healthy: schedulerStatus.status === 'healthy',
       lastRun: schedulerStatus.lastRun,
       activeJobs: schedulerStatus.activeJobs,
-      completedJobs: schedulerStatus.completedJobs
+      completedJobs: schedulerStatus.completedJobs,
+      schedulers: schedulerStatus.schedulers,
+      totalSchedulers: schedulerStatus.totalSchedulers,
+      runningSchedulers: schedulerStatus.runningSchedulers
     } : null,
 
     queue: queueHealth ? {
       healthy: ['healthy', 'idle'].includes(queueHealth.status),
       totalTasks: queueHealth.totalTasks,
       runningQueues: queueHealth.runningQueues,
-      totalQueues: queueHealth.totalQueues
+      totalQueues: queueHealth.totalQueues,
+      queues: queueHealth.queues
     } : null,
 
     database: dbHealth ? {

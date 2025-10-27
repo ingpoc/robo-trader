@@ -17,6 +17,18 @@ try:
     HEALTH_MONITOR_AVAILABLE = True
 except ImportError:
     HEALTH_MONITOR_AVAILABLE = False
+    # Define fallback types when import fails
+    class BroadcastError:
+        def __init__(self, error: Exception, severity: str = "medium"):
+            self.error = error
+            self.severity = severity
+
+    class BroadcastErrorSeverity:
+        CRITICAL = "critical"
+        HIGH = "high"
+        MEDIUM = "medium"
+        LOW = "low"
+
     logger.warning("BroadcastHealthMonitor not available - using basic error handling")
 
 

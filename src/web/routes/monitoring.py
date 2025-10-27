@@ -49,18 +49,59 @@ async def get_system_status(request: Request, container: DependencyContainer = D
 @router.get("/monitoring/scheduler")
 @limiter.limit(default_limit)
 async def get_scheduler_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
-    """Get background scheduler status."""
+    """Get comprehensive scheduler status including all configured schedulers."""
 
     try:
         orchestrator = await container.get_orchestrator()
-        background_scheduler = await container.get("background_scheduler")
 
-        if not background_scheduler:
-            return {"status": "scheduler_not_available"}
+        # Get all configured schedulers
+        schedulers = []
+
+        # 1. Background Scheduler (event-driven)
+        background_scheduler = await container.get("background_scheduler")
+        if background_scheduler:
+            background_status = await background_scheduler.get_scheduler_status()
+            schedulers.append({
+                "scheduler_id": "background_scheduler",
+                "name": "Background Scheduler",
+                "status": "running" if background_status.get("running", False) else "stopped",
+                "event_driven": background_status.get("event_driven", False),
+                "uptime_seconds": background_status.get("uptime_seconds", 0),
+                "jobs_processed": background_status.get("tasks_processed", 0),
+                "jobs_failed": background_status.get("tasks_failed", 0),
+                "active_jobs": 0,  # Background scheduler is event-driven, doesn't have traditional jobs
+                "completed_jobs": background_status.get("tasks_processed", 0),
+                "last_run_time": background_status.get("last_run_time", ""),
+                "jobs": []  # Background scheduler tasks are event-driven, not scheduled jobs
+            })
+
+        # 2. Queue-based Schedulers (Three Queue Architecture)
+        task_service = await container.get("task_service")
+        if task_service:
+            from ...models.scheduler import QueueName
+
+            # Get statistics for all queues
+            queue_stats = await task_service.get_all_queue_statistics()
+
+            for queue_name, stats in queue_stats.items():
+                schedulers.append({
+                    "scheduler_id": f"{queue_name}_scheduler",
+                    "name": f"{queue_name.replace('_', ' ').title()} Scheduler",
+                    "status": "running",  # Queues are always running if service is available
+                    "event_driven": False,
+                    "uptime_seconds": 0,  # TODO: Track queue uptime
+                    "jobs_processed": stats.completed_today,
+                    "jobs_failed": stats.failed_count,
+                    "active_jobs": stats.running_count,
+                    "completed_jobs": stats.completed_today,
+                    "last_run_time": stats.last_completed_at or "",
+                    "jobs": []  # TODO: Could add recent tasks if needed
+                })
 
         return {
             "status": "running",
-            "tasks": getattr(background_scheduler, '_tasks', [])
+            "schedulers": schedulers,
+            "total_schedulers": len(schedulers)
         }
     except TradingError as e:
         return await handle_trading_error(e)
