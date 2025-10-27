@@ -121,6 +121,16 @@ class DependencyContainer:
 
         self._register_singleton("state_manager", create_state_manager)
 
+        # Configuration State - singleton (Database-backed configuration)
+        async def create_configuration_state():
+            from .database_state.configuration_state import ConfigurationState
+            state_manager = await self.get("state_manager")
+            config_state = ConfigurationState(state_manager.db, self.config)
+            await config_state.initialize()
+            return config_state
+
+        self._register_singleton("configuration_state", create_configuration_state)
+
         # AI Planner
         async def create_ai_planner():
             state_manager = await self.get("state_manager")

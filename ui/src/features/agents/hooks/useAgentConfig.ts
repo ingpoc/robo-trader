@@ -76,18 +76,64 @@ export const useAgentConfig = (): UseAgentConfigReturn => {
         updates.use_claude = false
       }
 
-      await apiRequest(`/api/agents/features/${featureName}`, {
-        method: 'PUT',
-        body: JSON.stringify(updates),
-        headers: { 'Content-Type': 'application/json' }
-      })
+      // Retry logic for feature registration scenarios
+      let lastError: Error | null = null
+      let retryCount = 0
+      const maxRetries = 3
+      const baseDelay = 1000 // 1 second
 
+      while (retryCount < maxRetries) {
+        try {
+          await apiRequest(`/api/agents/features/${featureName}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates),
+            headers: { 'Content-Type': 'application/json' }
+          })
+
+          // Success - break out of retry loop
+          break
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error('Failed to update feature')
+
+          // Check if this is a "feature not found" error that might resolve with retry
+          const errorMessage = lastError.message.toLowerCase()
+          const isRegistrationError = errorMessage.includes('not found') &&
+                                     errorMessage.includes('feature') &&
+                                     retryCount < maxRetries - 1
+
+          if (isRegistrationError) {
+            retryCount++
+            const delay = baseDelay * Math.pow(2, retryCount - 1) // Exponential backoff
+            console.warn(`Feature registration retry ${retryCount}/${maxRetries} for ${featureName} after ${delay}ms: ${lastError.message}`)
+
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          } else {
+            // Not a registration error or out of retries - throw immediately
+            throw lastError
+          }
+        }
+      }
+
+      // Refresh features after successful update
       await loadFeatures()
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to update feature'
-      setError(errorMsg)
+
+      // Provide user-friendly error messages
+      let userFriendlyError = errorMsg
+      if (errorMsg.includes('not found') && errorMsg.includes('feature')) {
+        userFriendlyError = `Feature '${featureName}' is being registered. Please try again in a moment.`
+      } else if (errorMsg.includes('400')) {
+        userFriendlyError = `Invalid configuration for '${featureName}'. Please check your settings.`
+      } else if (errorMsg.includes('500')) {
+        userFriendlyError = `Server error while updating '${featureName}'. Please try again.`
+      }
+
+      setError(userFriendlyError)
       console.error('Failed to update feature:', err)
-      throw err
+      throw new Error(userFriendlyError)
     }
   }
 

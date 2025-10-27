@@ -1,0 +1,15 @@
+{
+  "claude_usage": {
+    "enabled": true,
+    "daily_token_limit": 75000,
+    "cost_alerts": true,
+    "cost_threshold": 15.0
+  },
+  "scheduler_defaults": {
+    "default_frequency": 60,
+    "default_frequency_unit": "minutes",
+    "market_hours_only": true,
+    "retry_attempts": 5,
+    "retry_delay_minutes": 10
+  }
+}

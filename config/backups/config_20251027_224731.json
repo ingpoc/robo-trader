@@ -120,15 +120,10 @@
       "priority": "high"
     },
     "earnings_check": {
-      "enabled": true,
-      "frequency_seconds": 1800,
+      "enabled": false,
       "use_claude": true,
-      "priority": "high",
-      "stock_symbols": [
-        "RELIANCE",
-        "TCS",
-        "INFY"
-      ]
+      "frequency_seconds": 86400,
+      "priority": "medium"
     },
     "news_monitoring": {
       "enabled": false,

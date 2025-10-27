@@ -12,7 +12,7 @@ import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
 import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
 import { AITransparencyFeature } from '@/features/ai-transparency/AITransparencyFeature'
 import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeature'
-import { AgentsFeature } from '@/features/agents/AgentsFeature'
+import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
 import { PaperTrading } from '@/pages/PaperTrading'
 import { Config } from '@/pages/Config'
 import { Button } from '@/components/ui/Button'
@@ -99,7 +99,7 @@ function AppContent() {
             if (event.altKey) {
               event.preventDefault()
               // Navigate to different sections based on number
-              const routes = ['/', '/news-earnings', '/agents', '/paper-trading', '/ai-transparency', '/system-health', '/config']
+              const routes = ['/', '/news-earnings', '/configuration', '/paper-trading', '/ai-transparency', '/system-health', '/config']
               const index = parseInt(event.key) - 1
               if (routes[index]) {
                 window.location.href = routes[index]
@@ -196,7 +196,7 @@ function AppContent() {
             <Routes>
               <Route path="/" element={<DashboardErrorBoundary><DashboardFeature /></DashboardErrorBoundary>} />
               <Route path="/news-earnings" element={<NewsEarningsFeature />} />
-              <Route path="/agents" element={<AgentsFeature />} />
+              <Route path="/configuration" element={<ConfigurationFeature />} />
               <Route path="/paper-trading" element={<PaperTrading />} />
               <Route path="/config" element={<Config />} />
               <Route path="/ai-transparency" element={<AITransparencyFeature />} />

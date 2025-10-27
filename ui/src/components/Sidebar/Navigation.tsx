@@ -16,7 +16,7 @@ import { Home, Newspaper, Users, Settings, X, Wifi, WifiOff, User, LogOut, Bell,
 const menuItems = [
   { path: '/', label: 'Overview', icon: Home },
   { path: '/news-earnings', label: 'News & Earnings', icon: Newspaper },
-  { path: '/agents', label: 'Agents', icon: Users },
+  { path: '/configuration', label: 'Configuration', icon: Settings },
   { path: '/paper-trading', label: 'Paper Trading', icon: Wallet },
   { path: '/ai-transparency', label: 'AI Transparency', icon: Eye },
   { path: '/system-health', label: 'System Health', icon: Database },
