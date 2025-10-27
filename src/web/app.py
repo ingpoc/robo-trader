@@ -129,7 +129,7 @@ async def initialize_orchestrator(config, container, connection_manager):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
-    global config, container, connection_manager, service_client
+    global config, container, connection_manager, service_client, initialization_status
 
     # Startup
     logger.info("=== STARTUP EVENT STARTED ===")
@@ -398,6 +398,8 @@ async def get_ai_data_with_retry(orchestrator, connection_id: str, max_retries: 
 
 async def get_dashboard_data() -> Dict[str, Any]:
     """Get dashboard data for display."""
+    global initialization_status
+
     if not container:
         return {
             "error": "System not initialized",

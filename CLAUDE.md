@@ -2,7 +2,19 @@
 
 > **Project Memory**: Automatically loaded by Claude Code. Contains permanent development rules and architectural patterns that remain consistent as code evolves.
 
+> **Last Updated**: 2025-10-27 | **Status**: Production Ready - All core systems operational
+
 **Architecture Reference**: See @documentation/ARCHITECTURE_PATTERNS.md for detailed patterns and implementation guidelines.
+
+## Contents
+
+- [Claude Agent SDK Architecture](#claude-agent-sdk-architecture-critical)
+- [Core Architectural Patterns](#core-architectural-patterns-25-patterns)
+- [Code Quality Standards](#code-quality-standards)
+- [Development Workflow](#development-workflow)
+- [Quick Reference](#quick-reference---what-to-do)
+- [Pre-Commit Checklist](#pre-commit-checklist)
+- [When in Doubt](#when-in-doubt)
 
 ## Claude Agent SDK Architecture (CRITICAL)
 

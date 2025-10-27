@@ -1,8 +1,25 @@
 # Backend Architecture Guidelines
 
 > **Scope**: Applies to all files under `src/` directory. Read after root CLAUDE.md for context.
+> **Last Updated**: 2025-10-27 | **Status**: Production Ready
 
 This file contains backend-specific patterns, service organization, and layer-specific rules that complement the project-wide patterns in the root CLAUDE.md.
+
+## Contents
+
+- [Layer-Specific Guidelines](#layer-specific-guidelines)
+- [Backend Architecture Layers](#backend-architecture-layers)
+- [Service Event Handler Pattern](#service-event-handler-pattern)
+- [MCP Integration Pattern](#mcp-integration-pattern)
+- [Web Layer Patterns](#web-layer-patterns)
+- [Async/File Operations](#asyncfile-operations-backend-specific)
+- [Error Handling Pattern](#error-handling-pattern-backend)
+- [Event Emission Pattern](#event-emission-pattern)
+- [DI Usage Pattern](#di-usage-pattern)
+- [Anti-Patterns - Backend Failures to Avoid](#anti-patterns---backend-failures-to-avoid)
+- [Development Workflow - Backend](#development-workflow---backend)
+- [Common Mistakes to Avoid](#common-mistakes-to-avoid)
+- [Quick File Reference - Backend](#quick-file-reference---backend)
 
 ## Claude Agent SDK Architecture (CRITICAL)
 

@@ -16,7 +16,6 @@ from loguru import logger
 from src.config import Config
 from ..core.database_state import DatabaseStateManager
 from ..core.state_models import PortfolioState
-from ..mcp.broker import get_broker
 
 
 def create_portfolio_analyzer_tool(config: Config, state_manager: DatabaseStateManager):

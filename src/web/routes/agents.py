@@ -214,10 +214,14 @@ async def update_agent_feature(request: Request, feature_name: str, feature_data
         feature_management = await container.get("feature_management_service")
 
         if feature_management:
-            await feature_management.update_feature(feature_name, feature_data)
+            # Check if feature should be enabled or disabled
+            if feature_data.get("enabled", False):
+                await feature_management.enable_feature(feature_name, reason="user_request", requested_by="ui")
+            else:
+                await feature_management.disable_feature(feature_name, reason="user_request", requested_by="ui")
 
-        logger.info(f"Updated feature {feature_name}")
-        return {"status": "Feature updated", "feature": feature_name}
+        logger.info(f"Updated feature {feature_name} to enabled={feature_data.get('enabled', False)}")
+        return {"status": "Feature updated", "feature": feature_name, "enabled": feature_data.get("enabled", False)}
     except Exception as e:
         return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
 

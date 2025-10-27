@@ -146,7 +146,7 @@ class ServiceLifecycleManager(EventHandler):
         # Subscribe to events
         self.event_bus.subscribe(EventType.FEATURE_DISABLED, self)
         self.event_bus.subscribe(EventType.SYSTEM_ERROR, self)
-        self.event_bus.subscribe(EventType.TASK_COMPLETED, self)
+        self.event_bus.subscribe(EventType.FEATURE_UPDATED, self)
         
         logger.info("Service Lifecycle Manager initialized")
 

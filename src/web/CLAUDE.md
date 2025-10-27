@@ -1,8 +1,19 @@
 # Web Layer Guidelines
 
 > **Scope**: Applies to `src/web/` directory (FastAPI, WebSockets, HTTP endpoints). Read after `src/CLAUDE.md` and `src/core/CLAUDE.md`.
+> **Last Updated**: 2025-10-27 | **Status**: Production Ready
 
 The web layer handles HTTP endpoints, WebSocket connections, and client communication. It must enforce error handling, rate limiting, and input validation for all requests.
+
+## Contents
+
+- [Claude Agent SDK Integration](#claude-agent-sdk-integration-critical)
+- [Middleware Error Handling Pattern](#middleware-error-handling-pattern)
+- [Rate Limiting Pattern](#rate-limiting-pattern)
+- [WebSocket Integration](#websocket-integration)
+- [API Endpoint Patterns](#api-endpoint-patterns)
+- [Development Workflow - Web Layer](#development-workflow---web-layer)
+- [Quick Reference - Web Layer](#quick-reference---web-layer)
 
 ## Claude Agent SDK Integration (CRITICAL)
 

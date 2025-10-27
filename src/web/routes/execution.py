@@ -47,21 +47,41 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
     """Trigger portfolio scan and load holdings from CSV file."""
 
     try:
+        logger.info("Starting portfolio scan request")
         orchestrator = await container.get_orchestrator()
 
+        if not orchestrator:
+            logger.error("Orchestrator not available for portfolio scan")
+            return {"error": "System not available for portfolio scan"}
+
         # Run portfolio scan (loads holdings from CSV)
+        logger.info("Executing portfolio scan")
         result = await orchestrator.run_portfolio_scan()
+        logger.info(f"Portfolio scan result: {result}")
 
         # Get updated portfolio to return holdings
         portfolio = await orchestrator.state_manager.get_portfolio()
 
-        return {
-            "status": "Portfolio scan completed",
-            "message": "Holdings loaded from CSV file",
-            "portfolio": portfolio.to_dict() if portfolio and hasattr(portfolio, 'to_dict') else None,
-            "result": result,
-            "timestamp": str(__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat())
-        }
+        if portfolio and portfolio.holdings:
+            holdings_count = len(portfolio.holdings)
+            logger.info(f"Portfolio scan completed successfully: {holdings_count} holdings loaded")
+            return {
+                "status": "Portfolio scan completed",
+                "message": f"Successfully loaded {holdings_count} holdings",
+                "source": result.get("source", "unknown"),
+                "holdings_count": holdings_count,
+                "portfolio": portfolio.to_dict()
+            }
+        else:
+            logger.warning("Portfolio scan completed but no holdings found")
+            return {
+                "status": "Portfolio scan completed",
+                "message": "No holdings found in CSV file",
+                "source": result.get("source", "unknown"),
+                "holdings_count": 0,
+                "portfolio": None
+            }
+
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:

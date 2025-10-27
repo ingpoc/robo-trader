@@ -42,18 +42,32 @@ async def get_portfolio(
 ) -> Dict[str, Any]:
     """Get portfolio data with lazy bootstrap."""
     try:
+        logger.info("Portfolio data requested")
         orchestrator = await container.get_orchestrator()
         if not orchestrator or not orchestrator.state_manager:
-            logger.error("Orchestrator not available")
+            logger.error("Orchestrator not available for portfolio request")
             return JSONResponse({"error": "System not available"}, status_code=500)
 
         portfolio = await orchestrator.state_manager.get_portfolio()
 
+        if portfolio:
+            holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
+            logger.info(f"Portfolio retrieved from database: {holdings_count} holdings")
+        else:
+            logger.info("No portfolio found in database, attempting bootstrap")
+
         if not portfolio:
             try:
-                logger.debug("Triggering portfolio bootstrap")
+                logger.info("Triggering portfolio bootstrap scan")
                 await orchestrator.run_portfolio_scan()
                 portfolio = await orchestrator.state_manager.get_portfolio()
+
+                if portfolio:
+                    holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
+                    logger.info(f"Portfolio bootstrap completed: {holdings_count} holdings loaded")
+                else:
+                    logger.warning("Portfolio bootstrap completed but still no data available")
+
             except TradingError as e:
                 logger.warning(f"Bootstrap failed with trading error: {e}")
                 # Continue to check if portfolio is now available
@@ -63,10 +77,11 @@ async def get_portfolio(
                 logger.warning(f"Bootstrap failed with unexpected error: {e}")
 
         if not portfolio:
-            logger.warning("No portfolio data available")
+            logger.warning("No portfolio data available after bootstrap")
             return JSONResponse({"error": "No portfolio data available"}, status_code=404)
 
-        logger.info("Portfolio retrieved successfully")
+        holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
+        logger.info(f"Portfolio data returned successfully: {holdings_count} holdings")
         return portfolio.to_dict()
 
     except TradingError as e:

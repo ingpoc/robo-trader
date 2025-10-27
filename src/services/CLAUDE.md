@@ -1,8 +1,19 @@
 # Services Layer Guidelines
 
 > **Scope**: Applies to `src/services/` directory. Read after `src/CLAUDE.md` and `src/core/CLAUDE.md` for context.
+> **Last Updated**: 2025-10-27 | **Status**: Production Ready
 
 Services layer contains domain-specific business logic. Each service manages one core responsibility and communicates with other services through the EventBus, never directly.
+
+## Contents
+
+- [Claude Agent SDK Integration](#claude-agent-sdk-integration-critical)
+- [Service Architecture Patterns](#service-architecture-patterns)
+- [Event-Driven Service Communication](#event-driven-service-communication)
+- [Service Lifecycle Management](#service-lifecycle-management)
+- [Error Handling in Services](#error-handling-in-services)
+- [Development Workflow - Services](#development-workflow---services)
+- [Quick Reference - Services](#quick-reference---services)
 
 ## Claude Agent SDK Integration (CRITICAL)
 

@@ -305,7 +305,7 @@ class MarketDataService(EventHandler):
             kite_symbol = self._convert_to_kite_symbol(symbol)
 
             # Get quote
-            quotes = await self.broker.kite.quote(kite_symbol)
+            quotes = await self.broker.quote(kite_symbol)
             if kite_symbol in quotes:
                 quote = quotes[kite_symbol]
 
