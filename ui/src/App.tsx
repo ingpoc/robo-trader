@@ -15,7 +15,6 @@ import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeatur
 import { AgentsFeature } from '@/features/agents/AgentsFeature'
 import { PaperTrading } from '@/pages/PaperTrading'
 import { Config } from '@/pages/Config'
-import { Logs } from '@/pages/Logs'
 import { Button } from '@/components/ui/Button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -100,7 +99,7 @@ function AppContent() {
             if (event.altKey) {
               event.preventDefault()
               // Navigate to different sections based on number
-              const routes = ['/', '/news-earnings', '/agents', '/paper-trading', '/ai-transparency', '/system-health', '/config', '/logs']
+              const routes = ['/', '/news-earnings', '/agents', '/paper-trading', '/ai-transparency', '/system-health', '/config']
               const index = parseInt(event.key) - 1
               if (routes[index]) {
                 window.location.href = routes[index]
@@ -200,7 +199,6 @@ function AppContent() {
               <Route path="/agents" element={<AgentsFeature />} />
               <Route path="/paper-trading" element={<PaperTrading />} />
               <Route path="/config" element={<Config />} />
-              <Route path="/logs" element={<Logs />} />
               <Route path="/ai-transparency" element={<AITransparencyFeature />} />
               <Route path="/system-health" element={<SystemHealthFeature />} />
             </Routes>

@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Home, Newspaper, Users, Settings, FileText, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet, Eye, Database } from 'lucide-react'
+import { Home, Newspaper, Users, Settings, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet, Eye, Database } from 'lucide-react'
 
 const menuItems = [
   { path: '/', label: 'Overview', icon: Home },
@@ -21,7 +21,6 @@ const menuItems = [
   { path: '/ai-transparency', label: 'AI Transparency', icon: Eye },
   { path: '/system-health', label: 'System Health', icon: Database },
   { path: '/config', label: 'Config', icon: Settings },
-  { path: '/logs', label: 'Logs', icon: FileText },
 ]
 
 interface NavigationProps {

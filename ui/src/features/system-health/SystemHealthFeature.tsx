@@ -12,7 +12,7 @@ import { useSystemHealth } from './hooks/useSystemHealth'
 import { SchedulerStatus } from './components/SchedulerStatus'
 import { QueueHealthMonitor } from './components/QueueHealthMonitor'
 import { DatabaseStatus } from './components/DatabaseStatus'
-import { ResourceUsage } from './components/ResourceUsage'
+import { SystemHealthLogs } from './components/SystemHealthLogs'
 import { ErrorAlerts } from './components/ErrorAlerts'
 
 export const SystemHealthFeature: React.FC = () => {
@@ -113,8 +113,8 @@ export const SystemHealthFeature: React.FC = () => {
             <TabsTrigger value="database" className="text-sm font-semibold rounded-md">
               Database
             </TabsTrigger>
-            <TabsTrigger value="resources" className="text-sm font-semibold rounded-md">
-              Resources
+            <TabsTrigger value="logs" className="text-sm font-semibold rounded-md">
+              Logs
             </TabsTrigger>
             <TabsTrigger value="errors" className="text-sm font-semibold rounded-md">
               Errors
@@ -133,8 +133,8 @@ export const SystemHealthFeature: React.FC = () => {
             <DatabaseStatus health={dbHealth} isLoading={isLoading} />
           </TabsContent>
 
-          <TabsContent value="resources" className="space-y-4">
-            <ResourceUsage resources={resources} isLoading={isLoading} />
+          <TabsContent value="logs" className="space-y-4">
+            <SystemHealthLogs isLoading={isLoading} />
           </TabsContent>
 
           <TabsContent value="errors" className="space-y-4">

@@ -52,7 +52,7 @@ response = await client.messages.create(...)
 
 ---
 
-## Core Architectural Patterns (23 Patterns)
+## Core Architectural Patterns (25 Patterns)
 
 ### 1. Coordinator Pattern (Responsibility: Service Orchestration)
 
@@ -267,6 +267,35 @@ Automatically reset paper trading account capital on the 1st of each month while
 5. Emit `ACCOUNT_RESET` event with monthly summary
 6. UI updates show monthly results and capital reset confirmation
 
+### 24. Real-Time System Health Monitoring (Responsibility: Live Infrastructure Status)
+
+Comprehensive WebSocket-based system health monitoring with real-time updates for schedulers, queues, database, and logs.
+
+**Implementation**: `StatusCoordinator` aggregates system metrics, `BroadcastCoordinator` sends WebSocket updates, frontend stores manage real-time state.
+
+**Rule**: All system health data updates via WebSocket differential updates. No polling for health status. Component-level refresh only for detailed data.
+
+**Components**:
+- **Backend**: `StatusCoordinator`, `BroadcastCoordinator`, enhanced monitoring APIs
+- **Frontend**: `SystemHealthFeature` with tabs for schedulers, queues, database, logs, errors
+- **WebSocket**: Real-time updates for connection status, queue health, scheduler status
+- **APIs**: `/api/monitoring/scheduler`, `/api/queues/status`, `/api/system/status`
+
+### 25. Integrated System Logs (Responsibility: Contextual Log Monitoring)
+
+System logs integrated within health monitoring interface, filtered for system health relevance.
+
+**Implementation**: `SystemHealthLogs` component fetches from `/api/logs`, filters for system-relevant events, shows error/warning counts.
+
+**Rule**: No standalone Logs page. All log viewing within System Health context. Focus on errors, warnings, and system-component events.
+
+**Features**:
+- Real-time log filtering (error, warning, info levels)
+- System-health relevant filtering (excludes unrelated application logs)
+- Component attribution (RiskManager, NewsMonitor, etc.)
+- Refresh functionality with 30-second polling
+- Error/warning summary counts in header
+
 ---
 
 ## Code Quality Standards
@@ -476,6 +505,8 @@ Never break existing public APIs. When refactoring, maintain import paths (use w
 | Event-driven triggering needed | NEWS_FETCHED → AI analysis, EARNINGS_FETCHED → fundamentals update | Event-Driven Triggering |
 | Monthly capital reset needed | Run MonthlyResetMonitor daily, reset on 1st, save performance history | Monthly Reset Monitor |
 | AI functionality needed | Use Claude Agent SDK only - NO direct Anthropic API calls | SDK-Only Architecture |
+| System health monitoring needed | Use StatusCoordinator + BroadcastCoordinator + WebSocket real-time updates | Real-Time System Health Monitoring |
+| System logs viewing needed | Use SystemHealthLogs component within System Health, no standalone Logs page | Integrated System Logs |
 
 ---
 
@@ -511,6 +542,8 @@ Every code submission MUST pass:
 - [ ] **Atomic Writes**: Use temp files and os.replace() for data consistency
 - [ ] **Systematic Debugging**: Use 4-phase process when fixing issues (root cause first)
 - [ ] **SDK-Only Architecture**: NO direct Anthropic API calls - use Claude Agent SDK only
+- [ ] **Real-Time System Health**: Use WebSocket differential updates, no polling for health status
+- [ ] **Integrated System Logs**: SystemHealthLogs component within System Health, no standalone Logs page
 
 ---
 
