@@ -201,52 +201,29 @@ async def get_upcoming_earnings(request: Request, days_ahead: int = 60, containe
 async def get_ai_recommendations(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get AI-powered stock recommendations from database."""
     try:
-        # Return sample AI recommendations
-        sample_recommendations = [
-            {
-                "id": "rec_1",
-                "symbol": "INFY",
-                "action": "BUY",
-                "confidence": 0.85,
-                "target_price": 1650.00,
-                "stop_loss": 1450.00,
-                "time_horizon": "3-6 months",
-                "thesis": "Strong Q3 results expected, digital transformation momentum continues. Technical indicators show bullish pattern with RSI oversold recovery.",
-                "risk_level": "Medium",
-                "sector": "Information Technology",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": "rec_2",
-                "symbol": "HDFC",
-                "action": "HOLD",
-                "confidence": 0.72,
-                "target_price": 1850.00,
-                "stop_loss": 1600.00,
-                "time_horizon": "6-12 months",
-                "thesis": "Banking sector facing regulatory headwinds in short term. Long-term fundamentals remain strong with NPA reduction and credit growth.",
-                "risk_level": "Low",
-                "sector": "Banking",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": "rec_3",
-                "symbol": "TCS",
-                "action": "ACCUMULATE",
-                "confidence": 0.78,
-                "target_price": 4200.00,
-                "stop_loss": 3800.00,
-                "time_horizon": "6-9 months",
-                "thesis": "Q3 guidance looks conservative, deal pipeline strong. Margins expected to improve with cost optimization initiatives.",
-                "risk_level": "Low-Medium",
-                "sector": "Information Technology",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-        ]
+        # Get recommendations from database
+        recommendations = await container.state_manager.get_recommendations()
+
+        # Transform to expected format
+        formatted_recommendations = []
+        for rec in recommendations:
+            formatted_recommendations.append({
+                "id": rec.id,
+                "symbol": rec.symbol,
+                "action": rec.recommendation_type.upper(),
+                "confidence": rec.confidence_score,
+                "target_price": rec.target_price,
+                "stop_loss": rec.stop_loss,
+                "time_horizon": getattr(rec, 'time_horizon', '3-6 months'),
+                "thesis": getattr(rec, 'reasoning', 'AI-generated recommendation based on fundamental and technical analysis'),
+                "risk_level": getattr(rec, 'risk_level', 'Medium'),
+                "sector": getattr(rec, 'sector', 'Unknown'),
+                "created_at": rec.created_at.isoformat() if hasattr(rec.created_at, 'isoformat') else rec.created_at
+            })
 
         return {
-            "recommendations": sample_recommendations,
-            "total": len(sample_recommendations),
+            "recommendations": formatted_recommendations,
+            "total": len(formatted_recommendations),
             "lastUpdated": datetime.now(timezone.utc).isoformat(),
             "modelVersion": "claude-sonnet-4.5",
             "disclaimer": "AI-generated recommendations are for educational purposes only"

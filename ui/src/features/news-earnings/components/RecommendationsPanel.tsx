@@ -184,7 +184,7 @@ export const RecommendationsPanel = memo<RecommendationsPanelProps>(({
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h3 className="font-bold text-xl text-warmgray-900 dark:text-warmgray-100 mb-1">
-                      {rec.recommendation.symbol}
+                      {rec.symbol}
                     </h3>
                     <div className="flex items-center gap-2">
                       {getStatusIcon(rec.status)}
@@ -193,7 +193,7 @@ export const RecommendationsPanel = memo<RecommendationsPanelProps>(({
                       </span>
                     </div>
                   </div>
-                  <RecommendationBadge action={rec.recommendation.action} />
+                  <RecommendationBadge action={rec.action} />
                 </div>
 
                 {/* Confidence & Reasoning */}
@@ -201,17 +201,17 @@ export const RecommendationsPanel = memo<RecommendationsPanelProps>(({
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-warmgray-700 dark:text-warmgray-300">Confidence</span>
-                      <span className={`text-sm font-bold ${getConfidenceColor(rec.recommendation.confidence)}`}>
-                        {(normalizeConfidence(rec.recommendation.confidence) * 100).toFixed(0)}%
+                      <span className={`text-sm font-bold ${getConfidenceColor(rec.confidence)}`}>
+                        {(normalizeConfidence(rec.confidence) * 100).toFixed(0)}%
                       </span>
                     </div>
                     <div className="w-full bg-warmgray-200 dark:bg-warmgray-700 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full transition-all duration-300 ${
-                          normalizeConfidence(rec.recommendation.confidence) >= 0.8 ? 'bg-emerald-500' :
-                          normalizeConfidence(rec.recommendation.confidence) >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
+                          normalizeConfidence(rec.confidence) >= 0.8 ? 'bg-emerald-500' :
+                          normalizeConfidence(rec.confidence) >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
                         }`}
-                        style={{ width: `${normalizeConfidence(rec.recommendation.confidence) * 100}%` }}
+                        style={{ width: `${normalizeConfidence(rec.confidence) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -219,7 +219,7 @@ export const RecommendationsPanel = memo<RecommendationsPanelProps>(({
                   <div>
                     <h4 className="font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">Analysis</h4>
                     <p className="text-sm text-warmgray-700 dark:text-warmgray-300 leading-relaxed">
-                      {rec.recommendation.reasoning}
+                      {rec.thesis}
                     </p>
                   </div>
                 </div>
