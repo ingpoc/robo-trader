@@ -94,8 +94,16 @@ class BrokerClient:
             )
 
     async def _get_stored_token(self) -> Optional[Dict[str, Any]]:
-        """Retrieve stored OAuth token if valid."""
+        """Retrieve stored OAuth token if valid. Checks ENV first, then file."""
         try:
+            # First, check ENV variables for token
+            from ..core.env_helpers import get_zerodha_token_from_env
+            env_token = get_zerodha_token_from_env()
+            if env_token:
+                logger.info("Using Zerodha OAuth token from ENV variable")
+                return env_token
+            
+            # Fallback to token file
             import os
             import aiofiles
             import json
@@ -114,6 +122,7 @@ class BrokerClient:
                 await self._delete_token_file()
                 return None
 
+            logger.info("Using Zerodha OAuth token from file")
             return token_data
 
         except Exception as e:

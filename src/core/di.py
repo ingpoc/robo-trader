@@ -163,7 +163,7 @@ class DependencyContainer:
         # Conversation Manager
         async def create_conversation_manager():
             state_manager = await self.get("state_manager")
-            return ConversationManager(self.config, state_manager)
+            return ConversationManager(self.config, state_manager, self)
 
         self._register_singleton("conversation_manager", create_conversation_manager)
 
@@ -342,6 +342,15 @@ class DependencyContainer:
             return sdk_auth
 
         self._register_singleton("claude_sdk_auth", create_claude_sdk_auth)
+
+        # Claude SDK Client Manager - singleton (manages shared SDK clients)
+        async def create_claude_sdk_client_manager():
+            from .claude_sdk_client_manager import ClaudeSDKClientManager
+            manager = await ClaudeSDKClientManager.get_instance()
+            await manager.initialize()
+            return manager
+
+        self._register_singleton("claude_sdk_client_manager", create_claude_sdk_client_manager)
 
         # Claude Agent MCP Server
         async def create_claude_agent_mcp_server():

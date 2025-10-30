@@ -1,7 +1,12 @@
 # Frontend Architecture Guidelines
 
 > **Scope**: Applies to all files under `ui/src/`. Read after root CLAUDE.md for project patterns.
-> **Last Updated**: 2025-10-27 | **Status**: Production Ready - All core systems operational
+
+## Quick Reference - SDK Usage
+
+- **API Only**: Frontend NEVER uses SDK directly - consume backend APIs only
+- **Backend Services**: All AI features use `/api/claude/*` endpoints
+- **No API Keys**: NEVER expose API keys in frontend code
 
 Frontend architecture focuses on component organization, real-time data updates, and maintainable UI code. This file complements the root CLAUDE.md with React/TypeScript-specific patterns.
 

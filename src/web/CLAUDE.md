@@ -1,7 +1,12 @@
 # Web Layer Guidelines
 
 > **Scope**: Applies to `src/web/` directory (FastAPI, WebSockets, HTTP endpoints). Read after `src/CLAUDE.md` and `src/core/CLAUDE.md`.
-> **Last Updated**: 2025-10-27 | **Status**: Production Ready
+
+## Quick Reference - SDK Usage
+
+- **Service Access**: Get SDK services from container: `await container.get("research_tracker")`
+- **No Direct SDK**: Web layer NEVER uses SDK directly - only through services
+- **Services Handle SDK**: Services use client manager internally (transparent to web layer)
 
 The web layer handles HTTP endpoints, WebSocket connections, and client communication. It must enforce error handling, rate limiting, and input validation for all requests.
 
@@ -30,27 +35,14 @@ All AI-related web endpoints must use **ONLY** Claude Agent SDK services. No dir
 
 **SDK Service Integration Pattern**:
 ```python
-from src.services.claude_agent import (
-    ResearchTracker,
-    AnalysisLogger,
-    ExecutionMonitor,
-    DailyStrategyEvaluator,
-    ActivitySummarizer
-)
+# All AI endpoints use SDK-only services from container
+# Services use client manager internally (transparent to web layer)
 
-class ClaudeAgentAPI:
-    def __init__(self, container):
-        self.container = container
-
-    async def get_research_activity(self, account_type: str):
-        """Get research activity using SDK-only ResearchTracker service."""
-        research_tracker = await self.container.get("research_tracker")
-        return await research_tracker.get_research_history(account_type=account_type)
-
-    async def get_analysis_activity(self, account_type: str):
-        """Get analysis activity using SDK-only AnalysisLogger service."""
-        analysis_logger = await self.container.get("analysis_logger")
-        return await analysis_logger.get_analysis_history(account_type=account_type)
+@router.get("/api/claude/research")
+async def get_research(request: Request, container: DependencyContainer = Depends(get_container)):
+    """Get research activity - SDK-only service."""
+    research_tracker = await container.get("research_tracker")
+    return await research_tracker.get_research_history(account_type=account_type)
 ```
 
 **❌ FORBIDDEN - Direct API Usage in Web Layer:**

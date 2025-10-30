@@ -24,7 +24,17 @@ import type {
 
 export const dashboardAPI = {
   getDashboardData: () => api.get<DashboardData>('/api/dashboard'),
-  portfolioScan: () => api.post<{ status: string }>('/api/portfolio-scan'),
+  portfolioScan: () => api.post<{ 
+    status: string
+    message?: string
+    auth_url?: string
+    state?: string
+    redirect_url?: string
+    instructions?: string
+    source?: string
+    holdings_count?: number
+    portfolio?: unknown
+  }>('/api/portfolio-scan'),
   marketScreening: () => api.post<{ status: string }>('/api/market-screening'),
 }
 

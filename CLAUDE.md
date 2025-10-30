@@ -2,14 +2,14 @@
 
 > **Project Memory**: Automatically loaded by Claude Code. Contains permanent development rules and architectural patterns that remain consistent as code evolves.
 
-> **Last Updated**: 2025-10-27 | **Status**: Production Ready - All core systems operational
+> **Last Updated**: 2025-01-27 | **Status**: Production Ready - All core systems operational
 
 **Architecture Reference**: See @documentation/ARCHITECTURE_PATTERNS.md for detailed patterns and implementation guidelines.
 
 ## Contents
 
 - [Claude Agent SDK Architecture](#claude-agent-sdk-architecture-critical)
-- [Core Architectural Patterns](#core-architectural-patterns-25-patterns)
+- [Core Architectural Patterns](#core-architectural-patterns-28-patterns)
 - [Code Quality Standards](#code-quality-standards)
 - [Development Workflow](#development-workflow)
 - [Quick Reference](#quick-reference---what-to-do)
@@ -27,9 +27,11 @@
 **Tools**: Registered via `@tool` decorators in MCP servers
 **Sessions**: Managed through SDK client lifecycle
 
-**✅ CORRECT - SDK Implementation:**
+**✅ CORRECT - SDK Implementation with Client Manager:**
 ```python
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, tool
+from claude_agent_sdk import ClaudeAgentOptions, tool
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+from src.core.sdk_helpers import query_with_timeout, receive_response_with_timeout
 
 # MCP server with tools
 @tool("analyze_portfolio")
@@ -37,11 +39,15 @@ async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
     # Tool implementation
     return {"content": [{"type": "text", "text": json.dumps(result)}]}
 
-# SDK client usage
+# Use client manager (singleton pattern) - CRITICAL for performance
+client_manager = await ClaudeSDKClientManager.get_instance()
 options = ClaudeAgentOptions(mcp_servers={"trading": mcp_server})
-client = ClaudeSDKClient(options=options)
-await client.query(prompt)
-response = await client.receive_response()
+client = await client_manager.get_client("trading", options)
+
+# Use timeout helpers for all SDK operations
+await query_with_timeout(client, prompt, timeout=60.0)
+async for response in receive_response_with_timeout(client, timeout=120.0):
+    # Process response
 ```
 
 **❌ VIOLATION - Direct API Usage:**
@@ -62,9 +68,116 @@ response = await client.messages.create(...)
 
 **Verification**: All AI code must import from `claude_agent_sdk` only. Direct `anthropic` imports are forbidden.
 
+### SDK Client Management (CRITICAL PERFORMANCE)
+
+**CRITICAL RULE**: Always use `ClaudeSDKClientManager` singleton for client reuse. Each client instance has ~12s startup overhead.
+
+**Before (Bad)**:
+```python
+# Each service creates its own client - wastes 84s startup time
+self.client = ClaudeSDKClient(options=options)
+await self.client.__aenter__()
+```
+
+**After (Good)**:
+```python
+# Use singleton client manager - saves ~70 seconds startup time
+client_manager = await ClaudeSDKClientManager.get_instance()
+client = await client_manager.get_client("trading", options)
+```
+
+**Client Types**:
+- `"trading"` - For trading operations with MCP tools
+- `"query"` - For general queries without tools
+- `"conversation"` - For conversational interactions
+
+**Performance Impact**: 7+ clients × 12s = 84s wasted → 2-3 shared clients × 12s = 24-36s startup time
+
+### SDK Timeout Handling (MANDATORY)
+
+**CRITICAL RULE**: All SDK operations must use timeout wrappers. Never call `client.query()` or `client.receive_response()` directly.
+
+**✅ CORRECT**:
+```python
+from src.core.sdk_helpers import query_with_timeout, receive_response_with_timeout
+
+await query_with_timeout(client, prompt, timeout=60.0)
+async for response in receive_response_with_timeout(client, timeout=120.0):
+    # Process response
+```
+
+**❌ VIOLATION**:
+```python
+# NEVER do this - can hang indefinitely
+await client.query(prompt)
+async for response in client.receive_response():
+    # Process response
+```
+
+**Timeout Values**:
+- Query timeout: 60 seconds (default)
+- Response timeout: 120 seconds (for multi-turn conversations)
+- Trading sessions: 90s query, 180s response (longer for complex operations)
+
+### SDK Error Handling (MANDATORY)
+
+**CRITICAL RULE**: Handle all SDK error types explicitly. Use `sdk_helpers` wrappers which handle all error types automatically.
+
+**Error Types Handled**:
+- `CLINotFoundError` - CLI not installed (non-recoverable)
+- `CLIConnectionError` - Connection issues (retry with backoff)
+- `ProcessError` - Process failures (check exit code)
+- `CLIJSONDecodeError` - JSON parsing errors (retry)
+- `ClaudeSDKError` - Generic SDK errors (retry if recoverable)
+
+**✅ CORRECT**:
+```python
+from src.core.sdk_helpers import query_with_timeout
+
+try:
+    await query_with_timeout(client, prompt, timeout=60.0)
+except TradingError as e:
+    if not e.recoverable:
+        # Non-recoverable - log and fail
+        raise
+    # Recoverable - retry logic handled by helper
+```
+
+### SDK System Prompt Validation (RECOMMENDED)
+
+**CRITICAL RULE**: Validate system prompt size before initialization. Prompts > 10k tokens can cause initialization failures.
+
+**✅ CORRECT**:
+```python
+from src.core.sdk_helpers import validate_system_prompt_size
+
+system_prompt = self._build_system_prompt()
+is_valid, token_count = validate_system_prompt_size(system_prompt, max_tokens=8000)
+if not is_valid:
+    logger.warning(f"System prompt is {token_count} tokens, may cause issues")
+```
+
+**Recommendation**: Keep system prompts under 8000 tokens (safe limit under 10k SDK limit)
+
+### SDK Health Monitoring (RECOMMENDED)
+
+**CRITICAL RULE**: Monitor client health and auto-recover unhealthy clients.
+
+**Implementation**: `ClaudeSDKClientManager` includes built-in health monitoring:
+```python
+# Check health
+is_healthy = await client_manager.check_health("trading")
+
+# Auto-recovery
+recovered = await client_manager.recover_client("trading")
+
+# Performance metrics
+metrics = client_manager.get_performance_metrics()
+```
+
 ---
 
-## Core Architectural Patterns (25 Patterns)
+## Core Architectural Patterns (28 Patterns)
 
 ### 1. Coordinator Pattern (Responsibility: Service Orchestration)
 
@@ -308,6 +421,68 @@ System logs integrated within health monitoring interface, filtered for system h
 - Refresh functionality with 30-second polling
 - Error/warning summary counts in header
 
+### 26. SDK Client Manager Pattern (Responsibility: SDK Performance Optimization)
+
+Singleton client manager for efficient SDK client reuse to reduce startup overhead and memory usage.
+
+**Implementation**: `ClaudeSDKClientManager` provides shared clients by type (`trading`, `query`, `conversation`) with health monitoring, auto-recovery, and performance metrics.
+
+**Rule**: Always use `ClaudeSDKClientManager.get_instance()` instead of creating direct `ClaudeSDKClient` instances. Use appropriate client type for operation. Client manager handles cleanup automatically.
+
+**Performance Impact**:
+- Before: 7+ clients × 12s = 84s startup time
+- After: 2-3 shared clients × 12s = 24-36s startup time
+- **Savings: ~70 seconds faster startup**
+
+**Usage**:
+```python
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+
+client_manager = await ClaudeSDKClientManager.get_instance()
+client = await client_manager.get_client("trading", options)
+```
+
+### 27. SDK Timeout & Error Handling Pattern (Responsibility: SDK Reliability)
+
+Comprehensive timeout protection and error handling for all SDK operations to prevent hanging and ensure graceful failure recovery.
+
+**Implementation**: `sdk_helpers` module provides `query_with_timeout()`, `receive_response_with_timeout()`, and `sdk_operation_with_retry()` with exponential backoff.
+
+**Rule**: Never call `client.query()` or `client.receive_response()` directly. Always use timeout helpers from `sdk_helpers`. Handle all SDK error types explicitly (`CLINotFoundError`, `CLIConnectionError`, `ProcessError`, `CLIJSONDecodeError`, `ClaudeSDKError`).
+
+**Timeout Values**:
+- Query: 60s (default), 90s (trading sessions)
+- Response: 120s (default), 180s (multi-turn conversations)
+- Init: 30s
+- Health check: 5s
+
+**Usage**:
+```python
+from src.core.sdk_helpers import query_with_timeout, receive_response_with_timeout
+
+await query_with_timeout(client, prompt, timeout=60.0)
+async for response in receive_response_with_timeout(client, timeout=120.0):
+    # Process response
+```
+
+### 28. SDK System Prompt Validation Pattern (Responsibility: SDK Initialization Safety)
+
+Validate system prompt token counts before SDK client initialization to prevent timeout failures.
+
+**Implementation**: `validate_system_prompt_size()` in `sdk_helpers` estimates tokens and warns if over limit.
+
+**Rule**: Always validate system prompt size before creating `ClaudeAgentOptions`. Keep prompts under 8000 tokens (safe limit under 10k SDK limit). Monitor prompt sizes for services with large JSON contexts.
+
+**Usage**:
+```python
+from src.core.sdk_helpers import validate_system_prompt_size
+
+system_prompt = self._build_system_prompt()
+is_valid, token_count = validate_system_prompt_size(system_prompt, max_tokens=8000)
+if not is_valid:
+    logger.warning(f"System prompt is {token_count} tokens, may cause issues")
+```
+
 ---
 
 ## Code Quality Standards
@@ -519,6 +694,9 @@ Never break existing public APIs. When refactoring, maintain import paths (use w
 | AI functionality needed | Use Claude Agent SDK only - NO direct Anthropic API calls | SDK-Only Architecture |
 | System health monitoring needed | Use StatusCoordinator + BroadcastCoordinator + WebSocket real-time updates | Real-Time System Health Monitoring |
 | System logs viewing needed | Use SystemHealthLogs component within System Health, no standalone Logs page | Integrated System Logs |
+| SDK client needed | Use ClaudeSDKClientManager.get_instance() - NEVER create direct ClaudeSDKClient | SDK Client Manager Pattern |
+| SDK query/response needed | Use query_with_timeout() and receive_response_with_timeout() - NEVER call directly | SDK Timeout & Error Handling |
+| System prompt validation needed | Validate prompt size with validate_system_prompt_size() before initialization | SDK System Prompt Validation |
 
 ---
 
@@ -554,6 +732,10 @@ Every code submission MUST pass:
 - [ ] **Atomic Writes**: Use temp files and os.replace() for data consistency
 - [ ] **Systematic Debugging**: Use 4-phase process when fixing issues (root cause first)
 - [ ] **SDK-Only Architecture**: NO direct Anthropic API calls - use Claude Agent SDK only
+- [ ] **SDK Client Manager**: Use ClaudeSDKClientManager.get_instance() - NEVER create direct ClaudeSDKClient instances
+- [ ] **SDK Timeout Handling**: Use query_with_timeout() and receive_response_with_timeout() - NEVER call client.query() directly
+- [ ] **SDK Error Handling**: Handle all SDK error types (CLINotFoundError, CLIConnectionError, ProcessError, etc.)
+- [ ] **SDK Prompt Validation**: Validate system prompt size before initialization (keep under 8000 tokens)
 - [ ] **Real-Time System Health**: Use WebSocket differential updates, no polling for health status
 - [ ] **Integrated System Logs**: SystemHealthLogs component within System Health, no standalone Logs page
 
@@ -593,6 +775,8 @@ Every code submission MUST pass:
 - `src/core/di.py` - Dependency injection container (511 lines)
 - `src/core/event_bus.py` - Event infrastructure (343 lines)
 - `src/core/errors.py` - Error hierarchy with context (219 lines)
+- `src/core/claude_sdk_client_manager.py` - Singleton SDK client manager (CRITICAL for performance)
+- `src/core/sdk_helpers.py` - SDK operation helpers (timeout, error handling, validation)
 - `src/core/background_scheduler/` - Modularized scheduler (8 focused domains)
    - `clients/perplexity_client.py` - Unified API client with key rotation
    - `clients/retry_handler.py` - Exponential backoff & retry logic
@@ -704,4 +888,4 @@ ui/src/CLAUDE.md (Frontend Guidelines)
 
 **Key Philosophy**: Patterns exist to maintain code quality and prevent debugging overhead. Coordinators + DI + Events = loosely coupled, highly testable, scalable architecture.
 
-**Remember**: "Focused coordinators, injected dependencies, event-driven communication, rich error context. Smart scheduling, resilient APIs, strategy learning. Three-queue architecture, event-driven workflows. No duplication. Always."
+**Remember**: "Focused coordinators, injected dependencies, event-driven communication, rich error context. Smart scheduling, resilient APIs, strategy learning. Three-queue architecture, event-driven workflows. SDK client manager for performance, timeout protection for reliability. No duplication. Always."

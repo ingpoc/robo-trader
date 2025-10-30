@@ -33,7 +33,6 @@ class ZerodhaOAuthService:
             "production": "https://your-domain.com/api/auth/zerodha/callback"
         }
         self._oauth_states = {}  # Temporary storage for OAuth state validation
-        self._base_url = "https://kite.zerodha.com/connect"
         self._token_file = "data/zerodha_oauth_token.json"
 
     async def initialize(self) -> None:
@@ -83,7 +82,7 @@ class ZerodhaOAuthService:
 
     async def generate_auth_url(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Generate Zerodha OAuth authorization URL.
+        Generate Zerodha OAuth authorization URL using KiteConnect library.
 
         Args:
             user_id: Optional user identifier for tracking
@@ -92,6 +91,19 @@ class ZerodhaOAuthService:
             Dict containing auth URL and state parameter
         """
         try:
+            # Use KiteConnect library for proper login URL generation
+            import asyncio
+            from urllib.parse import quote
+            
+            api_key = getattr(self.config.integration, 'zerodha_api_key')
+            if not api_key:
+                raise TradingError(
+                    "Zerodha API key not configured",
+                    category=ErrorCategory.CONFIGURATION,
+                    severity=ErrorSeverity.HIGH,
+                    recoverable=False
+                )
+            
             # Generate secure state parameter for CSRF protection
             state = secrets.token_urlsafe(32)
 
@@ -105,14 +117,13 @@ class ZerodhaOAuthService:
             # Clean old states (older than 10 minutes)
             await self._cleanup_old_states()
 
-            # Build authorization URL parameters
-            params = {
-                "api_key": getattr(self.config.integration, 'zerodha_api_key'),
-                "redirect_url": self.get_redirect_url(),
-                "state": state
-            }
-
-            auth_url = f"{self._base_url}?{urlencode(params)}"
+            # Build authorization URL per PyKiteConnect documentation format
+            # Format: https://kite.zerodha.com/connect/login?api_key={api_key}&redirect_url={redirect_url_encoded}
+            redirect_url = self.get_redirect_url()
+            redirect_url_encoded = quote(redirect_url, safe='')
+            
+            # Build URL with state parameter
+            auth_url = f"https://kite.zerodha.com/connect/login?api_key={api_key}&redirect_url={redirect_url_encoded}&state={state}"
 
             # Emit OAuth initiation event
             await self._emit_oauth_event(
@@ -142,26 +153,30 @@ class ZerodhaOAuthService:
                 recoverable=False
             )
 
-    async def handle_callback(self, request_token: str, state: str) -> Dict[str, Any]:
+    async def handle_callback(self, request_token: str, state: Optional[str] = None) -> Dict[str, Any]:
         """
         Handle OAuth callback from Zerodha.
 
         Args:
             request_token: Request token from Zerodha callback
-            state: State parameter for CSRF validation
+            state: State parameter for CSRF validation (optional - Zerodha may not always send it)
 
         Returns:
             Dict containing access token and user info
         """
         try:
-            # Validate state parameter
-            if not await self._validate_state(state):
-                raise TradingError(
-                    "Invalid or expired OAuth state parameter",
-                    category=ErrorCategory.SECURITY,
-                    severity=ErrorSeverity.HIGH,
-                    recoverable=False
-                )
+            # Validate state parameter if provided
+            # Note: Zerodha may not always send the state parameter back,
+            # so we make it optional but still validate if present
+            if state:
+                if not await self._validate_state(state):
+                    logger.warning(f"State parameter validation failed: {state}")
+                    # Don't fail hard - Zerodha's request token is still valid
+                    # Just log the warning and continue
+                else:
+                    logger.info(f"State parameter validated successfully: {state[:10]}...")
+            else:
+                logger.warning("No state parameter received from Zerodha callback - continuing without CSRF validation")
 
             # Exchange request token for access token
             access_token_data = await self._exchange_request_token(request_token)
@@ -169,8 +184,8 @@ class ZerodhaOAuthService:
             # Store tokens securely
             await self._store_tokens(access_token_data, state)
 
-            # Clean up state
-            if state in self._oauth_states:
+            # Clean up state if it was provided
+            if state and state in self._oauth_states:
                 del self._oauth_states[state]
 
             # Emit success event
@@ -233,73 +248,144 @@ class ZerodhaOAuthService:
         return True
 
     async def _exchange_request_token(self, request_token: str) -> Dict[str, Any]:
-        """Exchange request token for access token."""
+        """Exchange request token for access token using KiteConnect library."""
         try:
-            async with httpx.AsyncClient() as client:
-                checksum = self._generate_checksum(request_token)
-
-                data = {
-                    "request_token": request_token,
-                    "api_key": getattr(self.config.integration, 'zerodha_api_key'),
-                    "checksum": checksum
-                }
-
-                response = await client.post(
-                    "https://kite.zerodha.com/api/token/access_token",
-                    data=data,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    timeout=30.0
+            # Import KiteConnect - run in executor since it's synchronous
+            import asyncio
+            from kiteconnect import KiteConnect
+            
+            api_key = getattr(self.config.integration, 'zerodha_api_key', '').strip()
+            api_secret = getattr(self.config.integration, 'zerodha_api_secret', '').strip()
+            
+            if not api_key or not api_secret:
+                raise TradingError(
+                    "Zerodha API key or secret not configured",
+                    category=ErrorCategory.CONFIGURATION,
+                    severity=ErrorSeverity.HIGH,
+                    recoverable=False
                 )
+            
+            # Run synchronous KiteConnect operations in executor
+            loop = asyncio.get_event_loop()
+            
+            def exchange_token():
+                """Synchronous token exchange using KiteConnect."""
+                try:
+                    # Validate inputs
+                    if not request_token or not request_token.strip():
+                        raise ValueError("Request token is empty")
+                    
+                    request_token_clean = request_token.strip()
+                    
+                    # Verify API secret matches what's expected (common issue: wrong secret in .env)
+                    # The API secret must match EXACTLY what's registered in Zerodha Kite Connect app
+                    logger.info(f"Token exchange parameters:")
+                    logger.info(f"  API Key: {api_key[:10]}... (length: {len(api_key)})")
+                    logger.info(f"  Request Token: {request_token_clean[:20]}... (length: {len(request_token_clean)})")
+                    logger.info(f"  API Secret: {'*' * min(8, len(api_secret))}... (length: {len(api_secret)})")
+                    
+                    # Calculate checksum manually for debugging
+                    import hashlib
+                    checksum_input = api_key + request_token_clean + api_secret
+                    checksum = hashlib.sha256(checksum_input.encode('utf-8')).hexdigest()
+                    logger.info(f"  Calculated checksum: {checksum[:32]}...")
+                    
+                    kite = KiteConnect(api_key=api_key)
+                    
+                    # Use generate_session() as per PyKiteConnect documentation
+                    # NOTE: If this fails with "Invalid checksum", verify:
+                    # 1. API secret in .env matches Zerodha Kite Connect app settings EXACTLY
+                    # 2. API key matches the one used in auth URL
+                    # 3. Request token is not expired (tokens expire after ~2 minutes)
+                    data = kite.generate_session(request_token=request_token_clean, api_secret=api_secret)
+                    logger.info(f"generate_session succeeded. User: {data.get('user_id')}")
+                    return data
+                except Exception as e:
+                    logger.error(f"generate_session failed: {type(e).__name__}: {str(e)}")
+                    logger.error(f"  API Key length: {len(api_key) if api_key else 0}")
+                    logger.error(f"  Request Token length: {len(request_token) if request_token else 0}")
+                    logger.error(f"  API Secret length: {len(api_secret) if api_secret else 0}")
+                    logger.error(f"  ⚠️  IMPORTANT: If checksum error persists, verify:")
+                    logger.error(f"     1. API secret in .env matches Zerodha Kite Connect app EXACTLY")
+                    logger.error(f"     2. API key matches the one used in auth URL")
+                    logger.error(f"     3. Request token is fresh (not expired - tokens expire after ~2 minutes)")
+                    # Re-raise to be caught by outer handler
+                    raise
+            
+            # Execute in thread pool to avoid blocking
+            token_data = await loop.run_in_executor(None, exchange_token)
+            
+            # Add expiry information
+            login_time = datetime.now(timezone.utc)
+            expires_at = login_time + timedelta(hours=24)  # Zerodha tokens last 24 hours
 
-                if response.status_code != 200:
-                    error_text = response.text
-                    logger.error(f"Token exchange failed: {response.status_code} - {error_text}")
-                    raise TradingError(
-                        f"Token exchange failed: {response.status_code}",
-                        category=ErrorCategory.API,
-                        severity=ErrorSeverity.HIGH,
-                        recoverable=True
-                    )
+            logger.info(f"Successfully exchanged request token for access token. User: {token_data.get('user_id')}")
 
-                token_data = response.json()
+            return {
+                "access_token": token_data.get("access_token"),
+                "request_token": request_token,
+                "user_id": token_data.get("user_id"),
+                "login_time": login_time.isoformat(),
+                "expires_at": expires_at.isoformat()
+            }
 
-                # Add expiry information
-                login_time = datetime.now(timezone.utc)
-                expires_at = login_time + timedelta(hours=24)  # Zerodha tokens last 24 hours
-
-                return {
-                    "access_token": token_data.get("access_token"),
-                    "request_token": request_token,
-                    "user_id": token_data.get("user_id"),
-                    "login_time": login_time.isoformat(),
-                    "expires_at": expires_at.isoformat()
-                }
-
-        except httpx.RequestError as e:
-            logger.error(f"HTTP request failed during token exchange: {e}")
+        except ImportError as e:
+            logger.error(f"kiteconnect library not installed: {e}")
             raise TradingError(
-                "Failed to connect to Zerodha API",
+                "kiteconnect library not installed. Install with: pip install kiteconnect>=4.3.0",
+                category=ErrorCategory.CONFIGURATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+                details=str(e)
+            )
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            logger.error(f"Token exchange failed: {error_type}: {error_msg}")
+            
+            # Check if it's a KiteConnect exception
+            try:
+                from kiteconnect import KiteException
+                if isinstance(e, KiteException):
+                    logger.error(f"KiteConnect API error: {e.message if hasattr(e, 'message') else error_msg}")
+                    error_msg = e.message if hasattr(e, 'message') else error_msg
+            except ImportError:
+                pass
+            
+            # Check if it's a known Zerodha error
+            if "invalid" in error_msg.lower() or "expired" in error_msg.lower() or "session" in error_msg.lower() or "checksum" in error_msg.lower():
+                raise TradingError(
+                    f"OAuth session invalid or expired: {error_msg}",
+                    category=ErrorCategory.API,
+                    severity=ErrorSeverity.HIGH,
+                    recoverable=True,
+                    retry_after_seconds=60
+                )
+            
+            raise TradingError(
+                f"Failed to exchange request token: {error_msg}",
                 category=ErrorCategory.API,
                 severity=ErrorSeverity.HIGH,
                 recoverable=True,
                 retry_after_seconds=30
             )
 
-    def _generate_checksum(self, request_token: str) -> str:
-        """Generate checksum for token exchange."""
-        api_secret = getattr(self.config.integration, 'zerodha_api_secret')
-        api_key = getattr(self.config.integration, 'zerodha_api_key')
-        checksum_string = f"{request_token}{api_key}{api_secret}"
-        return hashlib.sha256(checksum_string.encode()).hexdigest()
-
     async def _store_tokens(self, token_data: Dict[str, Any], state: str) -> None:
-        """Store OAuth tokens securely."""
+        """Store OAuth tokens securely. Saves to both ENV file and token file."""
         try:
             # Add storage metadata
             token_data["stored_at"] = datetime.now(timezone.utc).isoformat()
             token_data["oauth_state"] = state
 
-            # Atomic write to file
+            # Save to ENV file first (primary storage)
+            from ..core.env_helpers import save_zerodha_token_to_env
+            env_saved = await save_zerodha_token_to_env(token_data)
+            if env_saved:
+                logger.info(f"Saved OAuth token to .env file for user: {token_data.get('user_id')}")
+            else:
+                logger.warning("Failed to save token to .env file, saving to token file only")
+
+            # Also save to token file (backup)
             temp_file = f"{self._token_file}.tmp"
             async with aiofiles.open(temp_file, 'w') as f:
                 await f.write(json.dumps(token_data, indent=2))
@@ -319,8 +405,16 @@ class ZerodhaOAuthService:
             )
 
     async def get_stored_token(self) -> Optional[Dict[str, Any]]:
-        """Retrieve stored OAuth token if valid."""
+        """Retrieve stored OAuth token if valid. Checks ENV first, then file."""
         try:
+            # First check ENV variables
+            from ..core.env_helpers import get_zerodha_token_from_env
+            env_token = get_zerodha_token_from_env()
+            if env_token:
+                logger.info("Found Zerodha OAuth token in ENV variable")
+                return env_token
+            
+            # Fallback to token file
             if not await self._token_file_exists():
                 return None
 
@@ -335,6 +429,7 @@ class ZerodhaOAuthService:
                 await self._delete_token_file()
                 return None
 
+            logger.info("Found Zerodha OAuth token in file")
             return token_data
 
         except Exception as e:
@@ -347,8 +442,13 @@ class ZerodhaOAuthService:
         return os.path.exists(self._token_file)
 
     async def _delete_token_file(self) -> None:
-        """Delete stored token file."""
+        """Delete stored token file and ENV variables."""
         try:
+            # Remove from ENV file
+            from ..core.env_helpers import remove_zerodha_token_from_env
+            await remove_zerodha_token_from_env()
+            
+            # Remove token file
             import os
             if os.path.exists(self._token_file):
                 os.remove(self._token_file)

@@ -14,8 +14,15 @@ from claude_agent_sdk import (
     create_sdk_mcp_server,
     ClaudeSDKError,
     CLINotFoundError,
+    CLIConnectionError,
     ProcessError,
     CLIJSONDecodeError
+)
+
+from ..sdk_helpers import (
+    query_with_timeout,
+    receive_response_with_timeout,
+    validate_system_prompt_size
 )
 
 from ...models.claude_agent import (
@@ -200,9 +207,23 @@ class ClaudeAgentCoordinator(BaseCoordinator):
                 max_turns=20
             )
 
-            # Initialize SDK client
-            self.client = ClaudeSDKClient(options=options)
-            await self.client.__aenter__()
+            # Initialize SDK client using client manager (singleton pattern)
+            # Validate system prompt size
+            system_prompt_text = self._build_system_prompt("swing_trading")
+            is_valid, token_count = validate_system_prompt_size(system_prompt_text)
+            if not is_valid:
+                self._log_warning(f"System prompt is {token_count} tokens, may cause initialization issues")
+            
+            try:
+                # Try to use client manager first
+                client_manager = await self.container.get("claude_sdk_client_manager")
+                self.client = await client_manager.get_client("trading", options)
+                self._log_info("ClaudeAgentCoordinator using shared trading client from manager")
+            except Exception as e:
+                self._log_warning(f"Failed to get client from manager, using direct init: {e}")
+                # Fallback to direct initialization
+                self.client = ClaudeSDKClient(options=options)
+                await self.client.__aenter__()
 
             # Initialize tool executor and validator
             risk_config = self.config.risk.__dict__ if hasattr(self.config, 'risk') else {}
@@ -261,8 +282,8 @@ class ClaudeAgentCoordinator(BaseCoordinator):
             # Build optimized context
             prompt = self._build_morning_prompt(account_type, context)
 
-            # SDK query pattern (best practice)
-            await self.client.query(prompt)
+            # SDK query pattern with timeout protection (best practice)
+            await query_with_timeout(self.client, prompt, timeout=90.0)  # Longer timeout for trading sessions
 
             # Collect responses and tool calls
             tool_calls_history = []
@@ -271,8 +292,8 @@ class ClaudeAgentCoordinator(BaseCoordinator):
             total_input_tokens = 0
             total_output_tokens = 0
 
-            # Process SDK responses
-            async for response in self.client.receive_response():
+            # Process SDK responses with timeout protection
+            async for response in receive_response_with_timeout(self.client, timeout=180.0):  # Longer timeout for multi-turn trading
                 # Track response content
                 if hasattr(response, 'content'):
                     claude_responses.append(str(response.content))
@@ -384,16 +405,16 @@ class ClaudeAgentCoordinator(BaseCoordinator):
         try:
             prompt = self._build_evening_prompt(account_type, context)
 
-            # SDK query pattern for evening review
-            await self.client.query(prompt)
+            # SDK query pattern with timeout protection for evening review
+            await query_with_timeout(self.client, prompt, timeout=90.0)
 
             # Collect responses
             claude_responses = []
             total_input_tokens = 0
             total_output_tokens = 0
 
-            # Process SDK responses
-            async for response in self.client.receive_response():
+            # Process SDK responses with timeout protection
+            async for response in receive_response_with_timeout(self.client, timeout=180.0):
                 # Track response content
                 if hasattr(response, 'content'):
                     claude_responses.append(str(response.content))
@@ -570,8 +591,24 @@ Provide detailed, actionable insights for continuous improvement. Focus on speci
     async def cleanup(self) -> None:
         """Cleanup coordinator resources."""
         self._log_info("ClaudeAgentCoordinator cleanup")
+        # Note: Client manager handles cleanup of shared clients
+        # Only cleanup if we created a direct client (fallback case)
+        # Check if client was obtained from manager by checking if container has manager
         if self.client:
-            await self.client.__aexit__(None, None, None)
+            try:
+                # Try to check if we're using client manager
+                if self.container:
+                    client_manager = await self.container.get("claude_sdk_client_manager")
+                    # If we got here, we're using manager - don't cleanup client
+                    # Manager handles cleanup
+                    pass
+                else:
+                    # No container, cleanup direct client
+                    await self.client.__aexit__(None, None, None)
+            except Exception:
+                # If we can't get manager, assume direct client and cleanup
+                if self.client:
+                    await self.client.__aexit__(None, None, None)
         self.client = None
         self.mcp_server = None
         self.tool_executor = None

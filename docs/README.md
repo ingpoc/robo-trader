@@ -10,8 +10,12 @@ Robo Trader is a Claude AI-powered paper trading system that enables autonomous 
 
 ### Core Documentation
 
+- **[ROBOTRADER_USECASE.md](ROBOTRADER_USECASE.md)** - **Complete use case and functionality overview** ⭐ Start here
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture, components, and design patterns
+- **[ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md)** - Comprehensive architecture analysis and breakdown
 - **[CLAUDE_SDK_SETUP_GUIDE.md](CLAUDE_SDK_SETUP_GUIDE.md)** - Complete guide to Claude SDK setup and usage
+- **[CLAUDE_SDK_BEST_PRACTICES_REVIEW.md](CLAUDE_SDK_BEST_PRACTICES_REVIEW.md)** - Best practices review and optimization recommendations ⭐
+- **[CLAUDE_SDK_IMPLEMENTATION_SUMMARY.md](CLAUDE_SDK_IMPLEMENTATION_SUMMARY.md)** - Implementation summary of SDK optimizations ⭐
 - **[API.md](API.md)** - API reference documentation with all endpoints and examples
 
 ### Development Documentation
@@ -22,8 +26,13 @@ Robo Trader is a Claude AI-powered paper trading system that enables autonomous 
 ### Implementation Documentation
 
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick start guide for the UI
-- **[ZERODHA_OAUTH_SETUP.md](ZERODHA_OAUTH_SETUP.md)** - Zerodha integration guide
+- **[ZERODHA_OAUTH_SETUP.md](ZERODHA_OAUTH_SETUP.md)** - Zerodha OAuth integration setup guide
+- **[KITE_CONNECT_INTEGRATION_SUMMARY.md](KITE_CONNECT_INTEGRATION_SUMMARY.md)** - Kite Connect API integration implementation summary
 - **[security.md](security.md)** - Security guidelines and best practices
+
+### Historical Documentation
+
+- **[CRITICAL_ISSUES_FIXES.md](CRITICAL_ISSUES_FIXES.md)** - Historical record of critical issues and fixes (Jan 2025)
 
 ## System Components
 

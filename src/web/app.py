@@ -635,11 +635,12 @@ async def websocket_endpoint(websocket: WebSocket):
 def run_web_server():
     """Run the web server."""
     uvicorn.run(
-        app,
+        "src.web.app:app",  # Use import string for reload support
         host="0.0.0.0",
         port=8000,
         log_level="info",
         access_log=True,
+        reload=True,  # Enable auto-reload for development
     )
 
 # ============================================================================

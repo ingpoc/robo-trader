@@ -2,6 +2,17 @@
 
 > **Scope**: Applies to `src/core/` directory. Read after `src/CLAUDE.md` for context.
 
+## Quick Reference - SDK Usage
+
+- **Client Manager**: Always use `ClaudeSDKClientManager.get_instance()` - saves ~70s startup time
+- **Timeout Helpers**: Always use `query_with_timeout()` and `receive_response_with_timeout()` - never call directly
+- **Prompt Validation**: Validate system prompts with `validate_system_prompt_size()` - keep under 8000 tokens
+- **Error Handling**: SDK helpers handle all error types automatically
+
+**Files**:
+- `claude_sdk_client_manager.py` - Singleton client manager
+- `sdk_helpers.py` - Timeout and error handling helpers
+
 Core layer provides infrastructure, cross-cutting concerns, and foundational patterns for the entire application. This layer must remain framework-agnostic and highly reusable.
 
 ## Claude Agent SDK Integration (CRITICAL)
@@ -18,41 +29,26 @@ All AI-related core infrastructure must use **ONLY** Claude Agent SDK. No direct
 
 **SDK Core Integration Pattern**:
 ```python
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, tool
+from claude_agent_sdk import ClaudeAgentOptions, tool
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+from src.core.sdk_helpers import query_with_timeout, receive_response_with_timeout, validate_system_prompt_size
 
 class AICoordinator(BaseCoordinator):
-    def __init__(self, container: DependencyContainer, event_bus: EventBus):
-        super().__init__(container, event_bus)
-        self.mcp_server = None
-        self.client = None
-
     async def initialize(self) -> None:
-        """Initialize AI coordinator with SDK."""
+        """Initialize AI coordinator with SDK client manager."""
         await super().initialize()
-
-        # Create MCP server with tools
-        self.mcp_server = create_sdk_mcp_server([
-            analyze_portfolio_tool,
-            execute_trade_tool,
-            get_market_data_tool
-        ])
-
-        # Initialize SDK client
-        options = ClaudeAgentOptions(
-            mcp_servers={"trading": self.mcp_server},
-            allowed_tools=["analyze_portfolio", "execute_trade", "get_market_data"],
-            system_prompt=self._build_system_prompt("swing_trading"),
-            max_turns=20
-        )
-        self.client = ClaudeSDKClient(options=options)
-        await self.client.__aenter__()
-
-    @tool("analyze_portfolio", "Analyze portfolio and provide insights")
-    async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
-        """Portfolio analysis tool."""
-        # Tool implementation using core services
-        result = await self._analyze_portfolio_data(args)
-        return {"content": [{"type": "text", "text": json.dumps(result)}]}
+        
+        # Validate system prompt size
+        system_prompt = self._build_system_prompt()
+        is_valid, token_count = validate_system_prompt_size(system_prompt)
+        
+        # Use client manager (CRITICAL for performance)
+        client_manager = await self.container.get("claude_sdk_client_manager")
+        options = ClaudeAgentOptions(...)
+        self.client = await client_manager.get_client("trading", options)
+        
+        # Use timeout helpers (MANDATORY)
+        await query_with_timeout(self.client, prompt, timeout=90.0)
 ```
 
 ## Core Architecture Patterns
@@ -487,4 +483,6 @@ class MyService(EventHandler):
 - [ ] Dependencies injected via constructor
 - [ ] Single responsibility per coordinator/module
 - [ ] Proper error context in all exceptions
-- [ ] Background tasks follow modular structure
+- [ ] **SDK Client Manager**: Use `ClaudeSDKClientManager` - never create direct `ClaudeSDKClient`
+- [ ] **SDK Timeouts**: Use `query_with_timeout()` and `receive_response_with_timeout()` - never call directly
+- [ ] **SDK Prompts**: Validate prompt size with `validate_system_prompt_size()` before initialization

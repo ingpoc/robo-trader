@@ -44,17 +44,95 @@ class TradeRequest(BaseModel):
 @router.post("/portfolio-scan")
 @limiter.limit(trade_limit)
 async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
-    """Trigger portfolio scan and load holdings from CSV file."""
+    """
+    Trigger portfolio scan with automatic OAuth flow if needed.
+    
+    Priority:
+    1. Check for OAuth token in ENV variable
+    2. If not found, check for API key/secret in ENV
+    3. If API key/secret present, trigger OAuth flow
+    4. If neither available, fallback to CSV
+    """
 
     try:
-        logger.info("Starting portfolio scan request")
+        logger.info("=" * 80)
+        logger.info("PORTFOLIO SCAN REQUEST - Starting")
+        logger.info("=" * 80)
+        
+        # First, check if Zerodha is authenticated
+        from src.core.env_helpers import get_zerodha_token_from_env
+        from src.mcp.broker import get_broker
+        from src.config import load_config
+        
+        config = load_config()
+        
+        # Check for OAuth token in ENV
+        env_token = get_zerodha_token_from_env()
+        logger.info(f"ENV Token check: {env_token is not None}")
+        
+        # If no token, check if API credentials are present
+        if not env_token:
+            api_key = config.integration.zerodha_api_key
+            api_secret = config.integration.zerodha_api_secret
+            
+            logger.info(f"Checking API credentials - Key present: {bool(api_key)}, Secret present: {bool(api_secret)}")
+            
+            if api_key and api_secret:
+                logger.info("OAuth token not found but API credentials present, initiating OAuth flow")
+                
+                # Get OAuth service and initiate auth flow
+                try:
+                    oauth_service = await container.get("zerodha_oauth_service")
+                    logger.info(f"OAuth service retrieved: {oauth_service is not None}")
+                    
+                    if oauth_service:
+                        auth_data = await oauth_service.generate_auth_url(user_id=None)
+                        
+                        # Return auth URL for frontend to open
+                        auth_url = auth_data["auth_url"]
+                        logger.info(f"Generated OAuth URL: {auth_url}")
+                        logger.info("=" * 80)
+                        logger.info("RETURNING OAUTH REQUIRED RESPONSE")
+                        logger.info("=" * 80)
+                        
+                        return {
+                            "status": "oauth_required",
+                            "message": "OAuth authentication required. Please open the auth URL in your browser.",
+                            "auth_url": auth_url,
+                            "state": auth_data["state"],
+                            "redirect_url": auth_data["redirect_url"],
+                            "instructions": "After approving in Zerodha, click 'Scan Portfolio' again to fetch holdings"
+                        }
+                    else:
+                        logger.error("OAuth service is None")
+                except Exception as e:
+                    logger.error(f"Failed to initiate OAuth flow: {e}", exc_info=True)
+                    # Fall through to CSV fallback
+            else:
+                logger.info("No API credentials found, falling back to CSV")
+        else:
+            logger.info(f"Found OAuth token in ENV, proceeding with broker connection")
+        
+        # If we get here and no OAuth was triggered, proceed with normal scan
+        # (either we have a token or we're falling back to CSV)
+        
+        logger.info("Proceeding with normal portfolio scan (no OAuth required)")
+        
+        # Try broker connection (if token exists)
+        broker = None
+        if env_token:
+            try:
+                broker = await get_broker(config)
+            except Exception as e:
+                logger.warning(f"Failed to initialize broker: {e}")
+        
+        # Get orchestrator
         orchestrator = await container.get_orchestrator()
-
         if not orchestrator:
             logger.error("Orchestrator not available for portfolio scan")
             return {"error": "System not available for portfolio scan"}
 
-        # Run portfolio scan (loads holdings from CSV)
+        # Run portfolio scan
         logger.info("Executing portfolio scan")
         result = await orchestrator.run_portfolio_scan()
         logger.info(f"Portfolio scan result: {result}")
@@ -76,7 +154,7 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
             logger.warning("Portfolio scan completed but no holdings found")
             return {
                 "status": "Portfolio scan completed",
-                "message": "No holdings found in CSV file",
+                "message": "No holdings found",
                 "source": result.get("source", "unknown"),
                 "holdings_count": 0,
                 "portfolio": None

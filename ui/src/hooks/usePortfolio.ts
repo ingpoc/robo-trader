@@ -15,13 +15,25 @@ export function usePortfolio() {
 
   const portfolioScan = useMutation({
     mutationFn: dashboardAPI.portfolioScan,
-    onSuccess: () => {
-      addToast({
-        title: 'Portfolio Scan Started',
-        description: 'Analyzing your portfolio...',
-        variant: 'success',
-      })
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    onSuccess: (response) => {
+      // Check if OAuth is required
+      if (response.status === 'oauth_required' && response.auth_url) {
+        // Open OAuth URL in new window
+        window.open(response.auth_url, '_blank', 'width=600,height=700')
+        addToast({
+          title: 'OAuth Authentication Required',
+          description: response.message || 'Please complete authentication in the popup window, then click Scan Portfolio again.',
+          variant: 'info',
+          duration: 10000,
+        })
+      } else {
+        addToast({
+          title: 'Portfolio Scan Started',
+          description: 'Analyzing your portfolio...',
+          variant: 'success',
+        })
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      }
     },
     onError: (error) => {
       addToast({

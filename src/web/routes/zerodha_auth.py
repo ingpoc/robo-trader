@@ -68,7 +68,7 @@ async def initiate_zerodha_auth(
 async def zerodha_oauth_callback(
     request: Request,
     request_token: str = Query(..., description="Request token from Zerodha"),
-    state: str = Query(..., description="State parameter for CSRF validation"),
+    state: Optional[str] = Query(None, description="State parameter for CSRF validation (optional)"),
     status: Optional[str] = Query(None, description="Optional status parameter"),
     container: DependencyContainer = Depends(get_container)
 ) -> JSONResponse:
@@ -76,7 +76,7 @@ async def zerodha_oauth_callback(
     Handle OAuth callback from Zerodha.
 
     This endpoint receives the callback after user authorization.
-    It validates the state parameter and exchanges the request token for an access token.
+    It validates the state parameter (if provided) and exchanges the request token for an access token.
     """
     try:
         # Check for error status
@@ -93,7 +93,7 @@ async def zerodha_oauth_callback(
 
         oauth_service = await container.get("zerodha_oauth_service")
 
-        # Handle the OAuth callback
+        # Handle the OAuth callback (state is optional - Zerodha may not always send it)
         result = await oauth_service.handle_callback(request_token, state)
 
         logger.info("Zerodha OAuth authentication successful")

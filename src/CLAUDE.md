@@ -32,21 +32,20 @@ This file contains backend-specific patterns, service organization, and layer-sp
 **Tools**: Registered via `@tool` decorators in MCP servers
 **Sessions**: Managed through SDK client lifecycle
 
-**✅ CORRECT - SDK Implementation:**
+**✅ CORRECT - SDK Implementation with Client Manager:**
 ```python
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, tool
+from claude_agent_sdk import ClaudeAgentOptions, tool
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+from src.core.sdk_helpers import query_with_timeout, receive_response_with_timeout
 
-# MCP server with tools
-@tool("analyze_portfolio")
-async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
-    # Tool implementation
-    return {"content": [{"type": "text", "text": json.dumps(result)}]}
+# Use client manager (CRITICAL for performance)
+client_manager = await ClaudeSDKClientManager.get_instance()
+client = await client_manager.get_client("trading", options)
 
-# SDK client usage
-options = ClaudeAgentOptions(mcp_servers={"trading": mcp_server})
-client = ClaudeSDKClient(options=options)
-await client.query(prompt)
-response = await client.receive_response()
+# Use timeout helpers (MANDATORY)
+await query_with_timeout(client, prompt, timeout=60.0)
+async for response in receive_response_with_timeout(client, timeout=120.0):
+    # Process response
 ```
 
 **❌ VIOLATION - Direct API Usage:**
