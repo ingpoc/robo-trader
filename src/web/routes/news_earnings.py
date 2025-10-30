@@ -202,7 +202,8 @@ async def get_ai_recommendations(request: Request, container: DependencyContaine
     """Get AI-powered stock recommendations from database."""
     try:
         # Get recommendations from database
-        recommendations = await container.state_manager.get_recommendations()
+        state_manager = await container.get_state_manager()
+        recommendations = await state_manager.get_recommendations()
 
         # Transform to expected format
         formatted_recommendations = []
