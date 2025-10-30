@@ -98,14 +98,29 @@ async def zerodha_oauth_callback(
 
         logger.info("Zerodha OAuth authentication successful")
 
+        # Automatically trigger portfolio scan after successful authentication
+        try:
+            logger.info("Auto-triggering portfolio scan after OAuth success...")
+            orchestrator = await container.get_orchestrator()
+            if orchestrator:
+                # Run portfolio scan in background
+                scan_result = await orchestrator.run_portfolio_scan()
+                logger.info(f"Portfolio scan completed after OAuth: {scan_result.get('source', 'unknown')}")
+            else:
+                logger.warning("Orchestrator not available for auto portfolio scan")
+        except Exception as e:
+            logger.error(f"Failed to auto-trigger portfolio scan after OAuth: {e}", exc_info=True)
+            # Don't fail the OAuth callback if portfolio scan fails
+
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
-                "message": "Successfully authenticated with Zerodha",
+                "message": "Successfully authenticated with Zerodha. Portfolio scan initiated automatically.",
                 "user_id": result["user_id"],
                 "login_time": result["login_time"],
-                "expires_at": result["expires_at"]
+                "expires_at": result["expires_at"],
+                "portfolio_scan_triggered": True
             }
         )
 

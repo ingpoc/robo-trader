@@ -66,11 +66,15 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
         
         config = load_config()
         
-        # Check for OAuth token in ENV
+        # Check for OAuth token in ENV (includes expiry check)
         env_token = get_zerodha_token_from_env()
         logger.info(f"ENV Token check: {env_token is not None}")
         
-        # If no token, check if API credentials are present
+        if env_token:
+            logger.info(f"Found valid OAuth token for user: {env_token.get('user_id')}")
+            logger.info(f"Token expires at: {env_token.get('expires_at')}")
+        
+        # If no valid token, check if API credentials are present
         if not env_token:
             api_key = config.integration.zerodha_api_key
             api_secret = config.integration.zerodha_api_secret
