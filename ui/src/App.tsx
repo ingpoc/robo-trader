@@ -198,7 +198,6 @@ function AppContent() {
               <Route path="/news-earnings" element={<NewsEarningsFeature />} />
               <Route path="/configuration" element={<ConfigurationFeature />} />
               <Route path="/paper-trading" element={<PaperTrading />} />
-              <Route path="/config" element={<Config />} />
               <Route path="/ai-transparency" element={<AITransparencyFeature />} />
               <Route path="/system-health" element={<SystemHealthFeature />} />
             </Routes>

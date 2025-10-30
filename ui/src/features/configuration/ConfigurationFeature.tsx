@@ -45,6 +45,9 @@ interface GlobalConfig {
     retryAttempts: number
     retryDelayMinutes: number
   }
+  maxTurns: number
+  riskTolerance: number
+  dailyApiLimit: number
 }
 
 const ConfigurationFeature: React.FC = () => {
@@ -138,7 +141,10 @@ const ConfigurationFeature: React.FC = () => {
       marketHoursOnly: true,
       retryAttempts: 3,
       retryDelayMinutes: 5
-    }
+    },
+    maxTurns: 5,
+    riskTolerance: 5,
+    dailyApiLimit: 25
   })
 
   const [activeTab, setActiveTab] = useState('background-tasks')
@@ -629,6 +635,57 @@ const ConfigurationFeature: React.FC = () => {
                       value={globalSettings.schedulerDefaults.retryDelayMinutes}
                       onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryDelayMinutes', parseInt(e.target.value))}
                     />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  System Limits
+                </CardTitle>
+                <CardDescription>
+                  Configure core system parameters and limits
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <Label htmlFor="max-turns">Max Conversation Turns</Label>
+                    <Input
+                      id="max-turns"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={globalSettings.maxTurns ?? 5}
+                      onChange={e => setGlobalSettings(prev => ({...prev, maxTurns: parseInt(e.target.value)}))}
+                    />
+                    <p className="text-xs text-gray-500">Maximum number of conversation turns allowed per session</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="risk-tolerance">Risk Tolerance (1-10)</Label>
+                    <Input
+                      id="risk-tolerance"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={globalSettings.riskTolerance ?? 5}
+                      onChange={e => setGlobalSettings(prev => ({...prev, riskTolerance: parseInt(e.target.value)}))}
+                    />
+                    <p className="text-xs text-gray-500">Higher = more aggressive trading strategies</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="daily-api-limit">Daily API Call Limit</Label>
+                    <Input
+                      id="daily-api-limit"
+                      type="number"
+                      min="1"
+                      value={globalSettings.dailyApiLimit ?? 25}
+                      onChange={e => setGlobalSettings(prev => ({...prev, dailyApiLimit: parseInt(e.target.value)}))}
+                    />
+                    <p className="text-xs text-gray-500">Maximum number of API calls allowed daily</p>
                   </div>
                 </div>
               </CardContent>

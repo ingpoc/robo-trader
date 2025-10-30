@@ -20,7 +20,6 @@ const menuItems = [
   { path: '/paper-trading', label: 'Paper Trading', icon: Wallet },
   { path: '/ai-transparency', label: 'AI Transparency', icon: Eye },
   { path: '/system-health', label: 'System Health', icon: Database },
-  { path: '/config', label: 'Config', icon: Settings },
 ]
 
 interface NavigationProps {
