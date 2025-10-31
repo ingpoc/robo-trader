@@ -40,6 +40,7 @@ const ConfigurationFeature: React.FC = () => {
   const [prompts, setPrompts] = useState<Record<string, PromptConfig>>({})
   const [editingPrompts, setEditingPrompts] = useState<Set<string>>(new Set())
   const [executingTasks, setExecutingTasks] = useState<Set<string>>(new Set())
+  const [executingAgents, setExecutingAgents] = useState<Set<string>>(new Set())
 
   // Get prompt for scheduler type from database
   const getSchedulerPrompt = (taskName: string) => {
@@ -175,6 +176,36 @@ const ConfigurationFeature: React.FC = () => {
       setExecutingTasks(prev => {
         const newSet = new Set(prev)
         newSet.delete(taskName)
+        return newSet
+      })
+    }
+  }
+
+  // Execute AI agent manually
+  const executeAgent = async (agentName: string) => {
+    try {
+      setExecutingAgents(prev => new Set(prev).add(agentName))
+
+      const response = await configurationAPI.executeAgent(agentName)
+
+      toast({
+        title: "AI Agent Execution Started",
+        description: `Manual execution of ${agentName.replace('_', ' ')} has been initiated. Check AI Transparency tab for Claude's analysis and activity.`,
+      })
+
+      logger.info(`Manual execution started for AI agent ${agentName}`)
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to execute AI agent'
+      toast({
+        title: "Execution Failed",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setExecutingAgents(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(agentName)
         return newSet
       })
     }
@@ -755,6 +786,29 @@ const ConfigurationFeature: React.FC = () => {
                   <div className="text-sm text-gray-600">
                     <Brain className="inline w-3 h-3 mr-1" />
                     Responds every {getFrequencyDisplay(config.responseFrequency, config.responseFrequencyUnit)}
+                  </div>
+
+                  {/* Action Button */}
+                  <div className="pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => executeAgent(agentName)}
+                      disabled={executingAgents.has(agentName) || !config.enabled}
+                      className="w-full"
+                    >
+                      {executingAgents.has(agentName) ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 mr-2" />
+                          Run Now
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

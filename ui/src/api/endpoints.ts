@@ -162,6 +162,19 @@ export const configurationAPI = {
       message: string;
       timestamp: string;
     }>(`/api/configuration/schedulers/${taskName}/execute`),
+
+  // Manual AI agent execution
+  executeAgent: (agentName: string) =>
+    api.post<{
+      status: string;
+      agent_name: string;
+      analysis_id: string;
+      symbols_analyzed: number;
+      recommendations_count: number;
+      prompt_updates: number;
+      message: string;
+      timestamp: string;
+    }>(`/api/configuration/ai-agents/${agentName}/execute`),
 }
 
 export const analyticsAPI = {

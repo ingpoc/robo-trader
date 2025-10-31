@@ -589,3 +589,81 @@ async def execute_scheduler_manually(
     except Exception as e:
         logger.error(f"Failed to execute scheduler manually: {e}")
         return await handle_unexpected_error(e, "execute_scheduler_manually")
+
+
+@router.post("/configuration/ai-agents/{agent_name}/execute")
+@limiter.limit("5/minute")  # Stricter limit for AI agent execution
+async def execute_ai_agent_manually(
+    request: Request,
+    agent_name: str,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Manually execute an AI agent for portfolio intelligence analysis.
+    
+    This endpoint:
+    1. Finds stocks with recent updates (earnings, news, fundamentals)
+    2. Gathers all available data for those stocks
+    3. Uses Claude AI to analyze data quality and freshness
+    4. Reviews and optimizes prompts if needed
+    5. Provides investment recommendations
+    6. Logs all activity to AI Transparency tab
+    """
+    import time
+    timestamp = datetime.now(timezone.utc).isoformat()
+    start_time = time.time()
+    
+    try:
+        logger.info(f"Manual execution requested for AI agent: {agent_name}")
+        
+        # Only support portfolio_analyzer for now
+        if agent_name != "portfolio_analyzer":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported AI agent: {agent_name}. Only 'portfolio_analyzer' is currently supported."
+            )
+        
+        # Get required services
+        state_manager = await container.get("state_manager")
+        config_state = await container.get("configuration_state")
+        analysis_logger = await container.get("analysis_logger")
+        broadcast_coordinator = await container.get("broadcast_coordinator")
+        
+        # Create portfolio intelligence analyzer
+        from src.services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+        
+        analyzer = PortfolioIntelligenceAnalyzer(
+            state_manager=state_manager,
+            config_state=config_state,
+            analysis_logger=analysis_logger,
+            broadcast_coordinator=broadcast_coordinator
+        )
+        
+        await analyzer.initialize()
+        
+        # Execute analysis
+        result = await analyzer.analyze_portfolio_intelligence(
+            agent_name=agent_name,
+            symbols=None  # Will automatically find stocks with updates
+        )
+        
+        execution_time = time.time() - start_time
+        
+        logger.info(f"AI agent {agent_name} execution completed in {execution_time:.2f} seconds")
+        
+        return {
+            "status": "success",
+            "agent_name": agent_name,
+            "analysis_id": result.get("analysis_id"),
+            "symbols_analyzed": result.get("symbols_analyzed", 0),
+            "recommendations_count": result.get("recommendations_count", 0),
+            "prompt_updates": result.get("prompt_updates", 0),
+            "execution_time_seconds": execution_time,
+            "message": f"AI agent {agent_name} analysis completed. Check AI Transparency tab for detailed activity.",
+            "timestamp": timestamp
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error executing AI agent {agent_name}: {e}", exc_info=True)
+        return await handle_unexpected_error(e, "execute_ai_agent_manually")

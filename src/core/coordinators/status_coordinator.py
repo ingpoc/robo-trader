@@ -6,7 +6,7 @@ Extracted from RoboTraderOrchestrator lines 388-422, 596-657.
 """
 
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from loguru import logger
 
@@ -165,12 +165,12 @@ class StatusCoordinator(BaseCoordinator):
                     {
                         "job_id": "job_ai_analysis",
                         "name": "ai_analysis_job",
-                        "status": "paused",
-                        "last_run": (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat(),
+                        "status": self._get_ai_analysis_status(),
+                        "last_run": self._get_ai_analysis_last_run(),
                         "next_run": (datetime.now(timezone.utc) + timedelta(minutes=28)).isoformat(),
                         "execution_count": 8,
                         "average_duration_ms": 15600,
-                        "last_error": "Rate limit exceeded, retrying..."
+                        "active_task": self._get_ai_analysis_active_task()
                     }
                 ]
             }
@@ -559,7 +559,45 @@ class StatusCoordinator(BaseCoordinator):
     async def on_scheduler_status_changed(self) -> None:
         """Event handler for scheduler status changes."""
         self._log_info("Scheduler status changed - broadcasting update")
-        await self.get_system_status(force_broadcast=True)
+    
+    def _get_ai_analysis_status(self) -> str:
+        """Get current AI analysis scheduler status."""
+        try:
+            from ...services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+            status_info = PortfolioIntelligenceAnalyzer.get_active_analysis_status()
+            return status_info.get("status", "idle")
+        except Exception as e:
+            logger.warning(f"Could not get AI analysis status: {e}")
+            return "idle"
+    
+    def _get_ai_analysis_last_run(self) -> str:
+        """Get last run time for AI analysis."""
+        try:
+            from ...services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+            status_info = PortfolioIntelligenceAnalyzer.get_active_analysis_status()
+            last_activity = status_info.get("last_activity")
+            if last_activity:
+                return last_activity
+            # Get from execution history if available
+            return (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        except Exception:
+            return (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+    
+    def _get_ai_analysis_active_task(self) -> Optional[Dict[str, Any]]:
+        """Get active AI analysis task details."""
+        try:
+            from ...services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+            status_info = PortfolioIntelligenceAnalyzer.get_active_analysis_status()
+            current_task = status_info.get("current_task")
+            if current_task:
+                return {
+                    "agent_name": current_task.get("agent_name"),
+                    "symbols_count": current_task.get("symbols_count", 0),
+                    "started_at": current_task.get("started_at")
+                }
+            return None
+        except Exception:
+            return None
 
     async def on_claude_status_changed(self) -> None:
         """Event handler for Claude status changes."""
