@@ -61,7 +61,7 @@ class FundamentalExecutor:
         try:
             logger.info(f"Executing earnings fundamentals for {symbols}")
 
-            response = await self.perplexity_client.fetch_earnings_fundamentals(
+            response = await self.perplexity_client.earnings.fetch_earnings_fundamentals(
                 symbols
             )
 
@@ -160,24 +160,53 @@ class FundamentalExecutor:
         Returns:
             Status dict with success/failure information
         """
+        import time
+        start_time = time.time()
+
         try:
             logger.info(f"Executing market news analysis for {symbols}")
 
-            response = await self.perplexity_client.fetch_market_news(symbols)
+            response = await self.perplexity_client.market.fetch_market_news(symbols)
 
             if not response:
                 logger.warning("Empty response from Perplexity API")
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="news_processor",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Empty API response",
+                        execution_time=time.time() - start_time
+                    )
                 return {"status": "failed", "error": "Empty API response"}
 
             parsed_data = parse_categorized_news(response)
 
             if not parsed_data:
                 logger.warning("Failed to parse news data")
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="news_processor",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Parse failure",
+                        execution_time=time.time() - start_time
+                    )
                 return {"status": "failed", "error": "Parse failure"}
 
             news_items = self._transform_news_items(parsed_data, symbols)
 
             success = await self.store.store_market_news(news_items)
+
+            execution_time = time.time() - start_time
 
             if success:
                 await self.event_bus.publish(
@@ -193,12 +222,48 @@ class FundamentalExecutor:
                         },
                     )
                 )
+                # Record successful execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="news_processor",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="completed",
+                        execution_time=execution_time
+                    )
                 return {"status": "success", "symbols": symbols, "items": len(news_items)}
             else:
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="news_processor",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Storage failure",
+                        execution_time=execution_time
+                    )
                 return {"status": "failed", "error": "Storage failure"}
 
         except Exception as e:
+            execution_time = time.time() - start_time
             logger.error(f"Error executing market news analysis: {e}")
+            # Record failed execution
+            if self.execution_tracker:
+                await self.execution_tracker.record_execution(
+                    task_name="news_processor",
+                    task_id=metadata.get("task_id", ""),
+                    execution_type=metadata.get("execution_type", "scheduled"),
+                    user=metadata.get("user", "system"),
+                    symbols=symbols,
+                    status="failed",
+                    error_message=str(e),
+                    execution_time=execution_time
+                )
             return {"status": "failed", "error": str(e)}
 
     async def execute_deep_fundamental_analysis(
@@ -213,22 +278,51 @@ class FundamentalExecutor:
         Returns:
             Status dict with success/failure information
         """
+        import time
+        start_time = time.time()
+
         try:
             logger.info(f"Executing deep fundamental analysis for {symbols}")
 
-            response = await self.perplexity_client.fetch_deep_fundamentals(symbols)
+            response = await self.perplexity_client.earnings.fetch_deep_fundamentals(symbols)
 
             if not response:
                 logger.warning("Empty response from Perplexity API")
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="fundamental_analyzer",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Empty API response",
+                        execution_time=time.time() - start_time
+                    )
                 return {"status": "failed", "error": "Empty API response"}
 
             parsed_data = parse_deep_fundamentals(response)
 
             if not parsed_data:
                 logger.warning("Failed to parse deep fundamentals")
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="fundamental_analyzer",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Parse failure",
+                        execution_time=time.time() - start_time
+                    )
                 return {"status": "failed", "error": "Parse failure"}
 
             success = await self.store.store_deep_fundamentals(symbols, parsed_data)
+
+            execution_time = time.time() - start_time
 
             if success:
                 await self.event_bus.publish(
@@ -244,12 +338,48 @@ class FundamentalExecutor:
                         },
                     )
                 )
+                # Record successful execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="fundamental_analyzer",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="completed",
+                        execution_time=execution_time
+                    )
                 return {"status": "success", "symbols": symbols}
             else:
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="fundamental_analyzer",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Storage failure",
+                        execution_time=execution_time
+                    )
                 return {"status": "failed", "error": "Storage failure"}
 
         except Exception as e:
+            execution_time = time.time() - start_time
             logger.error(f"Error executing deep fundamental analysis: {e}")
+            # Record failed execution
+            if self.execution_tracker:
+                await self.execution_tracker.record_execution(
+                    task_name="fundamental_analyzer",
+                    task_id=metadata.get("task_id", ""),
+                    execution_type=metadata.get("execution_type", "scheduled"),
+                    user=metadata.get("user", "system"),
+                    symbols=symbols,
+                    status="failed",
+                    error_message=str(e),
+                    execution_time=execution_time
+                )
             return {"status": "failed", "error": str(e)}
 
     @staticmethod

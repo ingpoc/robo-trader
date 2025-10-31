@@ -16,11 +16,70 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
+# Setup very early logging to capture import errors
+try:
+    from pathlib import Path as PathLibPath
+    from loguru import logger
+    
+    # Configure minimal logging early to capture all errors
+    logs_dir = PathLibPath.cwd() / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Clear log files on startup
+    for log_file in ["backend.log", "errors.log", "critical.log", "frontend.log"]:
+        log_path = logs_dir / log_file
+        if log_path.exists():
+            try:
+                log_path.unlink()
+            except Exception:
+                pass  # Ignore errors clearing logs
+    
+    # Set up basic file logging immediately
+    logger.remove()
+    backend_log = logs_dir / "backend.log"
+    logger.add(
+        backend_log,
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="INFO",
+        backtrace=True,
+        diagnose=True,
+        enqueue=False  # Synchronous to capture startup errors
+    )
+    logger.info("=== EARLY LOGGING SETUP ===")
+    logger.info(f"Starting application - Python {sys.version}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    
+    # Setup global exception handler to capture all errors in log file
+    original_excepthook = sys.excepthook
+    def log_exception(exc_type, exc_value, exc_traceback):
+        """Log all unhandled exceptions to log file before printing to stderr."""
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        
+        try:
+            logger.critical(
+                f"Unhandled exception during startup: {exc_value}",
+                exc_info=(exc_type, exc_value, exc_traceback)
+            )
+        except Exception:
+            pass  # If logging fails, fall back to original handler
+        
+        # Also call original handler to print to stderr
+        original_excepthook(exc_type, exc_value, exc_traceback)
+    
+    sys.excepthook = log_exception
+    logger.info("Global exception handler installed to capture all errors")
+except Exception as e:
+    # If early logging fails, at least print to stderr
+    print(f"CRITICAL: Failed early logging setup: {e}", file=sys.stderr)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from loguru import logger
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -128,17 +187,45 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
     global config, container, connection_manager, service_client, initialization_status
 
-    # Startup - Setup logging first
+    # Startup - Enhance logging (already set up early, but add console handler and error handlers)
     try:
-        # Setup logging as early as possible to catch all errors
-        from src.core.logging_config import ensure_logging_setup
+        # Enhance logging setup with console handler and error handlers
+        from src.core.logging_config import setup_logging
         logs_dir = Path.cwd() / "logs"
         logs_dir.mkdir(exist_ok=True)
-        ensure_logging_setup(logs_dir, 'INFO')
-        logger.info("=== STARTUP EVENT STARTED ===")
+        
+        # Enhance existing logging (early logging already set up, just add handlers)
+        setup_logging(logs_dir, 'INFO', clear_logs=False)  # Don't clear again, already cleared
+        
+        # Configure uvicorn access logger to use our logger
+        import logging as std_logging
+        uvicorn_access_logger = std_logging.getLogger("uvicorn.access")
+        uvicorn_error_logger = std_logging.getLogger("uvicorn.error")
+        
+        # Create a handler that forwards uvicorn logs to loguru
+        class LoguruHandler(std_logging.Handler):
+            def emit(self, record):
+                try:
+                    level = logger.level(record.levelname).name
+                except ValueError:
+                    level = "INFO"
+                
+                logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+        
+        # Add loguru handler to uvicorn loggers
+        uvicorn_handler = LoguruHandler()
+        uvicorn_access_logger.addHandler(uvicorn_handler)
+        uvicorn_error_logger.addHandler(uvicorn_handler)
+        uvicorn_access_logger.setLevel(std_logging.INFO)
+        uvicorn_error_logger.setLevel(std_logging.INFO)
+        
+        # Log immediately to confirm logging is working and capture in log file
+        logger.info("=== LIFESPAN STARTUP EVENT STARTED ===")
+        logger.info(f"Enhanced logging with all handlers: {logs_dir}")
+        logger.info("Uvicorn access logger configured to use loguru")
     except Exception as e:
-        # If logging setup fails, at least print to stderr
-        print(f"CRITICAL: Failed to setup logging: {e}", file=sys.stderr)
+        # Log the error using existing logger
+        logger.error(f"Failed to enhance logging setup: {e}", exc_info=True)
         raise
 
     config = load_config()
@@ -265,6 +352,47 @@ app.add_middleware(
 # ============================================================================
 # Middleware
 # ============================================================================
+
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    """Log all API requests and responses."""
+    import time
+    
+    # Get client IP
+    client_ip = request.client.host if request.client else "unknown"
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    
+    # Log request
+    start_time = time.time()
+    method = request.method
+    url = str(request.url)
+    path = request.url.path
+    
+    logger.info(f"{method} {path} - Client: {client_ip}")
+    
+    try:
+        response = await call_next(request)
+        
+        # Calculate response time
+        process_time = time.time() - start_time
+        
+        # Log response
+        status_code = response.status_code
+        if status_code >= 500:
+            logger.error(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
+        elif status_code >= 400:
+            logger.warning(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
+        else:
+            logger.info(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
+        
+        return response
+    except Exception as e:
+        # Calculate response time even on error
+        process_time = time.time() - start_time
+        logger.error(f"{method} {path} - Exception: {type(e).__name__}: {str(e)} - Time: {process_time:.3f}s - Client: {client_ip}", exc_info=True)
+        raise
 
 @app.middleware("http")
 async def error_handling_middleware(request: Request, call_next):

@@ -34,11 +34,20 @@ def parse_fundamentals(response_text: str) -> Dict[str, Any]:
     except json.JSONDecodeError as e:
         logger.debug(f"JSON decode error parsing fundamentals: {e}")
         # Fall back to text parsing
-        return _parse_text_fundamentals(response_text)
+        parsed_data = _parse_text_fundamentals(response_text)
+
+        # If text parsing returned something, use it
+        if parsed_data:
+            return parsed_data
+
+        # If text parsing also failed, return analysis_data field with raw response
+        logger.warning(f"Could not parse fundamentals, storing raw response")
+        return {"analysis_data": response_text[:2000]}
 
     except Exception as e:
         logger.error(f"Error parsing fundamentals: {e}")
-        return {}
+        # Return at least the raw data so it's not lost
+        return {"analysis_data": response_text[:2000] if response_text else ""}
 
 
 def parse_deep_fundamentals(response_text: str) -> Dict[str, Any]:
@@ -64,11 +73,21 @@ def parse_deep_fundamentals(response_text: str) -> Dict[str, Any]:
     except json.JSONDecodeError as e:
         logger.debug(f"JSON decode error parsing deep fundamentals: {e}")
         # Fall back to text parsing
-        return _parse_text_deep_fundamentals(response_text)
+        parsed_data = _parse_text_deep_fundamentals(response_text)
+
+        # If text parsing returned something, use it
+        if parsed_data:
+            return parsed_data
+
+        # If text parsing also failed, return analysis_data field with raw response
+        # This ensures we at least store the API response for reference
+        logger.warning(f"Could not parse deep fundamentals, storing raw response")
+        return {"analysis_data": response_text[:2000]}  # Store first 2000 chars
 
     except Exception as e:
         logger.error(f"Error parsing deep fundamentals: {e}")
-        return {}
+        # Return at least the raw data so it's not lost
+        return {"analysis_data": response_text[:2000] if response_text else ""}
 
 
 def _standardize_fundamental_data(data: Dict[str, Any]) -> Dict[str, Any]:

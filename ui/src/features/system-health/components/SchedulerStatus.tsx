@@ -316,7 +316,10 @@ const SchedulerCard: React.FC<{
                           </span>
                           <span className="flex items-center gap-1">
                             <Activity className="w-3 h-3" />
-                            {execution.symbols?.length || 0} symbols
+                            {execution.symbols && execution.symbols.length > 0
+                              ? execution.symbols.join(', ')
+                              : '0 symbols'
+                            }
                           </span>
                           {execution.user && (
                             <span className="text-xs">

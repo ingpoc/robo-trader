@@ -2,24 +2,191 @@
 
 > **Project Memory**: Loaded by Claude Code. Permanent rules & patterns that stay consistent.
 
-> **Last Updated**: 2025-10-31 | **Status**: Production Ready
+> **Last Updated**: 2025-11-01 | **Status**: Production Ready
 
 **Architecture Details**: @documentation/ARCHITECTURE_PATTERNS.md
 
 ## Contents
 
+- [Quick Start Commands](#quick-start-commands) - Commonly used development commands
+- [Key File Locations](#key-file-locations--entry-points) - Where to find important files
 - [Development Operations (CRITICAL)](#development-operations-critical)
-- [Core Architectural Patterns](#core-architectural-patterns) (25 patterns)
+- [Core Architectural Patterns](#core-architectural-patterns) (23 patterns)
 - [Code Quality Standards](#code-quality-standards)
+- [Frontend Development Standards](#frontend-development-standards)
+- [Testing Guidelines](#testing-guidelines)
 - [Development Workflow](#development-workflow)
 - [Quick Reference](#quick-reference---what-to-do)
 - [Pre-Commit Checklist](#pre-commit-checklist)
+- [Common Issues & Quick Fixes](#common-issues--quick-fixes)
+- [SDK Usage Patterns](#sdk-usage-patterns)
 - [Maintaining CLAUDE.md Files](#maintaining-claudemd-files)
 - [When in Doubt](#when-in-doubt)
 
 ---
 
-## Core Architectural Patterns (25 Patterns)
+## Quick Start Commands
+
+### Backend
+- **Start web server (with auto-reload)**: `python -m src.main --command web`
+- **Start CLI mode**: `python -m src.main --command interactive`
+- **Clean start (kills all Python, restarts server)**:
+  ```bash
+  pkill -9 python && sleep 3 && python -m src.main --command web
+  ```
+
+### Frontend
+- **Start UI development server**: `cd ui && npm run dev`
+- **Build for production**: `cd ui && npm run build`
+- **Run linting**: `cd ui && npm run lint`
+
+### Database & Setup
+- **Initialize database**: `python -m src.setup`
+- **Run migrations**: `python -m src.migrations`
+
+### Health Checks
+- **Backend health**: `curl -m 3 http://localhost:8000/api/health`
+- **Both servers**: `curl -m 3 http://localhost:8000/api/health && curl -m 3 http://localhost:3000`
+
+---
+
+## Key File Locations & Entry Points
+
+| Purpose | Path | Notes |
+|---------|------|-------|
+| Backend entry point | `src/main.py` | CLI commands: `web`, `interactive` |
+| FastAPI application | `src/web/app.py` | Uvicorn serves this on port 8000 |
+| Frontend entry point | `ui/src/main.tsx` | Vite dev server on port 5173 (proxies to 8000) |
+| API route handlers | `src/web/routes/` | All endpoint definitions |
+| **SDK client manager** | `src/core/claude_sdk_client_manager.py` | **CRITICAL**: Singleton pattern (DO NOT bypass) |
+| Coordinators | `src/core/coordinators/` | Service orchestration layer |
+| Configuration | `src/config.py` | Loaded from `config/config.json` + env vars |
+| Background scheduler | `src/core/background_scheduler/` | Task processing and monitoring |
+| Services | `src/services/` | Domain services (trading, analysis, etc.) |
+| Frontend components | `ui/src/features/` | Feature-based component organization |
+| Shared UI components | `ui/src/components/ui/` | Reusable Radix UI + Tailwind primitives |
+| WebSocket service | `ui/src/services/socket.ts` | Socket.io client configuration |
+
+---
+
+## Common Issues & Quick Fixes
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| "Port 8000 already in use" | Orphaned Python process | `lsof -ti:8000 \| xargs kill -9` |
+| Code changes don't take effect | Stale Python bytecode in memory | `pkill -9 python && sleep 3 && python -m src.main --command web` |
+| Frontend WebSocket fails to connect | Backend not running or health check failed | Check `curl -m 3 http://localhost:8000/api/health` |
+| SDK timeout errors (>60s) | Prompt too large or slow AI response | Increase timeout in `src/core/sdk_helpers.py` or optimize prompt |
+| Import errors after refactoring | Cached bytecode from old structure | `find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null` |
+| Tests fail intermittently | Race conditions in async code | Use condition polling instead of `time.sleep()` |
+
+---
+
+## Frontend Development Standards
+
+### Component Structure
+- **Location**: Feature-based folders in `ui/src/features/`
+- **Organization**: One component per file, related components grouped by feature
+- **Pattern**: React functional components using hooks
+- **State Management**: Zustand stores for cross-component state
+- **Styling**: TailwindCSS utility classes + Radix UI components
+- **Forms**: React Hook Form with Zod validation
+
+### WebSocket Integration
+- **Connection**: Socket.io client configured in `ui/src/services/socket.ts`
+- **Pattern**: Subscribe to events → dispatch Zustand actions → component re-renders
+- **Data flow**: Backend sends differential updates → client applies patches
+- **Format**: Messages are `{type, data: {...changes}}` (never full state)
+
+### Real-Time Updates
+- **Dashboard data**: WebSocket diffs only (no polling)
+- **Health/status**: Component subscribes to `system-health` events
+- **Trade updates**: Via `portfolio-update` events with minimal payload
+
+---
+
+## Testing Guidelines
+
+### Backend Tests
+- **Location**: `tests/` directory
+- **Framework**: pytest
+- **Coverage target**: 80%+ on domain logic (services, coordinators)
+- **Mocking strategy**: Mock external APIs (Claude SDK, market data providers)
+- **Pattern**: One test file per service/coordinator
+- **Run tests**: `pytest` or `pytest -v` for verbose output
+- **Run single test**: `pytest tests/test_portfolio.py::test_calculator -v`
+
+### Frontend Tests
+- **Tool**: Playwright (`@playwright/test`)
+- **Location**: `ui/tests/` or inline with components
+- **Coverage**: Critical user flows (login, portfolio view, trades)
+- **Run tests**: `npm run test` in `ui/` directory
+- **Run specific test**: `npx playwright test tests/e2e/portfolio.spec.ts`
+
+### Integration Tests
+- **Scope**: End-to-end coordinator workflows
+- **Approach**: Test full flow with mocked externals
+- **Verification**: Event emissions, state transitions, error handling
+
+---
+
+## SDK Usage Patterns
+
+### For Querying Without Tools (Stateless)
+```python
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+from src.core.sdk_helpers import query_with_timeout
+
+client_manager = await ClaudeSDKClientManager.get_instance()
+client = await client_manager.get_client("query")  # No tools
+response = await query_with_timeout(client, "Analyze this data...", timeout=60)
+```
+
+### For Trading Operations With Tools
+```python
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+from src.core.sdk_helpers import receive_response_with_timeout
+
+client_manager = await ClaudeSDKClientManager.get_instance()
+client = await client_manager.get_client("trading", options)  # With tools
+async for chunk in receive_response_with_timeout(client, timeout=180):
+    # Process streaming response
+    if hasattr(chunk, 'type') and chunk.type == 'text':
+        print(chunk.text)
+```
+
+### For Multi-Turn Conversations
+```python
+# Reuse client for multiple queries in conversation
+client = await client_manager.get_client("conversation")
+
+# Query 1
+response1 = await query_with_timeout(client, "First message", timeout=60)
+
+# Query 2 (maintains context from Query 1)
+response2 = await query_with_timeout(client, "Follow-up message", timeout=60)
+```
+
+### Error Handling
+```python
+from src.core.sdk_helpers import query_with_timeout
+from claude_agent_sdk import CLINotFoundError, CLIConnectionError
+
+try:
+    response = await query_with_timeout(client, prompt, timeout=60)
+except CLINotFoundError:
+    logger.error("Claude CLI not found or not authenticated")
+except CLIConnectionError:
+    logger.error("Failed to connect to Claude CLI")
+except TimeoutError:
+    logger.error("Query exceeded timeout - prompt may be too large")
+except Exception as e:
+    logger.error(f"SDK error: {e}")
+```
+
+---
+
+## Core Architectural Patterns (23 Patterns)
 
 ### 1. Coordinator Pattern (Responsibility: Service Orchestration)
 
@@ -828,3 +995,6 @@ curl -m 3 http://localhost:3000/health
 - Endpoint returns quickly (<3s)
 - Response matches expected format
 - Server logs show clean startup (no fatal errors)
+- When testing always check how many background process are running, kill all of them when starting your testing
+- When user asks to test always test in browser
+- Always use playwright mcp server to test in browser manually. Dont create any script

@@ -120,107 +120,53 @@ class FundamentalStore:
             True if successful, False otherwise
         """
         try:
+            logger.info(f"Storing deep fundamentals for {symbols}: {len(str(analysis_data))} chars of data")
+
             for symbol in symbols:
-                # Store main metrics
-                metrics_query = """
-                    INSERT INTO fundamental_metrics (
-                        symbol, analysis_date, revenue_growth_yoy,
-                        revenue_growth_qoq, earnings_growth_yoy,
-                        earnings_growth_qoq, gross_margin, operating_margin,
-                        net_margin, roe, roa, debt_to_equity, current_ratio,
-                        cash_to_debt, pe_ratio, peg_ratio, pb_ratio, ps_ratio,
-                        fundamental_score, investment_recommendation,
-                        recommendation_confidence, fair_value_estimate,
-                        growth_sustainable, competitive_advantage
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                query = """
+                    INSERT INTO fundamental_analysis (
+                        symbol, analysis_date, pe_ratio, pb_ratio, roe, roa,
+                        debt_to_equity, current_ratio, profit_margins,
+                        revenue_growth, earnings_growth, dividend_yield,
+                        market_cap, sector_pe, industry_rank, overall_score,
+                        recommendation, analysis_data, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(symbol, analysis_date) DO UPDATE SET
-                    revenue_growth_yoy = excluded.revenue_growth_yoy,
-                    earnings_growth_yoy = excluded.earnings_growth_yoy,
-                    fundamental_score = excluded.fundamental_score,
-                    investment_recommendation = excluded.investment_recommendation
+                    pe_ratio = excluded.pe_ratio,
+                    overall_score = excluded.overall_score,
+                    recommendation = excluded.recommendation,
+                    analysis_data = excluded.analysis_data,
+                    updated_at = excluded.updated_at
                 """
 
-                cursor = await self.db.execute(
-                    metrics_query,
+                now = datetime.now().isoformat()
+                analysis_data_json = json.dumps(analysis_data)
+
+                await self.db.execute(
+                    query,
                     (
                         symbol,
                         datetime.now().date(),
-                        analysis_data.get("revenue_growth_yoy"),
-                        analysis_data.get("revenue_growth_qoq"),
-                        analysis_data.get("earnings_growth_yoy"),
-                        analysis_data.get("earnings_growth_qoq"),
-                        analysis_data.get("gross_margin"),
-                        analysis_data.get("operating_margin"),
-                        analysis_data.get("net_margin"),
+                        analysis_data.get("pe_ratio"),
+                        analysis_data.get("pb_ratio"),
                         analysis_data.get("roe"),
                         analysis_data.get("roa"),
                         analysis_data.get("debt_to_equity"),
                         analysis_data.get("current_ratio"),
-                        analysis_data.get("cash_to_debt"),
-                        analysis_data.get("pe_ratio"),
-                        analysis_data.get("peg_ratio"),
-                        analysis_data.get("pb_ratio"),
-                        analysis_data.get("ps_ratio"),
-                        analysis_data.get("fundamental_score"),
-                        analysis_data.get("investment_recommendation"),
-                        analysis_data.get("recommendation_confidence"),
-                        analysis_data.get("fair_value_estimate"),
-                        analysis_data.get("growth_sustainable"),
-                        analysis_data.get("competitive_advantage"),
+                        analysis_data.get("profit_margins"),
+                        analysis_data.get("revenue_growth"),
+                        analysis_data.get("earnings_growth"),
+                        analysis_data.get("dividend_yield"),
+                        analysis_data.get("market_cap"),
+                        analysis_data.get("sector_pe"),
+                        analysis_data.get("industry_rank"),
+                        analysis_data.get("overall_score"),
+                        analysis_data.get("recommendation"),
+                        analysis_data_json,
+                        now,
+                        now,
                     ),
                 )
-
-                metrics_id = cursor.lastrowid
-
-                # Store extended details
-                if metrics_id:
-                    details_query = """
-                        INSERT INTO fundamental_details (
-                            fundamental_metrics_id, symbol, analysis_date,
-                            revenue_trend, earnings_trend, margin_trend,
-                            debt_assessment, liquidity_assessment,
-                            valuation_assessment, growth_catalysts,
-                            industry_tailwinds, industry_headwinds, key_risks,
-                            execution_risks, market_risks, regulatory_risks,
-                            key_strengths, key_concerns, investment_thesis
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                  ?, ?, ?, ?, ?, ?)
-                    """
-
-                    growth_catalysts = json.dumps(
-                        analysis_data.get("growth_catalysts", [])
-                    )
-                    tailwinds = json.dumps(analysis_data.get("industry_tailwinds", []))
-                    headwinds = json.dumps(analysis_data.get("industry_headwinds", []))
-                    risks = json.dumps(analysis_data.get("key_risks", []))
-                    strengths = json.dumps(analysis_data.get("key_strengths", []))
-                    concerns = json.dumps(analysis_data.get("key_concerns", []))
-
-                    await self.db.execute(
-                        details_query,
-                        (
-                            metrics_id,
-                            symbol,
-                            datetime.now().date(),
-                            analysis_data.get("revenue_trend"),
-                            analysis_data.get("earnings_trend"),
-                            analysis_data.get("margin_trend"),
-                            analysis_data.get("debt_assessment"),
-                            analysis_data.get("liquidity_assessment"),
-                            analysis_data.get("valuation_assessment"),
-                            growth_catalysts,
-                            tailwinds,
-                            headwinds,
-                            risks,
-                            analysis_data.get("execution_risks"),
-                            analysis_data.get("market_risks"),
-                            analysis_data.get("regulatory_risks"),
-                            strengths,
-                            concerns,
-                            analysis_data.get("investment_thesis"),
-                        ),
-                    )
 
             await self.db.commit()
             logger.info(f"Stored deep fundamentals for {len(symbols)} symbols")

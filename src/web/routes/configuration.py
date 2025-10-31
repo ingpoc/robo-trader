@@ -390,7 +390,7 @@ async def execute_scheduler_manually(
         execution_map = {
             "earnings_processor": "execute_earnings_fundamentals",
             "news_processor": "execute_market_news_analysis",
-            "fundamental_analyzer": "execute_fundamental_analysis",
+            "fundamental_analyzer": "execute_deep_fundamental_analysis",
             "deep_fundamental_processor": "execute_deep_fundamental_analysis",
         }
 

@@ -1,4 +1,8 @@
-"""Background scheduler with event-driven architecture."""
+"""Background scheduler with event-driven architecture.
+
+Facade that coordinates event handlers and triggers for reactive task scheduling.
+Maintains core scheduler lifecycle (start, stop) and execution tracking.
+"""
 
 import asyncio
 import logging
@@ -7,20 +11,33 @@ from datetime import datetime, time, timezone
 
 from ...core.event_bus import EventBus, Event, EventType
 from ...services.scheduler.task_service import SchedulerTaskService
-from ...models.scheduler import QueueName, TaskType
 from .stores.task_store import TaskStore
 from .stores.stock_state_store import StockStateStore
 from .stores.strategy_log_store import StrategyLogStore
 from .monitors.monthly_reset_monitor import MonthlyResetMonitor
+from .event_handlers import EventHandlers
+from .triggers import Triggers
 
 logger = logging.getLogger(__name__)
 
 
 class BackgroundScheduler:
-    """Event-driven background scheduler with database storage."""
+    """Event-driven background scheduler facade.
+
+    Manages scheduler lifecycle, event subscription, and delegates event handling
+    and trigger logic to specialized modules.
+    """
 
     def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None, execution_tracker=None):
-        """Initialize event-driven background scheduler."""
+        """Initialize event-driven background scheduler.
+
+        Args:
+            task_service: SchedulerTaskService for task creation
+            event_bus: EventBus for event subscription
+            db_connection: Database connection for stores
+            config: Configuration object
+            execution_tracker: ExecutionTracker for recording executions
+        """
         self.task_service = task_service
         self.event_bus = event_bus
         self.db = db_connection
@@ -44,6 +61,15 @@ class BackgroundScheduler:
         # Schedule configuration
         self.market_open_time = time(9, 30)  # 9:30 AM EST
         self.market_close_time = time(16, 0)  # 4:00 PM EST
+
+        # Initialize modular handlers and triggers
+        self.event_handlers = EventHandlers(task_service, self.stock_state_store)
+        self.triggers = Triggers(
+            task_service,
+            self.monthly_reset_monitor,
+            self.market_open_time,
+            self.market_close_time
+        )
 
         # Register event handlers
         self._setup_event_handlers()
@@ -100,18 +126,18 @@ class BackgroundScheduler:
     def _setup_event_handlers(self) -> None:
         """Setup event handlers for reactive scheduling."""
         # Portfolio events trigger data fetching
-        self.event_bus.subscribe(EventType.PORTFOLIO_POSITION_CHANGE, self._handle_portfolio_updated)
-        # Note: STOCK_ADDED and STOCK_REMOVED events don't exist in current EventType enum
-        # self.event_bus.subscribe(EventType.STOCK_ADDED, self._handle_stock_added)
-        # self.event_bus.subscribe(EventType.STOCK_REMOVED, self._handle_stock_removed)
-
-        # Data fetch completion triggers AI analysis - these events don't exist yet
-        # self.event_bus.subscribe(EventType.NEWS_FETCHED, self._handle_news_fetched)
-        # self.event_bus.subscribe(EventType.EARNINGS_FETCHED, self._handle_earnings_fetched)
-        # self.event_bus.subscribe(EventType.FUNDAMENTALS_UPDATED, self._handle_fundamentals_updated)
+        self.event_bus.subscribe(
+            EventType.PORTFOLIO_POSITION_CHANGE,
+            lambda event: self._create_async_handler(
+                self.event_handlers.handle_portfolio_updated, event, self._get_portfolio_symbols
+            )
+        )
 
         # Market events trigger re-analysis
-        self.event_bus.subscribe(EventType.MARKET_NEWS, self._handle_market_news)
+        self.event_bus.subscribe(
+            EventType.MARKET_NEWS,
+            lambda event: self._create_async_handler(self.event_handlers.handle_market_news, event)
+        )
 
     async def start(self) -> None:
         """Start the event-driven background scheduler."""
@@ -166,191 +192,27 @@ class BackgroundScheduler:
                 logger.error(f"Error in event listener: {e}")
                 await asyncio.sleep(5)
 
-    async def _handle_portfolio_updated(self, event: Event) -> None:
-        """Handle portfolio update events."""
-        logger.info("Portfolio updated, triggering portfolio sync and data fetch sequence")
+    def _create_async_handler(self, handler, event: Event, *args):
+        """Create async handler wrapper for event subscription.
 
-        # Get all symbols from portfolio
-        symbols = await self._get_portfolio_symbols()
-
-        # Trigger portfolio synchronization
-        await self._trigger_portfolio_sync()
-
-        # Trigger sequential data fetching
-        await self._trigger_data_fetch_sequence(symbols)
-
-    async def _trigger_portfolio_sync(self) -> None:
-        """Trigger portfolio synchronization tasks."""
-        logger.info("Triggering portfolio synchronization")
-
-        # Create portfolio sync tasks
-        await self.task_service.create_task(
-            queue_name=QueueName.PORTFOLIO_SYNC,
-            task_type=TaskType.SYNC_ACCOUNT_BALANCES,
-            payload={"scheduled": True},
-            priority=10  # High priority
-        )
-
-        await self.task_service.create_task(
-            queue_name=QueueName.PORTFOLIO_SYNC,
-            task_type=TaskType.UPDATE_POSITIONS,
-            payload={"scheduled": True},
-            priority=9
-        )
-
-        await self.task_service.create_task(
-            queue_name=QueueName.PORTFOLIO_SYNC,
-            task_type=TaskType.VALIDATE_PORTFOLIO_RISKS,
-            payload={"scheduled": True},
-            priority=8
-        )
-
-    async def _handle_stock_added(self, event: Event) -> None:
-        """Handle stock addition events."""
-        symbol = event.data.get('symbol')
-        if symbol:
-            logger.info(f"Stock {symbol} added, triggering initial data fetch")
-            await self._trigger_initial_data_fetch([symbol])
-
-    async def _handle_stock_removed(self, event: Event) -> None:
-        """Handle stock removal events."""
-        symbol = event.data.get('symbol')
-        if symbol:
-            logger.info(f"Stock {symbol} removed, cleaning up state")
-            # Clean up stock state if needed
-
-    async def _handle_news_fetched(self, event: Event) -> None:
-        """Handle news fetch completion."""
-        symbol = event.data.get('symbol')
-        if symbol:
-            logger.info(f"News fetched for {symbol}, triggering AI analysis")
-            await self._trigger_ai_analysis(symbol, "news")
-
-    async def _handle_earnings_fetched(self, event: Event) -> None:
-        """Handle earnings fetch completion."""
-        symbol = event.data.get('symbol')
-        if symbol:
-            logger.info(f"Earnings fetched for {symbol}, triggering AI analysis")
-            await self._trigger_ai_analysis(symbol, "earnings")
-
-    async def _handle_fundamentals_updated(self, event: Event) -> None:
-        """Handle fundamentals update completion."""
-        symbol = event.data.get('symbol')
-        if symbol:
-            logger.info(f"Fundamentals updated for {symbol}, triggering AI analysis")
-            await self._trigger_ai_analysis(symbol, "fundamentals")
-
-    async def _handle_market_news(self, event: Event) -> None:
-        """Handle significant market news."""
-        symbol = event.data.get('symbol')
-        impact_score = event.data.get('impact_score', 0)
-
-        if symbol and impact_score > 0.7:
-            logger.info(f"High-impact news for {symbol}, flagging for recheck")
-            await self.stock_state_store.flag_fundamentals_recheck(symbol)
-
-    async def _trigger_data_fetch_sequence(self, symbols: list) -> None:
-        """Trigger sequential data fetching for symbols."""
-        # Check which symbols need data fetching based on per-stock state
-        news_needed = await self.stock_state_store.get_stocks_needing_news(symbols)
-        earnings_needed = await self.stock_state_store.get_stocks_needing_earnings(symbols)
-        fundamentals_needed = []
-
-        # Check for fundamentals recheck flags
-        for symbol in symbols:
-            if await self.stock_state_store.needs_fundamentals_check(symbol):
-                fundamentals_needed.append(symbol)
-
-        # Create tasks for data fetching
-        if news_needed:
-            await self.task_service.create_task(
-                queue_name=QueueName.DATA_FETCHER,
-                task_type=TaskType.NEWS_MONITORING,
-                payload={"symbols": news_needed, "scheduled": True},
-                priority=6
-            )
-
-        if earnings_needed:
-            await self.task_service.create_task(
-                queue_name=QueueName.DATA_FETCHER,
-                task_type=TaskType.EARNINGS_SCHEDULER,
-                payload={"symbols": earnings_needed, "scheduled": True},
-                priority=7
-            )
-
-        if fundamentals_needed:
-            await self.task_service.create_task(
-                queue_name=QueueName.DATA_FETCHER,
-                task_type=TaskType.FUNDAMENTALS_CHECKER,
-                payload={"symbols": fundamentals_needed, "scheduled": True},
-                priority=7
-            )
-
-    async def _trigger_initial_data_fetch(self, symbols: list) -> None:
-        """Trigger initial data fetch for new symbols."""
-        await self.task_service.create_task(
-            queue_name=QueueName.DATA_FETCHER,
-            task_type=TaskType.EARNINGS_SCHEDULER,
-            payload={"symbols": symbols, "initial_fetch": True},
-            priority=9
-        )
-
-    async def _trigger_ai_analysis(self, symbol: str, trigger_type: str) -> None:
-        """Trigger AI analysis for a symbol."""
-        task_type_map = {
-            "news": TaskType.CLAUDE_NEWS_ANALYSIS,
-            "earnings": TaskType.CLAUDE_EARNINGS_REVIEW,
-            "fundamentals": TaskType.CLAUDE_FUNDAMENTAL_ANALYSIS
-        }
-
-        task_type = task_type_map.get(trigger_type, TaskType.CLAUDE_NEWS_ANALYSIS)
-
-        await self.task_service.create_task(
-            queue_name=QueueName.AI_ANALYSIS,
-            task_type=task_type,
-            payload={"symbol": symbol, "trigger": trigger_type, "scheduled": True},
-            priority=8
-        )
+        Args:
+            handler: Async handler function
+            event: Event to pass to handler
+            *args: Additional arguments for handler
+        """
+        return asyncio.create_task(handler(event, *args) if args else handler(event))
 
     async def _schedule_daily_routines(self) -> None:
         """Schedule daily market routines."""
-        # Skip running routines during startup to avoid database conflicts
-        # Routines will be triggered by scheduled timers or manual triggers
-        logger.info("Daily routines scheduling initialized (routines will run on schedule)")
-        return
+        await self.triggers.schedule_daily_routines()
 
     async def _run_morning_routine(self) -> None:
         """Run morning market open routine."""
-        logger.info("Running morning routine")
-
-        # Trigger portfolio synchronization first
-        await self._trigger_portfolio_sync()
-
-        # Get all portfolio symbols
-        symbols = await self._get_portfolio_symbols()
-
-        # Trigger morning analysis
-        await self.task_service.create_task(
-            queue_name=QueueName.AI_ANALYSIS,
-            task_type=TaskType.CLAUDE_MORNING_PREP,
-            payload={"symbols": symbols, "scheduled": True},
-            priority=9
-        )
+        await self.triggers.run_morning_routine(self._get_portfolio_symbols)
 
     async def _run_evening_routine(self) -> None:
         """Run evening market close routine."""
-        logger.info("Running evening routine")
-
-        # Trigger evening review
-        await self.task_service.create_task(
-            queue_name=QueueName.AI_ANALYSIS,
-            task_type=TaskType.CLAUDE_EVENING_REVIEW,
-            payload={"scheduled": True},
-            priority=8
-        )
-
-        # Check for monthly reset
-        await self._check_monthly_reset()
+        await self.triggers.run_evening_routine()
 
     async def _get_portfolio_symbols(self) -> list:
         """Get all symbols from portfolio."""
@@ -358,59 +220,39 @@ class BackgroundScheduler:
         # For now, return empty list - would be implemented based on portfolio service
         return []
 
-    def _is_market_open_time(self, current_time: time) -> bool:
-        """Check if current time is market open."""
-        return self.market_open_time <= current_time <= self.market_open_time.replace(hour=self.market_open_time.hour + 1)
+    def is_market_open_time(self, current_time: time) -> bool:
+        """Check if current time is market open.
 
-    def _is_market_close_time(self, current_time: time) -> bool:
-        """Check if current time is market close."""
-        return self.market_close_time.replace(hour=self.market_close_time.hour - 1) <= current_time <= self.market_close_time
+        Args:
+            current_time: Time to check
 
-    def _is_weekday(self, dt: datetime) -> bool:
-        """Check if given datetime is a weekday (Monday-Friday)."""
-        return dt.weekday() < 5  # 0=Monday, 4=Friday
+        Returns:
+            True if within market open hour
+        """
+        return self.triggers.is_market_open_time(current_time)
 
-    async def _check_monthly_reset(self) -> None:
-        """Check and execute monthly performance reset if needed."""
-        try:
-            # Get paper trading account manager from container
-            from ...core.di import get_container
-            container = await get_container()
-            if not container:
-                logger.warning("Container not available for monthly reset check")
-                return
+    def is_market_close_time(self, current_time: time) -> bool:
+        """Check if current time is market close.
 
-            account_manager = await container.get("paper_trading_account_manager")
-            if not account_manager:
-                logger.warning("Paper trading account manager not available for monthly reset")
-                return
+        Args:
+            current_time: Time to check
 
-            # Get current balances and closed trades for both account types
-            swing_balance = await account_manager.get_balance("swing")
-            options_balance = await account_manager.get_balance("options")
+        Returns:
+            True if within market close hour
+        """
+        return self.triggers.is_market_close_time(current_time)
 
-            swing_trades = await account_manager.get_closed_trades("swing")
-            options_trades = await account_manager.get_closed_trades("options")
+    @staticmethod
+    def is_weekday(dt: datetime) -> bool:
+        """Check if given datetime is a weekday (Monday-Friday).
 
-            # Check for monthly reset (framework exists, needs activation)
-            initial_balance = 100000  # ₹1,00,000
+        Args:
+            dt: Datetime to check
 
-            # Check swing account reset
-            swing_reset = await self.monthly_reset_monitor.check_and_execute_reset(
-                account_manager, swing_balance, initial_balance, swing_trades, "swing"
-            )
-
-            # Check options account reset
-            options_reset = await self.monthly_reset_monitor.check_and_execute_reset(
-                account_manager, options_balance, initial_balance, options_trades, "options"
-            )
-
-            if swing_reset or options_reset:
-                logger.info("Monthly performance reset executed")
-                # Could emit event here for UI notification
-
-        except Exception as e:
-            logger.error(f"Error during monthly reset check: {e}")
+        Returns:
+            True if weekday (Monday=0 through Friday=4)
+        """
+        return Triggers.is_weekday(dt)
 
     def get_status(self) -> Dict[str, Any]:
         """Get scheduler status."""

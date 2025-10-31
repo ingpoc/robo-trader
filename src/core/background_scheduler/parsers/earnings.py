@@ -140,14 +140,29 @@ def parse_comprehensive_earnings(response_text: str) -> Dict[str, Any]:
 
         if not isinstance(data, dict):
             logger.warning(f"Unexpected data structure: {type(data)}")
-            return {}
+            # Fall back to parsing the text directly
+            parsed = parse_earnings_data(response_text)
+            if parsed:
+                return parsed
+            # At least return the raw response
+            return {"raw_response": response_text[:2000]}
 
         return data
 
     except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error parsing earnings: {e}")
-        return {}
+        logger.debug(f"JSON decode error parsing earnings: {e}")
+        # Fall back to text parsing
+        parsed = parse_earnings_data(response_text)
+        if parsed:
+            return parsed
+        # At least return the raw response
+        return {"raw_response": response_text[:2000]}
     except Exception as e:
         logger.error(f"Error parsing comprehensive earnings: {e}")
-        return {}
+        # Try to extract something from the text
+        parsed = parse_earnings_data(response_text)
+        if parsed:
+            return parsed
+        # At least return the raw response
+        return {"raw_response": response_text[:2000] if response_text else ""}
 
