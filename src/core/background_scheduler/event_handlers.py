@@ -149,38 +149,33 @@ class EventHandlers:
         Args:
             symbols: List of stock symbols
         """
-        # Check which symbols need data fetching based on per-stock state
-        news_needed = await self.stock_state_store.get_stocks_needing_news(symbols)
-        earnings_needed = await self.stock_state_store.get_stocks_needing_earnings(symbols)
-        fundamentals_needed = []
+        # Select the 5 oldest stocks for each scheduler type (oldest last_run date first)
+        news_stocks = await self.stock_state_store.get_oldest_news_stocks(symbols, limit=5)
+        earnings_stocks = await self.stock_state_store.get_oldest_earnings_stocks(symbols, limit=5)
+        fundamentals_stocks = await self.stock_state_store.get_oldest_fundamentals_stocks(symbols, limit=5)
 
-        # Check for fundamentals recheck flags
-        for symbol in symbols:
-            if await self.stock_state_store.needs_fundamentals_check(symbol):
-                fundamentals_needed.append(symbol)
-
-        # Create tasks for data fetching
-        if news_needed:
+        # Create tasks for data fetching with prioritized stocks
+        if news_stocks:
             await self.task_service.create_task(
                 queue_name=QueueName.DATA_FETCHER,
                 task_type=TaskType.NEWS_MONITORING,
-                payload={"symbols": news_needed, "scheduled": True},
+                payload={"symbols": news_stocks, "scheduled": True},
                 priority=6
             )
 
-        if earnings_needed:
+        if earnings_stocks:
             await self.task_service.create_task(
                 queue_name=QueueName.DATA_FETCHER,
                 task_type=TaskType.EARNINGS_SCHEDULER,
-                payload={"symbols": earnings_needed, "scheduled": True},
+                payload={"symbols": earnings_stocks, "scheduled": True},
                 priority=7
             )
 
-        if fundamentals_needed:
+        if fundamentals_stocks:
             await self.task_service.create_task(
                 queue_name=QueueName.DATA_FETCHER,
-                task_type=TaskType.FUNDAMENTALS_CHECKER,
-                payload={"symbols": fundamentals_needed, "scheduled": True},
+                task_type=TaskType.FUNDAMENTALS_UPDATE,
+                payload={"symbols": fundamentals_stocks, "scheduled": True},
                 priority=7
             )
 

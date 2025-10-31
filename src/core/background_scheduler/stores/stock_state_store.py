@@ -174,6 +174,60 @@ class StockStateStore:
                 result.append(symbol)
         return result
 
+    async def get_oldest_news_stocks(self, symbols: list, limit: int = 5) -> list:
+        """Get stocks with oldest last_news_check date (prioritize by oldest first).
+        
+        None (never checked) stocks come first, then sorted by oldest date.
+        """
+        stocks_with_dates = []
+        for symbol in symbols:
+            state = await self.get_state(symbol)
+            # Use date.min as sentinel for None to enable proper sorting
+            check_date = state.last_news_check if state.last_news_check else date.min
+            stocks_with_dates.append((symbol, state.last_news_check, check_date))
+
+        # Sort: None first (check_date == date.min), then oldest dates (ascending)
+        stocks_with_dates.sort(key=lambda x: (x[2] != date.min, x[2]))
+
+        # Return top N symbols
+        return [symbol for symbol, _, _ in stocks_with_dates[:limit]]
+
+    async def get_oldest_earnings_stocks(self, symbols: list, limit: int = 5) -> list:
+        """Get stocks with oldest last_earnings_check date (prioritize by oldest first).
+        
+        None (never checked) stocks come first, then sorted by oldest date.
+        """
+        stocks_with_dates = []
+        for symbol in symbols:
+            state = await self.get_state(symbol)
+            # Use date.min as sentinel for None to enable proper sorting
+            check_date = state.last_earnings_check if state.last_earnings_check else date.min
+            stocks_with_dates.append((symbol, state.last_earnings_check, check_date))
+
+        # Sort: None first (check_date == date.min), then oldest dates (ascending)
+        stocks_with_dates.sort(key=lambda x: (x[2] != date.min, x[2]))
+
+        # Return top N symbols
+        return [symbol for symbol, _, _ in stocks_with_dates[:limit]]
+
+    async def get_oldest_fundamentals_stocks(self, symbols: list, limit: int = 5) -> list:
+        """Get stocks with oldest last_fundamentals_check date (prioritize by oldest first).
+        
+        None (never checked) stocks come first, then sorted by oldest date.
+        """
+        stocks_with_dates = []
+        for symbol in symbols:
+            state = await self.get_state(symbol)
+            # Use date.min as sentinel for None to enable proper sorting
+            check_date = state.last_fundamentals_check if state.last_fundamentals_check else date.min
+            stocks_with_dates.append((symbol, state.last_fundamentals_check, check_date))
+
+        # Sort: None first (check_date == date.min), then oldest dates (ascending)
+        stocks_with_dates.sort(key=lambda x: (x[2] != date.min, x[2]))
+
+        # Return top N symbols
+        return [symbol for symbol, _, _ in stocks_with_dates[:limit]]
+
     async def _save_state(self, symbol: str) -> None:
         """Persist state for a symbol to database."""
         try:

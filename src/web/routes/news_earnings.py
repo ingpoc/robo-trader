@@ -30,59 +30,75 @@ news_earnings_limit = os.getenv("RATE_LIMIT_NEWS_EARNINGS", "20/minute")
 async def get_news_earnings_general(request: Request, news_limit: int = 10, earnings_limit: int = 5, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get general news and earnings data (portfolio-wide or market overview)."""
     try:
-        # Return sample market news data
-        sample_news = [
-            {
-                "id": "news_1",
-                "title": "Market Analysis: Tech Stocks Show Strong Momentum",
-                "summary": "Technology sector continues to outperform market expectations with Q3 earnings beating estimates.",
-                "source": "Financial Express",
-                "url": "https://example.com/news/1",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "sentiment": "positive",
-                "relevance_score": 0.85
-            },
-            {
-                "id": "news_2",
-                "title": "Banking Sector Faces Regulatory Changes",
-                "summary": "RBI announces new guidelines that may impact lending rates across major banks.",
-                "source": "Economic Times",
-                "url": "https://example.com/news/2",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "sentiment": "neutral",
-                "relevance_score": 0.72
-            }
-        ]
+        # Get state manager and fetch real data from database
+        state_manager = await container.get_state_manager()
+        
+        # Try to get portfolio symbols first
+        portfolio_symbols = []
+        try:
+            orchestrator = await container.get_orchestrator()
+            if orchestrator and orchestrator.state_manager:
+                portfolio_state = await orchestrator.state_manager.get_portfolio()
+                if portfolio_state and portfolio_state.holdings:
+                    portfolio_symbols = [holding.get("symbol") for holding in portfolio_state.holdings if holding.get("symbol")]
+        except Exception as e:
+            logger.debug(f"Could not get portfolio symbols for general news/earnings: {e}")
+        
+        # Fetch recent news (from all portfolio symbols or recent news if no portfolio)
+        all_news = []
+        if portfolio_symbols:
+            # Get news for all portfolio symbols
+            for symbol in portfolio_symbols[:10]:  # Limit to first 10 symbols
+                symbol_news = await state_manager.get_news_for_symbol(symbol, limit=news_limit)
+                all_news.extend(symbol_news)
+        else:
+            # If no portfolio, try to get most recent news from database
+            # Note: This requires a method to get recent news across all symbols
+            # For now, return empty and log
+            logger.debug("No portfolio symbols found for general news/earnings")
+        
+        # Sort by published_at DESC and limit
+        all_news.sort(key=lambda x: x.get("published_at", ""), reverse=True)
+        formatted_news = []
+        for news in all_news[:news_limit]:
+            formatted_news.append({
+                "id": f"news_{news.get('id', 'unknown')}",
+                "title": news.get("title", news.get("headline", "")),
+                "summary": news.get("summary", ""),
+                "source": news.get("source", "Unknown"),
+                "sentiment": news.get("sentiment", "neutral").lower(),
+                "relevance_score": news.get("relevance_score", 0.5),
+                "timestamp": news.get("published_at", datetime.now(timezone.utc).isoformat()),
+            })
 
-        # Return sample earnings data
-        sample_earnings = [
-            {
-                "id": "earnings_1",
-                "symbol": "INFY",
-                "company": "Infosys Limited",
-                "date": "2025-01-15",
-                "quarter": "Q3",
-                "expected_eps": 18.50,
-                "actual_eps": None,
-                "surprise_percent": None,
-                "status": "upcoming"
-            },
-            {
-                "id": "earnings_2",
-                "symbol": "TCS",
-                "company": "Tata Consultancy Services",
-                "date": "2025-01-18",
-                "quarter": "Q3",
-                "expected_eps": 45.25,
-                "actual_eps": None,
-                "surprise_percent": None,
-                "status": "upcoming"
-            }
-        ]
+        # Fetch recent earnings (from all portfolio symbols or recent earnings)
+        all_earnings = []
+        if portfolio_symbols:
+            # Get earnings for all portfolio symbols
+            for symbol in portfolio_symbols[:10]:  # Limit to first 10 symbols
+                symbol_earnings = await state_manager.get_earnings_for_symbol(symbol, limit=earnings_limit)
+                all_earnings.extend(symbol_earnings)
+        else:
+            logger.debug("No portfolio symbols found for general earnings")
+        
+        # Sort by report_date DESC and limit
+        all_earnings.sort(key=lambda x: x.get("report_date", ""), reverse=True)
+        formatted_earnings = []
+        for earnings in all_earnings[:earnings_limit]:
+            formatted_earnings.append({
+                "id": f"earnings_{earnings.get('id', 'unknown')}",
+                "symbol": earnings.get("symbol", ""),
+                "date": earnings.get("report_date", ""),
+                "quarter": earnings.get("fiscal_period", "N/A"),
+                "expected_eps": earnings.get("eps_estimated"),
+                "actual_eps": earnings.get("eps_actual"),
+                "surprise_percent": earnings.get("surprise_pct"),
+                "status": "reported" if earnings.get("eps_actual") else "upcoming"
+            })
 
         return {
-            "news": sample_news[:news_limit],
-            "earnings": sample_earnings[:earnings_limit],
+            "news": formatted_news,
+            "earnings": formatted_earnings,
             "news_limit": news_limit,
             "earnings_limit": earnings_limit,
             "lastUpdated": datetime.now(timezone.utc).isoformat()
@@ -90,6 +106,7 @@ async def get_news_earnings_general(request: Request, news_limit: int = 10, earn
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
+        logger.error(f"Error fetching general news/earnings: {e}", exc_info=True)
         return await handle_unexpected_error(e, "route_endpoint")
 
 
@@ -98,44 +115,62 @@ async def get_news_earnings_general(request: Request, news_limit: int = 10, earn
 async def get_news_earnings(request: Request, symbol: str, news_limit: int = 10, earnings_limit: int = 5, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get news and earnings data for a symbol from database."""
     try:
-        # Return sample symbol-specific news
-        symbol_news = [
-            {
-                "id": f"news_{symbol}_1",
-                "title": f"{symbol} Reports Strong Q3 Results",
-                "summary": f"{symbol} announced better than expected quarterly earnings, driven by strong performance in key business segments.",
-                "source": "Business Standard",
-                "url": f"https://example.com/news/{symbol}/1",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "sentiment": "positive",
-                "relevance_score": 0.95
-            }
-        ]
+        # Get state manager and fetch real data from database
+        state_manager = await container.get_state_manager()
+        
+        # Fetch news and earnings from database
+        symbol_news = await state_manager.get_news_for_symbol(symbol, limit=news_limit)
+        symbol_earnings_raw = await state_manager.get_earnings_for_symbol(symbol, limit=earnings_limit)
+        
+        # Transform earnings data to match frontend expected format
+        symbol_earnings = []
+        for earnings in symbol_earnings_raw:
+            symbol_earnings.append({
+                "id": f"earnings_{symbol}_{earnings.get('id', 'unknown')}",
+                "symbol": earnings.get("symbol", symbol),
+                "fiscal_period": earnings.get("fiscal_period", ""),
+                "fiscal_year": earnings.get("fiscal_year"),
+                "fiscal_quarter": earnings.get("fiscal_quarter"),
+                "report_date": earnings.get("report_date", ""),
+                "eps_actual": earnings.get("eps_actual"),
+                "eps_estimated": earnings.get("eps_estimated"),
+                "revenue_actual": earnings.get("revenue_actual"),
+                "revenue_estimated": earnings.get("revenue_estimated"),
+                "surprise_pct": earnings.get("surprise_pct"),
+                "guidance": earnings.get("guidance"),
+                "next_earnings_date": earnings.get("next_earnings_date"),
+                "fetched_at": earnings.get("fetched_at", datetime.now(timezone.utc).isoformat()),
+                "created_at": earnings.get("created_at", datetime.now(timezone.utc).isoformat())
+            })
 
-        # Return sample earnings data for symbol
-        symbol_earnings = [
-            {
-                "id": f"earnings_{symbol}_1",
-                "symbol": symbol,
-                "company": f"{symbol} Limited",
-                "date": "2025-01-20",
-                "quarter": "Q3",
-                "expected_eps": 25.50,
-                "actual_eps": None,
-                "surprise_percent": None,
-                "status": "upcoming"
-            }
-        ]
+        # Transform news data to match frontend expected format
+        formatted_news = []
+        for news in symbol_news:
+            formatted_news.append({
+                "id": f"news_{symbol}_{news.get('id', 'unknown')}",
+                "symbol": news.get("symbol", symbol),
+                "title": news.get("headline", news.get("title", "")),  # Database has "title", but check for "headline" for compatibility
+                "summary": news.get("summary", news.get("content", "")),  # Database has "summary" field, content is separate
+                "content": news.get("content", news.get("summary", "")),  # Full content from database
+                "source": news.get("source", "Unknown"),
+                "sentiment": news.get("sentiment", "neutral").lower(),
+                "relevance_score": news.get("relevance_score", 0.5),
+                "published_at": news.get("published_at", datetime.now(timezone.utc).isoformat()),
+                "fetched_at": news.get("fetched_at", datetime.now(timezone.utc).isoformat()),
+                "citations": news.get("citations"),
+                "created_at": news.get("created_at", datetime.now(timezone.utc).isoformat())
+            })
 
         return {
             "symbol": symbol,
-            "news": symbol_news[:news_limit],
+            "news": formatted_news[:news_limit],
             "earnings": symbol_earnings[:earnings_limit],
             "lastUpdated": datetime.now(timezone.utc).isoformat()
         }
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
+        logger.error(f"Error fetching news/earnings for {symbol}: {e}", exc_info=True)
         return await handle_unexpected_error(e, "route_endpoint")
 
 
@@ -144,48 +179,63 @@ async def get_news_earnings(request: Request, symbol: str, news_limit: int = 10,
 async def get_upcoming_earnings(request: Request, days_ahead: int = 60, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get upcoming earnings calendar from database."""
     try:
-        # Return sample upcoming earnings
-        upcoming_earnings = [
-            {
-                "id": "earnings_upcoming_1",
-                "symbol": "INFY",
-                "company": "Infosys Limited",
-                "date": "2025-01-15",
-                "quarter": "Q3",
-                "expected_eps": 18.50,
-                "actual_eps": None,
-                "surprise_percent": None,
-                "status": "upcoming",
-                "days_until": 5
-            },
-            {
-                "id": "earnings_upcoming_2",
-                "symbol": "TCS",
-                "company": "Tata Consultancy Services",
-                "date": "2025-01-18",
-                "quarter": "Q3",
-                "expected_eps": 45.25,
-                "actual_eps": None,
-                "surprise_percent": None,
-                "status": "upcoming",
-                "days_until": 8
-            },
-            {
-                "id": "earnings_upcoming_3",
-                "symbol": "HDFC",
-                "company": "HDFC Bank Limited",
-                "date": "2025-01-22",
-                "quarter": "Q3",
-                "expected_eps": 65.75,
-                "actual_eps": None,
-                "surprise_percent": None,
-                "status": "upcoming",
-                "days_until": 12
-            }
-        ]
+        logger.info(f"Fetching upcoming earnings for {days_ahead} days")
+        # Get state manager and fetch real data from database
+        try:
+            state_manager = await container.get_state_manager()
+            logger.debug("Got state manager, calling get_upcoming_earnings")
+        except Exception as e:
+            logger.error(f"Failed to get state manager: {e}", exc_info=True)
+            raise
+        
+        # Fetch upcoming earnings from database
+        try:
+            upcoming_earnings_raw = await state_manager.get_upcoming_earnings(days_ahead)
+            logger.info(f"Retrieved {len(upcoming_earnings_raw)} upcoming earnings from database")
+        except Exception as e:
+            logger.error(f"Failed to fetch upcoming earnings from database: {e}", exc_info=True)
+            raise
+        
+        # Transform to match frontend expected format
+        upcoming_earnings = []
+        for earnings in upcoming_earnings_raw:
+            try:
+                # Calculate days until if next_earnings_date is available
+                days_until = None
+                next_earnings_date_str = earnings.get("next_earnings_date")
+                if next_earnings_date_str:
+                    try:
+                        # Parse date string (could be ISO format or date only)
+                        if 'T' in str(next_earnings_date_str):
+                            next_date = datetime.fromisoformat(str(next_earnings_date_str).replace('Z', '+00:00')).date()
+                        else:
+                            # Date only format (YYYY-MM-DD)
+                            next_date = datetime.fromisoformat(str(next_earnings_date_str)).date()
+                        
+                        today = datetime.now(timezone.utc).date()
+                        days_until = (next_date - today).days
+                    except (ValueError, AttributeError, TypeError) as e:
+                        logger.debug(f"Could not parse next_earnings_date {next_earnings_date_str}: {e}")
+                        pass
+                
+                upcoming_earnings.append({
+                    "id": f"earnings_upcoming_{earnings.get('id', 'unknown')}",
+                    "symbol": earnings.get("symbol", ""),
+                    "company": earnings.get("company", f"{earnings.get('symbol', '')} Limited"),
+                    "date": next_earnings_date_str or earnings.get("report_date", ""),
+                    "quarter": earnings.get("fiscal_period", "N/A"),
+                    "expected_eps": earnings.get("eps_estimated"),
+                    "actual_eps": earnings.get("eps_actual"),
+                    "surprise_percent": earnings.get("surprise_pct"),
+                    "status": "upcoming" if not earnings.get("eps_actual") else "reported",
+                    "days_until": days_until
+                })
+            except Exception as e:
+                logger.warning(f"Error processing earnings entry: {e}, skipping", exc_info=True)
+                continue
 
         return {
-            "earnings": upcoming_earnings[:days_ahead],
+            "earnings": upcoming_earnings,
             "total": len(upcoming_earnings),
             "daysAhead": days_ahead,
             "lastUpdated": datetime.now(timezone.utc).isoformat()
@@ -193,6 +243,7 @@ async def get_upcoming_earnings(request: Request, days_ahead: int = 60, containe
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
+        logger.error(f"Error fetching upcoming earnings: {e}", exc_info=True)
         return await handle_unexpected_error(e, "route_endpoint")
 
 

@@ -81,6 +81,29 @@ class FundamentalExecutor:
                     )
                 return {"status": "failed", "error": "Empty API response"}
 
+            # Log parsed data structure
+            logger.info("=" * 80)
+            logger.info("PARSED DATA STRUCTURE:")
+            logger.info("=" * 80)
+            if isinstance(response, str):
+                try:
+                    import json
+                    parsed_test = json.loads(response)
+                    logger.info(f"Parsed JSON keys: {list(parsed_test.keys()) if isinstance(parsed_test, dict) else 'not a dict'}")
+                    if isinstance(parsed_test, dict) and "stocks" in parsed_test:
+                        stocks_keys = list(parsed_test["stocks"].keys()) if isinstance(parsed_test["stocks"], dict) else "not a dict"
+                        logger.info(f"Stocks keys: {stocks_keys}")
+                        # Show structure of first stock
+                        if isinstance(parsed_test["stocks"], dict) and len(parsed_test["stocks"]) > 0:
+                            first_symbol = list(parsed_test["stocks"].keys())[0]
+                            first_stock = parsed_test["stocks"][first_symbol]
+                            logger.info(f"First stock ({first_symbol}) keys: {list(first_stock.keys()) if isinstance(first_stock, dict) else 'not a dict'}")
+                            if isinstance(first_stock, dict) and "earnings" in first_stock:
+                                logger.info(f"First stock earnings keys: {list(first_stock['earnings'].keys()) if isinstance(first_stock['earnings'], dict) else 'not a dict'}")
+                except Exception as e:
+                    logger.warning(f"Could not parse response for logging: {e}")
+            logger.info("=" * 80)
+            
             parsed_data = parse_comprehensive_earnings(response)
 
             if not parsed_data:

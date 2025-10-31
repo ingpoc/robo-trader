@@ -4,7 +4,7 @@ import logging
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Depends, HTTPException
@@ -352,13 +352,29 @@ async def execute_scheduler_manually(
     task_name: str,
     container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
-    """Manually execute a scheduler task."""
+    """Manually execute a scheduler task.
+    
+    Optional request body: {"symbols": ["SYMBOL1", "SYMBOL2", ...]}
+    If provided, uses these symbols. Otherwise, selects from portfolio.
+    """
     import sys
     import time
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n{'='*80}\n[{timestamp}] [ENDPOINT CALLED] execute_scheduler_manually with task_name={task_name}\n{'='*80}\n", file=sys.stderr, flush=True)
     print(f"[ENDPOINT DEBUG] execute_scheduler_manually called with task_name={task_name}", flush=True)
     logger.info(f"Manual execution endpoint called for: {task_name}")
+    
+    # Try to get symbols from request body
+    provided_symbols = None
+    try:
+        body = await request.json()
+        if isinstance(body, dict) and "symbols" in body:
+            provided_symbols = body.get("symbols")
+            if isinstance(provided_symbols, list) and len(provided_symbols) > 0:
+                logger.info(f"Received symbols from request body: {provided_symbols}")
+    except Exception as e:
+        logger.debug(f"Could not parse request body for symbols (this is OK if body is empty): {e}")
+    
     try:
         logger.info(f"Manual execution requested for scheduler: {task_name}")
 
@@ -422,60 +438,63 @@ async def execute_scheduler_manually(
                 detail=f"Executor does not have method: {execution_method}"
             )
 
-        # Get symbols from user's portfolio instead of hardcoded ones
-        sample_symbols = ["RELIANCE", "TCS", "INFY", "HDFC", "ICICIBANK"]  # Default fallback
-        logger.info("Starting portfolio-based symbol selection")
+        # Use provided symbols if available, otherwise get from portfolio
+        if provided_symbols and isinstance(provided_symbols, list) and len(provided_symbols) > 0:
+            sample_symbols = provided_symbols
+            logger.info(f"✅ Using provided symbols: {sample_symbols}")
+            # Skip portfolio selection if symbols are provided
+        else:
+            # Get symbols from user's portfolio instead of hardcoded ones
+            sample_symbols = ["RELIANCE", "TCS", "INFY", "HDFC", "ICICIBANK"]  # Default fallback
+            logger.info("Starting portfolio-based symbol selection")
 
-        # Get portfolio from orchestrator state manager (same as dashboard)
-        try:
-            orchestrator = await container.get_orchestrator()
-            if orchestrator and orchestrator.state_manager:
-                portfolio_state = await orchestrator.state_manager.get_portfolio()
-                logger.info(f"Portfolio loaded with {len(portfolio_state.holdings) if portfolio_state and portfolio_state.holdings else 0} holdings")
+            # Get portfolio from orchestrator state manager (same as dashboard)
+            try:
+                orchestrator = await container.get_orchestrator()
+                if orchestrator and orchestrator.state_manager:
+                    portfolio_state = await orchestrator.state_manager.get_portfolio()
+                    logger.info(f"Portfolio loaded with {len(portfolio_state.holdings) if portfolio_state and portfolio_state.holdings else 0} holdings")
 
-                # Extract symbols from portfolio holdings
-                if portfolio_state and portfolio_state.holdings:
-                    portfolio_symbols = [holding.get("symbol") for holding in portfolio_state.holdings if holding.get("symbol")]
-                    logger.info(f"Extracted {len(portfolio_symbols)} symbols from portfolio holdings")
+                    # Extract symbols from portfolio holdings
+                    if portfolio_state and portfolio_state.holdings:
+                        portfolio_symbols = [holding.get("symbol") for holding in portfolio_state.holdings if holding.get("symbol")]
+                        logger.info(f"Extracted {len(portfolio_symbols)} symbols from portfolio holdings")
 
-                if portfolio_symbols:
-                    # Try to use stock state store for intelligent prioritization
-                    try:
-                        state_manager = await container.get("state_manager")
-                        stock_state_store = state_manager.get_stock_state_store()
-                        await stock_state_store.initialize()
+                        if portfolio_symbols:
+                            # Try to use stock state store for intelligent prioritization
+                            try:
+                                state_manager = await container.get("state_manager")
+                                stock_state_store = state_manager.get_stock_state_store()
+                                await stock_state_store.initialize()
 
-                        # Get stocks needing news update
-                        symbols_needing_update = await stock_state_store.get_stocks_needing_news(portfolio_symbols)
-                        logger.info(f"Found {len(symbols_needing_update)} symbols needing update from {len(portfolio_symbols)} total")
+                                # Select stocks based on scheduler type using oldest-first logic
+                                if task_name == "news_processor":
+                                    sample_symbols = await stock_state_store.get_oldest_news_stocks(portfolio_symbols, limit=5)
+                                    logger.info(f"Selected {len(sample_symbols)} oldest news stocks: {sample_symbols}")
+                                elif task_name == "earnings_processor":
+                                    sample_symbols = await stock_state_store.get_oldest_earnings_stocks(portfolio_symbols, limit=5)
+                                    logger.info(f"Selected {len(sample_symbols)} oldest earnings stocks: {sample_symbols}")
+                                elif task_name in ["fundamental_analyzer", "deep_fundamental_processor"]:
+                                    sample_symbols = await stock_state_store.get_oldest_fundamentals_stocks(portfolio_symbols, limit=5)
+                                    logger.info(f"Selected {len(sample_symbols)} oldest fundamentals stocks: {sample_symbols}")
+                                else:
+                                    # Fallback: use first 5 portfolio symbols
+                                    sample_symbols = portfolio_symbols[:5]
+                                    logger.info(f"Using first 5 portfolio symbols for {task_name}: {sample_symbols}")
 
-                        if symbols_needing_update:
-                            # Collect states and sort by oldest last_news_check
-                            symbols_with_dates = []
-                            for symbol in symbols_needing_update:
-                                state = await stock_state_store.get_state(symbol)
-                                symbols_with_dates.append((symbol, state.last_news_check))
-
-                            # Sort oldest first
-                            symbols_with_dates.sort(key=lambda x: (x[1] is None, x[1]))
-                            sample_symbols = [s[0] for s in symbols_with_dates[:5]]
-                            logger.info(f"Using prioritized portfolio symbols (oldest news first): {sample_symbols}")
+                            except Exception as e:
+                                # Fallback: use portfolio symbols without prioritization
+                                logger.warning(f"Failed to use stock state store for prioritization: {e}, using portfolio symbols directly")
+                                sample_symbols = portfolio_symbols[:5]
                         else:
-                            # All stocks updated today, use first 5
-                            sample_symbols = portfolio_symbols[:5]
-                            logger.info(f"All portfolio stocks updated today, using first 5: {sample_symbols}")
-
-                    except Exception as e:
-                        # Fallback: use portfolio symbols without prioritization
-                        logger.warning(f"Failed to use stock state store for prioritization: {e}, using portfolio symbols directly")
-                        sample_symbols = portfolio_symbols[:5]
+                            logger.warning("No symbols found in portfolio holdings")
+                    else:
+                        logger.warning("Portfolio state is empty or has no holdings")
                 else:
-                    logger.warning("No symbols found in portfolio holdings")
-            else:
-                logger.warning("Portfolio state is empty or has no holdings")
+                    logger.warning("Orchestrator or state_manager not available")
 
-        except Exception as e:
-            logger.error(f"Failed to get portfolio-based symbols: {e}, using default symbols", exc_info=True)
+            except Exception as e:
+                logger.error(f"Failed to get portfolio-based symbols: {e}, using default symbols", exc_info=True)
 
         logger.info(f"Final symbols for execution: {sample_symbols}")
         metadata = {

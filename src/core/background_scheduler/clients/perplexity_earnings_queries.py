@@ -47,15 +47,130 @@ class EarningsQueries:
         prompt_template = await self.prompt_manager.get_prompt("earnings_processor")
 
         symbols_str = ", ".join(symbols)
-        query = f"For each stock ({symbols_str}):\n\n{prompt_template}"
+        symbols_list = "\n".join([f"- {symbol}" for symbol in symbols])
+        
+        # Explicitly request structured JSON format matching our schema
+        query = f"""You are a financial data analyst with access to comprehensive financial databases. 
+Provide earnings and financial fundamentals data for ALL {len(symbols)} stocks listed below.
 
-        return await self.api_caller(
+STOCKS TO ANALYZE ({len(symbols)} total):
+{symbols_list}
+
+{prompt_template}
+
+SEARCH INSTRUCTIONS:
+- Search for EACH stock individually using its ticker symbol and full company name
+- Use stock exchanges (NSE, BSE for Indian stocks; NYSE, NASDAQ for US stocks)
+- Search recent earnings announcements, quarterly reports, and financial statements
+- Extract data from official company filings, press releases, and financial databases
+- For Indian stocks, search NSE/BSE filings and company investor relations pages
+- If data is available from news or analyst reports, extract the specific numbers mentioned
+
+DATA EXTRACTION REQUIREMENTS:
+- Extract ALL available metrics - do not skip fields just because some are missing
+- Revenue: Extract from earnings reports (in actual currency units: rupees, dollars, etc.)
+- EPS: Extract actual EPS numbers from quarterly results
+- Margins: Extract gross margin, operating margin, net margin percentages
+- Growth Rates: Calculate or extract YoY and QoQ growth percentages for revenue and profit
+- Dates: Extract actual report dates and next earnings dates from announcements
+- If a metric is mentioned in news or reports but not in official filings, use the reported value
+
+CRITICAL REQUIREMENTS:
+- MUST provide data for EVERY stock listed above ({len(symbols)} stocks total)
+- If you cannot find data for a stock, search more broadly or use historical data
+- Do NOT return empty objects {{}} - always include at least basic earnings information
+- For each stock, you MUST include the "earnings" object with required fields
+
+REQUIRED JSON STRUCTURE:
+Return data in this EXACT structure:
+{{
+  "stocks": {{
+    "SYMBOL1": {{
+      "earnings": {{
+        "latest_quarter": {{
+          "period": "Q1 2024",
+          "date": "2024-01-15",
+          "eps_actual": 1.25,
+          "eps_estimated": 1.20,
+          "revenue_actual": 5000000000,
+          "revenue_estimated": 4800000000,
+          "eps": 1.25,
+          "revenue": 5000000000
+        }},
+        "growth_rates": {{
+          "eps_yoy_growth": 15.5,
+          "eps_qoq_growth": 5.2,
+          "revenue_yoy_growth": 12.3,
+          "revenue_qoq_growth": 3.1
+        }},
+        "margins": {{
+          "gross_margin": 45.2,
+          "operating_margin": 25.8,
+          "net_margin": 18.5,
+          "outlook": "Positive guidance for next quarter"
+        }},
+        "next_earnings_date": "2024-04-15"
+      }},
+      "fundamentals": {{
+        "valuation": {{}},
+        "profitability": {{}},
+        "financial_health": {{}},
+        "growth": {{}}
+      }},
+      "analysis": {{
+        "recommendation": "buy",
+        "confidence_score": 0.85,
+        "risk_level": "medium",
+        "key_drivers": [],
+        "risk_factors": []
+      }}
+    }},
+    "SYMBOL2": {{ ... same structure ... }}
+  }}
+}}
+
+CRITICAL INSTRUCTIONS:
+- MUST return data for ALL {len(symbols)} stocks listed above
+- DO NOT return empty objects {{}} for any stock - if data is limited, include at minimum:
+  * "earnings" object with "latest_quarter" containing at least: period, date, eps_actual or eps_estimated
+  * If actual earnings not available, provide estimated or most recent available data
+- Each stock entry MUST have "earnings" object with at minimum:
+  * "latest_quarter" object (required)
+  * "growth_rates" object (can be empty {{}} if unavailable)
+  * "margins" object (can be empty {{}} if unavailable)
+  * "next_earnings_date" (string or null)
+- Use exact stock symbols as keys in the "stocks" object (case-sensitive): {symbols_str}
+- Search thoroughly for each stock - use alternative names, company names, or search broader if needed
+- All numeric values should be actual numbers, not null or empty strings
+- If a stock has no earnings history, search for company information and provide best available data"""
+
+        # Log the query being sent
+        logger.info("=" * 80)
+        logger.info("PERPLEXITY QUERY (EARNINGS):")
+        logger.info("=" * 80)
+        logger.info(query)
+        logger.info("=" * 80)
+
+        response = await self.api_caller(
             query=query,
-            search_recency="week",
-            max_search_results=15,
+            search_recency="month",  # Increased from "week" to get more comprehensive data
+            max_search_results=20,   # Increased from 15 to search more sources
             max_tokens=max_tokens,
             response_format="json"
         )
+        
+        # Log the response received
+        if response:
+            logger.info("=" * 80)
+            logger.info("PERPLEXITY RESPONSE (EARNINGS):")
+            logger.info("=" * 80)
+            logger.info(f"Response length: {len(response)} chars")
+            logger.info(f"FULL RESPONSE:\n{response}")
+            logger.info("=" * 80)
+        else:
+            logger.warning("PERPLEXITY RESPONSE (EARNINGS): Empty response received")
+        
+        return response
 
     async def fetch_news_and_earnings(
         self,
