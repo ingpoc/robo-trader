@@ -13,7 +13,7 @@ from ....core.event_bus import EventBus, Event, EventType
 from ..config.service_config import QueueManagementConfig
 from ..queues.data_fetcher_queue import DataFetcherQueue
 from ..queues.portfolio_queue import PortfolioQueue
-from ..queues.ai_analysis_queue import AiAnalysisQueue
+from ..queues.ai_analysis_queue import AIAnalysisQueue
 from .base_queue import BaseQueue
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ class QueueOrchestrationLayer:
             execution_tracker=execution_tracker
         )
 
-        self._queues[QueueName.AI_ANALYSIS] = AiAnalysisQueue(
+        self._queues[QueueName.AI_ANALYSIS] = AIAnalysisQueue(
             task_service=self.task_service,
             event_bus=self.event_bus,
             execution_tracker=execution_tracker

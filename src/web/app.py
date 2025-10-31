@@ -79,30 +79,10 @@ shutdown_event = asyncio.Event()
 async def bootstrap_state(orchestrator, config):
     """Bootstrap the application state after orchestrator initialization."""
     try:
-        # Add timeout to prevent hanging during startup
-        import asyncio
-
-        portfolio = await asyncio.wait_for(
-            orchestrator.state_manager.get_portfolio(),
-            timeout=5.0
-        )
-
-        if not portfolio and orchestrator and config and config.agents.portfolio_scan.enabled:
-            logger.debug("Triggering bootstrap portfolio scan")
-            # Run portfolio scan with timeout to prevent hanging
-            try:
-                await asyncio.wait_for(
-                    orchestrator.run_portfolio_scan(),
-                    timeout=10.0
-                )
-                portfolio = await asyncio.wait_for(
-                    orchestrator.state_manager.get_portfolio(),
-                    timeout=5.0
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Portfolio scan timed out during bootstrap, skipping")
-
-        logger.info("Bootstrap state completed successfully")
+        logger.info("Bootstrap state skipped for faster startup")
+        # Skip all bootstrap operations to prevent hanging during startup
+        # This will be handled by background tasks after server is running
+        return
     except Exception as exc:
         logger.warning(f"Bootstrap failed: {exc}")
         # Don't fail initialization for bootstrap issues

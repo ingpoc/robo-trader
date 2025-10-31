@@ -169,8 +169,9 @@ class DependencyContainer:
             task_service = await self.get("task_service")
             event_bus = await self.get("event_bus")
             state_manager = await self.get("state_manager")
+            execution_tracker = await self.get("execution_tracker")
             # Use state_manager's connection pool as db_connection
-            return BackgroundScheduler(task_service, event_bus, state_manager.db._connection_pool, self.config)
+            return BackgroundScheduler(task_service, event_bus, state_manager.db._connection_pool, self.config, execution_tracker)
 
         self._register_singleton("background_scheduler", create_background_scheduler)
 

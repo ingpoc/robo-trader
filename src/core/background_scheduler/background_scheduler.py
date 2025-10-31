@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class BackgroundScheduler:
     """Event-driven background scheduler with database storage."""
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None):
+    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None, execution_tracker=None):
         """Initialize event-driven background scheduler."""
         self.task_service = task_service
         self.event_bus = event_bus
@@ -39,7 +39,7 @@ class BackgroundScheduler:
         self._event_listener_task: Optional[asyncio.Task] = None
 
         # Execution tracker (injected from DI)
-        self.execution_tracker = None  # Will be set by DI container
+        self.execution_tracker = execution_tracker
 
         # Schedule configuration
         self.market_open_time = time(9, 30)  # 9:30 AM EST
@@ -314,16 +314,10 @@ class BackgroundScheduler:
 
     async def _schedule_daily_routines(self) -> None:
         """Schedule daily market routines."""
-        now = datetime.utcnow()
-        current_time = now.time()
-
-        # Morning routine
-        if self._is_market_open_time(current_time) and self._is_weekday(now):
-            await self._run_morning_routine()
-
-        # Evening routine
-        elif self._is_market_close_time(current_time) and self._is_weekday(now):
-            await self._run_evening_routine()
+        # Skip running routines during startup to avoid database conflicts
+        # Routines will be triggered by scheduled timers or manual triggers
+        logger.info("Daily routines scheduling initialized (routines will run on schedule)")
+        return
 
     async def _run_morning_routine(self) -> None:
         """Run morning market open routine."""
@@ -430,32 +424,41 @@ class BackgroundScheduler:
     async def get_scheduler_status(self) -> Dict[str, Any]:
         """Get detailed scheduler status for system health monitoring."""
         try:
-            # Get task counts from task store
-            tasks_processed = 0
-            tasks_failed = 0
-            try:
-                # Query task store for metrics if available
-                if hasattr(self.task_store, 'get_task_count'):
-                    tasks_processed = await self.task_store.get_task_count(status="completed")
-                    tasks_failed = await self.task_store.get_task_count(status="failed")
-            except Exception as e:
-                logger.warning(f"Could not get task metrics: {e}")
-
             # Calculate uptime
             uptime_seconds = 0
             if hasattr(self, '_start_time') and self._start_time:
                 uptime_seconds = int((datetime.now(timezone.utc) - self._start_time).total_seconds())
 
-            # Get execution history from tracker
-            execution_history = await self.get_execution_history(10)
+            # Get execution history from tracker (get more to calculate stats)
+            execution_history = await self.get_execution_history(100)  # Get more for accurate stats
             total_executions = len(execution_history)
+
+            # Calculate processed/failed counts from execution history
+            tasks_processed = 0
+            tasks_failed = 0
+
+            # Count completed and failed executions
+            for execution in execution_history:
+                if isinstance(execution, dict):
+                    status = execution.get("status", "").lower()
+                    if status == "completed":
+                        tasks_processed += 1
+                    elif status == "failed":
+                        tasks_failed += 1
 
             # Get last run time (most recent execution)
             last_run_time = ""
-            if execution_history:
-                last_run_time = execution_history[0]["timestamp"]
+            if execution_history and len(execution_history) > 0:
+                first_execution = execution_history[0]
+                if isinstance(first_execution, dict):
+                    last_run_time = first_execution.get("timestamp", datetime.now(timezone.utc).isoformat())
+                else:
+                    last_run_time = datetime.now(timezone.utc).isoformat()
             else:
                 last_run_time = datetime.now(timezone.utc).isoformat()
+
+            # Return only the 10 most recent executions for display
+            recent_executions = execution_history[:10] if execution_history else []
 
             return {
                 "running": self._running,
@@ -464,7 +467,7 @@ class BackgroundScheduler:
                 "uptime_seconds": uptime_seconds,
                 "tasks_processed": tasks_processed,
                 "tasks_failed": tasks_failed,
-                "execution_history": execution_history,
+                "execution_history": recent_executions,
                 "total_executions": total_executions,
                 "market_open_time": self.market_open_time.isoformat(),
                 "market_close_time": self.market_close_time.isoformat()

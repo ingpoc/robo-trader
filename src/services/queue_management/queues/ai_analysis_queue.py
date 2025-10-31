@@ -7,8 +7,6 @@ from datetime import datetime
 from ....models.scheduler import QueueName, TaskType, SchedulerTask
 from ....services.scheduler.task_service import SchedulerTaskService
 from ....core.event_bus import EventBus, Event, EventType
-from ...claude_agent_service import ClaudeAgentService  # Integration stub
-from ...analytics_service import AnalyticsService  # Integration stub
 from ..core.base_queue import BaseQueue
 
 logger = logging.getLogger(__name__)
