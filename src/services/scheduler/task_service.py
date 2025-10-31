@@ -17,6 +17,10 @@ class SchedulerTaskService:
         self.store = store
         self._task_handlers: Dict[TaskType, Callable] = {}
 
+    async def initialize(self) -> None:
+        """Initialize the task service."""
+        await self.store.initialize()
+
     def register_handler(self, task_type: TaskType, handler: Callable) -> None:
         """Register a task handler."""
         self._task_handlers[task_type] = handler

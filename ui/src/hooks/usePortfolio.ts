@@ -55,11 +55,11 @@ export function usePortfolio() {
       } else {
         // Other success cases
         toast({
-          title: 'Portfolio Scan Started',
-          description: 'Analyzing your portfolio...',
-          variant: 'success',
-        })
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+        title: 'Portfolio Scan Started',
+        description: 'Analyzing your portfolio...',
+        variant: 'success',
+      })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       }
     },
     onError: (error) => {

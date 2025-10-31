@@ -12,9 +12,9 @@ import aiosqlite
 from loguru import logger
 
 from ..clients.perplexity_client import PerplexityClient
-from ..processors.deep_fundamental_processor import DeepFundamentalProcessor
-from ..processors.earnings_processor import EarningsProcessor
-from ..processors.news_processor import NewsProcessor
+from ..parsers.earnings import parse_comprehensive_earnings
+from ..parsers.news import parse_categorized_news
+from ..parsers.fundamental_analysis import parse_deep_fundamentals
 from ..stores.fundamental_store import FundamentalStore
 from ...event_bus import EventBus, Event, EventType
 
@@ -62,7 +62,7 @@ class FundamentalExecutor:
                 logger.warning("Empty response from Perplexity API")
                 return {"status": "failed", "error": "Empty API response"}
 
-            parsed_data = EarningsProcessor.parse_comprehensive_earnings(response)
+            parsed_data = parse_comprehensive_earnings(response)
 
             if not parsed_data:
                 logger.warning("Failed to parse earnings data")
@@ -112,7 +112,7 @@ class FundamentalExecutor:
                 logger.warning("Empty response from Perplexity API")
                 return {"status": "failed", "error": "Empty API response"}
 
-            parsed_data = NewsProcessor.parse_categorized_news(response)
+            parsed_data = parse_categorized_news(response)
 
             if not parsed_data:
                 logger.warning("Failed to parse news data")
@@ -164,7 +164,7 @@ class FundamentalExecutor:
                 logger.warning("Empty response from Perplexity API")
                 return {"status": "failed", "error": "Empty API response"}
 
-            parsed_data = DeepFundamentalProcessor.parse_deep_fundamentals(response)
+            parsed_data = parse_deep_fundamentals(response)
 
             if not parsed_data:
                 logger.warning("Failed to parse deep fundamentals")

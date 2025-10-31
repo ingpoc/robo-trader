@@ -19,6 +19,52 @@ class SchedulerTaskStore:
         """Initialize store with database connection."""
         self.db_connection = db_connection
 
+    async def initialize(self) -> None:
+        """Initialize the store."""
+        await self.initialize_schema()
+
+    async def initialize_schema(self) -> None:
+        """Initialize database schema if it doesn't exist."""
+        # Create queue_tasks table
+        await self.db_connection.execute("""
+            CREATE TABLE IF NOT EXISTS queue_tasks (
+                task_id TEXT PRIMARY KEY,
+                queue_name TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                priority INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                dependencies TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retry_count INTEGER DEFAULT 0,
+                max_retries INTEGER DEFAULT 3,
+                scheduled_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        # Create indexes for performance
+        await self.db_connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_queue_tasks_queue_name
+            ON queue_tasks(queue_name)
+        """)
+
+        await self.db_connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_queue_tasks_status
+            ON queue_tasks(status)
+        """)
+
+        await self.db_connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_queue_tasks_scheduled_at
+            ON queue_tasks(scheduled_at)
+        """)
+
+        await self.db_connection.commit()
+        logger.info("Scheduler task store schema initialized")
+
     async def create_task(
         self,
         queue_name: QueueName,
@@ -35,19 +81,18 @@ class SchedulerTaskStore:
             INSERT INTO queue_tasks (
                 task_id, queue_name, task_type, priority, payload, dependencies,
                 max_retries, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-            RETURNING task_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         """
 
         dependencies_json = dependencies or []
         payload_json = payload or {}
 
         self.db_connection.row_factory = aiosqlite.Row
-        cursor = await self.db_connection.execute(
-            query, task_id, queue_name.value, task_type.value,
-            priority, str(payload_json), str(dependencies_json), max_retries
+        await self.db_connection.execute(
+            query, (task_id, queue_name.value, task_type.value,
+                   priority, str(payload_json), str(dependencies_json), max_retries)
         )
-        row = await cursor.fetchone()
+        await self.db_connection.commit()
 
         task = SchedulerTask(
             task_id=task_id,
@@ -57,7 +102,7 @@ class SchedulerTaskStore:
             payload=payload,
             dependencies=dependencies or [],
             max_retries=max_retries,
-            created_at=row['created_at'].isoformat() if row['created_at'] else None
+            created_at=datetime.utcnow().isoformat()
         )
 
         logger.info(f"Created task in database: {task_id}")

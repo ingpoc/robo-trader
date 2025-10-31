@@ -201,8 +201,8 @@ class ConversationManager:
                     logger.warning(f"Error cleaning up Conversation Manager client: {e}")
             
             # Always cleanup client reference
-            self.client = None
-            self._client_initialized = False
+                self.client = None
+                self._client_initialized = False
 
     async def start_conversation(self, user_id: Optional[str] = None) -> str:
         """Start a new conversation session."""

@@ -124,3 +124,29 @@ def calculate_business_day(start_date: datetime, days_ahead: int) -> datetime:
             business_days_added += 1
     return current_date
 
+
+def parse_comprehensive_earnings(response_text: str) -> Dict[str, Any]:
+    """Parse comprehensive earnings data from Perplexity API response."""
+    if not response_text or not isinstance(response_text, str):
+        logger.warning("Empty or invalid earnings data")
+        return {}
+
+    try:
+        data = json.loads(response_text)
+
+        if isinstance(data, dict) and 'data' in data:
+            data = data['data']
+
+        if not isinstance(data, dict):
+            logger.warning(f"Unexpected data structure: {type(data)}")
+            return {}
+
+        return data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error parsing earnings: {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"Error parsing comprehensive earnings: {e}")
+        return {}
+

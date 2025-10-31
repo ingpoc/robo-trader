@@ -169,7 +169,7 @@ class ZerodhaOAuthService:
             # Note: Zerodha may not always send the state parameter back,
             # so we make it optional but still validate if present
             if state:
-                if not await self._validate_state(state):
+            if not await self._validate_state(state):
                     logger.warning(f"State parameter validation failed: {state}")
                     # Don't fail hard - Zerodha's request token is still valid
                     # Just log the warning and continue
@@ -314,20 +314,20 @@ class ZerodhaOAuthService:
             
             # Execute in thread pool to avoid blocking
             token_data = await loop.run_in_executor(None, exchange_token)
-            
-            # Add expiry information
-            login_time = datetime.now(timezone.utc)
-            expires_at = login_time + timedelta(hours=24)  # Zerodha tokens last 24 hours
+
+                # Add expiry information
+                login_time = datetime.now(timezone.utc)
+                expires_at = login_time + timedelta(hours=24)  # Zerodha tokens last 24 hours
 
             logger.info(f"Successfully exchanged request token for access token. User: {token_data.get('user_id')}")
 
-            return {
-                "access_token": token_data.get("access_token"),
-                "request_token": request_token,
-                "user_id": token_data.get("user_id"),
-                "login_time": login_time.isoformat(),
-                "expires_at": expires_at.isoformat()
-            }
+                return {
+                    "access_token": token_data.get("access_token"),
+                    "request_token": request_token,
+                    "user_id": token_data.get("user_id"),
+                    "login_time": login_time.isoformat(),
+                    "expires_at": expires_at.isoformat()
+                }
 
         except ImportError as e:
             logger.error(f"kiteconnect library not installed: {e}")

@@ -146,7 +146,11 @@ class DependencyContainer:
             # Get database connection from state manager
             state_manager = await self.get("state_manager")
             task_store = SchedulerTaskStore(state_manager.db.connection)
-            return SchedulerTaskService(task_store)
+
+            # Create and initialize task service
+            task_service = SchedulerTaskService(task_store)
+            await task_service.initialize()
+            return task_service
 
         self._register_singleton("task_service", create_task_service)
 
