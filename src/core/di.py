@@ -125,7 +125,7 @@ class DependencyContainer:
         async def create_configuration_state():
             from .database_state.configuration_state import ConfigurationState
             state_manager = await self.get("state_manager")
-            config_state = ConfigurationState(state_manager.db, self.config)
+            config_state = ConfigurationState(state_manager.db)
             await config_state.initialize()
             return config_state
 

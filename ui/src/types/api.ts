@@ -185,3 +185,49 @@ export interface ErrorResponse {
   status?: number
   details?: ErrorDetails
 }
+
+// Configuration Types
+export interface BackgroundTaskConfig {
+  enabled: boolean
+  frequency: number
+  frequencyUnit: 'seconds' | 'minutes' | 'hours' | 'days'
+  useClaude: boolean
+  priority: 'low' | 'medium' | 'high'
+}
+
+export interface AIAgentConfig {
+  enabled: boolean
+  useClaude: boolean
+  tools: string[]
+  responseFrequency: number
+  responseFrequencyUnit: 'minutes' | 'hours'
+  scope: 'portfolio' | 'market' | 'watchlist'
+  maxTokensPerRequest: number
+}
+
+export interface GlobalConfig {
+  claudeUsage: {
+    enabled: boolean
+    dailyTokenLimit: number
+    costAlerts: boolean
+    costThreshold: number
+  }
+  schedulerDefaults: {
+    defaultFrequency: number
+    defaultFrequencyUnit: 'minutes' | 'hours'
+    marketHoursOnly: boolean
+    retryAttempts: number
+    retryDelayMinutes: number
+  }
+  maxTurns: number
+  riskTolerance: number
+  dailyApiLimit: number
+}
+
+export interface PromptConfig {
+  prompt_name: string
+  content: string
+  description: string
+  created_at: string
+  updated_at: string
+}

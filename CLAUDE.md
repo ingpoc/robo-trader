@@ -2,14 +2,14 @@
 
 > **Project Memory**: Automatically loaded by Claude Code. Contains permanent development rules and architectural patterns that remain consistent as code evolves.
 
-> **Last Updated**: 2025-01-27 | **Status**: Production Ready - All core systems operational
+> **Last Updated**: 2025-10-31 | **Status**: Production Ready - Configuration management enhanced with database-backed prompts
 
 **Architecture Reference**: See @documentation/ARCHITECTURE_PATTERNS.md for detailed patterns and implementation guidelines.
 
 ## Contents
 
 - [Claude Agent SDK Architecture](#claude-agent-sdk-architecture-critical)
-- [Core Architectural Patterns](#core-architectural-patterns-28-patterns)
+- [Core Architectural Patterns](#core-architectural-patterns-29-patterns)
 - [Code Quality Standards](#code-quality-standards)
 - [Development Workflow](#development-workflow)
 - [Quick Reference](#quick-reference---what-to-do)
@@ -483,6 +483,43 @@ if not is_valid:
     logger.warning(f"System prompt is {token_count} tokens, may cause issues")
 ```
 
+### 29. Database-Backed AI Prompt Management Pattern (Responsibility: Dynamic Prompt Configuration)
+
+Store AI prompts in database instead of hardcoding them in code, enabling Claude to view and modify prompts dynamically.
+
+**Problem Solved**: Initially prompts were hardcoded in React components, preventing Claude from accessing or modifying them. Now prompts are stored in database and fetched via API.
+
+**Implementation**: `ai_prompts_config` table stores prompts with content, description, and metadata.
+
+**Database Schema**:
+```sql
+CREATE TABLE ai_prompts_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_name TEXT NOT NULL UNIQUE,
+    prompt_content TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+```
+
+**API Endpoints**:
+- `GET /api/configuration/prompts` - Fetch all prompts
+- `GET /api/configuration/prompts/{name}` - Fetch specific prompt
+- `PUT /api/configuration/prompts/{name}` - Update prompt
+
+**Frontend Integration**:
+```typescript
+// Fetch prompts from database instead of hardcoded values
+const getSchedulerPrompt = (taskName: string) => {
+  return prompts[taskName]?.content || `No prompt available for ${taskName}`
+}
+```
+
+**Rule**: Never hardcode AI prompts in frontend code. Always store in database and fetch via API. This allows Claude to view current prompts and modify them for strategy optimization.
+
+**Lesson Learned**: Initial configuration UI had hardcoded prompts in JavaScript. Claude couldn't see or modify prompts, limiting AI-driven prompt optimization. Database-backed approach enables full AI access to prompt management.
+
 ---
 
 ## Code Quality Standards
@@ -697,6 +734,8 @@ Never break existing public APIs. When refactoring, maintain import paths (use w
 | SDK client needed | Use ClaudeSDKClientManager.get_instance() - NEVER create direct ClaudeSDKClient | SDK Client Manager Pattern |
 | SDK query/response needed | Use query_with_timeout() and receive_response_with_timeout() - NEVER call directly | SDK Timeout & Error Handling |
 | System prompt validation needed | Validate prompt size with validate_system_prompt_size() before initialization | SDK System Prompt Validation |
+| Database locking needed | Add `self._lock = asyncio.Lock()` and `async with self._lock:` for all database operations | Database Locking Pattern |
+| AI prompts need to be configurable | Store prompts in `ai_prompts_config` table, fetch via API, never hardcode in frontend | Database-Backed AI Prompt Management |
 
 ---
 
@@ -736,6 +775,8 @@ Every code submission MUST pass:
 - [ ] **SDK Timeout Handling**: Use query_with_timeout() and receive_response_with_timeout() - NEVER call client.query() directly
 - [ ] **SDK Error Handling**: Handle all SDK error types (CLINotFoundError, CLIConnectionError, ProcessError, etc.)
 - [ ] **SDK Prompt Validation**: Validate system prompt size before initialization (keep under 8000 tokens)
+- [ ] **Database Locking**: All database state classes use `asyncio.Lock()` for concurrent operations
+- [ ] **Database-Backed Prompts**: Never hardcode AI prompts in frontend - store in database and fetch via API
 - [ ] **Real-Time System Health**: Use WebSocket differential updates, no polling for health status
 - [ ] **Integrated System Logs**: SystemHealthLogs component within System Health, no standalone Logs page
 

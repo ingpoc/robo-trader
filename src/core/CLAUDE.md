@@ -341,8 +341,45 @@ class ValidationError(TradingError):
 - ✅ Atomic writes with temp files
 - ✅ Connection pooling and management
 - ✅ Automatic table creation and migrations
+- ✅ **CRITICAL**: All database state classes must use `asyncio.Lock()` for concurrent operations
 - ❌ No synchronous database operations
 - ❌ No direct SQL in business logic
+
+#### Database Locking Pattern (CRITICAL - Prevents "database is locked" errors)
+
+**Problem**: SQLite "database is locked" errors occur when multiple async operations access the database concurrently without proper synchronization.
+
+**Solution**: Every database state class must implement its own `asyncio.Lock()` and use `async with self._lock:` for ALL database operations.
+
+**Implementation Pattern**:
+```python
+class MyDatabaseState:
+    def __init__(self, db_connection: DatabaseConnection):
+        self.db = db_connection
+        self._lock = asyncio.Lock()  # CRITICAL: Each state class needs its own lock
+
+    async def my_database_operation(self, param: str) -> Dict[str, Any]:
+        async with self._lock:  # CRITICAL: Always acquire lock for database operations
+            try:
+                cursor = await self.db.connection.execute("SELECT * FROM my_table WHERE param = ?", (param,))
+                rows = await cursor.fetchall()
+                return self._process_rows(rows)
+            except Exception as e:
+                logger.error(f"Database operation failed: {e}")
+                return {}
+
+    async def initialize(self) -> None:  # CRITICAL: Even initialization needs locking
+        async with self._lock:
+            # Create tables, initialize data, etc.
+            pass
+```
+
+**Why This Matters**:
+- SQLite allows only one writer at a time
+- Multiple concurrent async operations can cause "database is locked"
+- Each state class needs its own lock (don't share locks between classes)
+- Initialization operations must also be locked
+- **Lesson Learned**: ConfigurationState class initially lacked proper locking, causing database lock errors during concurrent API calls
 
 ## Async/File Operations - Core Layer (MANDATORY)
 

@@ -114,6 +114,45 @@ export const configAPI = {
     api.post<{ status: string }>('/api/config', config),
 }
 
+export const configurationAPI = {
+  // Background tasks configuration
+  getBackgroundTasks: () =>
+    api.get<{ background_tasks: Record<string, BackgroundTaskConfig> }>('/api/configuration/background-tasks'),
+
+  updateBackgroundTask: (taskName: string, config: Partial<BackgroundTaskConfig>) =>
+    api.put<{ status: string; task: string }>(`/api/configuration/background-tasks/${taskName}`, config),
+
+  // AI agents configuration
+  getAIAgents: () =>
+    api.get<{ ai_agents: Record<string, AIAgentConfig> }>('/api/configuration/ai-agents'),
+
+  updateAIAgent: (agentName: string, config: Partial<AIAgentConfig>) =>
+    api.put<{ status: string; agent: string }>(`/api/configuration/ai-agents/${agentName}`, config),
+
+  // Global settings configuration
+  getGlobalSettings: () =>
+    api.get<{ global_settings: GlobalConfig }>('/api/configuration/global-settings'),
+
+  updateGlobalSettings: (settings: Partial<GlobalConfig>) =>
+    api.put<{ status: string }>('/api/configuration/global-settings', settings),
+
+  // Configuration management
+  backupConfiguration: () =>
+    api.post<{ status: string; timestamp: string }>('/api/configuration/backup'),
+
+  restoreConfiguration: (timestamp: string) =>
+    api.post<{ status: string; timestamp: string }>('/api/configuration/restore', { timestamp }),
+
+  getStatus: () =>
+    api.get<{ configuration_status: Record<string, unknown> }>('/api/configuration/status'),
+
+  // AI prompts configuration (individual)
+  getPrompt: (promptName: string) =>
+    api.get<PromptConfig>(`/api/configuration/prompts/${promptName}`),
+  updatePrompt: (promptName: string, prompt: Partial<PromptConfig>) =>
+    api.put<{ status: string; prompt: string }>(`/api/configuration/prompts/${promptName}`, prompt),
+}
+
 export const analyticsAPI = {
   getPortfolioDeep: () =>
     api.get<PerformanceData>('/api/analytics/portfolio-deep'),

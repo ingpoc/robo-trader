@@ -44,9 +44,9 @@ async def get_background_tasks_config(
     try:
         # Get configuration state from database
         config_state = await container.get("configuration_state")
-        background_tasks = await config_state.get_background_tasks_config()
+        background_tasks = await config_state.get_all_background_tasks_config()
 
-        return {"background_tasks": background_tasks}
+        return background_tasks
     except Exception as e:
         return await handle_unexpected_error(e, "get_background_tasks_config")
 
@@ -122,9 +122,10 @@ async def get_ai_agents_config(
     try:
         # Get configuration state from database
         config_state = await container.get("configuration_state")
-        ai_agents = await config_state.get_ai_agents_config()
+        ai_agents = await config_state.get_all_ai_agents_config()
 
-        return {"ai_agents": ai_agents}
+        logger.info(f"AI agents config retrieved: {len(ai_agents.get('ai_agents', {}))} agents")
+        return ai_agents
 
     except Exception as e:
         return await handle_unexpected_error(e, "get_ai_agents_config")
@@ -175,7 +176,7 @@ async def get_global_settings(
         config_state = await container.get("configuration_state")
         global_settings = await config_state.get_global_settings_config()
 
-        return {"global_settings": global_settings}
+        return global_settings
 
     except Exception as e:
         return await handle_unexpected_error(e, "get_global_settings")
@@ -281,3 +282,63 @@ async def get_configuration_status(
 
     except Exception as e:
         return await handle_unexpected_error(e, "get_configuration_status")
+
+
+@router.get("/configuration/prompts")
+@limiter.limit(config_limit)
+async def get_all_prompts(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get all AI prompts configuration from database."""
+    try:
+        config_state = await container.get("configuration_state")
+        prompts = await config_state.get_all_prompts_config()
+        return prompts
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_all_prompts")
+
+
+@router.get("/configuration/prompts/{prompt_name}")
+@limiter.limit(config_limit)
+async def get_prompt(
+    request: Request,
+    prompt_name: str,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get specific prompt configuration from database."""
+    try:
+        config_state = await container.get("configuration_state")
+        prompt = await config_state.get_prompt_config(prompt_name)
+        if not prompt:
+            raise HTTPException(status_code=404, detail=f"Prompt {prompt_name} not found")
+        return prompt
+    except HTTPException:
+        raise
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_prompt")
+
+
+@router.put("/configuration/prompts/{prompt_name}")
+@limiter.limit(config_limit)
+async def update_prompt(
+    request: Request,
+    prompt_name: str,
+    prompt_data: Dict[str, Any],
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Update prompt configuration in database."""
+    try:
+        config_state = await container.get("configuration_state")
+        success = await config_state.update_prompt_config(
+            prompt_name=prompt_name,
+            prompt_content=prompt_data.get("content", ""),
+            description=prompt_data.get("description", "")
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update prompt")
+        return {"status": "success", "prompt": prompt_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return await handle_unexpected_error(e, "update_prompt")

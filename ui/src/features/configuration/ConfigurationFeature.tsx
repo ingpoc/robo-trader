@@ -1,153 +1,226 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Settings, Cpu, Brain, Globe, Clock, ToggleLeft, Zap } from 'lucide-react'
+import { Settings, Cpu, Brain, Globe, Clock, ToggleLeft, Zap, Save, RefreshCw, AlertTriangle, Eye } from 'lucide-react'
+import { configurationAPI } from '@/api/endpoints'
+import { useToast } from '@/hooks/use-toast'
+import type { BackgroundTaskConfig, AIAgentConfig, GlobalConfig } from '@/types/api'
 
-// Type definitions for our configuration interfaces
-interface BackgroundTaskConfig {
-  enabled: boolean
-  frequency: number
-  frequencyUnit: 'seconds' | 'minutes' | 'hours' | 'days'
-  useClaude: boolean
-  priority: 'low' | 'medium' | 'high'
-  stockSymbols: string[]
-}
-
-interface AIAgentConfig {
-  enabled: boolean
-  useClaude: boolean
-  tools: string[]
-  responseFrequency: number
-  responseFrequencyUnit: 'minutes' | 'hours'
-  scope: 'portfolio' | 'market' | 'watchlist'
-  maxTokensPerRequest: number
-}
-
-interface GlobalConfig {
-  claudeUsage: {
-    enabled: boolean
-    dailyTokenLimit: number
-    costAlerts: boolean
-    costThreshold: number
-  }
-  schedulerDefaults: {
-    defaultFrequency: number
-    defaultFrequencyUnit: 'minutes' | 'hours'
-    marketHoursOnly: boolean
-    retryAttempts: number
-    retryDelayMinutes: number
-  }
-  maxTurns: number
-  riskTolerance: number
-  dailyApiLimit: number
-}
 
 const ConfigurationFeature: React.FC = () => {
-  // Background tasks state
-  const [backgroundTasks, setBackgroundTasks] = useState<Record<string, BackgroundTaskConfig>>({
-    earnings_processor: {
-      enabled: true,
-      frequency: 1,
-      frequencyUnit: 'hours',
-      useClaude: true,
-      priority: 'high',
-      stockSymbols: []
-    },
-    news_processor: {
-      enabled: true,
-      frequency: 30,
-      frequencyUnit: 'minutes',
-      useClaude: true,
-      priority: 'medium',
-      stockSymbols: []
-    },
-    fundamental_analyzer: {
-      enabled: false,
-      frequency: 4,
-      frequencyUnit: 'hours',
-      useClaude: true,
-      priority: 'medium',
-      stockSymbols: []
-    },
-    deep_fundamental_processor: {
-      enabled: false,
-      frequency: 24,
-      frequencyUnit: 'hours',
-      useClaude: true,
-      priority: 'low',
-      stockSymbols: []
-    }
-  })
+  const { toast } = useToast()
 
-  // AI agents state
-  const [aiAgents, setAIAgents] = useState<Record<string, AIAgentConfig>>({
-    technical_analyst: {
-      enabled: true,
-      useClaude: true,
-      tools: ['analyze_chart_patterns', 'calculate_indicators', 'identify_support_resistance'],
-      responseFrequency: 30,
-      responseFrequencyUnit: 'minutes',
-      scope: 'portfolio',
-      maxTokensPerRequest: 2000
-    },
-    fundamental_screener: {
-      enabled: false,
-      useClaude: true,
-      tools: ['analyze_financials', 'screen_stocks', 'calculate_valuation'],
-      responseFrequency: 2,
-      responseFrequencyUnit: 'hours',
-      scope: 'market',
-      maxTokensPerRequest: 3000
-    },
-    risk_manager: {
-      enabled: true,
-      useClaude: true,
-      tools: ['assess_portfolio_risk', 'calculate_position_size', 'monitor_drawdown'],
-      responseFrequency: 15,
-      responseFrequencyUnit: 'minutes',
-      scope: 'portfolio',
-      maxTokensPerRequest: 1500
-    },
-    portfolio_analyzer: {
-      enabled: true,
-      useClaude: true,
-      tools: ['analyze_performance', 'calculate_metrics', 'identify_optimization'],
-      responseFrequency: 1,
-      responseFrequencyUnit: 'hours',
-      scope: 'portfolio',
-      maxTokensPerRequest: 2500
-    }
-  })
+  // Loading and error states
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
-  // Global settings state
-  const [globalSettings, setGlobalSettings] = useState<GlobalConfig>({
-    claudeUsage: {
-      enabled: true,
-      dailyTokenLimit: 50000,
-      costAlerts: true,
-      costThreshold: 10.00
-    },
-    schedulerDefaults: {
-      defaultFrequency: 30,
-      defaultFrequencyUnit: 'minutes',
-      marketHoursOnly: true,
-      retryAttempts: 3,
-      retryDelayMinutes: 5
-    },
-    maxTurns: 5,
-    riskTolerance: 5,
-    dailyApiLimit: 25
-  })
+  // Configuration state
+  const [backgroundTasks, setBackgroundTasks] = useState<Record<string, BackgroundTaskConfig>>({})
+  const [aiAgents, setAIAgents] = useState<Record<string, AIAgentConfig>>({})
+  const [globalSettings, setGlobalSettings] = useState<GlobalConfig | null>(null)
 
   const [activeTab, setActiveTab] = useState('background-tasks')
+  const [visiblePrompts, setVisiblePrompts] = useState<Set<string>>(new Set())
+  const [prompts, setPrompts] = useState<Record<string, PromptConfig>>({})
+  const [editingPrompts, setEditingPrompts] = useState<Set<string>>(new Set())
+
+  // Get prompt for scheduler type from database
+  const getSchedulerPrompt = (taskName: string) => {
+    return prompts[taskName]?.content || `No prompt available for ${taskName}`
+  }
+
+  // Toggle prompt visibility
+  const togglePrompt = (taskName: string) => {
+    setVisiblePrompts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(taskName)) {
+        newSet.delete(taskName)
+        // Also stop editing when hiding
+        setEditingPrompts(editPrev => {
+          const newEditSet = new Set(editPrev)
+          newEditSet.delete(taskName)
+          return newEditSet
+        })
+      } else {
+        newSet.add(taskName)
+        // Load prompt when showing
+        loadPrompt(taskName)
+      }
+      return newSet
+    })
+  }
+
+  // Load individual prompt
+  const loadPrompt = async (taskName: string) => {
+    try {
+      const promptData = await configurationAPI.getPrompt(taskName)
+      setPrompts(prev => ({
+        ...prev,
+        [taskName]: promptData
+      }))
+    } catch (err) {
+      console.error(`Failed to load prompt for ${taskName}:`, err)
+      // Set empty prompt if loading fails
+      setPrompts(prev => ({
+        ...prev,
+        [taskName]: {
+          prompt_name: taskName,
+          content: '',
+          description: `Prompt for ${taskName.replace('_', ' ')}`,
+          created_at: '',
+          updated_at: ''
+        }
+      }))
+    }
+  }
+
+  // Toggle prompt editing mode
+  const togglePromptEditing = (taskName: string) => {
+    setEditingPrompts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(taskName)) {
+        newSet.delete(taskName)
+      } else {
+        newSet.add(taskName)
+      }
+      return newSet
+    })
+  }
+
+  // Save prompt
+  const savePrompt = async (taskName: string) => {
+    try {
+      const prompt = prompts[taskName]
+      if (!prompt) return
+
+      await configurationAPI.updatePrompt(taskName, {
+        content: prompt.content,
+        description: prompt.description
+      })
+
+      toast({
+        title: "Success",
+        description: `Prompt for ${taskName.replace('_', ' ')} saved successfully`,
+      })
+
+      // Reload to get updated timestamp
+      await loadPrompt(taskName)
+
+      // Stop editing mode
+      setEditingPrompts(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(taskName)
+        return newSet
+      })
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save prompt'
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Update prompt content
+  const updatePrompt = (taskName: string, field: 'content' | 'description', value: string) => {
+    setPrompts(prev => ({
+      ...prev,
+      [taskName]: {
+        ...prev[taskName],
+        [field]: value
+      }
+    }))
+  }
+
+  // Load configuration data from API
+  const loadConfiguration = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      const [backgroundTasksData, aiAgentsData, globalSettingsData] = await Promise.all([
+        configurationAPI.getBackgroundTasks(),
+        configurationAPI.getAIAgents(),
+        configurationAPI.getGlobalSettings()
+      ])
+
+      setBackgroundTasks(backgroundTasksData.background_tasks)
+      setAIAgents(aiAgentsData.ai_agents)
+      setGlobalSettings(globalSettingsData.global_settings)
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load configuration'
+      setError(errorMessage)
+      toast({
+        title: "Failed to load configuration",
+        description: errorMessage,
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Load configuration on mount
+  useEffect(() => {
+    loadConfiguration()
+  }, [])
+
+  // Save all configuration changes
+  const saveConfiguration = async () => {
+    try {
+      setIsSaving(true)
+      setError(null)
+
+      // Save background tasks
+      const backgroundPromises = Object.entries(backgroundTasks).map(([taskName, config]) =>
+        configurationAPI.updateBackgroundTask(taskName, config)
+      )
+
+      // Save AI agents
+      const aiAgentPromises = Object.entries(aiAgents).map(([agentName, config]) =>
+        configurationAPI.updateAIAgent(agentName, config)
+      )
+
+      // Save global settings
+      const globalSettingsPromise = globalSettings
+        ? configurationAPI.updateGlobalSettings(globalSettings)
+        : Promise.resolve()
+
+      await Promise.all([
+        ...backgroundPromises,
+        ...aiAgentPromises,
+        globalSettingsPromise
+      ])
+
+      toast({
+        title: "Configuration saved",
+        description: "All configuration changes have been saved successfully.",
+      })
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save configuration'
+      setError(errorMessage)
+      toast({
+        title: "Failed to save configuration",
+        description: errorMessage,
+        variant: "destructive"
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   // Helper functions
   const getFrequencyDisplay = (frequency: number, unit: string) => {
@@ -197,13 +270,16 @@ const ConfigurationFeature: React.FC = () => {
   }
 
   const updateGlobalSetting = (section: keyof GlobalConfig, field: string, value: any) => {
-    setGlobalSettings(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [field]: value
+    setGlobalSettings(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        [section]: {
+          ...prev[section],
+          [field]: value
+        }
       }
-    }))
+    })
   }
 
   return (
@@ -214,16 +290,43 @@ const ConfigurationFeature: React.FC = () => {
           <p className="text-gray-600 mt-1">Manage background tasks, AI agents, and system settings</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={loadConfiguration}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={true}
+          >
             <Settings className="w-4 h-4" />
             Reset to Defaults
           </Button>
-          <Button className="gap-2">
-            <Zap className="w-4 h-4" />
-            Save Configuration
+          <Button
+            className="gap-2"
+            onClick={saveConfiguration}
+            disabled={isSaving || isLoading || Object.keys(backgroundTasks).length === 0}
+          >
+            <Save className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
+            {isSaving ? 'Saving...' : 'Save Configuration'}
           </Button>
         </div>
       </div>
+
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
@@ -251,7 +354,18 @@ const ConfigurationFeature: React.FC = () => {
               </AlertDescription>
             </Alert>
 
-            {Object.entries(backgroundTasks).map(([taskName, config]) => (
+            {isLoading ? (
+              <div className="text-center py-8">
+                <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin text-gray-400" />
+                <p className="text-gray-600">Loading configuration...</p>
+              </div>
+            ) : Object.keys(backgroundTasks).length === 0 ? (
+              <div className="text-center py-8">
+                <Cpu className="w-8 h-8 mx-auto mb-3 text-gray-400" />
+                <p className="text-gray-600">No background tasks configured</p>
+              </div>
+            ) : (
+              Object.entries(backgroundTasks).map(([taskName, config]) => (
               <Card key={taskName}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
@@ -338,25 +452,112 @@ const ConfigurationFeature: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor={`${taskName}-symbols`}>Stock Symbols</Label>
-                      <Input
-                        id={`${taskName}-symbols`}
-                        placeholder="Enter symbols (comma-separated)"
-                        defaultValue={config.stockSymbols.join(', ')}
-                        onChange={(e) => updateBackgroundTask(taskName, 'stockSymbols', e.target.value.split(',').map(s => s.trim()).filter(s => s))}
-                        disabled={!config.enabled}
-                      />
-                    </div>
                   </div>
 
                   <div className="text-sm text-gray-600">
                     <Clock className="inline w-3 h-3 mr-1" />
                     Runs {getFrequencyDisplay(config.frequency, config.frequencyUnit)} when enabled
                   </div>
+
+                  {/* View Prompt Button */}
+                  <div className="pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => togglePrompt(taskName)}
+                      className="w-full"
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      {visiblePrompts.has(taskName) ? 'Hide Prompt' : 'View/Edit Prompt'}
+                    </Button>
+                  </div>
+
+                  {/* Prompt Display/Edit */}
+                  {visiblePrompts.has(taskName) && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-sm">Perplexity API Prompt:</h4>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => togglePromptEditing(taskName)}
+                        >
+                          {editingPrompts.has(taskName) ? 'Cancel Edit' : 'Edit Prompt'}
+                        </Button>
+                      </div>
+
+                      {editingPrompts.has(taskName) ? (
+                        <>
+                          {/* Description Field */}
+                          <div className="space-y-2">
+                            <Label htmlFor={`${taskName}-description`} className="text-xs font-medium">
+                              Description
+                            </Label>
+                            <Input
+                              id={`${taskName}-description`}
+                              value={prompts[taskName]?.description || ''}
+                              onChange={(e) => updatePrompt(taskName, 'description', e.target.value)}
+                              placeholder="Brief description of this prompt's purpose"
+                              className="text-sm"
+                            />
+                          </div>
+
+                          {/* Content Field */}
+                          <div className="space-y-2">
+                            <Label htmlFor={`${taskName}-content`} className="text-xs font-medium">
+                              Prompt Content
+                            </Label>
+                            <Textarea
+                              id={`${taskName}-content`}
+                              value={prompts[taskName]?.content || ''}
+                              onChange={(e) => updatePrompt(taskName, 'content', e.target.value)}
+                              placeholder="Enter the AI prompt content..."
+                              className="min-h-48 font-mono text-xs"
+                            />
+                          </div>
+
+                          {/* Save/Cancel Buttons */}
+                          <div className="flex gap-2 pt-2">
+                            <Button
+                              size="sm"
+                              onClick={() => savePrompt(taskName)}
+                              disabled={isSaving}
+                              className="flex-1"
+                            >
+                              <Save className="w-4 h-4 mr-2" />
+                              {isSaving ? 'Saving...' : 'Save Prompt'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => togglePromptEditing(taskName)}
+                              className="flex-1"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="text-xs text-gray-600">
+                            <strong>Description:</strong> {prompts[taskName]?.description || 'No description available'}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <strong>Last Updated:</strong> {prompts[taskName]?.updated_at ? new Date(prompts[taskName].updated_at).toLocaleString() : 'Never'}
+                          </div>
+                          <div>
+                            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded border max-h-48 overflow-y-auto">
+                              {prompts[taskName]?.content || 'Loading prompt...'}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            ))}
+              ))
+            )}
           </div>
         </TabsContent>
 
@@ -370,7 +571,18 @@ const ConfigurationFeature: React.FC = () => {
               </AlertDescription>
             </Alert>
 
-            {Object.entries(aiAgents).map(([agentName, config]) => (
+            {isLoading ? (
+              <div className="text-center py-8">
+                <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin text-gray-400" />
+                <p className="text-gray-600">Loading AI agents configuration...</p>
+              </div>
+            ) : Object.keys(aiAgents).length === 0 ? (
+              <div className="text-center py-8">
+                <Brain className="w-8 h-8 mx-auto mb-3 text-gray-400" />
+                <p className="text-gray-600">No AI agents configured</p>
+              </div>
+            ) : (
+              Object.entries(aiAgents).map(([agentName, config]) => (
               <Card key={agentName}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
@@ -488,7 +700,8 @@ const ConfigurationFeature: React.FC = () => {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              ))
+            )}
           </div>
         </TabsContent>
 
@@ -502,194 +715,208 @@ const ConfigurationFeature: React.FC = () => {
               </AlertDescription>
             </Alert>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Brain className="w-5 h-5" />
-                  Claude AI Settings
-                </CardTitle>
-                <CardDescription>
-                  Global Claude AI configuration and limits
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label htmlFor="claude-enabled">Enable Claude AI</Label>
-                    <p className="text-sm text-gray-600">
-                      Master switch for all Claude AI usage
-                    </p>
-                  </div>
-                  <Switch
-                    id="claude-enabled"
-                    checked={globalSettings.claudeUsage.enabled}
-                    onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'enabled', checked)}
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="token-limit">Daily Token Limit</Label>
-                    <Input
-                      id="token-limit"
-                      type="number"
-                      value={globalSettings.claudeUsage.dailyTokenLimit}
-                      onChange={(e) => updateGlobalSetting('claudeUsage', 'dailyTokenLimit', parseInt(e.target.value))}
-                      disabled={!globalSettings.claudeUsage.enabled}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="cost-threshold">Cost Alert Threshold ($)</Label>
-                    <Input
-                      id="cost-threshold"
-                      type="number"
-                      step="0.01"
-                      value={globalSettings.claudeUsage.costThreshold}
-                      onChange={(e) => updateGlobalSetting('claudeUsage', 'costThreshold', parseFloat(e.target.value))}
-                      disabled={!globalSettings.claudeUsage.enabled}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="cost-alerts"
-                    checked={globalSettings.claudeUsage.costAlerts}
-                    onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'costAlerts', checked)}
-                    disabled={!globalSettings.claudeUsage.enabled}
-                  />
-                  <Label htmlFor="cost-alerts">Enable cost alerts</Label>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  Scheduler Defaults
-                </CardTitle>
-                <CardDescription>
-                  Default settings for background schedulers
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="market-hours"
-                    checked={globalSettings.schedulerDefaults.marketHoursOnly}
-                    onCheckedChange={(checked) => updateGlobalSetting('schedulerDefaults', 'marketHoursOnly', checked)}
-                  />
-                  <Label htmlFor="market-hours">Run during market hours only</Label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="default-frequency">Default Frequency</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="default-frequency"
-                        type="number"
-                        min="1"
-                        value={globalSettings.schedulerDefaults.defaultFrequency}
-                        onChange={(e) => updateGlobalSetting('schedulerDefaults', 'defaultFrequency', parseInt(e.target.value))}
-                        className="w-20"
+            {isLoading ? (
+              <div className="text-center py-8">
+                <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin text-gray-400" />
+                <p className="text-gray-600">Loading global settings...</p>
+              </div>
+            ) : !globalSettings ? (
+              <div className="text-center py-8">
+                <Globe className="w-8 h-8 mx-auto mb-3 text-gray-400" />
+                <p className="text-gray-600">Global settings not loaded</p>
+              </div>
+            ) : (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Brain className="w-5 h-5" />
+                      Claude AI Settings
+                    </CardTitle>
+                    <CardDescription>
+                      Global Claude AI configuration and limits
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label htmlFor="claude-enabled">Enable Claude AI</Label>
+                        <p className="text-sm text-gray-600">
+                          Master switch for all Claude AI usage
+                        </p>
+                      </div>
+                      <Switch
+                        id="claude-enabled"
+                        checked={globalSettings?.claudeUsage?.enabled ?? true}
+                        onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'enabled', checked)}
                       />
-                      <Select
-                        value={globalSettings.schedulerDefaults.defaultFrequencyUnit}
-                        onValueChange={(value) => updateGlobalSetting('schedulerDefaults', 'defaultFrequencyUnit', value)}
-                      >
-                        <SelectTrigger className="w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="minutes">Minutes</SelectItem>
-                          <SelectItem value="hours">Hours</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="retry-attempts">Retry Attempts</Label>
-                    <Input
-                      id="retry-attempts"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={globalSettings.schedulerDefaults.retryAttempts}
-                      onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryAttempts', parseInt(e.target.value))}
-                    />
-                  </div>
+                    <Separator />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="retry-delay">Retry Delay (minutes)</Label>
-                    <Input
-                      id="retry-delay"
-                      type="number"
-                      min="1"
-                      max="60"
-                      value={globalSettings.schedulerDefaults.retryDelayMinutes}
-                      onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryDelayMinutes', parseInt(e.target.value))}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="token-limit">Daily Token Limit</Label>
+                        <Input
+                          id="token-limit"
+                          type="number"
+                          value={globalSettings?.claudeUsage?.dailyTokenLimit ?? 50000}
+                          onChange={(e) => updateGlobalSetting('claudeUsage', 'dailyTokenLimit', parseInt(e.target.value))}
+                          disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
+                        />
+                      </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  System Limits
-                </CardTitle>
-                <CardDescription>
-                  Configure core system parameters and limits
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div>
-                    <Label htmlFor="max-turns">Max Conversation Turns</Label>
-                    <Input
-                      id="max-turns"
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={globalSettings.maxTurns ?? 5}
-                      onChange={e => setGlobalSettings(prev => ({...prev, maxTurns: parseInt(e.target.value)}))}
-                    />
-                    <p className="text-xs text-gray-500">Maximum number of conversation turns allowed per session</p>
-                  </div>
-                  <div>
-                    <Label htmlFor="risk-tolerance">Risk Tolerance (1-10)</Label>
-                    <Input
-                      id="risk-tolerance"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={globalSettings.riskTolerance ?? 5}
-                      onChange={e => setGlobalSettings(prev => ({...prev, riskTolerance: parseInt(e.target.value)}))}
-                    />
-                    <p className="text-xs text-gray-500">Higher = more aggressive trading strategies</p>
-                  </div>
-                  <div>
-                    <Label htmlFor="daily-api-limit">Daily API Call Limit</Label>
-                    <Input
-                      id="daily-api-limit"
-                      type="number"
-                      min="1"
-                      value={globalSettings.dailyApiLimit ?? 25}
-                      onChange={e => setGlobalSettings(prev => ({...prev, dailyApiLimit: parseInt(e.target.value)}))}
-                    />
-                    <p className="text-xs text-gray-500">Maximum number of API calls allowed daily</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                      <div className="space-y-2">
+                        <Label htmlFor="cost-threshold">Cost Alert Threshold ($)</Label>
+                        <Input
+                          id="cost-threshold"
+                          type="number"
+                          step="0.01"
+                          value={globalSettings?.claudeUsage?.costThreshold ?? 10.00}
+                          onChange={(e) => updateGlobalSetting('claudeUsage', 'costThreshold', parseFloat(e.target.value))}
+                          disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="cost-alerts"
+                        checked={globalSettings?.claudeUsage?.costAlerts ?? true}
+                        onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'costAlerts', checked)}
+                        disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
+                      />
+                      <Label htmlFor="cost-alerts">Enable cost alerts</Label>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="w-5 h-5" />
+                      Scheduler Defaults
+                    </CardTitle>
+                    <CardDescription>
+                      Default settings for background schedulers
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="market-hours"
+                        checked={globalSettings?.schedulerDefaults?.marketHoursOnly ?? true}
+                        onCheckedChange={(checked) => updateGlobalSetting('schedulerDefaults', 'marketHoursOnly', checked)}
+                      />
+                      <Label htmlFor="market-hours">Run during market hours only</Label>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="default-frequency">Default Frequency</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="default-frequency"
+                            type="number"
+                            min="1"
+                            value={globalSettings?.schedulerDefaults?.defaultFrequency ?? 30}
+                            onChange={(e) => updateGlobalSetting('schedulerDefaults', 'defaultFrequency', parseInt(e.target.value))}
+                            className="w-20"
+                          />
+                          <Select
+                            value={globalSettings?.schedulerDefaults?.defaultFrequencyUnit ?? 'minutes'}
+                            onValueChange={(value) => updateGlobalSetting('schedulerDefaults', 'defaultFrequencyUnit', value)}
+                          >
+                            <SelectTrigger className="w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="minutes">Minutes</SelectItem>
+                              <SelectItem value="hours">Hours</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="retry-attempts">Retry Attempts</Label>
+                        <Input
+                          id="retry-attempts"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={globalSettings?.schedulerDefaults?.retryAttempts ?? 3}
+                          onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryAttempts', parseInt(e.target.value))}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="retry-delay">Retry Delay (minutes)</Label>
+                        <Input
+                          id="retry-delay"
+                          type="number"
+                          min="1"
+                          max="60"
+                          value={globalSettings?.schedulerDefaults?.retryDelayMinutes ?? 5}
+                          onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryDelayMinutes', parseInt(e.target.value))}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="w-5 h-5" />
+                      System Limits
+                    </CardTitle>
+                    <CardDescription>
+                      Configure core system parameters and limits
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <Label htmlFor="max-turns">Max Conversation Turns</Label>
+                        <Input
+                          id="max-turns"
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={globalSettings.maxTurns ?? 5}
+                          onChange={e => setGlobalSettings(prev => ({...prev, maxTurns: parseInt(e.target.value)}))}
+                        />
+                        <p className="text-xs text-gray-500">Maximum number of conversation turns allowed per session</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="risk-tolerance">Risk Tolerance (1-10)</Label>
+                        <Input
+                          id="risk-tolerance"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={globalSettings.riskTolerance ?? 5}
+                          onChange={e => setGlobalSettings(prev => ({...prev, riskTolerance: parseInt(e.target.value)}))}
+                        />
+                        <p className="text-xs text-gray-500">Higher = more aggressive trading strategies</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="daily-api-limit">Daily API Call Limit</Label>
+                        <Input
+                          id="daily-api-limit"
+                          type="number"
+                          min="1"
+                          value={globalSettings.dailyApiLimit ?? 25}
+                          onChange={e => setGlobalSettings(prev => ({...prev, dailyApiLimit: parseInt(e.target.value)}))}
+                        />
+                        <p className="text-xs text-gray-500">Maximum number of API calls allowed daily</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
         </TabsContent>
       </Tabs>
