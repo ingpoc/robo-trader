@@ -20,6 +20,14 @@ interface SchedulerJob {
   last_error?: string
 }
 
+interface ExecutionRecord {
+  task_name: string
+  task_id: string
+  execution_type: 'manual' | 'scheduled'
+  user: string
+  timestamp: string
+}
+
 interface SchedulerInfo {
   scheduler_id: string
   name: string
@@ -31,6 +39,8 @@ interface SchedulerInfo {
   active_jobs: number
   completed_jobs: number
   last_run_time: string
+  execution_history?: ExecutionRecord[]
+  total_executions?: number
   jobs: SchedulerJob[]
 }
 
@@ -270,10 +280,80 @@ const SchedulerCard: React.FC<{
             </div>
           )}
 
-          {(!scheduler.jobs || scheduler.jobs.length === 0) && (
+          {/* Execution History */}
+          {scheduler.execution_history && scheduler.execution_history.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-warmgray-700 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Recent Executions ({scheduler.execution_history.length})
+              </h4>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {scheduler.execution_history.slice(0, 10).map((execution, index) => (
+                  <div
+                    key={`${execution.task_name}-${execution.task_id}-${index}`}
+                    className="flex items-center justify-between p-3 bg-white dark:bg-warmgray-800 rounded-lg border border-warmgray-200 dark:border-warmgray-700"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        execution.status === 'completed' && "bg-emerald-500",
+                        execution.status === 'failed' && "bg-red-500",
+                        execution.status === 'running' && "bg-blue-500 animate-pulse"
+                      )} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate">
+                            {execution.task_name.replace(/_/g, ' ')}
+                          </span>
+                          <span className="text-xs text-warmgray-500">
+                            {execution.execution_type}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-warmgray-500 mt-1">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {formatTime(execution.timestamp)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Activity className="w-3 h-3" />
+                            {execution.symbols?.length || 0} symbols
+                          </span>
+                          {execution.user && (
+                            <span className="text-xs">
+                              by {execution.user}
+                            </span>
+                          )}
+                        </div>
+                        {execution.error_message && (
+                          <p className="text-xs text-red-600 mt-1 truncate">
+                            Error: {execution.error_message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      <span className={cn(
+                        "px-2 py-1 rounded text-xs font-medium",
+                        execution.status === 'completed' && "bg-emerald-100 text-emerald-800",
+                        execution.status === 'failed' && "bg-red-100 text-red-800",
+                        execution.status === 'running' && "bg-blue-100 text-blue-800"
+                      )}>
+                        {execution.status}
+                      </span>
+                      <span className="text-xs text-warmgray-500">
+                        {execution.execution_time_seconds ? `${execution.execution_time_seconds.toFixed(1)}s` : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(!scheduler.jobs || scheduler.jobs.length === 0) && (!scheduler.execution_history || scheduler.execution_history.length === 0) && (
             <div className="text-center py-8 text-warmgray-500">
               <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No scheduled jobs for this scheduler</p>
+              <p className="text-sm">No jobs or executions for this scheduler</p>
             </div>
           )}
         </CardContent>
@@ -294,14 +374,9 @@ const useRealSchedulerData = () => {
         setLoading(true)
         setError(null)
 
-        // Fetch real scheduler data from the monitoring API
-        const response = await fetch('/api/monitoring/scheduler')
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        const data = await response.json()
+        // Fetch real scheduler data from the monitoring API using the API client
+        const { monitoringAPI } = await import('@/api/endpoints')
+        const data = await monitoringAPI.getSchedulerStatus()
 
         // Use the new comprehensive scheduler data from the API
         const schedulers: SchedulerInfo[] = []
@@ -309,7 +384,7 @@ const useRealSchedulerData = () => {
         if (data.status === 'running' && data.schedulers) {
           // Transform API scheduler data to component format
           for (const scheduler of data.schedulers) {
-            schedulers.push({
+            const schedulerInfo = {
               scheduler_id: scheduler.scheduler_id,
               name: scheduler.name,
               status: scheduler.status,
@@ -320,17 +395,21 @@ const useRealSchedulerData = () => {
               active_jobs: scheduler.active_jobs,
               completed_jobs: scheduler.completed_jobs,
               last_run_time: scheduler.last_run_time,
+              execution_history: scheduler.execution_history,
+              total_executions: scheduler.total_executions,
               jobs: scheduler.jobs || []
-            })
+            }
+            schedulers.push(schedulerInfo)
           }
         }
 
         setSchedulerData(schedulers)
+        setLoading(false)
       } catch (err) {
         console.error('Failed to fetch scheduler data:', err)
         setError(err instanceof Error ? err.message : 'Failed to load scheduler data')
         setSchedulerData([])
-      } finally {
+        console.log('Setting loading to false due to error')
         setLoading(false)
       }
     }
@@ -352,8 +431,10 @@ export const SchedulerStatus: React.FC<SchedulerStatusProps> = ({ status, isLoad
   const [expandedSchedulers, setExpandedSchedulers] = useState<Set<string>>(new Set())
   const { schedulerData, loading: schedulerLoading, error: schedulerError } = useRealSchedulerData()
 
-  // Show loading state while initial data is being fetched
-  if (isLoading || schedulerLoading) {
+
+  // Show loading state while scheduler data is being fetched
+  // Note: We don't wait for isLoading (WebSocket) since we have our own API loading state
+  if (schedulerLoading) {
     return (
       <Card>
         <CardContent className="pt-6">

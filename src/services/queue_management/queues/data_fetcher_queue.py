@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 class DataFetcherQueue(BaseQueue):
     """Advanced data fetcher queue with intelligent data collection."""
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus):
+    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, execution_tracker=None):
         """Initialize data fetcher queue."""
         super().__init__(
             queue_name=QueueName.DATA_FETCHER,
             task_service=task_service,
-            event_bus=event_bus
+            event_bus=event_bus,
+            execution_tracker=execution_tracker
         )
 
         # Service integrations (stubs for now)

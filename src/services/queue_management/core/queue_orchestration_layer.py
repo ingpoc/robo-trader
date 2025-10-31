@@ -11,6 +11,10 @@ from ....models.scheduler import QueueName, SchedulerTask, TaskStatus, TaskType
 from ....services.scheduler.task_service import SchedulerTaskService
 from ....core.event_bus import EventBus, Event, EventType
 from ..config.service_config import QueueManagementConfig
+from ..queues.data_fetcher_queue import DataFetcherQueue
+from ..queues.portfolio_queue import PortfolioQueue
+from ..queues.ai_analysis_queue import AiAnalysisQueue
+from .base_queue import BaseQueue
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +86,38 @@ class QueueOrchestrationLayer:
         # Performance tracking
         self._execution_metrics: Dict[str, Dict[str, Any]] = {}
 
+        # Queue instances
+        self._queues: Dict[QueueName, BaseQueue] = {}
+        self._initialize_queues()
+
         # Setup default orchestration rules
         self._setup_default_rules()
+
+    def _initialize_queues(self) -> None:
+        """Initialize queue instances with execution tracker."""
+        # Get execution tracker from task service
+        execution_tracker = getattr(self.task_service, 'execution_tracker', None)
+
+        # Create queue instances with execution tracker for logging
+        self._queues[QueueName.PORTFOLIO_SYNC] = PortfolioQueue(
+            task_service=self.task_service,
+            event_bus=self.event_bus,
+            execution_tracker=execution_tracker
+        )
+
+        self._queues[QueueName.DATA_FETCHER] = DataFetcherQueue(
+            task_service=self.task_service,
+            event_bus=self.event_bus,
+            execution_tracker=execution_tracker
+        )
+
+        self._queues[QueueName.AI_ANALYSIS] = AiAnalysisQueue(
+            task_service=self.task_service,
+            event_bus=self.event_bus,
+            execution_tracker=execution_tracker
+        )
+
+        logger.info("Initialized queue instances with execution tracking")
 
     def _setup_default_rules(self) -> None:
         """Setup default orchestration rules for trading workflow."""
@@ -153,6 +187,15 @@ class QueueOrchestrationLayer:
             return
 
         self._running = True
+
+        # Start all queue instances
+        for queue_name, queue in self._queues.items():
+            await queue.start()
+            logger.info(f"Started queue: {queue_name.value}")
+
+        # Start periodic queue execution
+        asyncio.create_task(self._periodic_queue_execution())
+
         logger.info("Queue Orchestration Layer started")
 
     async def stop(self) -> None:
@@ -198,6 +241,27 @@ class QueueOrchestrationLayer:
 
         self._event_handlers_registered = True
         logger.info("Orchestration event handlers registered")
+
+    async def _periodic_queue_execution(self) -> None:
+        """Periodically execute all queues to process pending tasks."""
+        while self._running:
+            try:
+                # Execute all queues
+                for queue_name, queue in self._queues.items():
+                    try:
+                        await queue.execute()
+                    except Exception as e:
+                        logger.error(f"Error executing queue {queue_name.value}: {e}")
+
+                # Wait before next execution cycle
+                await asyncio.sleep(10)  # Execute every 10 seconds
+
+            except asyncio.CancelledError:
+                logger.info("Periodic queue execution cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in periodic queue execution: {e}")
+                await asyncio.sleep(30)  # Wait longer on error
 
     async def _handle_orchestration_event(self, event: Event) -> None:
         """Handle orchestration events and trigger rules."""

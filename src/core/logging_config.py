@@ -38,7 +38,8 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO"):
         retention="7 days",
         compression="zip",
         backtrace=True,
-        diagnose=True
+        diagnose=True,
+        enqueue=True  # Async logging to prevent blocking
     )
 
     # Add error-only file handler
@@ -51,11 +52,55 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO"):
         retention="30 days",
         compression="zip",
         backtrace=True,
-        diagnose=True
+        diagnose=True,
+        enqueue=True  # Async logging to prevent blocking
+    )
+
+    # Add critical error handler that catches everything
+    critical_log = logs_dir / "critical.log"
+    logger.add(
+        critical_log,
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | CRITICAL | {name}:{function}:{line} - {message}\n{exception}",
+        level="ERROR",
+        rotation="1 MB",
+        retention="90 days",
+        compression="zip",
+        backtrace=True,
+        diagnose=True,
+        enqueue=True
     )
 
     logger.info(f"Logging configured: level={log_level}, logs_dir={logs_dir}")
     logger.info("Logs are being written to both console and files")
+
+    # Setup global exception handler to catch unhandled errors
+    def handle_uncaught_exception(exc_type, exc_value, exc_traceback):
+        """Handle uncaught exceptions that would otherwise be lost."""
+        if issubclass(exc_type, KeyboardInterrupt):
+            # Don't log keyboard interrupts
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+
+        logger.critical(
+            f"Uncaught exception: {exc_value}",
+            exc_info=(exc_type, exc_value, exc_traceback)
+        )
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+    # Install global exception handler
+    sys.excepthook = handle_uncaught_exception
+
+    # Handle asyncio exceptions
+    import asyncio
+    def handle_asyncio_exception(loop, context):
+        """Handle asyncio exceptions."""
+        logger.error(f"Asyncio exception: {context}")
+        if 'exception' in context:
+            logger.error(f"Exception details: {context['exception']}", exc_info=context['exception'])
+
+    # Store original exception handler and replace it
+    original_handler = asyncio.get_event_loop_policy().get_event_loop().get_exception_handler()
+    asyncio.get_event_loop().set_exception_handler(handle_asyncio_exception)
 
 
 def ensure_logging_setup(logs_dir: Path = None, log_level: str = "INFO"):

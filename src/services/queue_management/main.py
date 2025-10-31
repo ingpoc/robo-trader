@@ -57,7 +57,13 @@ class QueueManagementService:
             # Initialize database components
             task_store = SchedulerTaskStore(self.config)
             await task_store.initialize()
-            self.task_service = SchedulerTaskService(task_store)
+
+            # Initialize execution tracker for logging all scheduler executions
+            from ...core.execution_tracker import ExecutionTracker
+            execution_tracker = ExecutionTracker(task_store.db_connection)
+            await execution_tracker.initialize()
+
+            self.task_service = SchedulerTaskService(task_store, execution_tracker)
 
             # Initialize core components
             self.orchestration_layer = QueueOrchestrationLayer(

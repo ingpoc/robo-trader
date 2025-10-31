@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any
-from datetime import datetime, time
+from typing import Optional, Dict, Any, List
+from datetime import datetime, time, timezone
 
 from ...core.event_bus import EventBus, Event, EventType
 from ...services.scheduler.task_service import SchedulerTaskService
@@ -38,12 +38,64 @@ class BackgroundScheduler:
         self._running = False
         self._event_listener_task: Optional[asyncio.Task] = None
 
+        # Execution tracker (injected from DI)
+        self.execution_tracker = None  # Will be set by DI container
+
         # Schedule configuration
         self.market_open_time = time(9, 30)  # 9:30 AM EST
         self.market_close_time = time(16, 0)  # 4:00 PM EST
 
         # Register event handlers
         self._setup_event_handlers()
+
+    async def record_execution(self, task_name: str, task_id: str = "", execution_type: str = "scheduled", user: str = "system", symbols: list = None, status: str = "completed", error_message: str = None, execution_time: float = None) -> None:
+        """Record any execution (manual or scheduled) for tracking."""
+        if self.execution_tracker:
+            await self.execution_tracker.record_execution(
+                task_name=task_name,
+                task_id=task_id,
+                execution_type=execution_type,
+                user=user,
+                symbols=symbols,
+                status=status,
+                error_message=error_message,
+                execution_time=execution_time
+            )
+        else:
+            # Fallback to old internal tracking if tracker not available
+            logger.warning("Execution tracker not available, using fallback tracking")
+            execution_record = {
+                "task_name": task_name,
+                "task_id": task_id,
+                "execution_type": execution_type,
+                "user": user,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "symbols": symbols or [],
+                "symbol_count": len(symbols) if symbols else 0,
+                "status": status,
+                "error_message": error_message,
+                "execution_time_seconds": execution_time
+            }
+
+            if not hasattr(self, 'execution_history'):
+                self.execution_history = []
+                self.max_execution_history = 10
+
+            self.execution_history.insert(0, execution_record)
+            if len(self.execution_history) > self.max_execution_history:
+                self.execution_history = self.execution_history[:self.max_execution_history]
+
+    async def record_manual_execution(self, task_name: str, task_id: str, user: str = "user") -> None:
+        """Record a manual execution for tracking."""
+        await self.record_execution(task_name, task_id, "manual", user)
+
+    async def get_execution_history(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get execution history from the tracker."""
+        if self.execution_tracker:
+            return await self.execution_tracker.get_execution_history(limit)
+        else:
+            # Fallback to internal history
+            return getattr(self, 'execution_history', [])[:limit]
 
     def _setup_event_handlers(self) -> None:
         """Setup event handlers for reactive scheduling."""
@@ -116,13 +168,42 @@ class BackgroundScheduler:
 
     async def _handle_portfolio_updated(self, event: Event) -> None:
         """Handle portfolio update events."""
-        logger.info("Portfolio updated, triggering data fetch sequence")
+        logger.info("Portfolio updated, triggering portfolio sync and data fetch sequence")
 
         # Get all symbols from portfolio
         symbols = await self._get_portfolio_symbols()
 
+        # Trigger portfolio synchronization
+        await self._trigger_portfolio_sync()
+
         # Trigger sequential data fetching
         await self._trigger_data_fetch_sequence(symbols)
+
+    async def _trigger_portfolio_sync(self) -> None:
+        """Trigger portfolio synchronization tasks."""
+        logger.info("Triggering portfolio synchronization")
+
+        # Create portfolio sync tasks
+        await self.task_service.create_task(
+            queue_name=QueueName.PORTFOLIO_SYNC,
+            task_type=TaskType.SYNC_ACCOUNT_BALANCES,
+            payload={"scheduled": True},
+            priority=10  # High priority
+        )
+
+        await self.task_service.create_task(
+            queue_name=QueueName.PORTFOLIO_SYNC,
+            task_type=TaskType.UPDATE_POSITIONS,
+            payload={"scheduled": True},
+            priority=9
+        )
+
+        await self.task_service.create_task(
+            queue_name=QueueName.PORTFOLIO_SYNC,
+            task_type=TaskType.VALIDATE_PORTFOLIO_RISKS,
+            payload={"scheduled": True},
+            priority=8
+        )
 
     async def _handle_stock_added(self, event: Event) -> None:
         """Handle stock addition events."""
@@ -248,6 +329,9 @@ class BackgroundScheduler:
         """Run morning market open routine."""
         logger.info("Running morning routine")
 
+        # Trigger portfolio synchronization first
+        await self._trigger_portfolio_sync()
+
         # Get all portfolio symbols
         symbols = await self._get_portfolio_symbols()
 
@@ -357,25 +441,47 @@ class BackgroundScheduler:
             except Exception as e:
                 logger.warning(f"Could not get task metrics: {e}")
 
+            # Calculate uptime
+            uptime_seconds = 0
+            if hasattr(self, '_start_time') and self._start_time:
+                uptime_seconds = int((datetime.now(timezone.utc) - self._start_time).total_seconds())
+
+            # Get execution history from tracker
+            execution_history = await self.get_execution_history(10)
+            total_executions = len(execution_history)
+
+            # Get last run time (most recent execution)
+            last_run_time = ""
+            if execution_history:
+                last_run_time = execution_history[0]["timestamp"]
+            else:
+                last_run_time = datetime.now(timezone.utc).isoformat()
+
             return {
                 "running": self._running,
                 "event_driven": True,
-                "last_run_time": datetime.now().isoformat(),
-                "uptime_seconds": 0,  # TODO: Track uptime when scheduler starts
+                "last_run_time": last_run_time,
+                "uptime_seconds": uptime_seconds,
                 "tasks_processed": tasks_processed,
                 "tasks_failed": tasks_failed,
+                "execution_history": execution_history,
+                "total_executions": total_executions,
                 "market_open_time": self.market_open_time.isoformat(),
                 "market_close_time": self.market_close_time.isoformat()
             }
         except Exception as e:
             logger.error(f"Error getting scheduler status: {e}")
+            # Fallback to internal history on error
+            fallback_history = getattr(self, 'execution_history', [])
             return {
                 "running": self._running,
                 "event_driven": True,
-                "last_run_time": datetime.now().isoformat(),
+                "last_run_time": datetime.now(timezone.utc).isoformat(),
                 "uptime_seconds": 0,
                 "tasks_processed": 0,
                 "tasks_failed": 0,
+                "execution_history": fallback_history,
+                "total_executions": len(fallback_history),
                 "error": str(e)
             }
 

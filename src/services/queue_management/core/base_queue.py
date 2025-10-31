@@ -19,12 +19,14 @@ class BaseQueue:
         self,
         queue_name: QueueName,
         task_service: SchedulerTaskService,
-        event_bus: EventBus
+        event_bus: EventBus,
+        execution_tracker=None
     ):
         """Initialize base queue."""
         self.queue_name = queue_name
         self.task_service = task_service
         self.event_bus = event_bus
+        self.execution_tracker = execution_tracker
 
         self._running = False
         self._task_handlers: Dict[TaskType, Callable] = {}
@@ -35,6 +37,28 @@ class BaseQueue:
         self.tasks_processed = 0
         self.tasks_failed = 0
         self.average_execution_time = 0.0
+
+    async def record_execution(
+        self,
+        task_name: str,
+        task_id: str,
+        symbols: List[str] = None,
+        status: str = "completed",
+        error_message: str = None,
+        execution_time: float = None
+    ) -> None:
+        """Record task execution in the execution tracker."""
+        if self.execution_tracker:
+            await self.execution_tracker.record_execution(
+                task_name=task_name,
+                task_id=task_id,
+                execution_type="scheduled",
+                user="queue_system",
+                symbols=symbols,
+                status=status,
+                error_message=error_message,
+                execution_time=execution_time
+            )
 
     async def start(self) -> None:
         """Start the queue."""
@@ -121,11 +145,34 @@ class BaseQueue:
             self.tasks_processed += 1
             self._update_execution_metrics(execution_time)
 
+            # Record successful execution
+            symbols = task.payload.get("symbols", [])
+            await self.record_execution(
+                task_name=task.task_type.value,
+                task_id=task.task_id,
+                symbols=symbols,
+                status="completed",
+                execution_time=execution_time
+            )
+
             logger.info(f"Task completed: {task.task_id} ({execution_time:.2f}s)")
 
         except asyncio.TimeoutError:
+            error_msg = f"Task execution timeout ({timeout}s)"
             logger.error(f"Task timeout: {task.task_id}")
-            await self.task_service.mark_failed(task.task_id, f"Task execution timeout ({timeout}s)")
+            await self.task_service.mark_failed(task.task_id, error_msg)
+
+            # Record failed execution due to timeout
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            symbols = task.payload.get("symbols", [])
+            await self.record_execution(
+                task_name=task.task_type.value,
+                task_id=task.task_id,
+                symbols=symbols,
+                status="failed",
+                error_message=error_msg,
+                execution_time=execution_time
+            )
 
         except Exception as e:
             error_msg = str(e)
@@ -138,6 +185,18 @@ class BaseQueue:
             else:
                 await self.task_service.mark_failed(task.task_id, error_msg)
                 self.tasks_failed += 1
+
+                # Record failed execution
+                execution_time = (datetime.utcnow() - start_time).total_seconds()
+                symbols = task.payload.get("symbols", [])
+                await self.record_execution(
+                    task_name=task.task_type.value,
+                    task_id=task.task_id,
+                    symbols=symbols,
+                    status="failed",
+                    error_message=error_msg,
+                    execution_time=execution_time
+                )
 
         finally:
             self._current_task = None

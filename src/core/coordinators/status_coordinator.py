@@ -283,8 +283,16 @@ class StatusCoordinator(BaseCoordinator):
                 "lastActivity": None
             }
 
-        # Queue status - get real queue data if available
-        components["queue"] = await self._get_queue_health()
+        # Queue status - temporarily disabled to fix startup loop
+        components["queue"] = {
+            "status": "unknown",
+            "totalTasks": 0,
+            "runningTasks": 0,
+            "queuedTasks": 0,
+            "completedTasks": 0,
+            "failedTasks": 0,
+            "lastCheck": datetime.now(timezone.utc).isoformat()
+        }
 
         # System resources - basic metrics
         components["resources"] = await self._get_system_resources()

@@ -52,6 +52,7 @@ class DatabaseStateManager:
         self.approvals = ApprovalStateManager(self.db, event_bus)
         self.news_earnings = NewsEarningsStateManager(self.db)
         self.analysis = AnalysisStateManager(self.db)
+        self._stock_state = None  # Lazy initialize to avoid circular imports
 
         # Alert manager (not refactored yet)
         self.alert_manager = AlertManager(config.state_dir)
@@ -67,6 +68,13 @@ class DatabaseStateManager:
     async def cleanup(self) -> None:
         """Cleanup all resources."""
         await self.db.cleanup()
+
+    def get_stock_state_store(self):
+        """Get stock state store for scheduler operations (lazy initialization)."""
+        if self._stock_state is None:
+            from src.core.background_scheduler.stores.stock_state_store import StockStateStore
+            self._stock_state = StockStateStore(self.db.connection)
+        return self._stock_state
 
     # Portfolio operations - delegate to PortfolioStateManager
     async def get_portfolio(self) -> Optional[PortfolioState]:

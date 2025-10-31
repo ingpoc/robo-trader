@@ -12,9 +12,10 @@ logger = logging.getLogger(__name__)
 class SchedulerTaskService:
     """Manage scheduler tasks and queues."""
 
-    def __init__(self, store: SchedulerTaskStore):
+    def __init__(self, store: SchedulerTaskStore, execution_tracker=None):
         """Initialize service."""
         self.store = store
+        self.execution_tracker = execution_tracker
         self._task_handlers: Dict[TaskType, Callable] = {}
 
     async def initialize(self) -> None:

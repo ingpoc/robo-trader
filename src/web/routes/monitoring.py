@@ -72,6 +72,8 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
                 "active_jobs": 0,  # Background scheduler is event-driven, doesn't have traditional jobs
                 "completed_jobs": background_status.get("tasks_processed", 0),
                 "last_run_time": background_status.get("last_run_time", ""),
+                "execution_history": background_status.get("execution_history", []),
+                "total_executions": background_status.get("total_executions", 0),
                 "jobs": []  # Background scheduler tasks are event-driven, not scheduled jobs
             })
 
@@ -97,6 +99,51 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
                     "last_run_time": stats.last_completed_at or "",
                     "jobs": []  # TODO: Could add recent tasks if needed
                 })
+
+        # Add execution history for each processor type from execution tracker
+        try:
+            execution_tracker = await container.get("execution_tracker")
+            if execution_tracker:
+                # Get recent executions
+                all_executions = await execution_tracker.get_execution_history(50)
+
+                # Group executions by task_name
+                executions_by_task = {}
+                for execution in all_executions:
+                    task_name = execution["task_name"]
+                    if task_name not in executions_by_task:
+                        executions_by_task[task_name] = []
+                    executions_by_task[task_name].append(execution)
+
+                # Add execution history to relevant schedulers
+                for scheduler in schedulers:
+                    scheduler_id = scheduler["scheduler_id"]
+
+                    # Map scheduler IDs to processor names
+                    processor_mapping = {
+                        "portfolio_sync_scheduler": "portfolio_sync",
+                        "data_fetcher_scheduler": ["earnings_processor", "news_processor", "fundamental_analyzer"],
+                        "ai_analysis_scheduler": "ai_analysis"
+                    }
+
+                    if scheduler_id in processor_mapping:
+                        processor_names = processor_mapping[scheduler_id]
+                        if isinstance(processor_names, str):
+                            processor_names = [processor_names]
+
+                        # Collect executions for this scheduler's processors
+                        scheduler_executions = []
+                        for processor_name in processor_names:
+                            if processor_name in executions_by_task:
+                                scheduler_executions.extend(executions_by_task[processor_name])
+
+                        # Sort by timestamp (most recent first) and limit to 10
+                        scheduler_executions.sort(key=lambda x: x["timestamp"], reverse=True)
+                        scheduler["execution_history"] = scheduler_executions[:10]
+                        scheduler["total_executions"] = len(scheduler_executions)
+
+        except Exception as e:
+            logger.warning(f"Failed to add execution history to schedulers: {e}")
 
         return {
             "status": "running",

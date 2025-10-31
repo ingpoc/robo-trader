@@ -93,9 +93,9 @@ class ConfigurationState:
             -- Configuration Backup History
             CREATE TABLE IF NOT EXISTS configuration_backups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                backup_type TEXT NOT NULL, -- 'full', 'background_tasks', 'ai_agents', 'global_settings'
-                backup_data TEXT NOT NULL,  -- JSON data
-                backup_file TEXT,  -- Path to backup file
+                backup_type TEXT NOT NULL,
+                backup_data TEXT NOT NULL,
+                backup_file TEXT,
                 created_at TEXT NOT NULL,
                 created_by TEXT DEFAULT 'system'
             );
@@ -276,78 +276,181 @@ class ConfigurationState:
                 default_prompts = [
                     {
                         "prompt_name": "earnings_processor",
-                        "prompt_content": """For each stock, provide DETAILED earnings and financial fundamentals data in JSON format.
+                        "prompt_content": """For each stock, provide comprehensive earnings and financial fundamentals data in the exact JSON format below.
 
-EARNINGS DATA (required):
-- Latest quarterly earnings report date and fiscal period
-- EPS (Actual vs Estimated): include exact numbers
-- Revenue (Actual vs Estimated): include exact numbers in millions/billions
-- EPS Surprise percentage
-- Management guidance and outlook
-- Next earnings date
-- Year-over-year earnings growth rate (%)
-- Quarter-over-quarter earnings growth rate (%)
-- Net profit margins (gross, operating, net %)
-- Revenue growth rate (YoY and QoQ %)
+Return ONLY valid JSON matching this structure:
 
-FUNDAMENTAL METRICS (required):
-- Net profit growth trend (last 3-4 quarters with percentages)
-- Current quarter profit growth vs prior quarter (%)
-- Debt-to-Equity ratio
-- Return on Equity (ROE %)
-- Profit margins: Gross %, Operating %, Net %
-- Return on Assets (ROA %)
-- Current ratio
+{
+  "stocks": {
+    "SYMBOL": {
+      "earnings": {
+        "latest_quarter": {
+          "report_date": "YYYY-MM-DD",
+          "fiscal_period": "Q1/Q2/Q3/Q4 YYYY",
+          "eps_actual": 0.00,
+          "eps_estimated": 0.00,
+          "eps_surprise_pct": 0.0,
+          "revenue_actual": 0.0,
+          "revenue_estimated": 0.0,
+          "revenue_surprise_pct": 0.0,
+          "net_income": 0.0,
+          "guidance": "string",
+          "outlook": "string"
+        },
+        "growth_rates": {
+          "eps_yoy_pct": 0.0,
+          "eps_qoq_pct": 0.0,
+          "revenue_yoy_pct": 0.0,
+          "revenue_qoq_pct": 0.0
+        },
+        "margins": {
+          "gross_margin_pct": 0.0,
+          "operating_margin_pct": 0.0,
+          "net_margin_pct": 0.0
+        },
+        "next_earnings_date": "YYYY-MM-DD"
+      },
+      "fundamentals": {
+        "valuation": {
+          "pe_ratio": 0.0,
+          "pb_ratio": 0.0,
+          "ps_ratio": 0.0,
+          "peg_ratio": 0.0,
+          "industry_avg_pe": 0.0
+        },
+        "profitability": {
+          "roe_pct": 0.0,
+          "roa_pct": 0.0,
+          "return_on_invested_capital_pct": 0.0
+        },
+        "financial_health": {
+          "debt_to_equity": 0.0,
+          "current_ratio": 0.0,
+          "quick_ratio": 0.0,
+          "total_debt_to_assets": 0.0
+        },
+        "growth": {
+          "earnings_growth_next_year_pct": 0.0,
+          "revenue_growth_next_year_pct": 0.0,
+          "book_value_growth_pct": 0.0
+        }
+      },
+      "analysis": {
+        "recommendation": "BUY/HOLD/SELL",
+        "confidence_score": 0.0,
+        "risk_level": "LOW/MEDIUM/HIGH",
+        "key_drivers": ["string"],
+        "risk_factors": ["string"]
+      }
+    }
+  }
+}
 
-VALUATION METRICS (required):
-- Price-to-Earnings (P/E) ratio
-- Price-to-Sales (P/S) ratio
-- Price-to-Book (P/B) ratio
-- PEG ratio (P/E relative to growth)
-- Industry average P/E for comparison
-- Whether stock is trading above/below industry average""",
-                        "description": "Prompt for fetching earnings and fundamental data from Perplexity API"
+Fill in actual data for ALL fields. Use 0.0 for unknown numerical values, "N/A" for unknown strings, empty arrays [] for unknown lists. Do not add extra fields or change the structure.""",
+                        "description": "Earnings processor for extracting financial fundamentals data"
                     },
                     {
                         "prompt_name": "news_processor",
-                        "prompt_content": """For each stock, provide recent market-moving news in JSON format.
+                        "prompt_content": """For each stock, provide recent market-moving news in the exact JSON format below.
 
-NEWS DATA (required for each item):
-- News title
-- News summary (2-3 sentences)
-- Full content/detailed analysis
-- News source and exact publication date
-- Type: (earnings_announcement, product_launch, regulatory, merger, guidance, dividend, stock_split, bankruptcy, restructuring, industry_trend, analyst_rating_change, contract_win, other)
-- Sentiment: (positive, negative, neutral)
-- Impact level: (high, medium, low) on stock price
-- Relevance to stock price: (direct_impact, indirect_impact, contextual)
-- Key metrics mentioned: list any financial metrics, growth rates, or numbers mentioned
-- Why this is important: brief explanation of significance
+Return ONLY valid JSON matching this structure:
 
-SPECIFIC FOCUS (priority order):
-1. Earnings announcements or reports from last 7 days with beat/miss info
-2. Analyst upgrades/downgrades/rating changes from last 7 days
-3. Major product launches, approvals, or announcements
-4. Regulatory approvals, challenges, or compliance issues
-5. M&A activity (acquisitions, mergers, divestitures)
-6. Dividend announcements or changes
-7. Major contract wins or losses
-8. Industry trends affecting multiple companies in sector
-9. Market analyst commentary and price targets""",
-                        "description": "Prompt for fetching market news from Perplexity API"
+{
+  "stocks": {
+    "SYMBOL": {
+      "news": [
+        {
+          "title": "string",
+          "summary": "string",
+          "content": "string",
+          "source": "string",
+          "publication_date": "YYYY-MM-DD",
+          "type": "earnings_announcement|product_launch|regulatory|merger|guidance|dividend|stock_split|bankruptcy|restructuring|industry_trend|analyst_rating_change|contract_win|other",
+          "sentiment": "positive|negative|neutral",
+          "impact_level": "high|medium|low",
+          "relevance": "direct_impact|indirect_impact|contextual",
+          "key_metrics": ["string"],
+          "importance": "string",
+          "url": "string"
+        }
+      ],
+      "summary": {
+        "total_news_items": 0,
+        "sentiment_distribution": {"positive": 0, "negative": 0, "neutral": 0},
+        "high_impact_items": 0,
+        "latest_update": "YYYY-MM-DD"
+      }
+    }
+  }
+}
+
+Focus on the most recent and impactful news from the last 7 days. Include at least 3-5 items per stock. Use empty arrays [] for no data, "N/A" for unknown strings.""",
+                        "description": "News processor for extracting market-moving news and sentiment analysis"
                     },
                     {
                         "prompt_name": "fundamental_analyzer",
-                        "prompt_content": """Analyze fundamental data and provide comprehensive financial analysis in JSON format.
+                        "prompt_content": """Analyze fundamental data and provide comprehensive financial analysis in the exact JSON format below.
 
-ANALYSIS REQUIREMENTS:
-- Company financial health assessment
-- Growth trajectory evaluation
-- Valuation analysis with industry comparisons
-- Risk assessment and investment recommendations
-- Key financial ratios and metrics interpretation
-- Future outlook based on current fundamentals""",
-                        "description": "Prompt for fundamental analysis processing"
+Return ONLY valid JSON matching this structure:
+
+{
+  "stocks": {
+    "SYMBOL": {
+      "fundamental_analysis": {
+        "financial_health": {
+          "score": 0.0,
+          "assessment": "EXCELLENT|GOOD|FAIR|POOR|CRITICAL",
+          "key_ratios": {
+            "current_ratio": 0.0,
+            "quick_ratio": 0.0,
+            "debt_to_equity": 0.0,
+            "interest_coverage": 0.0
+          },
+          "strengths": ["string"],
+          "concerns": ["string"]
+        },
+        "growth_analysis": {
+          "score": 0.0,
+          "assessment": "ACCELERATING|STABLE|DECLINING",
+          "revenue_growth": {
+            "yoy_pct": 0.0,
+            "three_year_cagr": 0.0,
+            "forecast_next_year": 0.0
+          },
+          "earnings_growth": {
+            "yoy_pct": 0.0,
+            "three_year_cagr": 0.0,
+            "forecast_next_year": 0.0
+          },
+          "drivers": ["string"],
+          "risks": ["string"]
+        },
+        "valuation": {
+          "score": 0.0,
+          "assessment": "UNDERVALUED|FAIR|OVERVALUED",
+          "multiples": {
+            "pe_ratio": 0.0,
+            "industry_avg_pe": 0.0,
+            "pb_ratio": 0.0,
+            "ps_ratio": 0.0
+          },
+          "relative_value": "CHEAP|FAIR|EXPENSIVE",
+          "fair_value_estimate": 0.0
+        },
+        "overall_assessment": {
+          "composite_score": 0.0,
+          "recommendation": "STRONG_BUY|BUY|HOLD|SELL|STRONG_SELL",
+          "confidence_level": "HIGH|MEDIUM|LOW",
+          "investment_thesis": "string",
+          "time_horizon": "SHORT|MEDIUM|LONG"
+        }
+      }
+    }
+  }
+}
+
+Provide quantitative analysis with specific metrics and clear assessments.""",
+                        "description": "Fundamental analyzer for quantitative financial analysis and investment recommendations"
                     },
                     {
                         "prompt_name": "deep_fundamental_processor",
@@ -1010,7 +1113,7 @@ DETAILED ANALYSIS:
 
             except Exception as e:
                 logger.error(f"Failed to update prompt config for {prompt_name}: {e}")
-                return False
+            return False
 
     async def _create_backup(self, backup_type: str, identifier: str = "all") -> None:
         """

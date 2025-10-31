@@ -7,6 +7,7 @@ Handles task execution, error management, and event emission.
 
 from typing import Dict, List, Any, Optional
 import uuid
+from datetime import datetime, timezone
 
 import aiosqlite
 from loguru import logger
@@ -27,6 +28,7 @@ class FundamentalExecutor:
         perplexity_client: PerplexityClient,
         db_connection: aiosqlite.Connection,
         event_bus: EventBus,
+        execution_tracker=None
     ):
         """Initialize executor with dependencies.
 
@@ -34,10 +36,12 @@ class FundamentalExecutor:
             perplexity_client: Perplexity API client
             db_connection: Database connection
             event_bus: Event bus for broadcasting completion
+            execution_tracker: Optional execution tracker for logging
         """
         self.perplexity_client = perplexity_client
         self.store = FundamentalStore(db_connection)
         self.event_bus = event_bus
+        self.execution_tracker = execution_tracker
 
     async def execute_earnings_fundamentals(
         self, symbols: List[str], metadata: Dict[str, Any]
@@ -51,6 +55,9 @@ class FundamentalExecutor:
         Returns:
             Status dict with success/failure information
         """
+        import time
+        start_time = time.time()
+
         try:
             logger.info(f"Executing earnings fundamentals for {symbols}")
 
@@ -60,35 +67,85 @@ class FundamentalExecutor:
 
             if not response:
                 logger.warning("Empty response from Perplexity API")
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="earnings_fundamentals",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Empty API response",
+                        execution_time=time.time() - start_time
+                    )
                 return {"status": "failed", "error": "Empty API response"}
 
             parsed_data = parse_comprehensive_earnings(response)
 
             if not parsed_data:
                 logger.warning("Failed to parse earnings data")
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="earnings_fundamentals",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Parse failure",
+                        execution_time=time.time() - start_time
+                    )
                 return {"status": "failed", "error": "Parse failure"}
 
             success = await self.store.store_earnings_fundamentals(symbols, parsed_data)
 
+            execution_time = time.time() - start_time
+
             if success:
-                await self.event_bus.publish(
-                    Event(
-                        id=str(uuid.uuid4()),
-                        type=EventType.MARKET_DATA_UPDATE,
-                        source="FundamentalExecutor",
-                        data={
-                            "task_type": "earnings_fundamentals",
-                            "symbols": symbols,
-                            "status": "completed",
-                        },
+                # Record successful execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="earnings_fundamentals",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="completed",
+                        execution_time=execution_time
                     )
-                )
                 return {"status": "success", "symbols": symbols}
             else:
+                # Record failed execution
+                if self.execution_tracker:
+                    await self.execution_tracker.record_execution(
+                        task_name="earnings_fundamentals",
+                        task_id=metadata.get("task_id", ""),
+                        execution_type=metadata.get("execution_type", "scheduled"),
+                        user=metadata.get("user", "system"),
+                        symbols=symbols,
+                        status="failed",
+                        error_message="Storage failure",
+                        execution_time=execution_time
+                    )
                 return {"status": "failed", "error": "Storage failure"}
 
         except Exception as e:
+            execution_time = time.time() - start_time
             logger.error(f"Error executing earnings fundamentals: {e}")
+            # Record failed execution
+            if self.execution_tracker:
+                await self.execution_tracker.record_execution(
+                    task_name="earnings_fundamentals",
+                    task_id=metadata.get("task_id", ""),
+                    execution_type=metadata.get("execution_type", "scheduled"),
+                    user=metadata.get("user", "system"),
+                    symbols=symbols,
+                    status="failed",
+                    error_message=str(e),
+                    execution_time=execution_time
+                )
             return {"status": "failed", "error": str(e)}
 
     async def execute_market_news_analysis(
@@ -126,7 +183,8 @@ class FundamentalExecutor:
                 await self.event_bus.publish(
                     Event(
                         id=str(uuid.uuid4()),
-                        type=EventType.MARKET_DATA_UPDATE,
+                        type=EventType.MARKET_NEWS,  # TODO: Define proper MARKET_DATA_UPDATE event type
+                        timestamp=datetime.now(timezone.utc).isoformat(),
                         source="FundamentalExecutor",
                         data={
                             "task_type": "market_news_analysis",
@@ -176,7 +234,8 @@ class FundamentalExecutor:
                 await self.event_bus.publish(
                     Event(
                         id=str(uuid.uuid4()),
-                        type=EventType.MARKET_DATA_UPDATE,
+                        type=EventType.MARKET_NEWS,  # TODO: Define proper MARKET_DATA_UPDATE event type
+                        timestamp=datetime.now(timezone.utc).isoformat(),
                         source="FundamentalExecutor",
                         data={
                             "task_type": "deep_fundamental_analysis",

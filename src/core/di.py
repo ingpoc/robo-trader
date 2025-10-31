@@ -152,6 +152,16 @@ class DependencyContainer:
             await task_service.initialize()
             return task_service
 
+        # Execution Tracker Service
+        async def create_execution_tracker():
+            from src.core.execution_tracker import ExecutionTracker
+            state_manager = await self.get("state_manager")
+            execution_tracker = ExecutionTracker(state_manager.db.connection)
+            await execution_tracker.initialize()
+            return execution_tracker
+
+        self._register_singleton("execution_tracker", create_execution_tracker)
+
         self._register_singleton("task_service", create_task_service)
 
         # Background Scheduler
@@ -163,6 +173,23 @@ class DependencyContainer:
             return BackgroundScheduler(task_service, event_bus, state_manager.db._connection_pool, self.config)
 
         self._register_singleton("background_scheduler", create_background_scheduler)
+
+        # Fundamental Executor
+        async def create_fundamental_executor():
+            from ...background_scheduler.clients.perplexity_client import PerplexityClient
+            from ...background_scheduler.executors.fundamental_executor import FundamentalExecutor
+            from ...background_scheduler.stores.fundamental_store import FundamentalStore
+
+            configuration_state = await self.get("configuration_state")
+            execution_tracker = await self.get("execution_tracker")
+            perplexity_client = PerplexityClient(configuration_state=configuration_state)
+            state_manager = await self.get("state_manager")
+            fundamental_store = FundamentalStore(state_manager.db.connection)
+            event_bus = await self.get("event_bus")
+
+            return FundamentalExecutor(perplexity_client, state_manager.db.connection, event_bus, execution_tracker)
+
+        self._register_singleton("fundamental_executor", create_fundamental_executor)
 
         # Conversation Manager
         async def create_conversation_manager():
@@ -450,9 +477,10 @@ class DependencyContainer:
         async def create_prompt_optimization_service():
             from ..background_scheduler.clients.perplexity_client import PerplexityClient
             event_bus = await self.get("event_bus")
+            configuration_state = await self.get("configuration_state")
 
             # Create Perplexity client
-            perplexity_client = PerplexityClient()
+            perplexity_client = PerplexityClient(configuration_state=configuration_state)
 
             # Create prompt optimization service
             prompt_service = PromptOptimizationService(

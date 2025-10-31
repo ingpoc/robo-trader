@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 class PortfolioQueue(BaseQueue):
     """Advanced portfolio queue with comprehensive synchronization capabilities."""
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus):
+    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, execution_tracker=None):
         """Initialize portfolio queue."""
         super().__init__(
             queue_name=QueueName.PORTFOLIO_SYNC,
             task_service=task_service,
-            event_bus=event_bus
+            event_bus=event_bus,
+            execution_tracker=execution_tracker
         )
 
         # Service integrations (stubs for now)

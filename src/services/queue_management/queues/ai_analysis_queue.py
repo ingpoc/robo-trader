@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 class AIAnalysisQueue(BaseQueue):
     """Advanced AI analysis queue with intelligent decision making."""
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus):
+    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, execution_tracker=None):
         """Initialize AI analysis queue."""
         super().__init__(
             queue_name=QueueName.AI_ANALYSIS,
             task_service=task_service,
-            event_bus=event_bus
+            event_bus=event_bus,
+            execution_tracker=execution_tracker
         )
 
         # Service integrations (stubs for now)

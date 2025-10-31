@@ -151,6 +151,17 @@ export const configurationAPI = {
     api.get<PromptConfig>(`/api/configuration/prompts/${promptName}`),
   updatePrompt: (promptName: string, prompt: Partial<PromptConfig>) =>
     api.put<{ status: string; prompt: string }>(`/api/configuration/prompts/${promptName}`, prompt),
+
+  // Manual scheduler execution
+  executeScheduler: (taskName: string) =>
+    api.post<{
+      status: string;
+      task_id: string;
+      task_name: string;
+      task_type: string;
+      message: string;
+      timestamp: string;
+    }>(`/api/configuration/schedulers/${taskName}/execute`),
 }
 
 export const analyticsAPI = {

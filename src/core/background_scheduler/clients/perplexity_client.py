@@ -27,7 +27,8 @@ class PerplexityClient:
         self,
         api_key_rotator: Optional[APIKeyRotator] = None,
         model: str = "sonar-pro",
-        timeout_seconds: int = 45
+        timeout_seconds: int = 45,
+        configuration_state: Optional[Any] = None
     ):
         """Initialize Perplexity client.
 
@@ -35,9 +36,11 @@ class PerplexityClient:
             api_key_rotator: APIKeyRotator instance for key management
             model: Perplexity model to use (default: sonar-pro)
             timeout_seconds: API request timeout
+            configuration_state: ConfigurationState for fetching prompts from database
         """
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.configuration_state = configuration_state
 
         if api_key_rotator is None:
             api_keys = self._load_api_keys_from_env()
@@ -45,39 +48,36 @@ class PerplexityClient:
 
         self.key_rotator = api_key_rotator
 
-    @staticmethod
-    def _load_api_keys_from_env() -> List[str]:
-        """Load Perplexity API keys from environment variables.
+        # Cache for prompts to avoid repeated database calls
+        self._prompt_cache: Dict[str, str] = {}
 
-        Returns:
-            List of non-empty API keys
-        """
-        keys = [
-            os.getenv('PERPLEXITY_API_KEY_1'),
-            os.getenv('PERPLEXITY_API_KEY_2'),
-            os.getenv('PERPLEXITY_API_KEY_3')
-        ]
-        return [key for key in keys if key]
+    async def _get_prompt_from_db(self, prompt_name: str) -> str:
+        """Get prompt content from database, with fallback to hardcoded prompts."""
+        # Check cache first
+        if prompt_name in self._prompt_cache:
+            return self._prompt_cache[prompt_name]
 
-    async def fetch_earnings_fundamentals(
-        self,
-        symbols: List[str],
-        max_tokens: int = 4000
-    ) -> Optional[str]:
-        """Fetch comprehensive earnings and financial fundamentals data.
+        # Try to fetch from database
+        if self.configuration_state:
+            try:
+                prompt_data = await self.configuration_state.get_prompt_config(prompt_name)
+                if prompt_data and prompt_data.get('content'):
+                    self._prompt_cache[prompt_name] = prompt_data['content']
+                    logger.info(f"Using database prompt for {prompt_name}")
+                    return prompt_data['content']
+            except Exception as e:
+                logger.warning(f"Failed to fetch prompt {prompt_name} from database: {e}")
 
-        Requests detailed metrics needed for fundamental analysis including
-        growth rates, profitability, valuation, and financial health.
+        # Fallback to hardcoded prompts
+        logger.info(f"Using hardcoded fallback prompt for {prompt_name}")
+        fallback_prompt = self._get_fallback_prompt(prompt_name)
+        self._prompt_cache[prompt_name] = fallback_prompt
+        return fallback_prompt
 
-        Args:
-            symbols: List of stock symbols
-            max_tokens: Maximum tokens in response
-
-        Returns:
-            JSON string with earnings and fundamentals data, or None on failure
-        """
-        symbols_str = ", ".join(symbols)
-        query = f"""For each stock ({symbols_str}), provide DETAILED earnings and financial fundamentals data in JSON format.
+    def _get_fallback_prompt(self, prompt_name: str) -> str:
+        """Get hardcoded fallback prompt for when database is unavailable."""
+        if prompt_name == "earnings_processor":
+            return """For each stock, provide DETAILED earnings and financial fundamentals data in JSON format.
 
 EARNINGS DATA (required):
 - Latest quarterly earnings report date and fiscal period
@@ -97,35 +97,100 @@ FUNDAMENTAL METRICS (required):
 - Debt-to-Equity ratio
 - Return on Equity (ROE %)
 - Profit margins: Gross %, Operating %, Net %
-- Return on Assets (ROA %)
-- Current ratio
+- Return on Assets (ROA %)"""
 
-VALUATION METRICS (required):
-- Price-to-Earnings (P/E) ratio
-- Price-to-Sales (P/S) ratio
-- Price-to-Book (P/B) ratio
-- PEG ratio (P/E relative to growth)
-- Industry average P/E for comparison
-- Whether stock is trading above/below industry average
+        elif prompt_name == "news_processor":
+            return """For each stock, provide recent market-moving news in JSON format.
 
-GROWTH POTENTIAL:
-- Earnings growth forecast for next 2-4 quarters (%)
-- Revenue growth forecast (%)
-- Industry growth rate comparison (%)
-- Company's competitive position in industry
+NEWS DATA (required for each item):
+- News title
+- News summary (2-3 sentences)
+- Full content/detailed analysis
+- News source and exact publication date
+- Type: (earnings_announcement, product_launch, regulatory, merger, guidance, dividend, stock_split, bankruptcy, restructuring, industry_trend, analyst_rating_change, contract_win, other)
+- Sentiment: (positive, negative, neutral)
+- Impact level: (high, medium, low) on stock price
+- Relevance to stock price: (direct_impact, indirect_impact, contextual)
+- Key metrics mentioned: list any financial metrics, growth rates, or numbers mentioned
+- Why this is important: brief explanation of significance
 
-FINANCIAL HEALTH:
-- Current ratio (liquidity)
-- Debt levels and trend (increasing/stable/decreasing)
-- Cash position relative to debt
-- Operating cash flow trend
+SPECIFIC FOCUS (priority order):
+1. Earnings announcements or reports from last 7 days with beat/miss info
+2. Analyst upgrades/downgrades/rating changes from last 7 days
+3. Major product launches, approvals, or announcements
+4. Regulatory approvals, challenges, or compliance issues
+5. M&A activity (acquisitions, mergers, divestitures)
+6. Dividend announcements or changes
+7. Major contract wins or losses
+8. Industry trends affecting multiple companies in sector
+9. Market analyst commentary and price targets"""
 
-RISK FACTORS:
-- Company-specific risks (competition, regulation, dependence)
-- Market risks and volatility (Beta)
-- Macroeconomic factors affecting the stock
+        elif prompt_name == "fundamental_analyzer":
+            return """Analyze fundamental data and provide comprehensive financial analysis in JSON format.
 
-Return ONLY valid JSON with numerical values where possible. Include all metrics even if marked "TBD" - data completeness is critical."""
+ANALYSIS REQUIREMENTS:
+- Company financial health assessment
+- Growth trajectory evaluation
+- Valuation analysis with industry comparisons
+- Risk assessment and investment recommendations
+- Key financial ratios and metrics interpretation
+- Future outlook based on current fundamentals"""
+
+        else:
+            return f"Provide analysis for {prompt_name}."
+
+    @staticmethod
+    def _load_api_keys_from_env() -> List[str]:
+        """Load Perplexity API keys from environment variables.
+
+        Supports both individual keys (PERPLEXITY_API_KEY_1, PERPLEXITY_API_KEY_2, etc.)
+        and comma-separated keys (PERPLEXITY_API_KEYS).
+
+        Returns:
+            List of non-empty API keys
+        """
+        # First check for comma-separated keys
+        keys_str = os.getenv('PERPLEXITY_API_KEYS', '')
+        logger.info(f"Checking PERPLEXITY_API_KEYS: {repr(keys_str)}")
+        if keys_str:
+            keys = [key.strip() for key in keys_str.split(',') if key.strip()]
+            logger.info(f"Parsed {len(keys)} keys from PERPLEXITY_API_KEYS")
+            if keys:
+                return keys
+
+        # Fall back to individual key variables
+        keys = [
+            os.getenv('PERPLEXITY_API_KEY_1'),
+            os.getenv('PERPLEXITY_API_KEY_2'),
+            os.getenv('PERPLEXITY_API_KEY_3')
+        ]
+        filtered_keys = [key for key in keys if key]
+        logger.info(f"Found {len(filtered_keys)} keys from individual variables")
+        return filtered_keys
+
+    async def fetch_earnings_fundamentals(
+        self,
+        symbols: List[str],
+        max_tokens: int = 4000
+    ) -> Optional[str]:
+        """Fetch comprehensive earnings and financial fundamentals data.
+
+        Requests detailed metrics needed for fundamental analysis including
+        growth rates, profitability, valuation, and financial health.
+
+        Args:
+            symbols: List of stock symbols
+            max_tokens: Maximum tokens in response
+
+        Returns:
+            JSON string with earnings and fundamentals data, or None on failure
+        """
+        # Get prompt from database
+        prompt_template = await self._get_prompt_from_db("earnings_processor")
+
+        # Format the query with symbols
+        symbols_str = ", ".join(symbols)
+        query = f"For each stock ({symbols_str}):\n\n{prompt_template}"
 
         return await self._call_perplexity_api(
             query=query,
@@ -152,33 +217,12 @@ Return ONLY valid JSON with numerical values where possible. Include all metrics
         Returns:
             JSON string with news items, or None on failure
         """
+        # Get prompt from database
+        prompt_template = await self._get_prompt_from_db("news_processor")
+
+        # Format the query with symbols
         symbols_str = ", ".join(symbols)
-        query = f"""For each stock ({symbols_str}), provide recent market-moving news in JSON format.
-
-NEWS DATA (required for each item):
-- News title
-- News summary (2-3 sentences)
-- Full content/detailed analysis
-- News source and exact publication date
-- Type: (earnings_announcement, product_launch, regulatory, merger, guidance, dividend, stock_split, bankruptcy, restructuring, industry_trend, analyst_rating_change, contract_win, other)
-- Sentiment: (positive, negative, neutral)
-- Impact level: (high, medium, low) on stock price
-- Relevance to stock price: (direct_impact, indirect_impact, contextual)
-- Key metrics mentioned: list any financial metrics, growth rates, or numbers mentioned
-- Why this is important: brief explanation of significance
-
-SPECIFIC FOCUS (priority order):
-1. Earnings announcements or reports from last 7 days with beat/miss info
-2. Analyst upgrades/downgrades/rating changes from last 7 days
-3. Major product launches, approvals, or announcements
-4. Regulatory approvals, challenges, or compliance issues
-5. M&A activity (acquisitions, mergers, divestitures)
-6. Dividend announcements or changes
-7. Major contract wins or losses
-8. Industry trends affecting multiple companies in sector
-9. Market analyst commentary and price targets
-
-Return ONLY valid JSON. Include at least 3-5 most recent news items for each stock."""
+        query = f"For each stock ({symbols_str}):\n\n{prompt_template}"
 
         return await self._call_perplexity_api(
             query=query,
@@ -457,38 +501,81 @@ Return as structured JSON."""
                 raise RuntimeError("No API keys available")
 
             try:
-                client = OpenAI(
-                    api_key=api_key,
-                    base_url="https://api.perplexity.ai",
-                    http_client=httpx.Client(timeout=self.timeout_seconds)
-                )
+                async with httpx.AsyncClient(timeout=self.timeout_seconds) as async_client:
+                    client = OpenAI(
+                        api_key=api_key,
+                        base_url="https://api.perplexity.ai",
+                        http_client=async_client
+                    )
 
-                response_format_config = {"type": "text"}
-                if response_format == "json":
-                    response_format_config = {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {"data": {"type": "object"}}
+                    response_format_config = {"type": "text"}
+                    if response_format == "json":
+                        response_format_config = {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "stocks": {
+                                            "type": "object",
+                                            "patternProperties": {
+                                                ".*": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "earnings": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "latest_quarter": {"type": "object"},
+                                                                "growth_rates": {"type": "object"},
+                                                                "margins": {"type": "object"},
+                                                                "next_earnings_date": {"type": "string"}
+                                                            },
+                                                            "required": ["latest_quarter", "growth_rates", "margins"]
+                                                        },
+                                                        "fundamentals": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "valuation": {"type": "object"},
+                                                                "profitability": {"type": "object"},
+                                                                "financial_health": {"type": "object"},
+                                                                "growth": {"type": "object"}
+                                                            }
+                                                        },
+                                                        "analysis": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "recommendation": {"type": "string"},
+                                                                "confidence_score": {"type": "number"},
+                                                                "risk_level": {"type": "string"},
+                                                                "key_drivers": {"type": "array"},
+                                                                "risk_factors": {"type": "array"}
+                                                            }
+                                                        }
+                                                    },
+                                                    "required": ["earnings", "fundamentals", "analysis"]
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "required": ["stocks"]
+                                }
                             }
                         }
-                    }
 
-                completion = client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": query}],
-                    max_tokens=max_tokens,
-                    response_format=response_format_config if response_format == "json" else None,
-                    web_search_options={
-                        "search_recency_filter": search_recency,
-                        "max_search_results": max_search_results
-                    }
-                )
+                    completion = client.chat.completions.create(
+                        model=self.model,
+                        messages=[{"role": "user", "content": query}],
+                        max_tokens=max_tokens,
+                        response_format=response_format_config if response_format == "json" else None,
+                        web_search_options={
+                            "search_recency_filter": search_recency,
+                            "max_search_results": max_search_results
+                        }
+                    )
 
-                response_content = completion.choices[0].message.content
-                logger.info(f"Perplexity API call succeeded (model: {self.model})")
-                return response_content
+                    response_content = completion.choices[0].message.content
+                    logger.info(f"Perplexity API call succeeded (model: {self.model})")
+                    return response_content
 
             except AuthenticationError as e:
                 logger.warning(f"Perplexity authentication error: {e}")

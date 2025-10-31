@@ -10,10 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Settings, Cpu, Brain, Globe, Clock, ToggleLeft, Zap, Save, RefreshCw, AlertTriangle, Eye } from 'lucide-react'
+import { Settings, Cpu, Brain, Globe, Clock, ToggleLeft, Zap, Save, RefreshCw, AlertTriangle, Eye, Play, Loader2 } from 'lucide-react'
 import { configurationAPI } from '@/api/endpoints'
 import { useToast } from '@/hooks/use-toast'
 import type { BackgroundTaskConfig, AIAgentConfig, GlobalConfig } from '@/types/api'
+
+// Simple logger for client-side
+const logger = {
+  info: (message: string) => console.log(`[Configuration] ${message}`),
+  error: (message: string) => console.error(`[Configuration] ${message}`)
+}
 
 
 const ConfigurationFeature: React.FC = () => {
@@ -33,6 +39,7 @@ const ConfigurationFeature: React.FC = () => {
   const [visiblePrompts, setVisiblePrompts] = useState<Set<string>>(new Set())
   const [prompts, setPrompts] = useState<Record<string, PromptConfig>>({})
   const [editingPrompts, setEditingPrompts] = useState<Set<string>>(new Set())
+  const [executingTasks, setExecutingTasks] = useState<Set<string>>(new Set())
 
   // Get prompt for scheduler type from database
   const getSchedulerPrompt = (taskName: string) => {
@@ -139,8 +146,38 @@ const ConfigurationFeature: React.FC = () => {
       [taskName]: {
         ...prev[taskName],
         [field]: value
-      }
+    }
     }))
+  }
+
+  // Execute scheduler manually
+  const executeScheduler = async (taskName: string) => {
+    try {
+      setExecutingTasks(prev => new Set(prev).add(taskName))
+
+      const response = await configurationAPI.executeScheduler(taskName)
+
+      toast({
+        title: "Scheduler Execution Started",
+        description: `Manual execution of ${taskName.replace('_', ' ')} has been initiated. Check System Health for status updates.`,
+      })
+
+      logger.info(`Manual execution started for ${taskName}: ${response.task_id}`)
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to execute scheduler'
+      toast({
+        title: "Execution Failed",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setExecutingTasks(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(taskName)
+        return newSet
+      })
+    }
   }
 
   // Load configuration data from API
@@ -273,11 +310,11 @@ const ConfigurationFeature: React.FC = () => {
     setGlobalSettings(prev => {
       if (!prev) return prev
       return {
-        ...prev,
-        [section]: {
-          ...prev[section],
-          [field]: value
-        }
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
       }
     })
   }
@@ -459,17 +496,38 @@ const ConfigurationFeature: React.FC = () => {
                     Runs {getFrequencyDisplay(config.frequency, config.frequencyUnit)} when enabled
                   </div>
 
-                  {/* View Prompt Button */}
-                  <div className="pt-4 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => togglePrompt(taskName)}
-                      className="w-full"
-                    >
-                      <Eye className="w-4 h-4 mr-2" />
-                      {visiblePrompts.has(taskName) ? 'Hide Prompt' : 'View/Edit Prompt'}
-                    </Button>
+                  {/* Action Buttons */}
+                  <div className="pt-4 border-t space-y-2">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => executeScheduler(taskName)}
+                        disabled={executingTasks.has(taskName) || !config.enabled}
+                        className="flex-1"
+                      >
+                        {executingTasks.has(taskName) ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Executing...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 mr-2" />
+                            Run Now
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => togglePrompt(taskName)}
+                        className="flex-1"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        {visiblePrompts.has(taskName) ? 'Hide Prompt' : 'View/Edit Prompt'}
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Prompt Display/Edit */}
@@ -727,194 +785,194 @@ const ConfigurationFeature: React.FC = () => {
               </div>
             ) : (
               <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Brain className="w-5 h-5" />
-                      Claude AI Settings
-                    </CardTitle>
-                    <CardDescription>
-                      Global Claude AI configuration and limits
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <Label htmlFor="claude-enabled">Enable Claude AI</Label>
-                        <p className="text-sm text-gray-600">
-                          Master switch for all Claude AI usage
-                        </p>
-                      </div>
-                      <Switch
-                        id="claude-enabled"
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="w-5 h-5" />
+                  Claude AI Settings
+                </CardTitle>
+                <CardDescription>
+                  Global Claude AI configuration and limits
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label htmlFor="claude-enabled">Enable Claude AI</Label>
+                    <p className="text-sm text-gray-600">
+                      Master switch for all Claude AI usage
+                    </p>
+                  </div>
+                  <Switch
+                    id="claude-enabled"
                         checked={globalSettings?.claudeUsage?.enabled ?? true}
-                        onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'enabled', checked)}
-                      />
-                    </div>
+                    onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'enabled', checked)}
+                  />
+                </div>
 
-                    <Separator />
+                <Separator />
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="token-limit">Daily Token Limit</Label>
-                        <Input
-                          id="token-limit"
-                          type="number"
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="token-limit">Daily Token Limit</Label>
+                    <Input
+                      id="token-limit"
+                      type="number"
                           value={globalSettings?.claudeUsage?.dailyTokenLimit ?? 50000}
-                          onChange={(e) => updateGlobalSetting('claudeUsage', 'dailyTokenLimit', parseInt(e.target.value))}
+                      onChange={(e) => updateGlobalSetting('claudeUsage', 'dailyTokenLimit', parseInt(e.target.value))}
                           disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
-                        />
-                      </div>
+                    />
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="cost-threshold">Cost Alert Threshold ($)</Label>
-                        <Input
-                          id="cost-threshold"
-                          type="number"
-                          step="0.01"
+                  <div className="space-y-2">
+                    <Label htmlFor="cost-threshold">Cost Alert Threshold ($)</Label>
+                    <Input
+                      id="cost-threshold"
+                      type="number"
+                      step="0.01"
                           value={globalSettings?.claudeUsage?.costThreshold ?? 10.00}
-                          onChange={(e) => updateGlobalSetting('claudeUsage', 'costThreshold', parseFloat(e.target.value))}
+                      onChange={(e) => updateGlobalSetting('claudeUsage', 'costThreshold', parseFloat(e.target.value))}
                           disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
-                        />
-                      </div>
-                    </div>
+                    />
+                  </div>
+                </div>
 
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="cost-alerts"
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="cost-alerts"
                         checked={globalSettings?.claudeUsage?.costAlerts ?? true}
-                        onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'costAlerts', checked)}
+                    onCheckedChange={(checked) => updateGlobalSetting('claudeUsage', 'costAlerts', checked)}
                         disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
-                      />
-                      <Label htmlFor="cost-alerts">Enable cost alerts</Label>
-                    </div>
-                  </CardContent>
-                </Card>
+                  />
+                  <Label htmlFor="cost-alerts">Enable cost alerts</Label>
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Settings className="w-5 h-5" />
-                      Scheduler Defaults
-                    </CardTitle>
-                    <CardDescription>
-                      Default settings for background schedulers
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="market-hours"
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  Scheduler Defaults
+                </CardTitle>
+                <CardDescription>
+                  Default settings for background schedulers
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="market-hours"
                         checked={globalSettings?.schedulerDefaults?.marketHoursOnly ?? true}
-                        onCheckedChange={(checked) => updateGlobalSetting('schedulerDefaults', 'marketHoursOnly', checked)}
-                      />
-                      <Label htmlFor="market-hours">Run during market hours only</Label>
-                    </div>
+                    onCheckedChange={(checked) => updateGlobalSetting('schedulerDefaults', 'marketHoursOnly', checked)}
+                  />
+                  <Label htmlFor="market-hours">Run during market hours only</Label>
+                </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="default-frequency">Default Frequency</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="default-frequency"
-                            type="number"
-                            min="1"
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="default-frequency">Default Frequency</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="default-frequency"
+                        type="number"
+                        min="1"
                             value={globalSettings?.schedulerDefaults?.defaultFrequency ?? 30}
-                            onChange={(e) => updateGlobalSetting('schedulerDefaults', 'defaultFrequency', parseInt(e.target.value))}
-                            className="w-20"
-                          />
-                          <Select
+                        onChange={(e) => updateGlobalSetting('schedulerDefaults', 'defaultFrequency', parseInt(e.target.value))}
+                        className="w-20"
+                      />
+                      <Select
                             value={globalSettings?.schedulerDefaults?.defaultFrequencyUnit ?? 'minutes'}
-                            onValueChange={(value) => updateGlobalSetting('schedulerDefaults', 'defaultFrequencyUnit', value)}
-                          >
-                            <SelectTrigger className="w-28">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="minutes">Minutes</SelectItem>
-                              <SelectItem value="hours">Hours</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
+                        onValueChange={(value) => updateGlobalSetting('schedulerDefaults', 'defaultFrequencyUnit', value)}
+                      >
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="minutes">Minutes</SelectItem>
+                          <SelectItem value="hours">Hours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="retry-attempts">Retry Attempts</Label>
-                        <Input
-                          id="retry-attempts"
-                          type="number"
-                          min="1"
-                          max="10"
+                  <div className="space-y-2">
+                    <Label htmlFor="retry-attempts">Retry Attempts</Label>
+                    <Input
+                      id="retry-attempts"
+                      type="number"
+                      min="1"
+                      max="10"
                           value={globalSettings?.schedulerDefaults?.retryAttempts ?? 3}
-                          onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryAttempts', parseInt(e.target.value))}
-                        />
-                      </div>
+                      onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryAttempts', parseInt(e.target.value))}
+                    />
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="retry-delay">Retry Delay (minutes)</Label>
-                        <Input
-                          id="retry-delay"
-                          type="number"
-                          min="1"
-                          max="60"
+                  <div className="space-y-2">
+                    <Label htmlFor="retry-delay">Retry Delay (minutes)</Label>
+                    <Input
+                      id="retry-delay"
+                      type="number"
+                      min="1"
+                      max="60"
                           value={globalSettings?.schedulerDefaults?.retryDelayMinutes ?? 5}
-                          onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryDelayMinutes', parseInt(e.target.value))}
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                      onChange={(e) => updateGlobalSetting('schedulerDefaults', 'retryDelayMinutes', parseInt(e.target.value))}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Settings className="w-5 h-5" />
-                      System Limits
-                    </CardTitle>
-                    <CardDescription>
-                      Configure core system parameters and limits
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div>
-                        <Label htmlFor="max-turns">Max Conversation Turns</Label>
-                        <Input
-                          id="max-turns"
-                          type="number"
-                          min="1"
-                          max="50"
-                          value={globalSettings.maxTurns ?? 5}
-                          onChange={e => setGlobalSettings(prev => ({...prev, maxTurns: parseInt(e.target.value)}))}
-                        />
-                        <p className="text-xs text-gray-500">Maximum number of conversation turns allowed per session</p>
-                      </div>
-                      <div>
-                        <Label htmlFor="risk-tolerance">Risk Tolerance (1-10)</Label>
-                        <Input
-                          id="risk-tolerance"
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={globalSettings.riskTolerance ?? 5}
-                          onChange={e => setGlobalSettings(prev => ({...prev, riskTolerance: parseInt(e.target.value)}))}
-                        />
-                        <p className="text-xs text-gray-500">Higher = more aggressive trading strategies</p>
-                      </div>
-                      <div>
-                        <Label htmlFor="daily-api-limit">Daily API Call Limit</Label>
-                        <Input
-                          id="daily-api-limit"
-                          type="number"
-                          min="1"
-                          value={globalSettings.dailyApiLimit ?? 25}
-                          onChange={e => setGlobalSettings(prev => ({...prev, dailyApiLimit: parseInt(e.target.value)}))}
-                        />
-                        <p className="text-xs text-gray-500">Maximum number of API calls allowed daily</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  System Limits
+                </CardTitle>
+                <CardDescription>
+                  Configure core system parameters and limits
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <Label htmlFor="max-turns">Max Conversation Turns</Label>
+                    <Input
+                      id="max-turns"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={globalSettings.maxTurns ?? 5}
+                      onChange={e => setGlobalSettings(prev => ({...prev, maxTurns: parseInt(e.target.value)}))}
+                    />
+                    <p className="text-xs text-gray-500">Maximum number of conversation turns allowed per session</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="risk-tolerance">Risk Tolerance (1-10)</Label>
+                    <Input
+                      id="risk-tolerance"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={globalSettings.riskTolerance ?? 5}
+                      onChange={e => setGlobalSettings(prev => ({...prev, riskTolerance: parseInt(e.target.value)}))}
+                    />
+                    <p className="text-xs text-gray-500">Higher = more aggressive trading strategies</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="daily-api-limit">Daily API Call Limit</Label>
+                    <Input
+                      id="daily-api-limit"
+                      type="number"
+                      min="1"
+                      value={globalSettings.dailyApiLimit ?? 25}
+                      onChange={e => setGlobalSettings(prev => ({...prev, dailyApiLimit: parseInt(e.target.value)}))}
+                    />
+                    <p className="text-xs text-gray-500">Maximum number of API calls allowed daily</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
               </>
             )}
           </div>
