@@ -23,6 +23,7 @@ interface SystemComponents {
   claudeAgent: ComponentStatus
   queue: ComponentStatus
   resources: ComponentStatus
+  ai_analysis: ComponentStatus
 }
 
 interface SystemStatus {
@@ -265,6 +266,34 @@ export const useSystemStatusStore = create<SystemStatusState>()(
                 timestamp: message.timestamp,
                 data: message.data
               })
+              break
+
+            case 'portfolio_analysis_update':
+              // Handle portfolio analysis status updates
+              if (process.env.NODE_ENV === 'development') {
+                console.log('Portfolio analysis update received:', message)
+              }
+
+              // Update system status to reflect AI analysis activity
+              const currentSystemStatus = store.systemStatus
+              if (currentSystemStatus) {
+                store.setSystemStatus({
+                  ...currentSystemStatus,
+                  components: {
+                    ...currentSystemStatus.components,
+                    ai_analysis: {
+                      status: message.status || 'idle',
+                      lastCheck: new Date().toISOString(),
+                      analysis_id: message.analysis_id,
+                      symbols_count: message.symbols_count,
+                      recommendations_count: message.recommendations_count,
+                      prompt_updates_count: message.prompt_updates_count,
+                      error: message.error
+                    }
+                  },
+                  timestamp: new Date().toISOString()
+                })
+              }
               break
 
             case 'connection_established':

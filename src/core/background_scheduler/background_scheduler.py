@@ -28,7 +28,7 @@ class BackgroundScheduler:
     and trigger logic to specialized modules.
     """
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None, execution_tracker=None):
+    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None, execution_tracker=None, sequential_queue_manager=None):
         """Initialize event-driven background scheduler.
 
         Args:
@@ -37,6 +37,7 @@ class BackgroundScheduler:
             db_connection: Database connection for stores
             config: Configuration object
             execution_tracker: ExecutionTracker for recording executions
+            sequential_queue_manager: SequentialQueueManager for task execution
         """
         self.task_service = task_service
         self.event_bus = event_bus
@@ -54,9 +55,13 @@ class BackgroundScheduler:
         # Execution state
         self._running = False
         self._event_listener_task: Optional[asyncio.Task] = None
+        self._queue_executor_task: Optional[asyncio.Task] = None
 
         # Execution tracker (injected from DI)
         self.execution_tracker = execution_tracker
+
+        # Sequential Queue Manager for task execution
+        self.sequential_queue_manager = sequential_queue_manager
 
         # Schedule configuration
         self.market_open_time = time(9, 30)  # 9:30 AM EST
@@ -141,25 +146,57 @@ class BackgroundScheduler:
 
     async def start(self) -> None:
         """Start the event-driven background scheduler."""
+        print(f"*** DEBUG: BackgroundScheduler.start() called - _running={self._running} ***")
+        logger.info(f"BackgroundScheduler.start() called - _running={self._running}")
+
         if self._running:
+            print("*** DEBUG: BackgroundScheduler already running - returning early ***")
+            logger.info("BackgroundScheduler already running - returning early")
             return
 
+        print("*** DEBUG: Starting event-driven background scheduler... ***")
         logger.info("Starting event-driven background scheduler...")
         self._running = True
+        self._start_time = datetime.now(timezone.utc)
+        print(f"*** DEBUG: BackgroundScheduler _running set to True - start_time: {self._start_time} ***")
+        logger.info(f"BackgroundScheduler _running set to True - start_time: {self._start_time}")
 
         # Initialize stores
+        print("*** DEBUG: Initializing stores ***")
         await self.stock_state_store.initialize()
+        print("*** DEBUG: Stock state store initialized ***")
         await self.strategy_log_store.initialize()
+        print("*** DEBUG: Strategy log store initialized ***")
 
         # Initialize monitors
+        print("*** DEBUG: Initializing monitors ***")
         await self.monthly_reset_monitor.initialize()
+        print("*** DEBUG: Monthly reset monitor initialized ***")
 
         # Start event listener
+        print("*** DEBUG: Starting event listener ***")
         self._event_listener_task = asyncio.create_task(self._event_listener())
+        print("*** DEBUG: Event listener task created ***")
+
+        # Start SequentialQueueManager for task execution
+        print(f"*** DEBUG: SequentialQueueManager check - available: {self.sequential_queue_manager is not None} ***")
+        logger.info(f"SequentialQueueManager check - available: {self.sequential_queue_manager is not None}")
+        if self.sequential_queue_manager:
+            print("*** DEBUG: Starting SequentialQueueManager for task execution... ***")
+            logger.info("Starting SequentialQueueManager for task execution...")
+            self._queue_executor_task = asyncio.create_task(self._run_queue_executor())
+            print("*** DEBUG: SequentialQueueManager task created successfully ***")
+            logger.info("SequentialQueueManager task created successfully")
+        else:
+            print("*** DEBUG: SequentialQueueManager not available - tasks will not be processed ***")
+            logger.warning("SequentialQueueManager not available - tasks will not be processed")
 
         # Schedule daily routines
+        print("*** DEBUG: Scheduling daily routines ***")
         await self._schedule_daily_routines()
+        print("*** DEBUG: Daily routines scheduled ***")
 
+        print("*** DEBUG: Event-driven background scheduler started ***")
         logger.info("Event-driven background scheduler started")
 
     async def stop(self) -> None:
@@ -178,6 +215,14 @@ class BackgroundScheduler:
             except asyncio.CancelledError:
                 pass
 
+        # Cancel queue executor
+        if self._queue_executor_task and not self._queue_executor_task.done():
+            self._queue_executor_task.cancel()
+            try:
+                await self._queue_executor_task
+            except asyncio.CancelledError:
+                pass
+
         logger.info("Event-driven background scheduler stopped")
 
     async def _event_listener(self) -> None:
@@ -191,6 +236,30 @@ class BackgroundScheduler:
             except Exception as e:
                 logger.error(f"Error in event listener: {e}")
                 await asyncio.sleep(5)
+
+    async def _run_queue_executor(self) -> None:
+        """Run SequentialQueueManager for continuous task processing."""
+        logger.info("Queue executor started - processing queued tasks")
+
+        try:
+            while self._running:
+                try:
+                    # Execute queued tasks through SequentialQueueManager
+                    await self.sequential_queue_manager.execute_queues()
+
+                    # Wait 30 seconds before next cycle
+                    await asyncio.sleep(30)
+
+                except Exception as e:
+                    logger.error(f"Error in queue executor cycle: {e}")
+                    await asyncio.sleep(60)  # Wait longer on error
+
+        except asyncio.CancelledError:
+            logger.info("Queue executor cancelled")
+        except Exception as e:
+            logger.error(f"Queue executor failed: {e}")
+        finally:
+            logger.info("Queue executor stopped")
 
     def _create_async_handler(self, handler, event: Event, *args):
         """Create async handler wrapper for event subscription.

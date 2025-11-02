@@ -66,6 +66,14 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("state_manager", create_state_manager)
 
+    # Database Connection - singleton (database connection wrapper for legacy code)
+    async def create_database():
+        from .database_wrapper import DatabaseWrapper
+        state_manager = await container.get("state_manager")
+        return DatabaseWrapper(state_manager.db)
+
+    container._register_singleton("database", create_database)
+
     # Configuration State - singleton (Database-backed configuration)
     async def create_configuration_state():
         from .database_state.configuration_state import ConfigurationState
@@ -88,12 +96,70 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     async def create_task_service():
         from ..stores.scheduler_task_store import SchedulerTaskStore
         from ..services.scheduler.task_service import SchedulerTaskService
+        from ..models.scheduler import TaskType
 
         state_manager = await container.get("state_manager")
         task_store = SchedulerTaskStore(state_manager.db.connection)
 
         task_service = SchedulerTaskService(task_store)
         await task_service.initialize()
+
+        # Register RECOMMENDATION_GENERATION handler
+        async def handle_recommendation_generation(task):
+            """Handle portfolio intelligence analysis tasks with batch processing."""
+            analyzer = await container.get("portfolio_intelligence_analyzer")
+
+            # Get symbols to analyze (if None, get all portfolio stocks)
+            symbols_to_analyze = task.payload.get("symbols")
+
+            # If no specific symbols provided, get all stocks and create batch tasks
+            if symbols_to_analyze is None:
+                # Get all portfolio stocks
+                portfolio_state = await container.get("portfolio_state")
+                all_symbols = list(portfolio_state.portfolio.holdings.keys())
+
+                # Create batch tasks for 3 stocks at a time to prevent turn limit exhaustion
+                batch_size = 3
+                task_service = await container.get("task_service")
+                from ..models.scheduler import QueueName, TaskType
+
+                tasks_created = 0
+                for i in range(0, len(all_symbols), batch_size):
+                    batch_symbols = all_symbols[i:i + batch_size]
+                    await task_service.create_task(
+                        queue_name=QueueName.AI_ANALYSIS,
+                        task_type=TaskType.RECOMMENDATION_GENERATION,
+                        payload={
+                            "agent_name": task.payload["agent_name"],
+                            "symbols": batch_symbols,
+                            "batch_id": i // batch_size,
+                            "total_batches": (len(all_symbols) + batch_size - 1) // batch_size
+                        },
+                        priority=7
+                    )
+                    tasks_created += 1
+
+                logger.info(f"Created {tasks_created} batch tasks for {len(all_symbols)} symbols")
+                return {
+                    "status": "batched",
+                    "tasks_created": tasks_created,
+                    "total_symbols": len(all_symbols),
+                    "batch_size": batch_size
+                }
+
+            # Process specific symbols (should be 2-3 max per task)
+            return await analyzer.analyze_portfolio_intelligence(
+                agent_name=task.payload["agent_name"],
+                symbols=symbols_to_analyze,
+                batch_info={
+                    "batch_id": task.payload.get("batch_id"),
+                    "total_batches": task.payload.get("total_batches")
+                }
+            )
+
+        task_service.register_handler(TaskType.RECOMMENDATION_GENERATION, handle_recommendation_generation)
+        logger.info("Registered RECOMMENDATION_GENERATION task handler")
+
         return task_service
 
     # Execution Tracker Service
@@ -114,15 +180,25 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         event_bus = await container.get("event_bus")
         state_manager = await container.get("state_manager")
         execution_tracker = await container.get("execution_tracker")
+        sequential_queue_manager = await container.get("sequential_queue_manager")
         return BackgroundScheduler(
             task_service,
             event_bus,
             state_manager.db._connection_pool,
             container.config,
-            execution_tracker
+            execution_tracker,
+            sequential_queue_manager
         )
 
     container._register_singleton("background_scheduler", create_background_scheduler)
+
+    # Sequential Queue Manager - singleton for task execution
+    async def create_sequential_queue_manager():
+        from ..services.scheduler.queue_manager import SequentialQueueManager
+        task_service = await container.get("task_service")
+        return SequentialQueueManager(task_service)
+
+    container._register_singleton("sequential_queue_manager", create_sequential_queue_manager)
 
     # Fundamental Executor
     async def create_fundamental_executor():
@@ -161,3 +237,11 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         return LearningEngine(container.config, state_manager)
 
     container._register_singleton("learning_engine", create_learning_engine)
+
+    # Prompt Optimization Service
+    async def create_prompt_optimization_service():
+        from ..services.prompt_optimization_service import PromptOptimizationService
+        database = await container.get("database")
+        return PromptOptimizationService(database, container)
+
+    container._register_singleton("prompt_optimization_service", create_prompt_optimization_service)

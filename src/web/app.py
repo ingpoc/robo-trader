@@ -115,6 +115,7 @@ from .routes.configuration import router as configuration_router
 from .routes.logs import router as logs_router
 from .routes.prompt_optimization import router as prompt_optimization_router
 from .routes.symbols import router as symbols_router
+from .routes.database_backups import router as database_backups_router
 
 # ============================================================================
 # Global Variables
@@ -339,8 +340,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:3001",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
         "http://127.0.0.1:5173",
     ],
     allow_credentials=True,
@@ -451,6 +454,7 @@ app.include_router(config_router)
 app.include_router(configuration_router)
 app.include_router(logs_router)
 app.include_router(prompt_optimization_router)
+app.include_router(database_backups_router)
 
 # ============================================================================
 # Global State

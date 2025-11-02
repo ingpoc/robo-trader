@@ -27,20 +27,43 @@ async def query_with_timeout(
     client: ClaudeSDKClient,
     prompt: str,
     timeout: float = 60.0
-) -> None:
+) -> str:
     """
-    Execute query with timeout protection.
-    
+    Execute query with timeout protection and return response.
+
     Args:
         client: ClaudeSDKClient instance
         prompt: Query prompt
         timeout: Timeout in seconds (default: 60.0)
-    
+
+    Returns:
+        Claude's response as string
+
     Raises:
         TradingError: If query times out or fails
     """
     try:
+        # Send the query
         await asyncio.wait_for(client.query(prompt), timeout=timeout)
+
+        # Receive the response using proper Claude Agent SDK pattern
+        # Based on SDK documentation: iterate through AssistantMessage and extract TextBlock content
+        response_parts = []
+        async for message in client.receive_response():
+            # Check if this is an AssistantMessage with content
+            if hasattr(message, 'content'):
+                for content_block in message.content:
+                    # Extract text from TextBlock objects
+                    if hasattr(content_block, 'text'):
+                        response_parts.append(content_block.text)
+            # Handle direct message objects that might have text
+            elif hasattr(message, 'text'):
+                response_parts.append(message.text)
+            else:
+                # Fallback: capture any response content as string for debugging
+                response_parts.append(str(message))
+
+        return "\n".join(response_parts) if response_parts else "No response content received"
     except asyncio.TimeoutError:
         raise TradingError(
             f"Query timed out after {timeout}s",

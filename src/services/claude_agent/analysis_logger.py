@@ -318,8 +318,7 @@ class AnalysisLogger:
     ) -> List[TradeDecisionLog]:
         """Get historical trade decisions."""
 
-        # This would query the database for stored decisions
-        # For now, return active decisions as example
+        # Return from in-memory active decisions
         decisions = list(self.active_decisions.values())
 
         if session_id:
@@ -327,7 +326,7 @@ class AnalysisLogger:
         if symbol:
             decisions = [d for d in decisions if d.symbol == symbol]
 
-        return decisions[-limit:]  # Return most recent
+        return decisions[-limit:] if decisions else []  # Return most recent
 
     async def get_strategy_evaluations(
         self,
@@ -402,13 +401,50 @@ class AnalysisLogger:
 
     async def _save_trade_decision(self, decision: TradeDecisionLog) -> None:
         """Save trade decision to database."""
+        try:
+            # Save to analysis_history table for AI Transparency
+            decision_data = decision.to_dict()
 
-        # This would extend the ClaudeStrategyStore to include decision logging
-        # For now, we'll log the decision data
-        decision_data = decision.to_dict()
+            # Insert into analysis_history table
+            await self.strategy_store.db.connection.execute(
+                """INSERT INTO analysis_history
+                   (symbol, timestamp, analysis, created_at)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    decision.symbol,
+                    decision.created_at,
+                    json.dumps({
+                        "decision_id": decision.decision_id,
+                        "session_id": decision.session_id,
+                        "action": decision.action,
+                        "quantity": decision.quantity,
+                        "entry_price": decision.entry_price,
+                        "strategy_rationale": decision.strategy_rationale,
+                        "confidence_score": decision.confidence_score,
+                        "technical_signals": decision.technical_signals,
+                        "fundamental_factors": decision.fundamental_factors,
+                        "risk_assessment": decision.risk_assessment,
+                        "market_context": decision.market_context,
+                        "analysis_steps": [step.to_dict() for step in decision.analysis_steps],
+                        "executed": decision.executed,
+                        "execution_result": decision.execution_result
+                    }),
+                    datetime.now(timezone.utc).isoformat()
+                )
+            )
 
-        logger.info(f"Trade decision saved: {decision.decision_id}")
-        logger.debug(f"Decision data: {json.dumps(decision_data, indent=2)}")
+            # Commit the transaction to save to database
+            await self.strategy_store.db.connection.commit()
+
+            logger.info(f"Trade decision saved to database: {decision.decision_id} for {decision.symbol}")
+            logger.debug(f"Decision data saved with {len(decision.analysis_steps)} analysis steps")
+
+        except Exception as e:
+            logger.error(f"Failed to save trade decision to database: {e}")
+            # Still log the decision data as fallback
+            decision_data = decision.to_dict()
+            logger.info(f"Trade decision saved (fallback): {decision.decision_id}")
+            logger.debug(f"Decision data: {json.dumps(decision_data, indent=2)}")
 
     async def _save_strategy_evaluation(self, evaluation: StrategyEvaluation) -> None:
         """Save strategy evaluation to database."""

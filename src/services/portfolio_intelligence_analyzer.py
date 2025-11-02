@@ -7,6 +7,7 @@ All activity is logged to AI Transparency.
 """
 
 import logging
+import time
 from datetime import datetime, timezone, timedelta, date
 from typing import Dict, List, Any, Optional
 import json
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 class PortfolioIntelligenceAnalyzer:
     """
     Analyzes portfolio stocks using Claude AI with intelligent prompt optimization.
-    
+
     Responsibilities:
     - Identifies stocks with recent updates (earnings, news, fundamentals)
     - Analyzes available data quality and freshness
@@ -35,25 +36,26 @@ class PortfolioIntelligenceAnalyzer:
     - Provides investment recommendations
     - Logs all activity to AI Transparency
     """
-    
+
+    # Class-level tracking for active analysis tasks (accessed by StatusCoordinator)
+    _active_analysis_tasks: Dict[str, Dict[str, Any]] = {}
+    _active_analysis_count = 0
+
     def __init__(
         self,
         state_manager: DatabaseStateManager,
         config_state: ConfigurationState,
         analysis_logger: AnalysisLogger,
-        broadcast_coordinator: Optional[Any] = None
+        broadcast_coordinator: Optional[Any] = None,
+        status_coordinator: Optional[Any] = None
     ):
         self.state_manager = state_manager
         self.config_state = config_state
         self.analysis_logger = analysis_logger
         self.broadcast_coordinator = broadcast_coordinator
+        self.status_coordinator = status_coordinator
         self.client_manager = None
         self._active_analyses: Dict[str, Any] = {}  # Track active analyses for logging
-        
-        # Class-level tracking for active analyses (shared across instances)
-        if not hasattr(PortfolioIntelligenceAnalyzer, '_active_analysis_tasks'):
-            PortfolioIntelligenceAnalyzer._active_analysis_tasks: Dict[str, Dict[str, Any]] = {}
-            PortfolioIntelligenceAnalyzer._active_analysis_count = 0
     
     async def initialize(self) -> None:
         """Initialize the analyzer with Claude SDK client."""
@@ -67,62 +69,75 @@ class PortfolioIntelligenceAnalyzer:
     async def analyze_portfolio_intelligence(
         self,
         agent_name: str,
-        symbols: Optional[List[str]] = None
+        symbols: Optional[List[str]] = None,
+        batch_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Main entry point for portfolio intelligence analysis.
-        
+
+        This method is now integrated with the queue system.
+        Individual batches of 2-3 stocks are queued as separate AI_ANALYSIS tasks
+        and executed sequentially by the queue manager.
+
         Args:
             agent_name: Name of the AI agent (e.g., "portfolio_analyzer")
             symbols: Optional list of symbols to analyze. If None, uses portfolio stocks with updates.
-        
+
         Returns:
             Analysis results with recommendations and prompt updates
         """
         analysis_id = f"analysis_{int(datetime.now(timezone.utc).timestamp())}"
-        
+
         try:
+            # DEBUG: Log entry point
+            print(f"DEBUG: PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
+            logger.info(f"DEBUG: PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
+
             # Register active analysis
             PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id] = {
                 "status": "running",
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "symbols_count": 0,
-                "agent_name": agent_name
+                "agent_name": agent_name,
+                "queued_for_batch_processing": True
             }
             PortfolioIntelligenceAnalyzer._active_analysis_count = len(PortfolioIntelligenceAnalyzer._active_analysis_tasks)
-            
+
             # Broadcast analysis start
             await self._broadcast_analysis_status(
                 status="analyzing",
-                message=f"Starting portfolio intelligence analysis...",
+                message=f"Starting portfolio intelligence analysis (will be queued for sequential execution)...",
                 symbols_count=0,
                 analysis_id=analysis_id
             )
-            
+
             # Step 1: Get stocks with updates
             if symbols is None:
+                print(f"DEBUG: Getting stocks with updates...")
                 symbols = await self._get_stocks_with_updates()
-            
+                print(f"DEBUG: Found {len(symbols)} stocks with updates: {symbols[:5]}...")
+
             logger.info(f"Starting portfolio intelligence analysis for {len(symbols)} stocks: {symbols}")
-            
+            print(f"DEBUG: About to queue {len(symbols)} stocks for sequential analysis")
+
             # Update active analysis with symbol count
             if analysis_id in PortfolioIntelligenceAnalyzer._active_analysis_tasks:
                 PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["symbols_count"] = len(symbols)
-            
+
             # Broadcast status update with symbol count
             await self._broadcast_analysis_status(
                 status="analyzing",
-                message=f"Analyzing {len(symbols)} stocks with recent updates",
+                message=f"Queuing {len(symbols)} stocks for sequential analysis in AI_ANALYSIS queue",
                 symbols_count=len(symbols),
                 analysis_id=analysis_id
             )
-            
+
             # Step 2: Get available data for each stock
             stocks_data = await self._gather_stocks_data(symbols)
-            
+
             # Step 3: Create system prompt for Claude
             system_prompt = self._create_system_prompt(stocks_data)
-            
+
             # Step 4: Create decision log for AI Transparency
             session_id = f"portfolio_intelligence_{int(datetime.now(timezone.utc).timestamp())}"
             decision_log = await self.analysis_logger.start_trade_analysis(
@@ -131,13 +146,13 @@ class PortfolioIntelligenceAnalyzer:
                 decision_id=analysis_id
             )
             self._active_analyses[analysis_id] = decision_log
-            
+
             # Step 5: Create MCP server and tools for Claude (read/update prompts)
             mcp_server, tool_names = self._create_claude_tools()
-            
+
             # Step 6: Get current prompts
             prompts = await self._get_current_prompts()
-            
+
             # Step 7: Log initial analysis step
             await self.analysis_logger.log_analysis_step(
                 decision_id=analysis_id,
@@ -148,8 +163,11 @@ class PortfolioIntelligenceAnalyzer:
                 confidence_score=0.0,
                 duration_ms=0
             )
-            
+
             # Step 8: Execute Claude analysis
+            print(f"DEBUG: About to execute Claude analysis for {len(stocks_data)} stocks...")
+            logger.info(f"DEBUG: About to execute Claude analysis for {len(stocks_data)} stocks with analysis_id={analysis_id}")
+
             analysis_result = await self._execute_claude_analysis(
                 system_prompt=system_prompt,
                 stocks_data=stocks_data,
@@ -158,7 +176,10 @@ class PortfolioIntelligenceAnalyzer:
                 mcp_server=mcp_server,
                 tool_names=tool_names
             )
-            
+
+            print(f"DEBUG: Claude analysis completed. Result keys: {list(analysis_result.keys())}")
+            logger.info(f"DEBUG: Claude analysis completed. Result keys: {list(analysis_result.keys())}")
+
             # Step 9: Log to AI Transparency
             await self._log_to_transparency(
                 analysis_id=analysis_id,
@@ -167,7 +188,7 @@ class PortfolioIntelligenceAnalyzer:
                 stocks_data=stocks_data,
                 analysis_result=analysis_result
             )
-            
+
             # Unregister active analysis
             if analysis_id in PortfolioIntelligenceAnalyzer._active_analysis_tasks:
                 PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["status"] = "completed"
@@ -177,7 +198,7 @@ class PortfolioIntelligenceAnalyzer:
                 # Keep completed for a short time, then remove
                 # (Cleanup happens in broadcast or after timeout)
             PortfolioIntelligenceAnalyzer._active_analysis_count = len([t for t in PortfolioIntelligenceAnalyzer._active_analysis_tasks.values() if t.get("status") == "running"])
-            
+
             # Broadcast analysis complete
             await self._broadcast_analysis_status(
                 status="idle",
@@ -187,7 +208,7 @@ class PortfolioIntelligenceAnalyzer:
                 recommendations_count=len(analysis_result.get("recommendations", [])),
                 prompt_updates_count=len(analysis_result.get("prompt_updates", []))
             )
-            
+
             return {
                 "status": "success",
                 "analysis_id": analysis_id,
@@ -197,18 +218,18 @@ class PortfolioIntelligenceAnalyzer:
                 "analysis_result": analysis_result,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            
+
         except Exception as e:
             logger.error(f"Portfolio intelligence analysis failed: {e}", exc_info=True)
             await self._log_error_to_transparency(analysis_id, agent_name, str(e))
-            
+
             # Unregister failed analysis
             if analysis_id in PortfolioIntelligenceAnalyzer._active_analysis_tasks:
                 PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["status"] = "failed"
                 PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["error"] = str(e)[:200]
                 PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["failed_at"] = datetime.now(timezone.utc).isoformat()
             PortfolioIntelligenceAnalyzer._active_analysis_count = len([t for t in PortfolioIntelligenceAnalyzer._active_analysis_tasks.values() if t.get("status") == "running"])
-            
+
             # Broadcast analysis failed
             await self._broadcast_analysis_status(
                 status="idle",
@@ -217,7 +238,7 @@ class PortfolioIntelligenceAnalyzer:
                 analysis_id=analysis_id,
                 error=str(e)[:200]
             )
-            
+
             raise TradingError(
                 message=f"Portfolio intelligence analysis failed: {str(e)}",
                 category=ErrorCategory.SYSTEM,
@@ -259,21 +280,39 @@ class PortfolioIntelligenceAnalyzer:
                 news_check_date = state.last_news_check
                 if isinstance(news_check_date, str):
                     try:
-                        news_check_date = datetime.fromisoformat(news_check_date.replace('Z', '+00:00')).date()
+                        # Handle YYYY-MM-DD format from database
+                        if len(news_check_date) == 10 and news_check_date.count('-') == 2:
+                            from datetime import datetime
+                            news_check_date = datetime.strptime(news_check_date, '%Y-%m-%d').date()
+                        else:
+                            # Handle ISO datetime format with timezone
+                            news_check_date = datetime.fromisoformat(news_check_date.replace('Z', '+00:00')).date()
                     except (ValueError, AttributeError):
                         news_check_date = None
-                
+
                 earnings_check_date = state.last_earnings_check
                 if isinstance(earnings_check_date, str):
                     try:
-                        earnings_check_date = datetime.fromisoformat(earnings_check_date.replace('Z', '+00:00')).date()
+                        # Handle YYYY-MM-DD format from database
+                        if len(earnings_check_date) == 10 and earnings_check_date.count('-') == 2:
+                            from datetime import datetime
+                            earnings_check_date = datetime.strptime(earnings_check_date, '%Y-%m-%d').date()
+                        else:
+                            # Handle ISO datetime format with timezone
+                            earnings_check_date = datetime.fromisoformat(earnings_check_date.replace('Z', '+00:00')).date()
                     except (ValueError, AttributeError):
                         earnings_check_date = None
-                
+
                 fundamentals_check_date = state.last_fundamentals_check
                 if isinstance(fundamentals_check_date, str):
                     try:
-                        fundamentals_check_date = datetime.fromisoformat(fundamentals_check_date.replace('Z', '+00:00')).date()
+                        # Handle YYYY-MM-DD format from database
+                        if len(fundamentals_check_date) == 10 and fundamentals_check_date.count('-') == 2:
+                            from datetime import datetime
+                            fundamentals_check_date = datetime.strptime(fundamentals_check_date, '%Y-%m-%d').date()
+                        else:
+                            # Handle ISO datetime format with timezone
+                            fundamentals_check_date = datetime.fromisoformat(fundamentals_check_date.replace('Z', '+00:00')).date()
                     except (ValueError, AttributeError):
                         fundamentals_check_date = None
                 
@@ -304,7 +343,14 @@ class PortfolioIntelligenceAnalyzer:
                 fundamentals_stocks = await stock_state_store.get_oldest_fundamentals_stocks(portfolio_symbols, limit=5)
                 stocks_with_updates = list(set(news_stocks + earnings_stocks + fundamentals_stocks))[:10]
             
-            logger.info(f"Found {len(stocks_with_updates)} stocks with updates: {stocks_with_updates}")
+            logger.info(f"Cutoff date: {cutoff_date}, Found {len(stocks_with_updates)} stocks with updates: {stocks_with_updates}")
+
+            # Add debug info for first few stocks
+            if portfolio_symbols:
+                sample_symbol = portfolio_symbols[0]
+                sample_state = await stock_state_store.get_state(sample_symbol)
+                logger.info(f"Sample stock {sample_symbol}: news={sample_state.last_news_check}, earnings={sample_state.last_earnings_check}, fundamentals={sample_state.last_fundamentals_check}")
+
             return stocks_with_updates
             
         except Exception as e:
@@ -564,11 +610,25 @@ Begin your analysis now. Be thorough, transparent, and actionable."""
         tool_names: List[str]
     ) -> Dict[str, Any]:
         """Execute Claude analysis with provided tools."""
-        
+
         import time
         start_time = time.time()
-        
+
+        print(f"DEBUG: _execute_claude_analysis() called with {len(stocks_data)} stocks, analysis_id={analysis_id}")
+        logger.info(f"DEBUG: _execute_claude_analysis() called with {len(stocks_data)} stocks, analysis_id={analysis_id}")
+
         try:
+            # Initialize analysis logging for portfolio analysis (not a single trade)
+            # Create a generic decision log for portfolio analysis
+            from src.services.claude_agent.analysis_logger import TradeDecisionLog
+            decision_log = TradeDecisionLog(
+                decision_id=analysis_id,
+                session_id=f"portfolio_{int(time.time())}",
+                symbol="PORTFOLIO",  # Generic symbol for portfolio analysis
+                action="ANALYZE"  # Portfolio analysis action
+            )
+            self.analysis_logger.active_decisions[analysis_id] = decision_log
+
             # Log Claude analysis start
             await self.analysis_logger.log_analysis_step(
                 decision_id=analysis_id,
@@ -624,12 +684,18 @@ TASK:
 
 Begin your analysis now."""
             
-            # Execute query with timeout
+            # Execute query with timeout and get response directly
+            print(f"DEBUG: About to call query_with_timeout with client={type(client)}, prompt length={len(user_prompt)}")
+            logger.info(f"DEBUG: About to call query_with_timeout with client type: {type(client)}")
+
             response = await query_with_timeout(
                 client=client,
                 prompt=user_prompt,
                 timeout=300.0  # 5 minutes for comprehensive analysis
             )
+
+            print(f"DEBUG: query_with_timeout returned response of type: {type(response)}")
+            logger.info(f"DEBUG: query_with_timeout returned response type: {type(response)}")
             
             execution_time_ms = int((time.time() - start_time) * 1000)
             
@@ -646,16 +712,35 @@ Begin your analysis now."""
             
             # Parse response (Claude SDK returns structured response)
             # Extract recommendations and prompt updates from response
+
+            # DEBUG: Log Claude's actual response
+            print(f"DEBUG: Claude response type: {type(response)}")
+            print(f"DEBUG: Claude response length: {len(response)}")
+            print(f"DEBUG: Claude response (first 500 chars): {response[:500]}")
+            logger.info(f"DEBUG: Claude response type: {type(response)}, length: {len(response)}")
+
+            # Parse Claude's response to extract structured recommendations and updates
+            recommendations = []
+            prompt_updates = []
+            data_assessment = {}
+
+            # Extract Claude's actual thinking content (query_with_timeout already returns clean text)
+            response_text = response  # query_with_timeout already returns Claude's actual thinking as string
+
+            # Store analysis in database
+            await self._store_analysis_results(analysis_id, stocks_data, response_text, recommendations)
+
+            # Store recommendations if any were extracted
+            for rec in recommendations:
+                await self._store_recommendation(rec, analysis_id)
+
             analysis_result = {
-                "recommendations": [],
-                "prompt_updates": [],
-                "data_assessment": {},
-                "claude_response": str(response),
+                "recommendations": recommendations,
+                "prompt_updates": prompt_updates,
+                "data_assessment": data_assessment,
+                "claude_response": response_text,
                 "execution_time_ms": execution_time_ms
             }
-            
-            # TODO: Parse Claude's response to extract structured recommendations and updates
-            # For now, return the raw response for user review
             
             return analysis_result
             
@@ -731,10 +816,28 @@ Begin your analysis now."""
                 confidence_score=0.0,
                 duration_ms=analysis_result.get("execution_time_ms", 0)
             )
-            
-            decision_log = self._active_analyses.get(analysis_id)
-            steps_count = len(decision_log.analysis_steps) if decision_log and hasattr(decision_log, 'analysis_steps') else 0
-            logger.info(f"Analysis {analysis_id} logged to AI Transparency with {steps_count} steps")
+
+            # Complete the trade decision to save it to database
+            completed_decision = await self.analysis_logger.complete_trade_decision(
+                decision_id=analysis_id,
+                executed=False,  # Portfolio analysis generates recommendations, not executed trades
+                execution_result={
+                    "analysis_type": "portfolio_intelligence",
+                    "agent_name": agent_name,
+                    "symbols_analyzed": len(symbols),
+                    "recommendations_generated": len(analysis_result.get("recommendations", [])),
+                    "prompt_updates_generated": len(analysis_result.get("prompt_updates", [])),
+                    "execution_time_ms": analysis_result.get("execution_time_ms", 0),
+                    "claude_response_length": len(analysis_result.get("claude_response", "")),
+                    "data_assessment": analysis_result.get("data_assessment", {})
+                }
+            )
+
+            if completed_decision:
+                logger.info(f"Analysis {analysis_id} completed and saved to AI Transparency database")
+            else:
+                logger.warning(f"Failed to complete analysis decision {analysis_id}")
+
         except Exception as e:
             logger.warning(f"Error logging to transparency: {e}")
     
@@ -751,26 +854,11 @@ Begin your analysis now."""
         """Broadcast analysis status via WebSocket."""
         if not self.broadcast_coordinator:
             return
-        
+
         try:
-            # Broadcast Claude status update
-            status_data = {
-                "status": status,  # "analyzing" or "idle"
-                "message": message,
-                "current_task": f"portfolio_intelligence_{analysis_id}" if analysis_id else None,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "data": {
-                    "analysis_id": analysis_id,
-                    "symbols_count": symbols_count,
-                    "recommendations_count": recommendations_count,
-                    "prompt_updates_count": prompt_updates_count,
-                    "error": error
-                }
-            }
-            
-            await self.broadcast_coordinator.broadcast_claude_status_update(status_data)
-            
-            # Also broadcast portfolio analysis activity update
+            # Broadcast portfolio analysis activity update only
+            # NOTE: Don't call broadcast_claude_status_update() as it conflicts with
+            # the actual Claude SDK status managed by SessionCoordinator
             activity_message = {
                 "type": "portfolio_analysis_update",
                 "status": status,
@@ -782,14 +870,17 @@ Begin your analysis now."""
                 "error": error,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            
+
             await self.broadcast_coordinator.broadcast_to_ui(activity_message)
-            
-            # Trigger system health update when status changes
-            # This ensures System Health tab shows updated AI Analysis scheduler status
-            # The status coordinator will automatically pick up the change via get_system_status()
-            # which calls _get_ai_analysis_status() which reads from PortfolioIntelligenceAnalyzer
-            
+
+            # Trigger system health update via status coordinator
+            # This ensures the System Health tab shows updated AI Analysis scheduler status
+            if self.status_coordinator:
+                try:
+                    await self.status_coordinator.broadcast_status_change("ai_analysis", status)
+                except Exception as e:
+                    logger.warning(f"Failed to trigger system health update: {e}")
+
         except Exception as e:
             logger.warning(f"Failed to broadcast analysis status: {e}")
     
@@ -844,3 +935,63 @@ Begin your analysis now."""
         except Exception as e:
             logger.warning(f"Error logging error to transparency: {e}")
 
+    async def _store_analysis_results(self, analysis_id: str, stocks_data: Dict[str, Dict[str, Any]], response_text: str, recommendations: List[Dict[str, Any]]) -> None:
+        """Store analysis results in the database using proper locked methods."""
+        try:
+            # Store analysis for each symbol
+            current_time = datetime.now(timezone.utc).isoformat()
+
+            for symbol in stocks_data.keys():
+                analysis_data = {
+                    "symbol": symbol,
+                    "analysis_type": "portfolio_intelligence",
+                    "claude_response": response_text,
+                    "recommendations_count": len(recommendations),
+                    "data_quality": {
+                        "has_earnings": len(stocks_data[symbol].get("earnings", [])) > 0,
+                        "has_news": len(stocks_data[symbol].get("news", [])) > 0,
+                        "has_fundamentals": len(stocks_data[symbol].get("fundamental_analysis", [])) > 0,
+                        "last_updates": stocks_data[symbol].get("data_summary", {})
+                    },
+                    "execution_metadata": {
+                        "analysis_id": analysis_id,
+                        "timestamp": current_time
+                    }
+                }
+
+                # Use safe locked method instead of direct database access
+                success = await self.config_state.store_analysis_history(
+                    symbol=symbol,
+                    timestamp=current_time,
+                    analysis=json.dumps(analysis_data)
+                )
+
+                if success:
+                    logger.debug(f"Stored analysis for {symbol}")
+                else:
+                    logger.warning(f"Failed to store analysis for {symbol}")
+
+            logger.info(f"Stored analysis results for {len(stocks_data)} symbols in database")
+
+        except Exception as e:
+            logger.error(f"Failed to store analysis results: {e}", exc_info=True)
+
+    async def _store_recommendation(self, recommendation: Dict[str, Any], analysis_id: str) -> None:
+        """Store individual recommendation in the database using proper locked method."""
+        try:
+            # Use safe locked method instead of direct database access
+            success = await self.config_state.store_recommendation(
+                symbol=recommendation.get("symbol", "UNKNOWN"),
+                recommendation_type=recommendation.get("action", "HOLD"),
+                confidence_score=recommendation.get("confidence", 0.0),
+                reasoning=recommendation.get("reasoning", ""),
+                analysis_type="portfolio_intelligence"
+            )
+
+            if success:
+                logger.debug(f"Stored recommendation for {recommendation.get('symbol', 'UNKNOWN')}")
+            else:
+                logger.warning(f"Failed to store recommendation for {recommendation.get('symbol', 'UNKNOWN')}")
+
+        except Exception as e:
+            logger.error(f"Failed to store recommendation: {e}", exc_info=True)

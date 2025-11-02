@@ -5,6 +5,7 @@ Enhanced with comprehensive AI transparency endpoints.
 """
 
 import logging
+import json
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
@@ -14,6 +15,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from ..services.claude_agent.research_tracker import ResearchTracker
+from .dependencies import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -469,33 +471,105 @@ async def get_analysis_activity(
     days: int = 7,
 ) -> AnalysisActivityResponse:
     """
-    Get AI analysis activity transparency data.
+    Get AI analysis activity transparency data with prioritized display.
 
     Shows Claude's decision-making process, confidence levels, and strategy evaluations.
+    Prioritizes:
+    1. Stocks with all three data quality parameters (earnings, news, fundamentals)
+    2. Stocks with two or more data quality parameters
+    3. Recently analyzed stocks
     """
     try:
-        analysis_logger = await container.get("analysis_logger")
+        database = await container.get("database")
+        conn = database.connection
 
-        # Get decision history
-        decisions = await analysis_logger.get_decision_history()
+        # Get all analyses with data quality info, ordered to prioritize complete data
+        cursor = await conn.execute("""
+            SELECT symbol, timestamp, analysis, created_at,
+                   json_extract(analysis, '$.data_quality.has_earnings') as has_earnings,
+                   json_extract(analysis, '$.data_quality.has_news') as has_news,
+                   json_extract(analysis, '$.data_quality.has_fundamentals') as has_fundamentals
+            FROM analysis_history
+            WHERE json_extract(analysis, '$.analysis_type') = 'portfolio_intelligence'
+            ORDER BY
+                CASE
+                    WHEN (json_extract(analysis, '$.data_quality.has_earnings') = 1
+                          AND json_extract(analysis, '$.data_quality.has_news') = 1
+                          AND json_extract(analysis, '$.data_quality.has_fundamentals') = 1) THEN 0
+                    WHEN ((json_extract(analysis, '$.data_quality.has_earnings') = 1)
+                          + (json_extract(analysis, '$.data_quality.has_news') = 1)
+                          + (json_extract(analysis, '$.data_quality.has_fundamentals') = 1)) >= 2 THEN 1
+                    ELSE 2
+                END ASC,
+                created_at DESC
+            LIMIT 100
+        """)
+        rows = await cursor.fetchall()
 
-        # Get analysis effectiveness
-        effectiveness = await analysis_logger.get_analysis_effectiveness(days=days)
+        portfolio_analyses = []
+        seen_symbols = set()
 
-        # Get strategy evaluations
-        evaluations = await analysis_logger.get_strategy_evaluations()
+        for row in rows:
+            symbol, timestamp, analysis_json, created_at, has_earnings, has_news, has_fundamentals = row
 
-        return AnalysisActivityResponse(
-            total_decisions=effectiveness["total_decisions"],
-            avg_confidence=effectiveness["avg_confidence_score"],
-            strategies_evaluated=len(evaluations),
-            refinements_made=sum(len(e.get("refinements", [])) for e in evaluations),
-            recent_decisions=[d.to_dict() for d in decisions[-5:]]
-        )
+            # Keep only the latest analysis per symbol for recommendations tab
+            if symbol in seen_symbols:
+                continue
+            seen_symbols.add(symbol)
 
+            try:
+                analysis_data = json.loads(analysis_json)
+                claude_response = analysis_data.get("claude_response", "")
+
+                # Extract real analysis content (not truncated)
+                # Try to extract meaningful text from the response
+                analysis_content = str(claude_response)
+
+                # If it's a SystemMessage object, try to extract useful content
+                if "SystemMessage" in analysis_content:
+                    # Try to find actual analysis in the content
+                    if "'" in analysis_content:
+                        parts = analysis_content.split("'")
+                        # Look for longer text segments that might be analysis
+                        analysis_content = next((p for p in parts if len(p) > 100), analysis_content[:500])
+
+                portfolio_analyses.append({
+                    "symbol": symbol,
+                    "timestamp": timestamp,
+                    "created_at": created_at,
+                    "analysis_type": analysis_data.get("analysis_type", "portfolio_intelligence"),
+                    "confidence_score": analysis_data.get("confidence_score", 0.75),
+                    "analysis_summary": analysis_content,  # Full content, not truncated
+                    "analysis_content": analysis_content,  # Also expose full content
+                    "recommendations_count": analysis_data.get("recommendations_count", 0),
+                    "data_quality": {
+                        "has_earnings": bool(has_earnings),
+                        "has_news": bool(has_news),
+                        "has_fundamentals": bool(has_fundamentals),
+                        **analysis_data.get("data_quality", {})
+                    }
+                })
+            except json.JSONDecodeError:
+                continue
     except Exception as e:
-        logger.error(f"Failed to get analysis activity: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get analysis activity: {str(e)}")
+        logger.warning(f"Could not get portfolio analyses: {e}")
+        portfolio_analyses = []
+
+    total_analyses = len(portfolio_analyses)
+    avg_confidence = 0.0
+
+    if portfolio_analyses:
+        confidences = [a.get("confidence_score", 0.0) for a in portfolio_analyses]
+        if confidences:
+            avg_confidence = sum(confidences) / len(confidences)
+
+    return AnalysisActivityResponse(
+        total_decisions=total_analyses,
+        avg_confidence=avg_confidence,
+        strategies_evaluated=0,
+        refinements_made=0,
+        recent_decisions=portfolio_analyses
+    )
 
 
 @router.get("/transparency/execution", response_model=ExecutionActivityResponse)

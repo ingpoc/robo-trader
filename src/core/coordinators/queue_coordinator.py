@@ -40,6 +40,7 @@ class QueueCoordinator(BaseCoordinator):
         self.event_bus: Optional[EventBus] = None
         self._queues_running = False
         self._broadcast_coordinator = None
+        self._sequential_queue_manager = None
 
     async def initialize(self) -> None:
         """Initialize coordinator and dependencies."""
@@ -50,6 +51,14 @@ class QueueCoordinator(BaseCoordinator):
             self.event_router_service = await self.container.get("event_router_service")
             self.event_bus = await self.container.get("event_bus")
             self._broadcast_coordinator = await self.container.get("broadcast_coordinator")
+
+            # Get SequentialQueueManager for task execution
+            try:
+                self._sequential_queue_manager = await self.container.get("sequential_queue_manager")
+                self._log_info("SequentialQueueManager connected to QueueCoordinator")
+            except Exception as e:
+                self._log_warning(f"Could not get SequentialQueueManager: {e}")
+                self._sequential_queue_manager = None
 
             # Subscribe to relevant events
             if self.event_bus:
@@ -169,27 +178,45 @@ class QueueCoordinator(BaseCoordinator):
 
         self._log_info("Starting sequential queue execution")
 
-        results = {}
-        execution_order = [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]
-
         try:
-            for queue_name in execution_order:
-                self._log_info(f"Executing queue: {queue_name.value}")
+            if self._sequential_queue_manager:
+                self._log_info("Executing queues through SequentialQueueManager")
 
-                # Execute queue through its service
-                # Note: This would delegate to the appropriate queue service
-                queue_result = await self._execute_single_queue(queue_name)
-                results[queue_name.value] = queue_result
+                # Execute through SequentialQueueManager
+                await self._sequential_queue_manager.execute_queues()
 
-                self._log_info(f"Completed queue: {queue_name.value}")
+                # Get execution status
+                status = await self._sequential_queue_manager.get_status()
 
-            self._log_info("Sequential queue execution completed")
-            return {
-                "success": True,
-                "execution_mode": "sequential",
-                "results": results,
-                "timestamp": datetime.utcnow().isoformat()
-            }
+                self._log_info("Sequential queue execution completed through SequentialQueueManager")
+                return {
+                    "success": True,
+                    "execution_mode": "sequential",
+                    "method": "SequentialQueueManager",
+                    "status": status,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                # Fallback to mock execution if SequentialQueueManager not available
+                self._log_warning("SequentialQueueManager not available, using fallback execution")
+
+                results = {}
+                execution_order = [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]
+
+                for queue_name in execution_order:
+                    self._log_info(f"Executing queue: {queue_name.value}")
+                    queue_result = await self._execute_single_queue(queue_name)
+                    results[queue_name.value] = queue_result
+                    self._log_info(f"Completed queue: {queue_name.value}")
+
+                self._log_info("Sequential queue execution completed (fallback)")
+                return {
+                    "success": True,
+                    "execution_mode": "sequential",
+                    "method": "fallback",
+                    "results": results,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
 
         except Exception as e:
             self._log_error(f"Sequential queue execution failed: {e}")
@@ -365,6 +392,23 @@ class QueueCoordinator(BaseCoordinator):
                             running_queues += 1
                 except Exception as e:
                     self._log_warning(f"Could not get queue service status: {e}")
+
+            # Add SequentialQueueManager status if available
+            if self._sequential_queue_manager:
+                try:
+                    queue_status = await self._sequential_queue_manager.get_status()
+                    is_running = queue_status.get("running", False)
+                    queues["sequential_queue_manager"] = {
+                        "running": is_running,
+                        "status": "healthy" if is_running else "stopped",
+                        "type": "sequential_queue_manager",
+                        "details": queue_status
+                    }
+                    total_queues += 1
+                    if is_running:
+                        running_queues += 1
+                except Exception as e:
+                    self._log_warning(f"Could not get SequentialQueueManager status: {e}")
 
             stats = {
                 "total_queues": total_queues,

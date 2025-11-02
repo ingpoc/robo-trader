@@ -110,12 +110,19 @@ class RoboTraderOrchestrator:
         await self.conversation_manager.initialize()
         await self.learning_engine.initialize()
 
-        self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
-        self.background_scheduler._run_market_screening = self.run_market_screening
-        self.background_scheduler._ai_planner_create_plan = self.ai_planner.create_daily_plan
-        self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
+        # Start BackgroundScheduler if available
+        if self.background_scheduler:
+            logger.info("BackgroundScheduler found - starting...")
+            self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
+            self.background_scheduler._run_market_screening = self.run_market_screening
+            self.background_scheduler._ai_planner_create_plan = self.ai_planner.create_daily_plan
+            self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
 
-        self.background_tasks = await self.background_scheduler.start()
+            logger.info("Calling BackgroundScheduler.start()...")
+            self.background_tasks = await self.background_scheduler.start()
+            logger.info("BackgroundScheduler started successfully")
+        else:
+            logger.error("BackgroundScheduler is None - not starting")
 
         logger.info("Orchestrator initialized successfully")
 

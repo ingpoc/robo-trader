@@ -112,3 +112,24 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         return event_router_service
 
     container._register_singleton("event_router_service", create_event_router_service)
+
+    # Portfolio Intelligence Analyzer Service
+    async def create_portfolio_intelligence_analyzer():
+        from src.services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+        state_manager = await container.get("state_manager")
+        config_state = await container.get("configuration_state")
+        analysis_logger = await container.get("analysis_logger")
+        broadcast_coordinator = await container.get("broadcast_coordinator")
+        status_coordinator = await container.get("status_coordinator")
+
+        analyzer = PortfolioIntelligenceAnalyzer(
+            state_manager=state_manager,
+            config_state=config_state,
+            analysis_logger=analysis_logger,
+            broadcast_coordinator=broadcast_coordinator,
+            status_coordinator=status_coordinator
+        )
+        await analyzer.initialize()
+        return analyzer
+
+    container._register_singleton("portfolio_intelligence_analyzer", create_portfolio_intelligence_analyzer)

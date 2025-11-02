@@ -84,8 +84,8 @@ class SchedulerTaskStore:
             query = """
                 INSERT INTO queue_tasks (
                     task_id, queue_name, task_type, priority, payload, dependencies,
-                    max_retries, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    max_retries, scheduled_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now'))
             """
 
             dependencies_json = dependencies or []

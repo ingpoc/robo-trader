@@ -1351,3 +1351,67 @@ DETAILED ANALYSIS:
         except Exception as e:
             logger.error(f"Failed to migrate from config.json: {e}")
             return False
+
+    async def store_analysis_history(self, symbol: str, timestamp: str, analysis: str) -> bool:
+        """
+        Safely store analysis history with proper locking.
+
+        Args:
+            symbol: Stock symbol
+            timestamp: Analysis timestamp
+            analysis: Analysis data as JSON string
+
+        Returns:
+            True if successful, False otherwise
+        """
+        async with self._lock:
+            try:
+                current_time = datetime.now(timezone.utc).isoformat()
+
+                await self.db.connection.execute(
+                    """INSERT INTO analysis_history
+                       (symbol, timestamp, analysis, created_at)
+                       VALUES (?, ?, ?, ?)""",
+                    (symbol, timestamp, analysis, current_time)
+                )
+
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store analysis history for {symbol}: {e}")
+                return False
+
+    async def store_recommendation(self, symbol: str, recommendation_type: str,
+                                confidence_score: float, reasoning: str,
+                                analysis_type: str) -> bool:
+        """
+        Safely store recommendation with proper locking.
+
+        Args:
+            symbol: Stock symbol
+            recommendation_type: Type of recommendation
+            confidence_score: Confidence score
+            reasoning: Reasoning text
+            analysis_type: Type of analysis
+
+        Returns:
+            True if successful, False otherwise
+        """
+        async with self._lock:
+            try:
+                current_time = datetime.now(timezone.utc).isoformat()
+
+                await self.db.connection.execute(
+                    """INSERT INTO recommendations
+                       (symbol, recommendation_type, confidence_score, reasoning, analysis_type, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (symbol, recommendation_type, confidence_score, reasoning, analysis_type, current_time)
+                )
+
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store recommendation for {symbol}: {e}")
+                return False

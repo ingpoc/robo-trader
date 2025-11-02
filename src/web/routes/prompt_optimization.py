@@ -106,7 +106,7 @@ async def get_optimization_history(
         )
 
     try:
-        prompt_service = await container.get(PromptOptimizationService)
+        prompt_service = await container.get("prompt_optimization_service")
         history = await prompt_service.get_prompt_history(data_type, days)
 
         # Limit results

@@ -11,6 +11,7 @@ from typing import Optional
 from loguru import logger
 
 from src.config import Config
+from src.core.database_state.backup_manager import DatabaseBackupManager
 
 
 class DatabaseConnection:
@@ -35,6 +36,12 @@ class DatabaseConnection:
         self._connection_pool: Optional[aiosqlite.Connection] = None
         self._lock = asyncio.Lock()
 
+        # Backup manager
+        self.backup_manager = DatabaseBackupManager(
+            self.db_path,
+            backup_dir=self.db_path.parent / "backups"
+        )
+
     async def initialize(self) -> None:
         """
         Initialize database connection and create tables.
@@ -58,6 +65,11 @@ class DatabaseConnection:
                     operation_name="Table creation"
                 )
                 logger.info("Database tables created successfully")
+
+                # Create automatic backup on startup if database exists and has data
+                if self.db_path.exists() and self.db_path.stat().st_size > 0:
+                    await self.backup_manager.create_backup(label="startup")
+                    logger.info("Startup backup created")
 
             except asyncio.TimeoutError:
                 logger.error("Database initialization timed out")
@@ -367,6 +379,26 @@ class DatabaseConnection:
             created_at TEXT NOT NULL
         );
 
+        -- Optimized Prompts
+        CREATE TABLE IF NOT EXISTS optimized_prompts (
+            id INTEGER PRIMARY KEY,
+            data_type TEXT NOT NULL,
+            original_prompt TEXT NOT NULL,
+            optimized_prompt TEXT NOT NULL,
+            quality_score REAL DEFAULT 0.0,
+            quality_score_before REAL DEFAULT 0.0,
+            quality_score_after REAL DEFAULT 0.0,
+            usage_count INTEGER DEFAULT 0,
+            avg_quality_rating REAL DEFAULT 0.0,
+            optimization_attempts INTEGER DEFAULT 0,
+            optimization_triggered BOOLEAN DEFAULT 0,
+            prompt_optimized BOOLEAN DEFAULT 0,
+            optimization_details TEXT,  -- JSON
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(data_type, created_at)
+        );
+
         -- Create indexes for performance
         CREATE INDEX IF NOT EXISTS idx_analysis_history_symbol ON analysis_history(symbol);
         CREATE INDEX IF NOT EXISTS idx_analysis_history_timestamp ON analysis_history(timestamp);
@@ -399,6 +431,9 @@ class DatabaseConnection:
         CREATE INDEX IF NOT EXISTS idx_strategy_logs_strategy_type ON strategy_logs(strategy_type);
         CREATE INDEX IF NOT EXISTS idx_strategy_logs_date ON strategy_logs(date DESC);
         CREATE INDEX IF NOT EXISTS idx_strategy_logs_strategy_type_date ON strategy_logs(strategy_type, date DESC);
+        CREATE INDEX IF NOT EXISTS idx_optimized_prompts_data_type ON optimized_prompts(data_type);
+        CREATE INDEX IF NOT EXISTS idx_optimized_prompts_created ON optimized_prompts(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_optimized_prompts_data_type_created ON optimized_prompts(data_type, created_at DESC);
         """
 
         await self._connection_pool.executescript(schema)
@@ -424,6 +459,9 @@ class DatabaseConnection:
         """Close database connection and cleanup resources."""
         async with self._lock:
             if self._connection_pool:
+                # Create a final backup before shutdown
+                await self.backup_manager.create_backup(label="shutdown")
+
                 await self._connection_pool.close()
                 self._connection_pool = None
                 logger.info("Database connection closed")
