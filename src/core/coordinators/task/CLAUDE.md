@@ -1,6 +1,7 @@
 # Task Coordinator Guidelines
 
 > **Scope**: Applies to `src/core/coordinators/task/` directory. Read `src/core/CLAUDE.md` for context.
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
 
 ## Overview
 

@@ -109,6 +109,8 @@ class SchedulerTaskService:
 
     async def execute_task(self, task: SchedulerTask) -> Dict[str, Any]:
         """Execute a task."""
+        import asyncio
+
         # Mark started
         await self.mark_started(task.task_id)
 
@@ -119,11 +121,15 @@ class SchedulerTaskService:
             await self.mark_failed(task.task_id, error)
             return {"success": False, "error": error}
 
-        # Execute
+        # Execute with timeout (600 seconds = 10 minutes max per task)
         try:
-            result = await handler(task)
+            result = await asyncio.wait_for(handler(task), timeout=600.0)
             await self.mark_completed(task.task_id)
             return {"success": True, "result": result}
+        except asyncio.TimeoutError:
+            error_msg = f"Task execution timed out after 600 seconds"
+            await self.mark_failed(task.task_id, error_msg)
+            return {"success": False, "error": error_msg}
         except Exception as e:
             error_msg = str(e)
             await self.mark_failed(task.task_id, error_msg)

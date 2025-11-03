@@ -129,13 +129,23 @@ class SchedulerTaskStore:
         if not row:
             return None
 
+        # Handle payload - database returns as string, from_dict will parse it
+        payload = row[4]
+        if payload is None:
+            payload = "{}"
+
+        # Handle dependencies - database returns as string, from_dict will parse it
+        dependencies = row[5]
+        if dependencies is None:
+            dependencies = "[]"
+
         return SchedulerTask.from_dict({
             "task_id": row[0],
             "queue_name": row[1],
             "task_type": row[2],
             "priority": row[3],
-            "payload": row[4] or {},
-            "dependencies": row[5] or [],
+            "payload": payload,
+            "dependencies": dependencies,
             "status": row[6],
             "retry_count": row[7],
             "max_retries": row[8],
@@ -168,13 +178,23 @@ class SchedulerTaskStore:
             tasks = []
 
             for row in rows:
+                # Handle payload - database returns as string, from_dict will parse it
+                payload = row[4]
+                if payload is None:
+                    payload = "{}"
+
+                # Handle dependencies - database returns as string, from_dict will parse it
+                dependencies = row[5]
+                if dependencies is None:
+                    dependencies = "[]"
+
                 task = SchedulerTask.from_dict({
                     "task_id": row[0],
                     "queue_name": row[1],
                     "task_type": row[2],
                     "priority": row[3],
-                    "payload": row[4] or {},
-                    "dependencies": row[5] or [],
+                    "payload": payload,
+                    "dependencies": dependencies,
                     "status": row[6],
                     "retry_count": row[7],
                     "max_retries": row[8],
@@ -325,13 +345,23 @@ class SchedulerTaskStore:
             tasks = []
 
             for row in rows:
+                # Handle payload - database returns as string, from_dict will parse it
+                payload = row[4]
+                if payload is None:
+                    payload = "{}"
+
+                # Handle dependencies - database returns as string, from_dict will parse it
+                dependencies = row[5]
+                if dependencies is None:
+                    dependencies = "[]"
+
                 task = SchedulerTask.from_dict({
                     "task_id": row[0],
                     "queue_name": row[1],
                     "task_type": row[2],
                     "priority": row[3],
-                    "payload": row[4] or {},
-                    "dependencies": row[5] or [],
+                    "payload": payload,
+                    "dependencies": dependencies,
                     "status": row[6],
                     "retry_count": row[7],
                     "max_retries": row[8],

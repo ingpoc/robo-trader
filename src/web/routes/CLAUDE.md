@@ -1,6 +1,7 @@
 # Web Routes Directory Guidelines
 
 > **Scope**: Applies to `src/web/routes/` directory. Read `src/web/CLAUDE.md` for context.
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 

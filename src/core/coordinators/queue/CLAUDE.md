@@ -1,6 +1,7 @@
 # Queue Coordinator Guidelines
 
 > **Scope**: Applies to `src/core/coordinators/queue/` directory. Read `src/core/CLAUDE.md` for context.
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
 
 ## Overview
 
@@ -114,8 +115,7 @@ result = await queue_coordinator.execute_queues_concurrent(max_concurrent=2)
 ## Dependencies
 
 Queue coordinators typically depend on:
-- `SequentialQueueManager` - For queue execution
-- `EventRouterService` - For event routing
+- `SequentialQueueManager` - For queue execution and task management
+- `EventBus` - For event-driven communication
 - `BroadcastCoordinator` - For UI updates
-- `QueueManagementService` - For queue status
 

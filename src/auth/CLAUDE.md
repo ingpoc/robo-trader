@@ -1,6 +1,7 @@
 # Authentication Directory Guidelines
 
 > **Scope**: Applies to `src/auth/` directory. Read `src/CLAUDE.md` and `src/core/CLAUDE.md` for context.
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 

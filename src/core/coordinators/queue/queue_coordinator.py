@@ -72,13 +72,6 @@ class QueueCoordinator(BaseCoordinator):
             except Exception as e:
                 self._log_warning(f"Could not get SequentialQueueManager: {e}")
 
-            # Get queue management service if available
-            try:
-                queue_management_service = await self.container.get("queue_management_service")
-                self.monitoring_coordinator.set_queue_management_service(queue_management_service)
-            except Exception:
-                pass  # Optional service
-
             # Initialize focused coordinators
             await self.lifecycle_coordinator.initialize()
             await self.execution_coordinator.initialize()

@@ -683,21 +683,77 @@ TASK:
 5. Use log_analysis_step to document your thinking process
 
 Begin your analysis now."""
-            
-            # Execute query with timeout and get response directly
-            print(f"DEBUG: About to call query_with_timeout with client={type(client)}, prompt length={len(user_prompt)}")
-            logger.info(f"DEBUG: About to call query_with_timeout with client type: {type(client)}")
 
-            response = await query_with_timeout(
-                client=client,
-                prompt=user_prompt,
-                timeout=300.0  # 5 minutes for comprehensive analysis
-            )
+            # Execute query with streaming and real-time progress monitoring
+            print(f"DEBUG: Starting Claude analysis with streaming (analysis_id={analysis_id})")
+            logger.info(f"DEBUG: Starting Claude analysis with streaming for {len(stocks_data)} stocks")
 
-            print(f"DEBUG: query_with_timeout returned response of type: {type(response)}")
-            logger.info(f"DEBUG: query_with_timeout returned response type: {type(response)}")
-            
+            # Send query and monitor responses in real-time
+            await client.query(user_prompt)
+
+            response_chunks = []
+            last_activity = time.time()
+            message_timeout = 120.0  # Timeout if no message for 2 minutes (indicates hung state)
+
+            print(f"DEBUG: Entering receive_messages() loop to monitor Claude progress")
+
+            async for message in client.receive_messages():
+                # Check for message timeout (indicates hung state)
+                time_since_activity = time.time() - last_activity
+                if time_since_activity > message_timeout:
+                    error_msg = f"No activity from Claude for {int(time_since_activity)} seconds - analysis may be hung"
+                    logger.error(error_msg)
+                    print(f"DEBUG: {error_msg}")
+                    raise TradingError(
+                        error_msg,
+                        category=ErrorCategory.SYSTEM,
+                        severity=ErrorSeverity.HIGH,
+                        recoverable=False
+                    )
+
+                last_activity = time.time()
+
+                # Process message based on type for real-time progress tracking
+                try:
+                    from claude_agent_sdk import AssistantMessage, ToolUseBlock, TextBlock, ResultMessage, ToolResultBlock
+
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, ToolUseBlock):
+                                # Claude is ACTIVELY using a tool - RUNNING
+                                print(f"DEBUG: Claude using tool: {block.name}")
+                                logger.info(f"Claude executing tool: {block.name}")
+
+                            elif isinstance(block, TextBlock):
+                                # Claude is responding - RUNNING
+                                response_chunks.append(block.text)
+                                print(f"DEBUG: Received text chunk ({len(block.text)} chars, {len(response_chunks)} total chunks)")
+                                logger.info(f"Claude text response ({len(response_chunks)} chunks total)")
+
+                    elif isinstance(message, ToolResultBlock):
+                        # Tool completed - STILL RUNNING
+                        print(f"DEBUG: Tool result received")
+                        logger.info("Tool execution result received")
+
+                    elif isinstance(message, ResultMessage):
+                        # Analysis complete - READY
+                        print(f"DEBUG: Claude analysis complete (ResultMessage received)")
+                        logger.info("Claude analysis completed - ResultMessage received")
+                        break
+
+                except Exception as e:
+                    logger.warning(f"Error processing message type: {e}")
+                    # Continue processing - don't fail on message type issues
+                    pass
+
+            print(f"DEBUG: Exit receive_messages() loop - received {len(response_chunks)} text chunks")
+            logger.info(f"Claude analysis streaming complete: {len(response_chunks)} response chunks collected")
+
+            # Assemble final response from chunks
+            response = "\n".join(response_chunks) if response_chunks else ""
             execution_time_ms = int((time.time() - start_time) * 1000)
+
+            print(f"DEBUG: Final response length: {len(response)} chars, execution time: {execution_time_ms}ms")
             
             # Log Claude analysis completion
             await self.analysis_logger.log_analysis_step(

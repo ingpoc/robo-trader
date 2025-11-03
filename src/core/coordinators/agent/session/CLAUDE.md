@@ -1,6 +1,7 @@
 # Agent Session Coordinator Guidelines
 
 > **Scope**: Applies to `src/core/coordinators/agent/session/` directory. Read `src/core/coordinators/agent/CLAUDE.md` for parent context.
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 

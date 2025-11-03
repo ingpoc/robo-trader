@@ -28,12 +28,10 @@ class QueueMonitoringCoordinator(BaseCoordinator):
     def __init__(
         self,
         config: Config,
-        sequential_queue_manager = None,
-        queue_management_service = None
+        sequential_queue_manager = None
     ):
         super().__init__(config)
         self._sequential_queue_manager = sequential_queue_manager
-        self._queue_management_service = queue_management_service
         self._queues_running = False
         self._initialized = False
 
@@ -45,10 +43,6 @@ class QueueMonitoringCoordinator(BaseCoordinator):
     def set_sequential_queue_manager(self, manager) -> None:
         """Set sequential queue manager."""
         self._sequential_queue_manager = manager
-
-    def set_queue_management_service(self, service) -> None:
-        """Set queue management service."""
-        self._queue_management_service = service
 
     def set_queues_running(self, running: bool) -> None:
         """Set queues running state."""
@@ -93,23 +87,6 @@ class QueueMonitoringCoordinator(BaseCoordinator):
                         running_queues += 1
                 except Exception as e:
                     self._log_warning(f"Could not get SequentialQueueManager status: {e}")
-
-            # Add queue management service status if available
-            if self._queue_management_service:
-                try:
-                    service_status = await self._queue_management_service.get_status()
-                    for queue_name, queue_info in service_status.get("queues", {}).items():
-                        queues[queue_name] = {
-                            "running": queue_info.get("running", False),
-                            "status": queue_info.get("status", "unknown"),
-                            "type": "queue_service",
-                            "details": queue_info
-                        }
-                        total_queues += 1
-                        if queue_info.get("running", False):
-                            running_queues += 1
-                except Exception as e:
-                    self._log_warning(f"Could not get queue service status: {e}")
 
             stats = {
                 "total_queues": total_queues,

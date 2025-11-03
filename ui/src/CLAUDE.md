@@ -1,6 +1,7 @@
 # Frontend Architecture Guidelines
 
 > **Scope**: Applies to all files under `ui/src/`. Read after root CLAUDE.md for project patterns.
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
 
 ## Quick Reference - SDK Usage
 

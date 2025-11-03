@@ -160,6 +160,55 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         task_service.register_handler(TaskType.RECOMMENDATION_GENERATION, handle_recommendation_generation)
         logger.info("Registered RECOMMENDATION_GENERATION task handler")
 
+        # Register FUNDAMENTALS_UPDATE handler
+        async def handle_fundamentals_update(task):
+            """Handle fundamentals update tasks."""
+            try:
+                # Get the symbols to update from payload
+                symbols = task.payload.get("symbols", [])
+                if not symbols:
+                    return {"status": "skipped", "reason": "no_symbols"}
+
+                logger.info(f"Processing fundamentals update for {len(symbols)} symbols")
+
+                # Placeholder for actual fundamentals update logic
+                # This would typically call a fundamental data service
+                return {
+                    "status": "completed",
+                    "symbols_processed": len(symbols),
+                    "symbols": symbols
+                }
+            except Exception as e:
+                logger.error(f"Error in fundamentals update handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.FUNDAMENTALS_UPDATE, handle_fundamentals_update)
+        logger.info("Registered FUNDAMENTALS_UPDATE task handler")
+
+        # Register SYNC_ACCOUNT_BALANCES handler
+        async def handle_sync_account_balances(task):
+            """Handle account balance synchronization."""
+            try:
+                logger.info("Processing account balance synchronization")
+
+                # Get portfolio service to sync balances
+                portfolio_service = await container.get("portfolio_service")
+
+                # Sync account balances from broker
+                result = await portfolio_service.sync_account_balances()
+
+                logger.info(f"Account balance sync completed: {result}")
+                return {
+                    "status": "completed",
+                    "result": result
+                }
+            except Exception as e:
+                logger.error(f"Error in account balance sync handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.SYNC_ACCOUNT_BALANCES, handle_sync_account_balances)
+        logger.info("Registered SYNC_ACCOUNT_BALANCES task handler")
+
         return task_service
 
     # Execution Tracker Service

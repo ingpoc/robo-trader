@@ -21,7 +21,6 @@ from ...core.event_bus import EventBus, Event, EventType, EventHandler
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...core.background_scheduler import BackgroundScheduler
 from ...core.coordinators.agent.agent_coordinator import AgentCoordinator
-from ..queue_management.core.queue_orchestration_layer import QueueOrchestrationLayer
 from src.models.scheduler import QueueName, TaskType
 from .models import FeatureConfig, FeatureState, FeatureStatus, FeatureType
 
@@ -124,7 +123,7 @@ class ServiceLifecycleManager(EventHandler):
         # Service integrations
         self.background_scheduler: Optional[BackgroundScheduler] = None
         self.agent_coordinator: Optional[AgentCoordinator] = None
-        self.queue_orchestration_layer: Optional[QueueOrchestrationLayer] = None
+        self.queue_orchestration_layer: Optional[Any] = None
         self.service_registry: Optional[Any] = None
         
         # Deactivation state
@@ -160,7 +159,7 @@ class ServiceLifecycleManager(EventHandler):
         self.agent_coordinator = coordinator
         logger.info("Agent coordinator integration configured")
 
-    def set_queue_orchestration_layer(self, orchestration_layer: QueueOrchestrationLayer) -> None:
+    def set_queue_orchestration_layer(self, orchestration_layer: Any) -> None:
         """Set queue orchestration layer integration."""
         self.queue_orchestration_layer = orchestration_layer
         logger.info("Queue orchestration layer integration configured")

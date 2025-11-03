@@ -1,6 +1,7 @@
 # Services Layer Guidelines
 
 > **Scope**: Applies to `src/services/` directory. Read after `src/CLAUDE.md` and `src/core/CLAUDE.md` for context.
+> **Last Updated**: 2025-11-04 | **Status**: Production Ready | **Tier**: Reference
 
 ## Quick Reference - SDK Usage
 

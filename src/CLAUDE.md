@@ -1,7 +1,7 @@
 # Backend Architecture Guidelines
 
 > **Scope**: Applies to all files under `src/` directory. Read after root CLAUDE.md for context.
-> **Last Updated**: 2025-10-27 | **Status**: Production Ready
+> **Last Updated**: 2025-11-04 | **Status**: Production Ready | **Tier**: Reference
 
 This file contains backend-specific patterns, service organization, and layer-specific rules that complement the project-wide patterns in the root CLAUDE.md.
 

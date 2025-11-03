@@ -1,6 +1,7 @@
 # Status Aggregation Coordinator Guidelines
 
 > **Scope**: Applies to `src/core/coordinators/status/aggregation/` directory. Read `src/core/coordinators/status/CLAUDE.md` for parent context.
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 
