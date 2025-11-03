@@ -51,6 +51,112 @@ class AICoordinator(BaseCoordinator):
         await query_with_timeout(self.client, prompt, timeout=90.0)
 ```
 
+## Initialization Error Handling Pattern (CRITICAL)
+
+### Problem: Silent Initialization Failures
+
+Background components (schedulers, managers) often use fire-and-forget `asyncio.create_task()` to start background loops. If initialization fails, exceptions are silently suppressed and there's no mechanism for the orchestrator to detect the failure.
+
+**Symptoms**:
+- Background component tasks created but loop never executes
+- Exception occurs during initialization but no error is logged
+- Orchestrator doesn't know initialization failed
+- System appears to start successfully but key components are offline
+
+### Solution: Initialization Status Tracking
+
+Every component that starts background tasks must implement initialization status tracking:
+
+**Pattern**:
+```python
+class MyComponent:
+    def __init__(self):
+        # Status tracking flags
+        self._initialized = False
+        self._initialization_complete = False
+        self._initialization_error: Optional[Exception] = None
+        self._initialization_error_traceback: Optional[str] = None
+
+    async def start(self) -> None:
+        """Start component with proper error handling."""
+        # Already running check
+        if self._initialized:
+            return
+
+        self._initialized = True
+
+        try:
+            # Initialize all dependencies first
+            self._log_init_step("Initializing dependency 1")
+            await self.dep1.initialize()
+            self._log_init_step("Dependency 1 initialized")
+
+            self._log_init_step("Initializing dependency 2")
+            await self.dep2.initialize()
+            self._log_init_step("Dependency 2 initialized")
+
+            # Create background task
+            self._log_init_step("Creating background task")
+            self._task = asyncio.create_task(self._run_background_loop())
+            self._log_init_step("Background task created")
+
+            # Mark as complete ONLY if all steps succeed
+            self._initialization_complete = True
+            logger.info("Component started successfully")
+
+        except Exception as e:
+            # Capture error details
+            self._initialized = False
+            self._initialization_error = e
+            self._initialization_error_traceback = traceback.format_exc()
+            self._log_init_step("Component initialization", success=False, error=e)
+
+            # Re-raise so orchestrator can detect failure
+            raise RuntimeError(f"Component initialization failed: {e}") from e
+
+    def _log_init_step(self, step: str, success: bool = True, error: Optional[Exception] = None) -> None:
+        """Log initialization step with structured format."""
+        if success:
+            msg = f"[INIT] {step}"
+            print(f"*** {msg} - OK ***")  # Print to stdout
+            logger.info(msg)  # Log to logger
+        else:
+            msg = f"[INIT FAILED] {step}"
+            print(f"*** {msg}: {error} ***")
+            logger.error(f"{msg}: {error}")
+            if error:
+                tb = traceback.format_exc()
+                print(f"*** TRACEBACK: {tb} ***")
+                logger.error(f"Traceback: {tb}")
+
+    def is_ready(self) -> bool:
+        """Check if component is ready to process."""
+        return self._initialization_complete and self._initialization_error is None
+
+    def get_initialization_status(self) -> Tuple[bool, Optional[str]]:
+        """Get initialization status."""
+        if self._initialization_error:
+            return False, f"{self._initialization_error.__class__.__name__}: {str(self._initialization_error)}"
+        return self._initialization_complete, None
+```
+
+**Key Points**:
+1. ✅ Use outer try/except wrapping entire initialization sequence
+2. ✅ Log each step to both stdout AND logger (print + logging module)
+3. ✅ Set `_initialization_complete=True` ONLY on full success
+4. ✅ Capture exception details (_initialization_error, _initialization_error_traceback)
+5. ✅ Re-raise as RuntimeError so orchestrator detects failures
+6. ✅ Provide `is_ready()` and `get_initialization_status()` for external queries
+
+### Benefits
+- ✅ Orchestrator can detect initialization failures
+- ✅ Structured logging makes debugging easier
+- ✅ Clear failure vs success states
+- ✅ Prevents silent failures from fire-and-forget patterns
+- ✅ External code can query readiness before proceeding
+
+---
+
 ## Core Architecture Patterns
 
 ### 1. Orchestrator Pattern (Responsibility: Application Facade)
