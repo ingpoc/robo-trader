@@ -1,6 +1,14 @@
 # Core Infrastructure Guidelines
 
 > **Scope**: Applies to `src/core/` directory. Read after `src/CLAUDE.md` for context.
+>
+> **Last Updated**: 2025-11-03 | **Status**: Active | **Tier**: Reference + How-To + Explanation
+>
+> **Read in this order**:
+> 1. `src/CLAUDE.md` - Backend architecture overview (read first)
+> 2. This file - Core patterns: orchestrator, coordinator, DI, events, errors
+> 3. `src/services/CLAUDE.md` - How services use core infrastructure
+> 4. Layer-specific guides (scheduler, background_scheduler, etc.)
 
 ## Quick Reference - SDK Usage
 
@@ -612,6 +620,47 @@ class MyService(EventHandler):
         # No unsubscribe method!
 ```
 **Fix**: Always implement `close()` with cleanup
+
+## Quick Fix Guide - Common Core Layer Errors
+
+**Error: "Background component task created but never runs"**
+- **Cause**: Fire-and-forget `asyncio.create_task()` with no error handling; initialization failed silently
+- **Fix**: Implement initialization status tracking with `_initialization_complete` flag and re-raise RuntimeError
+- **Prevention**: Document pattern in component initialization, use in BackgroundScheduler and similar components
+
+**Error: "database is locked"**
+- **Cause**: Multiple async operations accessing SQLite without proper locking
+- **Fix**: Implement `asyncio.Lock()` in each DatabaseState class, wrap all DB operations with `async with self._lock:`
+- **Prevention**: Always add lock in state classes handling concurrent access
+
+**Error: "Event subscribers not reacting"**
+- **Cause**: Subscriber unsubscribed or event type doesn't match
+- **Fix**: Verify EventType enum value matches subscription, check unsubscribe not called prematurely
+- **Prevention**: Implement cleanup() methods with explicit unsubscribe, test event flow in isolation
+
+**Error: "SDK client timeout or hangs"**
+- **Cause**: Direct `client.query()` without timeout protection
+- **Fix**: Use `query_with_timeout(client, prompt, timeout=60.0)` helper
+- **Prevention**: Never call SDK client directly, always use timeout helpers
+
+## Maintenance Instructions
+
+**For Contributors**: This CLAUDE.md is a living document. When you:
+- ✅ Add new coordinator → Document pattern, add to list, keep under 150 lines
+- ✅ Fix core layer bug → Add to Quick Fix Guide with cause/fix/prevention
+- ✅ Change DI pattern → Document in DI section with examples
+- ✅ Add new event type → Document in event system section
+- ⚠️ Update this file → Run changes through prompt optimizer tool
+- ⚠️ Share improvements → Commit alongside code changes so team benefits
+
+**CRITICAL Invariants**:
+- ✅ Orchestrator remains thin (<300 lines, delegation only)
+- ✅ All coordinators stay focused (<150 lines, single responsibility)
+- ✅ Events always use EventType enum (never dynamic strings)
+- ✅ All AI functionality uses SDK only (never direct API calls)
+- ✅ Background components implement initialization tracking
+
+**Last Review**: 2025-11-03
 
 ## Pre-Commit Checklist - Core Layer
 

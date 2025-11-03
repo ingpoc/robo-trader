@@ -1,6 +1,13 @@
 # Scheduler Service Directory Guidelines
 
 > **Scope**: Applies to `src/services/scheduler/` directory. Read `src/services/CLAUDE.md` for context.
+>
+> **Last Updated**: 2025-11-03 | **Status**: Active | **Tier**: Reference + Explanation
+>
+> **Read in this order**:
+> 1. `src/services/CLAUDE.md` - Services layer overview
+> 2. This file - Queue manager and task service patterns
+> 3. `src/models/CLAUDE.md` - SchedulerTask model details
 
 ## Purpose
 
@@ -190,12 +197,43 @@ async def test_parallel_queue_execution():
     assert queue_manager._running is False
 ```
 
-## Maintenance
+## Quick Fix Guide - Common Scheduler Errors
 
-When modifying scheduler:
+**Error: "Task execution timeout (>900s)"**
+- **Cause**: AI analysis on large portfolios takes longer than timeout
+- **Fix**: Increase timeout in queue_manager.py `_execute_single_task()` method (line 132)
+- **Prevention**: Monitor logs for consistently long execution times, adjust proactively
 
-1. Keep parallel queue execution (CRITICAL)
-2. Keep sequential task execution within queues (CRITICAL)
-3. Register task handlers for new task types
-4. Update this CLAUDE.md file
+**Error: "Task never starts executing"**
+- **Cause**: Queue executor initialization failed silently (fire-and-forget pattern)
+- **Fix**: Check `_initialization_complete` flag in background scheduler logs (marked "OK" if ready)
+- **Prevention**: Implement initialization status tracking with re-raise for orchestrator detection
+
+**Error: "Queue stuck processing task X"**
+- **Cause**: Task handler blocked/hung, next task never starts
+- **Fix**: Increase timeout or add heartbeat monitoring to detect hanging tasks
+- **Prevention**: Wrap all async operations with `asyncio.wait_for(operation, timeout=X)`
+
+**Error: "Tasks processed out of order"**
+- **Cause**: Tasks running in parallel within queue instead of sequentially
+- **Fix**: Verify `_execute_queue()` uses `while` loop (not `asyncio.gather()` for tasks in queue)
+- **Prevention**: Maintain queue-level sequential execution pattern (CRITICAL)
+
+## Maintenance Instructions
+
+**For Contributors**: This CLAUDE.md is a living document. When you:
+- ✅ Adjust timeout → Document new value and rationale in Timeout section
+- ✅ Fix queue execution issue → Add to Quick Fix Guide with symptoms/fix/prevention
+- ✅ Change queue architecture → Update Architecture Pattern section (CRITICAL)
+- ✅ Add new queue → Document in rules and parallel execution pattern
+- ⚠️ Update this file → Run changes through prompt optimizer tool
+- ⚠️ Share improvements → Commit alongside code changes so team benefits
+
+**CRITICAL Invariants**:
+- ✅ Always maintain parallel queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS)
+- ✅ Always maintain sequential tasks within each queue
+- ✅ Always use `asyncio.gather()` for queues, `while` loop for tasks
+- ✅ Always document timeout changes with rationale
+
+**Last Review**: 2025-11-03
 

@@ -1,6 +1,13 @@
 # Models Directory Guidelines
 
 > **Scope**: Applies to `src/models/` directory. Read `src/CLAUDE.md` for context.
+>
+> **Last Updated**: 2025-11-03 | **Status**: Active | **Tier**: Reference + Explanation
+>
+> **Read in this order**:
+> 1. `src/CLAUDE.md` - Backend architecture overview
+> 2. This file - Model patterns and best practices
+> 3. `src/services/CLAUDE.md` - How models are used in services
 
 ## Purpose
 
@@ -224,4 +231,33 @@ Models typically depend on:
 - Standard library (`dataclasses`, `enum`, `typing`)
 - `pydantic` - For validation (optional)
 - `datetime` - For timestamp fields
+
+## Quick Fix Guide - Common Model Errors
+
+**Error: `'str' object has no attribute 'keys'`**
+- **Cause**: Payload stored as string, not parsed back to dict (see Data Serialization Pattern)
+- **Fix**: Check `from_dict()` method implements 3-level fallback parsing (json.loads → ast.literal_eval → {})
+- **Prevention**: Always use `json.dumps()` for storage, never `str(dict)`
+
+**Error: `TypeError: missing required field 'X'`**
+- **Cause**: Missing field in model instantiation
+- **Fix**: Check all non-Optional fields have values, use Field(...) for Pydantic
+- **Prevention**: Provide type hints, use dataclass defaults properly
+
+**Error: `ValueError: field must be positive`**
+- **Cause**: Validation logic rejected value (Field(gt=0) in Pydantic)
+- **Fix**: Check input values meet constraints before creating model
+- **Prevention**: Document constraints in field docstrings
+
+## Maintenance Instructions
+
+**For Contributors**: This CLAUDE.md is a living document. When you:
+- ✅ Add a new model type → Document pattern section
+- ✅ Fix a model error → Add to Quick Fix Guide
+- ✅ Change serialization logic → Update Data Serialization Pattern
+- ✅ Change best practices → Update Best Practices section
+- ⚠️ Update this file → Run your changes through prompt optimizer tool
+- ⚠️ Share improvements → Commit alongside code changes so team benefits
+
+**Last Review**: 2025-11-03
 

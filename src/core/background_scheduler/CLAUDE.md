@@ -1,6 +1,13 @@
 # Background Scheduler Directory Guidelines
 
 > **Scope**: Applies to `src/core/background_scheduler/` directory. Read `src/core/CLAUDE.md` for context.
+>
+> **Last Updated**: 2025-11-03 | **Status**: Active | **Tier**: Reference + How-To
+>
+> **Read in this order**:
+> 1. `src/core/CLAUDE.md` - Initialization error handling pattern (CRITICAL for background scheduler)
+> 2. This file - Background scheduler structure and modules
+> 3. `src/core/background_scheduler/stores/CLAUDE.md` - File persistence patterns
 
 ## Purpose
 
@@ -180,4 +187,45 @@ Background scheduler components depend on:
 - `DatabaseStateManager` - For state persistence
 - API clients - For external data fetching
 - File stores - For async file persistence
+
+## Quick Fix Guide - Common Background Scheduler Errors
+
+**Error: "Background scheduler task created but never runs"**
+- **Cause**: Fire-and-forget `asyncio.create_task()` initialization failed, _initialization_complete flag never set to True
+- **Fix**: Check initialization status in logs - if "_initialization_complete = False", implementation lacks proper status tracking
+- **Prevention**: Implement full initialization status tracking pattern (see src/core/CLAUDE.md Initialization Error Handling Pattern)
+
+**Error: "API call rate limited - 429 Too Many Requests"**
+- **Cause**: Retry logic not implemented or exponential backoff interval too aggressive
+- **Fix**: Use RetryHandler with max_retries=3 and base_delay=1.0, verify exponential backoff calculation
+- **Prevention**: Always wrap API calls with RetryHandler, never make direct requests without retry
+
+**Error: "Duplicate API calls for same stock"**
+- **Cause**: State not checked before API calls, or state cache not updated after fetches
+- **Fix**: Verify state.has_recent_data() check before API call AND state update after successful fetch
+- **Prevention**: Use "check → fetch → update" pattern consistently in all processors
+
+**Error: "File persistence corruption or missing data"**
+- **Cause**: Atomic write pattern not used, concurrent writes overwriting each other
+- **Fix**: Use temp file → os.replace() pattern, verify with aiofiles
+- **Prevention**: See src/core/background_scheduler/stores/CLAUDE.md for atomic write patterns
+
+## Maintenance Instructions
+
+**For Contributors**: This CLAUDE.md is a living document. When you:
+- ✅ Add new processor → Document domain, pattern, state checking strategy
+- ✅ Fix background scheduler bug → Add to Quick Fix Guide with cause/fix/prevention
+- ✅ Change retry strategy → Update Retry Pattern section with new exponential backoff values
+- ✅ Add new data source → Document in Architecture Pattern
+- ⚠️ Update this file → Run changes through prompt optimizer tool
+- ⚠️ Share improvements → Commit alongside code changes so team benefits
+
+**CRITICAL Invariants**:
+- ✅ All background scheduler tasks implement initialization status tracking
+- ✅ All API calls wrapped with retry logic (RetryHandler or equivalent)
+- ✅ All processors check state before API calls
+- ✅ All file operations use atomic write pattern
+- ✅ All domains kept separate (never mix news + earnings in one processor)
+
+**Last Review**: 2025-11-03
 
