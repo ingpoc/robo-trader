@@ -252,6 +252,23 @@ async def lifespan(app: FastAPI):
     orchestrator = await container.get_orchestrator()
     logger.info("Orchestrator retrieved")
 
+    # Initialize orchestrator (starts BackgroundScheduler and SequentialQueueManager)
+    logger.info("Initializing orchestrator (starting background scheduler and queue manager)...")
+    await orchestrator.initialize()
+    logger.info("Orchestrator initialization complete - BackgroundScheduler and SequentialQueueManager are now running")
+
+    # Start queue execution after orchestrator initialization
+    logger.info("Starting queue execution...")
+    try:
+        queue_coordinator = orchestrator.queue_coordinator
+        if queue_coordinator:
+            await queue_coordinator.start_queues()
+            logger.info("Queue execution started - queues are now processing pending tasks")
+        else:
+            logger.warning("Queue coordinator not available - queues will not start")
+    except Exception as e:
+        logger.warning(f"Failed to start queues: {e} - continuing without queue execution")
+
     # Set orchestrator initialization status
     initialization_status["orchestrator_initialized"] = True
 
