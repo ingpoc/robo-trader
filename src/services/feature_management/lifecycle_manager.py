@@ -20,9 +20,9 @@ from loguru import logger
 from ...core.event_bus import EventBus, Event, EventType, EventHandler
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...core.background_scheduler import BackgroundScheduler
-from ...core.coordinators.agent_coordinator import AgentCoordinator
-from ...services.queue_management.core.queue_orchestration_layer import QueueOrchestrationLayer
-from ...models.scheduler import QueueName, TaskType
+from ...core.coordinators.agent.agent_coordinator import AgentCoordinator
+from ..queue_management.core.queue_orchestration_layer import QueueOrchestrationLayer
+from src.models.scheduler import QueueName, TaskType
 from .models import FeatureConfig, FeatureState, FeatureStatus, FeatureType
 
 

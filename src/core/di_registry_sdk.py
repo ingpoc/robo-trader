@@ -126,7 +126,7 @@ async def register_sdk_services(container: 'DependencyContainer') -> None:
         perplexity_client = PerplexityClient(configuration_state=configuration_state)
 
         prompt_service = PromptOptimizationService(
-            config=container.config.get("prompt_optimization", {}),
+            config=getattr(container.config, 'prompt_optimization', {}),
             event_bus=event_bus,
             container=container,
             perplexity_client=perplexity_client

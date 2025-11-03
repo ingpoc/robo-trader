@@ -13,7 +13,7 @@ import uvicorn
 
 from src.config import Config
 from ...core.logging_config import setup_logging
-from ...core.event_bus import initialize_event_bus, EventBus
+from ....core.event_bus import initialize_event_bus, EventBus
 from ...stores.scheduler_task_store import SchedulerTaskStore
 from ...services.scheduler.task_service import SchedulerTaskService
 

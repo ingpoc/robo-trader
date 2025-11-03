@@ -113,6 +113,75 @@ async def query_with_timeout(
         )
 
 
+async def query_only_with_timeout(
+    client: ClaudeSDKClient,
+    prompt: str,
+    timeout: float = 60.0
+) -> None:
+    """
+    Send query with timeout protection only (does not receive response).
+    
+    Use this when you need raw response objects and will handle receive_response() separately.
+    
+    Args:
+        client: ClaudeSDKClient instance
+        prompt: Query prompt
+        timeout: Timeout in seconds (default: 60.0)
+    
+    Raises:
+        TradingError: If query times out or fails
+    """
+    try:
+        await asyncio.wait_for(client.query(prompt), timeout=timeout)
+    except asyncio.TimeoutError:
+        raise TradingError(
+            f"Query timed out after {timeout}s",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.MEDIUM,
+            recoverable=True,
+            metadata={"timeout": timeout}
+        )
+    except CLINotFoundError:
+        raise TradingError(
+            "Claude Code CLI not installed",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.CRITICAL,
+            recoverable=False
+        )
+    except CLIConnectionError as e:
+        raise TradingError(
+            f"Claude SDK connection failed: {e}",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.HIGH,
+            recoverable=True,
+            metadata={"error": str(e)}
+        )
+    except ProcessError as e:
+        raise TradingError(
+            f"Claude SDK process failed: {e}",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.HIGH,
+            recoverable=True,
+            metadata={"exit_code": getattr(e, "exit_code", None)}
+        )
+    except CLIJSONDecodeError as e:
+        raise TradingError(
+            f"Claude SDK JSON decode error: {e}",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.MEDIUM,
+            recoverable=True,
+            metadata={"error": str(e)}
+        )
+    except ClaudeSDKError as e:
+        raise TradingError(
+            f"Claude SDK error: {e}",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.HIGH,
+            recoverable=True,
+            metadata={"error": str(e)}
+        )
+
+
 async def receive_response_with_timeout(
     client: ClaudeSDKClient,
     timeout: float = 120.0

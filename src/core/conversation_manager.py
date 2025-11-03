@@ -182,10 +182,12 @@ class ConversationManager:
                 system_prompt=self._get_conversation_prompt(),
                 max_turns=50
             )
-            self.client = ClaudeSDKClient(options=options)
-            await self.client.__aenter__()
+            # Use client manager instead of direct creation
+            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            client_manager = await ClaudeSDKClientManager.get_instance()
+            self.client = await client_manager.get_client("conversation", options)
             self._client_initialized = True
-            logger.info("Conversation Manager Claude client initialized directly")
+            logger.info("Conversation Manager Claude client initialized via manager")
 
     async def cleanup(self) -> None:
         """Cleanup conversation manager resources."""

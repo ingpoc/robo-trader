@@ -17,7 +17,7 @@ import threading
 import weakref
 from loguru import logger
 
-from ...core.coordinators.agent_coordinator import AgentCoordinator
+from ...core.coordinators.agent.agent_coordinator import AgentCoordinator
 from ...core.multi_agent_framework import MultiAgentFramework as AgentFramework
 from ...core.event_bus import EventBus, Event, EventType
 from .models import FeatureConfig, FeatureType

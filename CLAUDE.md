@@ -72,12 +72,16 @@ Services communicate via typed events using `EventType` enum:
 - No direct service-to-service calls for cross-cutting concerns
 
 #### 4. Sequential Queue Architecture (CRITICAL)
-Specialized queues for sequential task execution via `SequentialQueueManager`:
+Specialized queues for task execution via `SequentialQueueManager`:
 - **PORTFOLIO_SYNC**: Portfolio operations and trading (queue=`src/services/scheduler/queue_manager.py`)
 - **DATA_FETCHER**: Market data fetching and analysis
 - **AI_ANALYSIS**: Claude-powered analysis and decisions (MUST use for all Claude requests)
 
-**CRITICAL RULE**: All Claude analysis requests must be submitted to the `AI_ANALYSIS` queue as `RECOMMENDATION_GENERATION` tasks. The `SequentialQueueManager` executes them one-at-a-time sequentially. This prevents turn limit exhaustion when analyzing large stock portfolios (e.g., 81 stocks).
+**Architecture Pattern**:
+- **3 queues execute in PARALLEL**: PORTFOLIO_SYNC, DATA_FETCHER, and AI_ANALYSIS run simultaneously
+- **Tasks WITHIN each queue execute SEQUENTIALLY**: Tasks in each queue run one-at-a-time per queue
+
+**CRITICAL RULE**: All Claude analysis requests must be submitted to the `AI_ANALYSIS` queue as `RECOMMENDATION_GENERATION` tasks. Tasks WITHIN the AI_ANALYSIS queue execute sequentially (one-at-a-time). This prevents turn limit exhaustion when analyzing large stock portfolios (e.g., 81 stocks).
 
 **Why**: Analyzing all 81 stocks in one Claude session hits turn limits (~15 turns before optimization completes). Queue system batches requests automatically - each task analyzes 2-3 stocks in its own session with plenty of turns available.
 

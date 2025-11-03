@@ -494,31 +494,31 @@ class LearningEngine:
             """
 
             try:
-                await asyncio.wait_for(self.client.query(query), timeout=30.0)
-            except asyncio.TimeoutError:
-                logger.error("Performance insights generation timed out")
+                # Use timeout helpers (MANDATORY per architecture pattern)
+                from src.core.sdk_helpers import query_with_timeout
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(self.client, query, timeout=30.0)
+                
+                # Parse JSON response
+                insights = []
+                try:
+                    insights_data = json.loads(response_text)
+                    for insight_data in insights_data:
+                        insight = LearningInsight(
+                            insight_type=insight_data.get("type", "general"),
+                            confidence=insight_data.get("confidence", 0.5),
+                            description=insight_data.get("description", ""),
+                            actionable_recommendations=insight_data.get("recommendations", []),
+                            expected_impact=insight_data.get("impact", "")
+                        )
+                        insights.append(insight)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse insights JSON response")
+                
+                return insights
+            except Exception as e:
+                logger.error(f"Performance insights generation failed: {e}")
                 return []
-
-            insights = []
-            async for message in self.client.receive_response():
-                if hasattr(message, 'content'):
-                    for block in message.content:
-                        if hasattr(block, 'text'):
-                            try:
-                                insights_data = json.loads(block.text)
-                                for insight_data in insights_data:
-                                    insight = LearningInsight(
-                                        insight_type=insight_data.get("type", "general"),
-                                        confidence=insight_data.get("confidence", 0.5),
-                                        description=insight_data.get("description", ""),
-                                        actionable_recommendations=insight_data.get("recommendations", []),
-                                        expected_impact=insight_data.get("impact", "")
-                                    )
-                                    insights.append(insight)
-                            except json.JSONDecodeError:
-                                continue
-
-            return insights
 
     async def _analyze_daily_performance(
         self,
@@ -551,9 +551,26 @@ class LearningEngine:
             """
 
             try:
-                await asyncio.wait_for(self.client.query(query), timeout=25.0)
-            except asyncio.TimeoutError:
-                logger.error("Daily performance analysis timed out")
+                # Use timeout helpers (MANDATORY per architecture pattern)
+                from src.core.sdk_helpers import query_with_timeout
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(self.client, query, timeout=25.0)
+                
+                # Parse JSON response
+                try:
+                    return json.loads(response_text)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse daily performance analysis JSON response")
+                    return {
+                        "worked_well": [],
+                        "did_not_work": [],
+                        "market_observations": [],
+                        "tomorrow_focus": [],
+                        "learning_insights": [],
+                        "confidence_level": 0.5
+                    }
+            except Exception as e:
+                logger.error(f"Daily performance analysis failed: {e}")
                 return {
                     "worked_well": [],
                     "did_not_work": [],
@@ -562,24 +579,6 @@ class LearningEngine:
                     "learning_insights": [],
                     "confidence_level": 0.5
                 }
-
-            async for message in self.client.receive_response():
-                if hasattr(message, 'content'):
-                    for block in message.content:
-                        if hasattr(block, 'text'):
-                            try:
-                                return json.loads(block.text)
-                            except json.JSONDecodeError:
-                                continue
-
-            return {
-                "worked_well": [],
-                "did_not_work": [],
-                "market_observations": [],
-                "tomorrow_focus": [],
-                "learning_insights": [],
-                "confidence_level": 0.5
-            }
 
     async def _analyze_strategy_effectiveness(self, strategy_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze the effectiveness of a specific strategy."""
@@ -635,21 +634,20 @@ class LearningEngine:
             """
 
             try:
-                await asyncio.wait_for(self.client.query(query), timeout=25.0)
-            except asyncio.TimeoutError:
-                logger.error("Market adaptation generation timed out")
+                # Use timeout helpers (MANDATORY per architecture pattern)
+                from src.core.sdk_helpers import query_with_timeout
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(self.client, query, timeout=25.0)
+                
+                # Parse JSON response
+                try:
+                    return json.loads(response_text)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse market adaptation JSON response")
+                    return {"actions": [], "confidence": 0.5}
+            except Exception as e:
+                logger.error(f"Market adaptation generation failed: {e}")
                 return {"actions": [], "confidence": 0.5}
-
-            async for message in self.client.receive_response():
-                if hasattr(message, 'content'):
-                    for block in message.content:
-                        if hasattr(block, 'text'):
-                            try:
-                                return json.loads(block.text)
-                            except json.JSONDecodeError:
-                                continue
-
-            return {"actions": [], "confidence": 0.5}
 
     async def _analyze_trading_patterns(self, historical_data: List[Dict[str, Any]]) -> List[PatternRecognition]:
         """Analyze historical data for trading patterns."""
@@ -678,36 +676,36 @@ class LearningEngine:
             """
 
             try:
-                await asyncio.wait_for(self.client.query(query), timeout=35.0)
-            except asyncio.TimeoutError:
-                logger.error("Pattern analysis timed out")
+                # Use timeout helpers (MANDATORY per architecture pattern)
+                from src.core.sdk_helpers import query_with_timeout
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(self.client, query, timeout=35.0)
+                
+                # Parse JSON response
+                patterns = []
+                try:
+                    patterns_data = json.loads(response_text)
+                    for pattern_data in patterns_data:
+                        pattern = PatternRecognition(
+                            pattern_type=pattern_data.get("pattern_type", "unknown"),
+                            pattern_name=pattern_data.get("pattern_name", "Unknown Pattern"),
+                            description=pattern_data.get("description", ""),
+                            confidence=pattern_data.get("confidence", 0.5),
+                            frequency=pattern_data.get("frequency", 0),
+                            success_rate=pattern_data.get("success_rate", 0.0),
+                            avg_return=pattern_data.get("avg_return", 0.0),
+                            last_observed=datetime.now(timezone.utc).isoformat(),
+                            conditions=pattern_data.get("conditions", {}),
+                            recommendations=pattern_data.get("recommendations", [])
+                        )
+                        patterns.append(pattern)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse patterns JSON response")
+                
+                return patterns
+            except Exception as e:
+                logger.error(f"Pattern analysis failed: {e}")
                 return []
-
-            patterns = []
-            async for message in self.client.receive_response():
-                if hasattr(message, 'content'):
-                    for block in message.content:
-                        if hasattr(block, 'text'):
-                            try:
-                                patterns_data = json.loads(block.text)
-                                for pattern_data in patterns_data:
-                                    pattern = PatternRecognition(
-                                        pattern_type=pattern_data.get("pattern_type", "unknown"),
-                                        pattern_name=pattern_data.get("pattern_name", "Unknown Pattern"),
-                                        description=pattern_data.get("description", ""),
-                                        confidence=pattern_data.get("confidence", 0.5),
-                                        frequency=pattern_data.get("frequency", 0),
-                                        success_rate=pattern_data.get("success_rate", 0.0),
-                                        avg_return=pattern_data.get("avg_return", 0.0),
-                                        last_observed=datetime.now(timezone.utc).isoformat(),
-                                        conditions=pattern_data.get("conditions", {}),
-                                        recommendations=pattern_data.get("recommendations", [])
-                                    )
-                                    patterns.append(pattern)
-                            except json.JSONDecodeError:
-                                continue
-
-            return patterns
 
     async def _store_learning_insights(self, insights: List[LearningInsight]) -> None:
         """Store learning insights in the database."""
@@ -814,9 +812,11 @@ class LearningEngine:
                 system_prompt=self._get_learning_prompt(),
                 max_turns=15
             )
-            self.client = ClaudeSDKClient(options=options)
-            await self.client.__aenter__()
-            logger.info("Learning Engine Claude client initialized")
+            # Use client manager instead of direct creation
+            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            client_manager = await ClaudeSDKClientManager.get_instance()
+            self.client = await client_manager.get_client("query", options)
+            logger.info("Learning Engine Claude client initialized via manager")
 
     def _get_learning_prompt(self) -> str:
         """Get the system prompt for learning analysis."""

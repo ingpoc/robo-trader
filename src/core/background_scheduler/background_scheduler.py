@@ -163,10 +163,24 @@ class BackgroundScheduler:
 
         # Initialize stores
         print("*** DEBUG: Initializing stores ***")
-        await self.stock_state_store.initialize()
-        print("*** DEBUG: Stock state store initialized ***")
-        await self.strategy_log_store.initialize()
-        print("*** DEBUG: Strategy log store initialized ***")
+        logger.info("Initializing stores")
+        try:
+            await self.stock_state_store.initialize()
+            print("*** DEBUG: Stock state store initialized ***")
+            logger.info("Stock state store initialized")
+        except Exception as e:
+            print(f"*** DEBUG: Stock state store initialization failed: {e} ***")
+            logger.error(f"Stock state store initialization failed: {e}")
+            raise
+
+        try:
+            await self.strategy_log_store.initialize()
+            print("*** DEBUG: Strategy log store initialized ***")
+            logger.info("Strategy log store initialized")
+        except Exception as e:
+            print(f"*** DEBUG: Strategy log store initialization failed: {e} ***")
+            logger.error(f"Strategy log store initialization failed: {e}")
+            raise
 
         # Initialize monitors
         print("*** DEBUG: Initializing monitors ***")
@@ -182,11 +196,16 @@ class BackgroundScheduler:
         print(f"*** DEBUG: SequentialQueueManager check - available: {self.sequential_queue_manager is not None} ***")
         logger.info(f"SequentialQueueManager check - available: {self.sequential_queue_manager is not None}")
         if self.sequential_queue_manager:
-            print("*** DEBUG: Starting SequentialQueueManager for task execution... ***")
-            logger.info("Starting SequentialQueueManager for task execution...")
-            self._queue_executor_task = asyncio.create_task(self._run_queue_executor())
-            print("*** DEBUG: SequentialQueueManager task created successfully ***")
-            logger.info("SequentialQueueManager task created successfully")
+            try:
+                print("*** DEBUG: Starting SequentialQueueManager for task execution... ***")
+                logger.info("Starting SequentialQueueManager for task execution...")
+                self._queue_executor_task = asyncio.create_task(self._run_queue_executor())
+                print("*** DEBUG: SequentialQueueManager task created successfully ***")
+                logger.info("SequentialQueueManager task created successfully")
+            except Exception as e:
+                print(f"*** DEBUG: SequentialQueueManager task creation failed: {e} ***")
+                logger.error(f"SequentialQueueManager task creation failed: {e}")
+                raise
         else:
             print("*** DEBUG: SequentialQueueManager not available - tasks will not be processed ***")
             logger.warning("SequentialQueueManager not available - tasks will not be processed")

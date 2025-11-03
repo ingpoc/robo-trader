@@ -549,19 +549,20 @@ class StrategyEvolutionEngine:
         """
 
         try:
-            await asyncio.wait_for(self.client.query(query), timeout=45.0)
-        except asyncio.TimeoutError:
-            logger.error("Strategy idea generation timed out")
+            # Use timeout helpers (MANDATORY per architecture pattern)
+            from src.core.sdk_helpers import query_with_timeout
+            # query_with_timeout handles both query() and receive_response() internally
+            response_text = await query_with_timeout(self.client, query, timeout=45.0)
+            
+            # Parse JSON response
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse strategy ideas JSON response")
+                return []
+        except Exception as e:
+            logger.error(f"Strategy idea generation failed: {e}")
             return []
-
-        async for message in self.client.receive_response():
-            if hasattr(message, 'content'):
-                for block in message.content:
-                    if hasattr(block, 'text'):
-                        try:
-                            return json.loads(block.text)
-                        except json.JSONDecodeError:
-                            continue
 
         return []
 
@@ -611,9 +612,11 @@ class StrategyEvolutionEngine:
                 system_prompt=self._get_evolution_prompt(),
                 max_turns=15
             )
-            self.client = ClaudeSDKClient(options=options)
-            await self.client.__aenter__()
-            logger.info("Strategy Evolution Engine Claude client initialized")
+            # Use client manager instead of direct creation
+            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            client_manager = await ClaudeSDKClientManager.get_instance()
+            self.client = await client_manager.get_client("query", options)
+            logger.info("Strategy Evolution Engine Claude client initialized via manager")
 
     async def _strategy_dict_to_genome(self, strategy_dict: Dict[str, Any]) -> StrategyGenome:
         """Convert strategy dictionary to genome."""

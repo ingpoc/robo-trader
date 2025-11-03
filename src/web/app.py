@@ -89,7 +89,7 @@ import httpx
 
 from src.config import load_config
 from src.core.di import initialize_container, cleanup_container, DependencyContainer
-from src.core.database_state import DatabaseStateManager
+from src.core.database_state.database_state import DatabaseStateManager
 from src.core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
 from .claude_agent_api import router as claude_agent_router
@@ -245,6 +245,7 @@ async def lifespan(app: FastAPI):
     logger.info("Paper trading routes initialized with container")
 
     connection_manager = ConnectionManager()
+    app.state.connection_manager = connection_manager
     logger.info("ConnectionManager created")
 
     logger.info("Getting orchestrator from container...")
@@ -708,6 +709,14 @@ async def health_check(request: Request) -> Dict[str, Any]:
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""
+    # Get connection manager from app state
+    connection_manager = getattr(websocket.app.state, "connection_manager", None)
+    if not connection_manager:
+        await websocket.close(code=1011, reason="Connection manager not initialized")
+        return
+    
+    container = getattr(websocket.app.state, "container", None)
+    
     client_id = None
     try:
         client_id = await connection_manager.connect(websocket)

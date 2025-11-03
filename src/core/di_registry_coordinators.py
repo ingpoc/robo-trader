@@ -12,16 +12,20 @@ Handles registration of all coordinator services:
 import asyncio
 import logging
 
-from src.core.coordinators import (
-    SessionCoordinator,
-    QueryCoordinator,
-    TaskCoordinator,
-    StatusCoordinator,
-    LifecycleCoordinator,
-    BroadcastCoordinator,
-    ClaudeAgentCoordinator,
-)
-from src.core.orchestrator import RoboTraderOrchestrator
+from .coordinators.core.session_coordinator import SessionCoordinator
+from .coordinators.core.query_coordinator import QueryCoordinator
+from .coordinators.task.task_coordinator import TaskCoordinator
+from .coordinators.status.status_coordinator import StatusCoordinator
+from .coordinators.core.lifecycle_coordinator import LifecycleCoordinator
+from .coordinators.broadcast.broadcast_coordinator import BroadcastCoordinator
+from .coordinators.agent.claude_agent_coordinator import ClaudeAgentCoordinator
+from .coordinators.status.system_status_coordinator import SystemStatusCoordinator
+from .coordinators.status.scheduler_status_coordinator import SchedulerStatusCoordinator
+from .coordinators.status.infrastructure_status_coordinator import InfrastructureStatusCoordinator
+from .coordinators.status.ai_status_coordinator import AIStatusCoordinator
+from .coordinators.status.agent_status_coordinator import AgentStatusCoordinator
+from .coordinators.status.portfolio_status_coordinator import PortfolioStatusCoordinator
+from .orchestrator import RoboTraderOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -52,26 +56,94 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
     container._register_singleton("task_coordinator", create_task_coordinator)
 
     async def create_portfolio_coordinator():
-        from src.core.coordinators.portfolio_coordinator import PortfolioCoordinator
+        from src.core.coordinators.core.portfolio_coordinator import PortfolioCoordinator
         state_manager = await container.get("state_manager")
         return PortfolioCoordinator(container.config, state_manager)
 
     container._register_singleton("portfolio_coordinator", create_portfolio_coordinator)
 
-    async def create_status_coordinator():
-        state_manager = await container.get("state_manager")
-        ai_planner = await container.get("ai_planner")
+    # Create focused status coordinators first (nested coordinators for SystemStatusCoordinator)
+    async def create_scheduler_status_coordinator():
         background_scheduler = await container.get("background_scheduler")
-        session_coordinator = await container.get("session_coordinator")
-        broadcast_coordinator = await container.get("broadcast_coordinator")
-        return StatusCoordinator(
+        return SchedulerStatusCoordinator(
             container.config,
-            state_manager,
+            background_scheduler
+        )
+
+    container._register_singleton("scheduler_status_coordinator", create_scheduler_status_coordinator)
+
+    async def create_infrastructure_status_coordinator():
+        state_manager = await container.get("state_manager")
+        coordinator = InfrastructureStatusCoordinator(
+            container.config,
+            state_manager
+        )
+        # Set connection manager if available
+        try:
+            connection_manager = await container.get("connection_manager")
+            if connection_manager:
+                coordinator.set_connection_manager(connection_manager)
+        except:
+            pass  # Connection manager optional
+        return coordinator
+
+    container._register_singleton("infrastructure_status_coordinator", create_infrastructure_status_coordinator)
+
+    async def create_system_status_coordinator():
+        scheduler_status_coordinator = await container.get("scheduler_status_coordinator")
+        infrastructure_status_coordinator = await container.get("infrastructure_status_coordinator")
+        return SystemStatusCoordinator(
+            container.config,
+            scheduler_status_coordinator,
+            infrastructure_status_coordinator
+        )
+
+    container._register_singleton("system_status_coordinator", create_system_status_coordinator)
+
+    async def create_ai_status_coordinator():
+        ai_planner = await container.get("ai_planner")
+        session_coordinator = await container.get("session_coordinator")
+        return AIStatusCoordinator(
+            container.config,
             ai_planner,
-            background_scheduler,
-            session_coordinator,
+            session_coordinator
+        )
+
+    container._register_singleton("ai_status_coordinator", create_ai_status_coordinator)
+
+    async def create_agent_status_coordinator():
+        return AgentStatusCoordinator(container.config)
+
+    container._register_singleton("agent_status_coordinator", create_agent_status_coordinator)
+
+    async def create_portfolio_status_coordinator():
+        state_manager = await container.get("state_manager")
+        return PortfolioStatusCoordinator(
+            container.config,
+            state_manager
+        )
+
+    container._register_singleton("portfolio_status_coordinator", create_portfolio_status_coordinator)
+
+    # Now create main status coordinator that orchestrates the focused ones
+    async def create_status_coordinator():
+        system_status_coordinator = await container.get("system_status_coordinator")
+        ai_status_coordinator = await container.get("ai_status_coordinator")
+        agent_status_coordinator = await container.get("agent_status_coordinator")
+        portfolio_status_coordinator = await container.get("portfolio_status_coordinator")
+        broadcast_coordinator = await container.get("broadcast_coordinator")
+        
+        # Connection manager already set in infrastructure_status_coordinator
+        
+        status_coordinator = StatusCoordinator(
+            container.config,
+            system_status_coordinator,
+            ai_status_coordinator,
+            agent_status_coordinator,
+            portfolio_status_coordinator,
             broadcast_coordinator
         )
+        return status_coordinator
 
     container._register_singleton("status_coordinator", create_status_coordinator)
 
@@ -87,7 +159,7 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
     container._register_singleton("broadcast_coordinator", create_broadcast_coordinator)
 
     async def create_queue_coordinator():
-        from src.core.coordinators.queue_coordinator import QueueCoordinator
+        from src.core.coordinators.queue.queue_coordinator import QueueCoordinator
         return QueueCoordinator(container.config, container)
 
     container._register_singleton("queue_coordinator", create_queue_coordinator)

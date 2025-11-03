@@ -12,7 +12,23 @@ logger = logging.getLogger(__name__)
 
 
 class SequentialQueueManager:
-    """Manage sequential execution of queues."""
+    """
+    Manage queue execution with parallel queues and sequential tasks.
+    
+    Architecture Pattern:
+    - 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
+    - Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time per queue)
+    
+    This prevents:
+    - Turn limit exhaustion (AI_ANALYSIS tasks run sequentially)
+    - Database contention (PORTFOLIO_SYNC tasks run sequentially)
+    - Resource conflicts (each queue manages its own sequential execution)
+    
+    While allowing:
+    - Parallel processing across different queue types
+    - Better resource utilization
+    - Independent queue execution
+    """
 
     def __init__(self, task_service: SchedulerTaskService):
         """Initialize manager."""
@@ -23,31 +39,51 @@ class SequentialQueueManager:
         self._execution_history: List[Dict[str, Any]] = []
 
     async def execute_queues(self) -> None:
-        """Execute all queues in order: portfolio_sync → data_fetcher → ai_analysis."""
+        """
+        Execute all queues in parallel.
+        
+        Architecture Pattern:
+        - 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
+        - Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time)
+        
+        This allows:
+        - Portfolio sync, data fetching, and AI analysis to run simultaneously
+        - Tasks within each queue execute in order (prevents turn limit exhaustion for AI)
+        """
         if self._running:
             logger.warning("Queue execution already in progress")
             return
 
         self._running = True
-        logger.info("Starting sequential queue execution")
+        logger.info("Starting parallel queue execution (queues in parallel, tasks within queues sequential)")
 
         try:
             # Reload completed tasks from today
             self._completed_task_ids = await self.task_service.store.get_completed_task_ids_today()
 
-            # Execute each queue
-            for queue_name in [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]:
-                logger.info(f"Starting queue: {queue_name.value}")
-
-                await self._execute_queue(queue_name)
-
-                logger.info(f"Completed queue: {queue_name.value}")
+            # Execute all queues in PARALLEL (not sequentially!)
+            # Each queue processes its tasks sequentially internally
+            queue_names = [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]
+            
+            # Create tasks for parallel execution
+            tasks = [self._execute_queue(queue_name) for queue_name in queue_names]
+            
+            # Execute all queues concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Log results
+            for i, queue_name in enumerate(queue_names):
+                result = results[i]
+                if isinstance(result, Exception):
+                    logger.error(f"Queue {queue_name.value} failed: {result}")
+                else:
+                    logger.info(f"Queue {queue_name.value} completed successfully")
 
         except Exception as e:
             logger.error(f"Error in queue execution: {e}")
         finally:
             self._running = False
-            logger.info("Sequential queue execution complete")
+            logger.info("Parallel queue execution complete")
 
     async def _execute_queue(self, queue_name: QueueName) -> None:
         """Execute all tasks in a queue sequentially."""

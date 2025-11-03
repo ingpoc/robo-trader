@@ -14,8 +14,8 @@ import json
 from loguru import logger
 
 from ...core.background_scheduler import BackgroundScheduler
-from ...services.queue_management.core.queue_orchestration_layer import QueueOrchestrationLayer
-from ...models.scheduler import QueueName, TaskType, TaskStatus
+from ..queue_management.core.queue_orchestration_layer import QueueOrchestrationLayer
+from src.models.scheduler import QueueName, TaskType, TaskStatus
 from ...services.scheduler.task_service import SchedulerTaskService
 from ...core.event_bus import EventBus, Event, EventType
 from .models import FeatureConfig, FeatureType

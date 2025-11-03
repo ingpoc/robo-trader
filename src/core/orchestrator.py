@@ -119,8 +119,13 @@ class RoboTraderOrchestrator:
             self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
 
             logger.info("Calling BackgroundScheduler.start()...")
-            self.background_tasks = await self.background_scheduler.start()
-            logger.info("BackgroundScheduler started successfully")
+            try:
+                self.background_tasks = await self.background_scheduler.start()
+                logger.info("BackgroundScheduler started successfully")
+            except Exception as e:
+                logger.error(f"Failed to start BackgroundScheduler: {e}")
+                logger.exception("BackgroundScheduler startup exception:")
+                raise
         else:
             logger.error("BackgroundScheduler is None - not starting")
 
@@ -258,7 +263,10 @@ Use the available tools to coordinate between agents. Maintain state and create 
         if not self.options:
             await self.initialize()
 
-        return ClaudeSDKClient(options=self.options)
+        # Use client manager instead of direct creation
+        from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+        client_manager = await ClaudeSDKClientManager.get_instance()
+        return await client_manager.get_client("trading", self.options)
 
     async def run_portfolio_scan(self) -> Dict[str, Any]:
         """Run a portfolio scan using live portfolio data."""
