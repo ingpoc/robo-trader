@@ -135,12 +135,68 @@ class TaskStatus(Enum):
     CANCELLED = "cancelled"
 ```
 
+## Data Serialization Pattern (CRITICAL)
+
+### Problem: String vs Dict Serialization Mismatch
+
+**Symptoms**:
+- Error: `'str' object has no attribute 'keys'` when accessing task payload
+- Task created but processing fails when accessing nested data in payload
+- Legacy database entries incompatible with new code
+
+**Root Cause**:
+Two-part issue:
+1. **Storage Issue**: `str(dict)` creates Python dict string representation instead of JSON
+2. **Deserialization Issue**: Deserialization code doesn't parse string back to dict
+
+**Solution**:
+```python
+# Storage: Always use json.dumps() for proper JSON
+payload_json = json.dumps(payload or {})  # ✅ Correct
+# NOT: str(payload_json)  # ❌ Wrong - creates Python repr
+
+# Deserialization: Implement fallback parsing with two levels
+@staticmethod
+def from_dict(data: Dict[str, Any]) -> 'SchedulerTask':
+    """Create from dictionary with payload parsing."""
+    if isinstance(data.get('payload'), str):
+        payload_str = data['payload']
+        if payload_str:
+            try:
+                # Level 1: Try JSON first (preferred format)
+                data['payload'] = json.loads(payload_str)
+            except (json.JSONDecodeError, ValueError):
+                # Level 2: Fall back to Python literal eval for legacy format
+                try:
+                    data['payload'] = ast.literal_eval(payload_str)
+                except (ValueError, SyntaxError):
+                    # Level 3: Use empty dict if both fail
+                    data['payload'] = {}
+        else:
+            data['payload'] = {}
+    return SchedulerTask(**data)
+```
+
+**Key Points**:
+1. ✅ Always use `json.dumps()` for JSON serialization
+2. ✅ Implement 2-level fallback for backward compatibility
+3. ✅ Level 1: `json.loads()` for new proper JSON format
+4. ✅ Level 2: `ast.literal_eval()` for legacy Python dict strings
+5. ✅ Level 3: Empty dict `{}` if both fail
+6. ✅ Prevents "AttributeError: 'str' object has no attribute" errors
+
+**Lessons Learned**:
+- Storage must use `json.dumps()`, not `str()`
+- Deserialization must handle both JSON and legacy formats
+- This enables seamless migration of existing database entries
+- Always test with real database data, not mocked dictionaries
+
 ## Best Practices
 
 1. **Type Safety**: Always provide type hints
 2. **Validation**: Include validation logic when needed
 3. **Immutability**: Use frozen dataclasses when appropriate
-4. **Serialization**: Implement JSON serialization methods
+4. **Serialization**: Always use `json.dumps()` for JSON, never `str(dict)` - see Data Serialization Pattern above
 5. **Documentation**: Document model purpose and fields
 6. **Consistency**: Follow consistent naming conventions
 7. **Separation**: Keep models separate from business logic

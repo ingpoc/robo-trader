@@ -113,13 +113,55 @@ async def _execute_queue(self, queue_name: QueueName) -> None:
         task = await self.task_service.get_next_task(queue_name)
         if not task:
             break
-        
+
         # Execute task (one-at-a-time)
         await self.task_service.execute_task(task)
-        
+
         # Wait before next task (if needed)
         await asyncio.sleep(0.1)
 ```
+
+## Task Execution Timeout (CRITICAL)
+
+### Problem: Aggressive Timeouts Causing Premature Failures
+
+**Symptoms**:
+- AI analysis tasks fail with "Task execution timeout" error after 5 minutes
+- Task status changes to FAILED instead of COMPLETED
+- Error message: "Task execution timeout (>300s)"
+
+**Root Cause**:
+- Claude AI analysis on portfolios with 2+ stocks takes 5-10+ minutes
+- Analysis includes: reasoning, SDK turns, data fetching, Claude interactions
+- 300-second (5-minute) timeout was too aggressive
+
+**Solution**:
+```python
+# In queue_manager.py _execute_single_task()
+result = await asyncio.wait_for(
+    self.task_service.execute_task(task),
+    timeout=900.0  # 15 minutes for AI analysis
+)
+```
+
+**Why 15 minutes?**
+- AI_ANALYSIS queue tasks (recommendation_generation) need 5-10+ min
+- Claude Agent SDK analysis with portfolio data is naturally slow
+- Better to have generous timeout than lose legitimate analysis results
+- Task-specific: PORTFOLIO_SYNC and DATA_FETCHER can still use shorter timeouts if needed
+
+**Lessons Learned**:
+1. ✅ AI analysis timeouts must account for Claude SDK reasoning time
+2. ✅ Test with actual portfolio data to understand execution time
+3. ✅ Document timeout rationale in code comments
+4. ✅ Monitor logs to detect if timeout is still too aggressive
+5. ✅ Consider making timeout configurable per task type if needed
+
+### When to Adjust Timeout
+
+- **Still timing out?** Increase to 1200s (20 min) if analyzing large portfolios
+- **Timeout never hit?** Can reduce if consistently completing in <3 min (unlikely for AI)
+- **Different queue?** PORTFOLIO_SYNC can use 60-300s, DATA_FETCHER 120-600s
 
 ## Dependencies
 
