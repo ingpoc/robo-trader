@@ -71,6 +71,7 @@ class SchedulerTask:
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'SchedulerTask':
         """Create from dictionary."""
+        import ast
         data = data.copy()
         data['queue_name'] = QueueName(data['queue_name'])
         data['task_type'] = TaskType(data['task_type'])
@@ -78,6 +79,23 @@ class SchedulerTask:
         # Parse dependencies from JSON string to list
         if isinstance(data.get('dependencies'), str):
             data['dependencies'] = json.loads(data['dependencies']) if data['dependencies'] else []
+        # Parse payload from JSON string to dict (CRITICAL: was causing 'str' has no attribute 'keys' error)
+        # Handle both JSON format and legacy Python dict string format
+        if isinstance(data.get('payload'), str):
+            payload_str = data['payload']
+            if payload_str:
+                try:
+                    # Try JSON first (preferred format)
+                    data['payload'] = json.loads(payload_str)
+                except (json.JSONDecodeError, ValueError):
+                    # Fall back to Python literal eval for legacy format (Python dict with single quotes)
+                    try:
+                        data['payload'] = ast.literal_eval(payload_str)
+                    except (ValueError, SyntaxError):
+                        # If both fail, use empty dict
+                        data['payload'] = {}
+            else:
+                data['payload'] = {}
         return SchedulerTask(**data)
 
     def is_ready_to_run(self, completed_tasks: List[str]) -> bool:

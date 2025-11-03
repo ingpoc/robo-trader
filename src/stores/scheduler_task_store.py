@@ -3,6 +3,7 @@
 import logging
 import asyncio
 import aiosqlite
+import json
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
@@ -88,13 +89,13 @@ class SchedulerTaskStore:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now'))
             """
 
-            dependencies_json = dependencies or []
-            payload_json = payload or {}
+            dependencies_json = json.dumps(dependencies or [])
+            payload_json = json.dumps(payload or {})
 
             self.db_connection.row_factory = aiosqlite.Row
             await self.db_connection.execute(
                 query, (task_id, queue_name.value, task_type.value,
-                       priority, str(payload_json), str(dependencies_json), max_retries)
+                       priority, payload_json, dependencies_json, max_retries)
             )
             await self.db_connection.commit()
 

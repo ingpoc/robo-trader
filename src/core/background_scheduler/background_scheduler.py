@@ -6,7 +6,8 @@ Maintains core scheduler lifecycle (start, stop) and execution tracking.
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any, List
+import traceback
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, time, timezone
 
 from ...core.event_bus import EventBus, Event, EventType
@@ -56,6 +57,11 @@ class BackgroundScheduler:
         self._running = False
         self._event_listener_task: Optional[asyncio.Task] = None
         self._queue_executor_task: Optional[asyncio.Task] = None
+
+        # Initialization status tracking (CRITICAL for detecting failures)
+        self._initialization_complete = False
+        self._initialization_error: Optional[Exception] = None
+        self._initialization_error_traceback: Optional[str] = None
 
         # Execution tracker (injected from DI)
         self.execution_tracker = execution_tracker
@@ -144,79 +150,98 @@ class BackgroundScheduler:
             lambda event: self._create_async_handler(self.event_handlers.handle_market_news, event)
         )
 
+    def _log_initialization_step(self, step: str, success: bool = True, error: Optional[Exception] = None) -> None:
+        """Log initialization step with detailed context."""
+        if success:
+            msg = f"[INIT] {step}"
+            print(f"*** {msg} - OK ***")
+            logger.info(msg)
+        else:
+            msg = f"[INIT FAILED] {step}"
+            print(f"*** {msg}: {error} ***")
+            logger.error(f"{msg}: {error}")
+            if error:
+                tb = traceback.format_exc()
+                print(f"*** TRACEBACK: {tb} ***")
+                logger.error(f"Traceback: {tb}")
+
+    def get_initialization_status(self) -> Tuple[bool, Optional[str]]:
+        """Get initialization status.
+
+        Returns:
+            Tuple of (is_complete, error_message)
+        """
+        if self._initialization_error:
+            return False, f"{self._initialization_error.__class__.__name__}: {str(self._initialization_error)}"
+        return self._initialization_complete, None
+
+    def is_ready(self) -> bool:
+        """Check if scheduler is ready to process tasks.
+
+        Returns:
+            True if initialization complete and no errors
+        """
+        return self._initialization_complete and self._initialization_error is None
+
     async def start(self) -> None:
-        """Start the event-driven background scheduler."""
-        print(f"*** DEBUG: BackgroundScheduler.start() called - _running={self._running} ***")
+        """Start the event-driven background scheduler with proper error handling."""
         logger.info(f"BackgroundScheduler.start() called - _running={self._running}")
 
         if self._running:
-            print("*** DEBUG: BackgroundScheduler already running - returning early ***")
             logger.info("BackgroundScheduler already running - returning early")
             return
 
-        print("*** DEBUG: Starting event-driven background scheduler... ***")
-        logger.info("Starting event-driven background scheduler...")
+        # Set running flag
         self._running = True
         self._start_time = datetime.now(timezone.utc)
-        print(f"*** DEBUG: BackgroundScheduler _running set to True - start_time: {self._start_time} ***")
-        logger.info(f"BackgroundScheduler _running set to True - start_time: {self._start_time}")
+        logger.info(f"Starting event-driven background scheduler...")
 
-        # Initialize stores
-        print("*** DEBUG: Initializing stores ***")
-        logger.info("Initializing stores")
         try:
+            # Initialize stores
+            self._log_initialization_step("Initializing StockStateStore")
             await self.stock_state_store.initialize()
-            print("*** DEBUG: Stock state store initialized ***")
-            logger.info("Stock state store initialized")
-        except Exception as e:
-            print(f"*** DEBUG: Stock state store initialization failed: {e} ***")
-            logger.error(f"Stock state store initialization failed: {e}")
-            raise
+            self._log_initialization_step("StockStateStore initialized")
 
-        try:
+            self._log_initialization_step("Initializing StrategyLogStore")
             await self.strategy_log_store.initialize()
-            print("*** DEBUG: Strategy log store initialized ***")
-            logger.info("Strategy log store initialized")
-        except Exception as e:
-            print(f"*** DEBUG: Strategy log store initialization failed: {e} ***")
-            logger.error(f"Strategy log store initialization failed: {e}")
-            raise
+            self._log_initialization_step("StrategyLogStore initialized")
 
-        # Initialize monitors
-        print("*** DEBUG: Initializing monitors ***")
-        await self.monthly_reset_monitor.initialize()
-        print("*** DEBUG: Monthly reset monitor initialized ***")
+            # Initialize monitors
+            self._log_initialization_step("Initializing MonthlyResetMonitor")
+            await self.monthly_reset_monitor.initialize()
+            self._log_initialization_step("MonthlyResetMonitor initialized")
 
-        # Start event listener
-        print("*** DEBUG: Starting event listener ***")
-        self._event_listener_task = asyncio.create_task(self._event_listener())
-        print("*** DEBUG: Event listener task created ***")
+            # Start event listener
+            self._log_initialization_step("Creating event listener task")
+            self._event_listener_task = asyncio.create_task(self._event_listener())
+            self._log_initialization_step("Event listener task created")
 
-        # Start SequentialQueueManager for task execution
-        print(f"*** DEBUG: SequentialQueueManager check - available: {self.sequential_queue_manager is not None} ***")
-        logger.info(f"SequentialQueueManager check - available: {self.sequential_queue_manager is not None}")
-        if self.sequential_queue_manager:
-            try:
-                print("*** DEBUG: Starting SequentialQueueManager for task execution... ***")
-                logger.info("Starting SequentialQueueManager for task execution...")
+            # Start SequentialQueueManager for task execution
+            if self.sequential_queue_manager:
+                self._log_initialization_step("Creating SequentialQueueManager task")
                 self._queue_executor_task = asyncio.create_task(self._run_queue_executor())
-                print("*** DEBUG: SequentialQueueManager task created successfully ***")
-                logger.info("SequentialQueueManager task created successfully")
-            except Exception as e:
-                print(f"*** DEBUG: SequentialQueueManager task creation failed: {e} ***")
-                logger.error(f"SequentialQueueManager task creation failed: {e}")
-                raise
-        else:
-            print("*** DEBUG: SequentialQueueManager not available - tasks will not be processed ***")
-            logger.warning("SequentialQueueManager not available - tasks will not be processed")
+                self._log_initialization_step("SequentialQueueManager task created")
+            else:
+                logger.warning("SequentialQueueManager not available - queue tasks will not be processed")
 
-        # Schedule daily routines
-        print("*** DEBUG: Scheduling daily routines ***")
-        await self._schedule_daily_routines()
-        print("*** DEBUG: Daily routines scheduled ***")
+            # Schedule daily routines
+            self._log_initialization_step("Scheduling daily routines")
+            await self._schedule_daily_routines()
+            self._log_initialization_step("Daily routines scheduled")
 
-        print("*** DEBUG: Event-driven background scheduler started ***")
-        logger.info("Event-driven background scheduler started")
+            # Mark initialization as complete
+            self._initialization_complete = True
+            logger.info("BackgroundScheduler started successfully - queue executor is ready")
+
+        except Exception as e:
+            # Capture error details
+            self._running = False
+            self._initialization_error = e
+            self._initialization_error_traceback = traceback.format_exc()
+            self._log_initialization_step("BackgroundScheduler initialization", success=False, error=e)
+
+            # Re-raise so orchestrator knows initialization failed
+            raise RuntimeError(f"BackgroundScheduler initialization failed: {e}") from e
 
     async def stop(self) -> None:
         """Stop the event-driven background scheduler."""
