@@ -121,13 +121,14 @@ class SchedulerTaskService:
             await self.mark_failed(task.task_id, error)
             return {"success": False, "error": error}
 
-        # Execute with timeout (600 seconds = 10 minutes max per task)
+        # Execute with timeout (900 seconds = 15 minutes max per task)
+        # AI analysis on large portfolios requires 5-10+ minutes
         try:
-            result = await asyncio.wait_for(handler(task), timeout=600.0)
+            result = await asyncio.wait_for(handler(task), timeout=900.0)
             await self.mark_completed(task.task_id)
             return {"success": True, "result": result}
         except asyncio.TimeoutError:
-            error_msg = f"Task execution timed out after 600 seconds"
+            error_msg = f"Task execution timed out after 900 seconds"
             await self.mark_failed(task.task_id, error_msg)
             return {"success": False, "error": error_msg}
         except Exception as e:
