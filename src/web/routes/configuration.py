@@ -352,243 +352,72 @@ async def execute_scheduler_manually(
     task_name: str,
     container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
-    """Manually execute a scheduler task.
-    
+    """Manually execute a scheduler task via queue.
+
+    Maps scheduler names to queue-based task creation.
+    Returns immediately after queueing task.
+
     Optional request body: {"symbols": ["SYMBOL1", "SYMBOL2", ...]}
-    If provided, uses these symbols. Otherwise, selects from portfolio.
     """
-    import sys
-    import time
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n{'='*80}\n[{timestamp}] [ENDPOINT CALLED] execute_scheduler_manually with task_name={task_name}\n{'='*80}\n", file=sys.stderr, flush=True)
-    print(f"[ENDPOINT DEBUG] execute_scheduler_manually called with task_name={task_name}", flush=True)
     logger.info(f"Manual execution endpoint called for: {task_name}")
-    
+
+    # Map scheduler names to queue task creation
+    scheduler_map = {
+        "portfolio_sync_scheduler": ("trigger_portfolio_sync", QueueName.PORTFOLIO_SYNC, TaskType.SYNC_ACCOUNT_BALANCES),
+        "data_fetcher_scheduler": ("trigger_data_fetch", QueueName.DATA_FETCHER, TaskType.FUNDAMENTALS_UPDATE),
+        "ai_analysis_scheduler": ("trigger_ai_analysis", QueueName.AI_ANALYSIS, TaskType.RECOMMENDATION_GENERATION),
+        "portfolio_analyzer": ("trigger_ai_analysis", QueueName.AI_ANALYSIS, TaskType.RECOMMENDATION_GENERATION),
+    }
+
+    # Check if this is a known scheduler
+    if task_name not in scheduler_map:
+        return {
+            "status": "error",
+            "message": f"Unknown scheduler: {task_name}",
+            "available": list(scheduler_map.keys())
+        }
+
+    # Get queue configuration
+    scheduler_action, queue_name, task_type = scheduler_map[task_name]
+
     # Try to get symbols from request body
-    provided_symbols = None
+    symbols = ["AAPL", "MSFT"]  # Default symbols
     try:
         body = await request.json()
-        if isinstance(body, dict) and "symbols" in body:
-            provided_symbols = body.get("symbols")
-            if isinstance(provided_symbols, list) and len(provided_symbols) > 0:
-                logger.info(f"Received symbols from request body: {provided_symbols}")
+        if isinstance(body, dict) and "symbols" in body and isinstance(body["symbols"], list):
+            if len(body["symbols"]) > 0:
+                symbols = body["symbols"]
+                logger.info(f"Using provided symbols: {symbols}")
     except Exception as e:
-        logger.debug(f"Could not parse request body for symbols (this is OK if body is empty): {e}")
-    
+        logger.debug(f"Could not parse request body: {e}")
+
+    # Queue the task using task_service from DI container
     try:
-        logger.info(f"Manual execution requested for scheduler: {task_name}")
-
-        # Get the background scheduler
-        logger.info("Getting background scheduler...")
-        background_scheduler = await container.get("background_scheduler")
-        logger.info(f"Got background scheduler: {background_scheduler is not None}")
-
-        # Create fundamental executor directly (simpler than DI registration issues)
-        logger.info("Creating fundamental executor...")
-        from src.core.background_scheduler.clients.perplexity_client import PerplexityClient
-        from src.core.background_scheduler.executors.fundamental_executor import FundamentalExecutor
-
-        state_manager = await container.get("state_manager")
-        event_bus = await container.get("event_bus")
-        configuration_state = await container.get("configuration_state")
-        execution_tracker = await container.get("execution_tracker")
-
-        perplexity_client = PerplexityClient(configuration_state=configuration_state)
-        fundamental_executor = FundamentalExecutor(
-            perplexity_client,
-            state_manager.db.connection,
-            event_bus,
-            execution_tracker
+        task_service = await container.get("task_service")
+        task = await task_service.create_task(
+            queue_name=queue_name,
+            task_type=task_type,
+            payload={"symbols": symbols, "manual_trigger": True},
+            priority=8
         )
-        logger.info("Fundamental executor created successfully")
-
-        # Map task names to execution methods
-        execution_map = {
-            "earnings_processor": "execute_earnings_fundamentals",
-            "news_processor": "execute_market_news_analysis",
-            "fundamental_analyzer": "execute_deep_fundamental_analysis",
-            "deep_fundamental_processor": "execute_deep_fundamental_analysis",
-        }
-
-        # Map scheduler names to queue task creation
-        scheduler_map = {
-            "portfolio_sync_scheduler": "trigger_portfolio_sync",
-            "data_fetcher_scheduler": "trigger_data_fetch",
-            "ai_analysis_scheduler": "trigger_ai_analysis",
-        }
-
-        if task_name in execution_map:
-            # Handle processor execution
-            execution_method = execution_map[task_name]
-            is_processor = True
-        elif task_name in scheduler_map:
-            # Handle scheduler triggering
-            scheduler_action = scheduler_map[task_name]
-            is_processor = False
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown scheduler task: {task_name}. Available processors: {list(execution_map.keys())}, schedulers: {list(scheduler_map.keys())}"
-            )
-
-        # Check if the executor has the method (only for processors)
-        if is_processor and not hasattr(fundamental_executor, execution_method):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Executor does not have method: {execution_method}"
-            )
-
-        # Use provided symbols if available, otherwise get from portfolio
-        if provided_symbols and isinstance(provided_symbols, list) and len(provided_symbols) > 0:
-            sample_symbols = provided_symbols
-            logger.info(f"✅ Using provided symbols: {sample_symbols}")
-            # Skip portfolio selection if symbols are provided
-        else:
-            # Get symbols from user's portfolio instead of hardcoded ones
-            sample_symbols = ["RELIANCE", "TCS", "INFY", "HDFC", "ICICIBANK"]  # Default fallback
-            logger.info("Starting portfolio-based symbol selection")
-
-            # Get portfolio from orchestrator state manager (same as dashboard)
-            try:
-                orchestrator = await container.get_orchestrator()
-                if orchestrator and orchestrator.state_manager:
-                    portfolio_state = await orchestrator.state_manager.get_portfolio()
-                    logger.info(f"Portfolio loaded with {len(portfolio_state.holdings) if portfolio_state and portfolio_state.holdings else 0} holdings")
-
-                    # Extract symbols from portfolio holdings
-                    if portfolio_state and portfolio_state.holdings:
-                        portfolio_symbols = [holding.get("symbol") for holding in portfolio_state.holdings if holding.get("symbol")]
-                        logger.info(f"Extracted {len(portfolio_symbols)} symbols from portfolio holdings")
-
-                        if portfolio_symbols:
-                            # Try to use stock state store for intelligent prioritization
-                            try:
-                                state_manager = await container.get("state_manager")
-                                stock_state_store = state_manager.get_stock_state_store()
-                                await stock_state_store.initialize()
-
-                                # Select stocks based on scheduler type using oldest-first logic
-                                if task_name == "news_processor":
-                                    sample_symbols = await stock_state_store.get_oldest_news_stocks(portfolio_symbols, limit=5)
-                                    logger.info(f"Selected {len(sample_symbols)} oldest news stocks: {sample_symbols}")
-                                elif task_name == "earnings_processor":
-                                    sample_symbols = await stock_state_store.get_oldest_earnings_stocks(portfolio_symbols, limit=5)
-                                    logger.info(f"Selected {len(sample_symbols)} oldest earnings stocks: {sample_symbols}")
-                                elif task_name in ["fundamental_analyzer", "deep_fundamental_processor"]:
-                                    sample_symbols = await stock_state_store.get_oldest_fundamentals_stocks(portfolio_symbols, limit=5)
-                                    logger.info(f"Selected {len(sample_symbols)} oldest fundamentals stocks: {sample_symbols}")
-                                else:
-                                    # Fallback: use first 5 portfolio symbols
-                                    sample_symbols = portfolio_symbols[:5]
-                                    logger.info(f"Using first 5 portfolio symbols for {task_name}: {sample_symbols}")
-
-                            except Exception as e:
-                                # Fallback: use portfolio symbols without prioritization
-                                logger.warning(f"Failed to use stock state store for prioritization: {e}, using portfolio symbols directly")
-                                sample_symbols = portfolio_symbols[:5]
-                        else:
-                            logger.warning("No symbols found in portfolio holdings")
-                    else:
-                        logger.warning("Portfolio state is empty or has no holdings")
-                else:
-                    logger.warning("Orchestrator or state_manager not available")
-
-            except Exception as e:
-                logger.error(f"Failed to get portfolio-based symbols: {e}, using default symbols", exc_info=True)
-
-        logger.info(f"Final symbols for execution: {sample_symbols}")
-        metadata = {
-            "manual_execution": True,
-            "requested_by": "user",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "source": "configuration_api"
-        }
-
-        # Execute the task based on type
-        import time
-        start_time = time.time()
-
-        if is_processor:
-            # Execute processor method
-            execution_func = getattr(fundamental_executor, execution_method)
-            result = await execution_func(sample_symbols, metadata)
-        else:
-            # Trigger scheduler by calling BackgroundScheduler method
-            if scheduler_action == "trigger_portfolio_sync":
-                await background_scheduler._trigger_portfolio_sync()
-                result = {"status": "success", "message": "Portfolio sync triggered"}
-            elif scheduler_action == "trigger_data_fetch":
-                await background_scheduler._trigger_data_fetch_sequence(sample_symbols)
-                result = {"status": "success", "message": "Data fetch triggered"}
-            elif scheduler_action == "trigger_ai_analysis":
-                for symbol in sample_symbols[:3]:  # Limit to 3 symbols for AI analysis
-                    await background_scheduler._trigger_ai_analysis(symbol, "manual")
-                result = {"status": "success", "message": "AI analysis triggered"}
-            else:
-                result = {"status": "failed", "error": f"Unknown scheduler action: {scheduler_action}"}
-
-        execution_time = time.time() - start_time
-
-        logger.info(f"Manual execution completed for {task_name}: {result}")
-
-        # Determine execution status
-        execution_status = "completed" if result.get("status") == "success" else "failed"
-        error_message = None if execution_status == "completed" else str(result.get("error", "Unknown error"))
-
-        # Update stock state if execution was successful
-        if execution_status == "completed":
-            try:
-                state_manager = await container.get("state_manager")
-                stock_state_store = state_manager.get_stock_state_store()
-                await stock_state_store.initialize()
-
-                # Update last check date for executed stocks
-                for symbol in sample_symbols:
-                    if task_name == "news_processor":
-                        await stock_state_store.update_news_check(symbol)
-                        logger.info(f"Updated news check date for {symbol}")
-                    elif task_name == "earnings_processor":
-                        await stock_state_store.update_earnings_check(symbol)
-                        logger.info(f"Updated earnings check date for {symbol}")
-                    elif task_name in ["fundamental_analyzer", "deep_fundamental_processor"]:
-                        await stock_state_store.update_fundamentals_check(symbol)
-                        logger.info(f"Updated fundamentals check date for {symbol}")
-            except Exception as e:
-                logger.warning(f"Failed to update stock state after execution: {e}")
-
-        # Record execution in background scheduler
-        try:
-            task_id = f"manual_{task_name}_{int(datetime.now(timezone.utc).timestamp())}"
-            await background_scheduler.record_execution(
-                task_name=task_name,
-                task_id=task_id,
-                execution_type="manual",
-                user="user",
-                symbols=sample_symbols,
-                status=execution_status,
-                error_message=error_message,
-                execution_time=execution_time
-            )
-        except Exception as e:
-            logger.warning(f"Failed to record manual execution: {e}")
-
+        logger.info(f"✅ Task queued: {task_type} with symbols={symbols}")
         return {
-            "status": execution_status,
+            "status": "success",
+            "message": f"{scheduler_action} queued",
+            "task_id": task.task_id,
             "task_name": task_name,
-            "execution_method": execution_method,
-            "symbols_processed": len(sample_symbols),
-            "symbols": sample_symbols,
-            "execution_time_seconds": execution_time,
-            "result": result,
-            "message": f"Manual execution {execution_status} for {task_name}",
-            "timestamp": metadata["timestamp"]
+            "task_type": task_type.value,
+            "queue_name": queue_name.value,
+            "symbols": symbols,
+            "timestamp": datetime.utcnow().isoformat()
         }
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Failed to execute scheduler manually: {e}")
-        return await handle_unexpected_error(e, "execute_scheduler_manually")
+        logger.error(f"Failed to queue task: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Failed to queue task: {str(e)}",
+            "task_name": task_name
+        }
 
 
 @router.post("/configuration/ai-agents/{agent_name}/execute")

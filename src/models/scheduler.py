@@ -75,11 +75,19 @@ class SchedulerTask:
         data['queue_name'] = QueueName(data['queue_name'])
         data['task_type'] = TaskType(data['task_type'])
         data['status'] = TaskStatus(data['status'])
+        # Parse dependencies from JSON string to list
+        if isinstance(data.get('dependencies'), str):
+            data['dependencies'] = json.loads(data['dependencies']) if data['dependencies'] else []
         return SchedulerTask(**data)
 
     def is_ready_to_run(self, completed_tasks: List[str]) -> bool:
         """Check if all dependencies are satisfied."""
-        return all(dep_id in completed_tasks for dep_id in self.dependencies)
+        print(f"*** is_ready_to_run() for {self.task_id}: dependencies={self.dependencies} (type={type(self.dependencies)}), completed_tasks={completed_tasks[:5] if completed_tasks else []} ***")
+        dep_checks = [(dep_id, dep_id in completed_tasks) for dep_id in self.dependencies]
+        print(f"*** dependency checks: {dep_checks} ***")
+        result = all(dep_id in completed_tasks for dep_id in self.dependencies)
+        print(f"*** is_ready_to_run() result: {result} ***")
+        return result
 
     def mark_started(self) -> None:
         """Mark task as started."""

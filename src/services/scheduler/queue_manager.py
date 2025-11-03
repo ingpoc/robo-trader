@@ -87,6 +87,7 @@ class SequentialQueueManager:
 
     async def _execute_queue(self, queue_name: QueueName) -> None:
         """Execute all tasks in a queue sequentially."""
+        print(f"*** _execute_queue() called for {queue_name.value} ***")
         max_iterations = 1000  # Prevent infinite loops
         iteration = 0
 
@@ -99,13 +100,17 @@ class SequentialQueueManager:
                 completed_task_ids=self._completed_task_ids
             )
 
+            print(f"*** {queue_name.value}: Found {len(pending_tasks)} pending tasks ***")
             if not pending_tasks:
                 logger.info(f"No more pending tasks in {queue_name.value}")
                 break
 
             # Execute first task (highest priority)
             task = pending_tasks[0]
+            print(f"*** {queue_name.value}: About to execute task {task.task_id} ***")
+            print(f"*** {queue_name.value}: Task type={task.task_type.value}, payload keys={list(task.payload.keys())} ***")
             await self._execute_single_task(task)
+            print(f"*** {queue_name.value}: Task execution completed for {task.task_id} ***")
 
             # Add to completed list
             if task.status == TaskStatus.COMPLETED:
@@ -113,17 +118,20 @@ class SequentialQueueManager:
 
     async def _execute_single_task(self, task: SchedulerTask) -> None:
         """Execute a single task with error handling."""
+        print(f"*** _execute_single_task() ENTERED for {task.task_id} ***")
         self._current_task = task
         start_time = datetime.utcnow()
 
         logger.info(f"Executing task: {task.task_id} ({task.task_type.value})")
 
         try:
+            print(f"*** About to call task_service.execute_task() for {task.task_id} ***")
             # Set timeout for task execution (max 5 minutes)
             result = await asyncio.wait_for(
                 self.task_service.execute_task(task),
                 timeout=300.0  # 5 minutes
             )
+            print(f"*** task_service.execute_task() COMPLETED for {task.task_id} ***")
 
             end_time = datetime.utcnow()
             duration_ms = int((end_time - start_time).total_seconds() * 1000)

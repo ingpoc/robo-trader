@@ -71,9 +71,11 @@ class SchedulerTaskService:
         """Get pending tasks for queue that are ready to run."""
         completed = completed_task_ids or []
         all_pending = await self.store.get_pending_tasks(queue_name)
+        print(f"*** get_pending_tasks() for {queue_name.value}: store returned {len(all_pending)} tasks ***")
 
         # Filter by dependency satisfaction
         ready_tasks = [t for t in all_pending if t.is_ready_to_run(completed)]
+        print(f"*** get_pending_tasks() filtered to {len(ready_tasks)} ready tasks ***")
         return ready_tasks
 
     async def mark_started(self, task_id: str) -> Optional[SchedulerTask]:

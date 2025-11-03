@@ -158,7 +158,7 @@ class SchedulerTaskStore:
                        status, retry_count, max_retries, scheduled_at, started_at,
                        completed_at, error_message, created_at, updated_at
                 FROM queue_tasks
-                WHERE queue_name = ? AND status IN ('PENDING', 'RETRYING')
+                WHERE queue_name = ? AND status IN ('pending', 'retrying')
                 ORDER BY priority DESC, created_at ASC
             """
 
@@ -192,7 +192,7 @@ class SchedulerTaskStore:
         async with self._lock:
             query = """
                 UPDATE queue_tasks
-                SET status = 'RUNNING', started_at = datetime('now'), updated_at = datetime('now')
+                SET status = 'running', started_at = datetime('now'), updated_at = datetime('now')
                 WHERE task_id = ?
             """
 
@@ -209,7 +209,7 @@ class SchedulerTaskStore:
         async with self._lock:
             query = """
                 UPDATE queue_tasks
-                SET status = 'COMPLETED', completed_at = datetime('now'),
+                SET status = 'completed', completed_at = datetime('now'),
                     updated_at = datetime('now')
                 WHERE task_id = ?
             """
@@ -227,7 +227,7 @@ class SchedulerTaskStore:
         async with self._lock:
             query = """
                 UPDATE queue_tasks
-                SET status = 'FAILED', error_message = ?, completed_at = datetime('now'),
+                SET status = 'failed', error_message = ?, completed_at = datetime('now'),
                     updated_at = datetime('now')
                 WHERE task_id = ?
             """
@@ -245,7 +245,7 @@ class SchedulerTaskStore:
         async with self._lock:
             query = """
                 UPDATE queue_tasks
-                SET retry_count = retry_count + 1, status = 'PENDING',
+                SET retry_count = retry_count + 1, status = 'pending',
                     started_at = NULL, error_message = NULL, updated_at = datetime('now')
                 WHERE task_id = ? AND retry_count < max_retries
             """

@@ -273,10 +273,17 @@ async def lifespan(app: FastAPI):
     initialization_status["orchestrator_initialized"] = True
 
     logger.info("Wiring WebSocket broadcasting...")
+
+    # Create safe broadcast function with exception handling
+    async def safe_broadcast(data):
+        """Safely broadcast data with exception handling to prevent TaskGroup errors."""
+        try:
+            await connection_manager.broadcast(data)
+        except Exception as e:
+            logger.debug(f"Broadcast failed (likely no active connections): {e}")
+
     orchestrator.broadcast_coordinator.set_broadcast_callback(
-        lambda data: asyncio.create_task(
-            connection_manager.broadcast(data)
-        )
+        lambda data: asyncio.create_task(safe_broadcast(data))
     )
 
     # Set connection manager on status coordinator for real WebSocket client count
