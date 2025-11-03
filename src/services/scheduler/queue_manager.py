@@ -126,10 +126,11 @@ class SequentialQueueManager:
 
         try:
             print(f"*** About to call task_service.execute_task() for {task.task_id} ***")
-            # Set timeout for task execution (max 5 minutes)
+            # Set timeout for task execution (max 15 minutes for AI analysis)
+            # AI analysis on large portfolios can take 5-10+ minutes
             result = await asyncio.wait_for(
                 self.task_service.execute_task(task),
-                timeout=300.0  # 5 minutes
+                timeout=900.0  # 15 minutes
             )
             print(f"*** task_service.execute_task() COMPLETED for {task.task_id} ***")
 
@@ -149,7 +150,7 @@ class SequentialQueueManager:
 
         except asyncio.TimeoutError:
             logger.error(f"Task timeout: {task.task_id}")
-            await self.task_service.mark_failed(task.task_id, "Task execution timeout (>300s)")
+            await self.task_service.mark_failed(task.task_id, "Task execution timeout (>900s)")
             self._execution_history.append({
                 "task_id": task.task_id,
                 "task_type": task.task_type.value,
