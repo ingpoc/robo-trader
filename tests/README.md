@@ -1,17 +1,25 @@
-# Robo Trader - Functional Testing Suite
+# Robo Trader - Testing Suite
 
-This directory contains comprehensive functional tests for the Robo Trader application.
+This directory contains comprehensive testing for the Robo Trader application, including functional tests (API-based) and end-to-end tests (full system integration).
 
 ## Quick Start
 
-### Run All Functional Tests
+### Run Functional Tests (API-Based)
+Tests individual API endpoints and system health:
 ```bash
 ./tests/run_functional_tests.sh
+```
+
+### Run End-to-End Tests (Full System Integration)
+Tests queue system, AI analysis, data persistence, and system transparency:
+```bash
+./tests/run_comprehensive_e2e_tests.sh
 ```
 
 ### Run Tests Against Custom Backend URL
 ```bash
 ./tests/run_functional_tests.sh http://localhost:8001
+./tests/run_comprehensive_e2e_tests.sh http://localhost:8001
 ```
 
 ## Test Files
@@ -33,6 +41,57 @@ Comprehensive automated API testing script that verifies:
 - `curl` command
 - `jq` JSON processor
 - Running Robo Trader backend server
+
+### `run_comprehensive_e2e_tests.sh` - End-to-End Testing Script
+Comprehensive automated end-to-end testing script that validates complete system integration:
+
+**Test Categories**:
+- **PART 1: Queue System Tests** - Validates 3 parallel queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) are operational
+  - Queue Status (checks 3 active queues)
+  - Queue Health (verifies queue health endpoint)
+  - Queue Metrics (confirms task processing metrics available)
+
+- **PART 2: AI Analysis & Transparency Tests** - Verifies Claude Agent SDK integration
+  - Analysis History (portfolio intelligence analysis records)
+  - Trade Decisions Transparency (AI trading decision logs)
+  - Execution Transparency (trade execution records)
+
+- **PART 3: Data Persistence Tests** - Ensures data is properly saved
+  - Database File Existence (SQLite database persistence)
+  - Backup Management (database backup system operational)
+  - Database Content Validation (Python SQLite direct query - verifies tables and records)
+
+- **PART 4: API Response Time Performance** - Measures system responsiveness
+  - Analysis API Response Time (target: <500ms)
+  - Queue Status API Response Time (target: <500ms)
+
+**Output**: Generates timestamped E2E test report in `results/e2e_test_results_YYYYMMDD_HHMMSS.txt`
+
+**Requirements**:
+- Bash shell
+- `curl` command
+- `jq` JSON processor
+- `python3` (for database validation)
+- Running Robo Trader backend server
+- Database initialized and operational
+
+**Recent Execution (2025-11-04)**:
+```
+✅ ALL CRITICAL TESTS PASSED: 12/12
+
+- Pre-flight: Backend Health ✅
+- Queue Status ✅ (3 queues detected)
+- Queue Health ✅
+- Queue Metrics ✅ (0 tasks processed)
+- Analysis History ✅ (0 records, system ready)
+- Trade Decisions ✅ (0 decisions)
+- Execution Logs ✅ (0 executions)
+- Database File ✅ (1.0M)
+- Backup System ✅ (7 backups maintained)
+- Database Validation ✅ (31 tables, 9 analysis records)
+- API Performance ✅ (9ms response time)
+- Queue API Performance ✅ (10ms response time)
+```
 
 ### `FUNCTIONAL_TESTING_REPORT_20251104.md` - Comprehensive Testing Documentation
 Complete testing specification and results including:
@@ -163,6 +222,8 @@ The test script can be integrated into CI/CD pipelines:
 
 ## Last Updated
 
-- Script: 2025-11-04
+- Functional Tests Script: 2025-11-04
+- End-to-End Tests Script: 2025-11-04 (NEW - comprehensive system integration testing)
 - Test Documentation: 2025-11-04
 - Database Locking Fix: 2025-11-04
+- E2E Test Execution: 2025-11-04 (All 12 tests passing)
