@@ -12,10 +12,15 @@ logger = logging.getLogger(__name__)
 class SchedulerTaskService:
     """Manage scheduler tasks and queues."""
 
-    def __init__(self, store: SchedulerTaskStore):
+    def __init__(self, store: SchedulerTaskStore, execution_tracker=None):
         """Initialize service."""
         self.store = store
+        self.execution_tracker = execution_tracker
         self._task_handlers: Dict[TaskType, Callable] = {}
+
+    async def initialize(self) -> None:
+        """Initialize the task service."""
+        await self.store.initialize()
 
     def register_handler(self, task_type: TaskType, handler: Callable) -> None:
         """Register a task handler."""
@@ -66,9 +71,11 @@ class SchedulerTaskService:
         """Get pending tasks for queue that are ready to run."""
         completed = completed_task_ids or []
         all_pending = await self.store.get_pending_tasks(queue_name)
+        print(f"*** get_pending_tasks() for {queue_name.value}: store returned {len(all_pending)} tasks ***")
 
         # Filter by dependency satisfaction
         ready_tasks = [t for t in all_pending if t.is_ready_to_run(completed)]
+        print(f"*** get_pending_tasks() filtered to {len(ready_tasks)} ready tasks ***")
         return ready_tasks
 
     async def mark_started(self, task_id: str) -> Optional[SchedulerTask]:
@@ -102,6 +109,8 @@ class SchedulerTaskService:
 
     async def execute_task(self, task: SchedulerTask) -> Dict[str, Any]:
         """Execute a task."""
+        import asyncio
+
         # Mark started
         await self.mark_started(task.task_id)
 
@@ -112,11 +121,16 @@ class SchedulerTaskService:
             await self.mark_failed(task.task_id, error)
             return {"success": False, "error": error}
 
-        # Execute
+        # Execute with timeout (900 seconds = 15 minutes max per task)
+        # AI analysis on large portfolios requires 5-10+ minutes
         try:
-            result = await handler(task)
+            result = await asyncio.wait_for(handler(task), timeout=900.0)
             await self.mark_completed(task.task_id)
             return {"success": True, "result": result}
+        except asyncio.TimeoutError:
+            error_msg = f"Task execution timed out after 900 seconds"
+            await self.mark_failed(task.task_id, error_msg)
+            return {"success": False, "error": error_msg}
         except Exception as e:
             error_msg = str(e)
             await self.mark_failed(task.task_id, error_msg)

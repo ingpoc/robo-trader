@@ -12,7 +12,7 @@ from src.config import Config
 from ..models.claude_agent import SessionType, ClaudeSessionResult
 from ..stores.claude_strategy_store import ClaudeStrategyStore
 from .claude_agent import ClaudeAgentMCPServer
-from ..auth.claude_auth import get_claude_status_cached
+from ....auth.claude_auth import get_claude_status_cached
 
 logger = logging.getLogger(__name__)
 

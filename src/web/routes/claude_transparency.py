@@ -2,6 +2,7 @@
 
 import logging
 import os
+import json
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends
@@ -79,35 +80,61 @@ async def get_research_transparency(request: Request, container: DependencyConta
 async def get_analysis_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's analysis activities transparency."""
     try:
-
-        analysis_logger = await container.get("analysis_logger")
-
-        if not analysis_logger:
-            return JSONResponse({"error": "Analysis logger not available"}, status_code=500)
-
-        # Get analysis effectiveness from analysis logger
+        # Get portfolio analysis data from database
+        portfolio_analyses = []
         try:
-            analysis_effectiveness = await analysis_logger.get_analysis_effectiveness(days=7)
-        except Exception as e:
-            logger.warning(f"Could not get analysis effectiveness: {e}")
-            analysis_effectiveness = {"error": "Analysis effectiveness not available"}
+            database = await container.get("database")
+            conn = database.connection
+            cursor = await conn.execute("""
+                SELECT symbol, timestamp, analysis, created_at
+                FROM analysis_history
+                WHERE json_extract(analysis, '$.analysis_type') = 'portfolio_intelligence'
+                ORDER BY created_at DESC
+                LIMIT 10
+            """)
+            rows = await cursor.fetchall()
 
-        try:
-            decision_history = await analysis_logger.get_decision_history(limit=10)
-        except Exception as e:
-            logger.warning(f"Could not get decision history: {e}")
-            decision_history = []
+            for row in rows:
+                symbol, timestamp, analysis_json, created_at = row
+                try:
+                    analysis_data = json.loads(analysis_json)
+                    # Extract claude_response for UI display
+                    claude_response = analysis_data.get("claude_response", "")
+                    # Create analysis_summary from claude_response, truncating if too long
+                    analysis_summary = claude_response[:200] + "..." if len(claude_response) > 200 else claude_response
 
-        try:
-            strategy_evaluations = await analysis_logger.get_strategy_evaluations(limit=5)
+                    portfolio_analyses.append({
+                        "symbol": symbol,
+                        "timestamp": timestamp,
+                        "created_at": created_at,
+                        "analysis_type": analysis_data.get("analysis_type", "unknown"),
+                        "recommendations_count": analysis_data.get("recommendations_count", 0),
+                        "confidence_score": analysis_data.get("confidence_score", 0.0),
+                        "key_insights": [],  # Not available in current structure
+                        "data_sources": [],  # Not available in current structure
+                        "analysis_summary": analysis_summary,
+                        "analysis_content": claude_response,  # Full content for detailed view
+                        "data_quality": analysis_data.get("data_quality", {})
+                    })
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse analysis JSON for {symbol}: {e}")
+                    continue
+
         except Exception as e:
-            logger.warning(f"Could not get strategy evaluations: {e}")
-            strategy_evaluations = []
+            logger.warning(f"Could not get portfolio analyses from database: {e}")
+            portfolio_analyses = []
+
+        # Calculate portfolio analysis stats
+        portfolio_stats = {
+            "total_analyses": len(portfolio_analyses),
+            "symbols_analyzed": len(set(analysis["symbol"] for analysis in portfolio_analyses)),
+            "avg_confidence": sum(analysis["confidence_score"] for analysis in portfolio_analyses) / len(portfolio_analyses) if portfolio_analyses else 0.0,
+            "total_recommendations": sum(analysis["recommendations_count"] for analysis in portfolio_analyses),
+        }
 
         analysis_data = {
-            "analysis_effectiveness": analysis_effectiveness,
-            "decision_history": decision_history,
-            "strategy_evaluations": strategy_evaluations,
+            "portfolio_analyses": portfolio_analyses,
+            "portfolio_stats": portfolio_stats,
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 

@@ -235,7 +235,7 @@ class Config(BaseModel):
     project_dir: Path = Field(default=Path.cwd(), description="Project directory")
     state_dir: Path = Field(default=Path.cwd() / "state", description="State storage directory")
     logs_dir: Path = Field(default=Path.cwd() / "logs", description="Logs directory")
-    max_turns: int = Field(default=50, description="Maximum conversation turns")
+    max_turns: int = Field(default=100, description="Maximum conversation turns")
 
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)

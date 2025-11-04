@@ -6,17 +6,15 @@ import { Toaster } from '@/components/common/Toaster'
 import { GlobalErrorBoundary } from '@/components/common/GlobalErrorBoundary'
 import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBoundary'
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
-import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 import { AccountProvider } from '@/contexts/AccountContext'
 import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
 import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
 import { AITransparencyFeature } from '@/features/ai-transparency/AITransparencyFeature'
 import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeature'
-import { AgentsFeature } from '@/features/agents/AgentsFeature'
+import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
 import { PaperTrading } from '@/pages/PaperTrading'
 import { Config } from '@/pages/Config'
-import { Logs } from '@/pages/Logs'
 import { Button } from '@/components/ui/Button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -31,7 +29,32 @@ const queryClient = new QueryClient({
 })
 
 function AppContent() {
-  useWebSocket()
+  // Initialize WebSocket connection globally for the entire app
+  const initializeWebSocket = useSystemStatusStore((state) => state.initializeWebSocket)
+
+  React.useEffect(() => {
+    // Add a small delay to ensure proper cleanup on page refresh
+    const timeoutId = setTimeout(() => {
+      const cleanup = initializeWebSocket()
+
+      // Add page unload cleanup
+      const handleBeforeUnload = () => {
+        if (cleanup) cleanup()
+      }
+
+      window.addEventListener('beforeunload', handleBeforeUnload)
+
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload)
+        if (cleanup) cleanup()
+      }
+    }, 100) // 100ms delay
+
+    return () => {
+      clearTimeout(timeoutId)
+    }
+  }, [initializeWebSocket])
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Keyboard navigation for sidebar and global shortcuts
@@ -76,7 +99,7 @@ function AppContent() {
             if (event.altKey) {
               event.preventDefault()
               // Navigate to different sections based on number
-              const routes = ['/', '/news-earnings', '/agents', '/paper-trading', '/ai-transparency', '/system-health', '/config', '/logs']
+              const routes = ['/', '/news-earnings', '/configuration', '/paper-trading', '/ai-transparency', '/system-health', '/config']
               const index = parseInt(event.key) - 1
               if (routes[index]) {
                 window.location.href = routes[index]
@@ -173,10 +196,8 @@ function AppContent() {
             <Routes>
               <Route path="/" element={<DashboardErrorBoundary><DashboardFeature /></DashboardErrorBoundary>} />
               <Route path="/news-earnings" element={<NewsEarningsFeature />} />
-              <Route path="/agents" element={<AgentsFeature />} />
+              <Route path="/configuration" element={<ConfigurationFeature />} />
               <Route path="/paper-trading" element={<PaperTrading />} />
-              <Route path="/config" element={<Config />} />
-              <Route path="/logs" element={<Logs />} />
               <Route path="/ai-transparency" element={<AITransparencyFeature />} />
               <Route path="/system-health" element={<SystemHealthFeature />} />
             </Routes>
@@ -184,9 +205,6 @@ function AppContent() {
         </div>
 
         <Toaster />
-
-        {/* Claude AI Status Indicator - Fixed bottom left */}
-        <ClaudeStatusIndicator />
       </div>
     </WebSocketErrorBoundary>
   )

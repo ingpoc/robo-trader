@@ -16,16 +16,18 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from src.config import Config
 from ..core.database_state import DatabaseStateManager
 from ..core.event_bus import EventBus, Event, EventType
-from .coordinators import (
-    AgentCoordinator,
-    TaskCoordinator,
-    MessageCoordinator,
-    AgentRole,
-    CollaborationMode,
-    CollaborationTask,
-    AgentMessage,
-    MessageType
-)
+from typing import TYPE_CHECKING
+from .coordinators.task.collaboration_task import CollaborationMode, CollaborationTask
+from .coordinators.agent.agent_profile import AgentRole
+from .coordinators.message.agent_message import AgentMessage, MessageType
+
+if TYPE_CHECKING:
+    from .coordinators.agent.agent_coordinator import AgentCoordinator
+    from .coordinators.task.task_coordinator import TaskCoordinator
+    from .coordinators.message.message_coordinator import MessageCoordinator
+    from .coordinators.agent.agent_profile import AgentRole
+    from .coordinators.task.collaboration_task import CollaborationTask
+    from .coordinators.message.agent_message import AgentMessage, MessageType
 
 
 class MultiAgentFramework:
@@ -247,9 +249,11 @@ class MultiAgentFramework:
                 system_prompt=self._get_collaboration_prompt(),
                 max_turns=15
             )
-            self.client = ClaudeSDKClient(options=options)
-            await self.client.__aenter__()
-            logger.info("Multi-Agent Framework Claude client initialized")
+            # Use client manager instead of direct creation
+            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            client_manager = await ClaudeSDKClientManager.get_instance()
+            self.client = await client_manager.get_client("trading", options)
+            logger.info("Multi-Agent Framework Claude client initialized via manager")
 
     def _get_collaboration_prompt(self) -> str:
         """Get the system prompt for agent collaboration."""

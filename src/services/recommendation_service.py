@@ -743,10 +743,11 @@ class RecommendationEngine:
     ) -> Optional[Dict[str, Any]]:
         """Get AI-powered recommendation analysis from Claude using SDK."""
         try:
-            # Initialize client on first use
+            # Use client manager instead of direct creation
             if not self.claude_client:
-                self.claude_client = ClaudeSDKClient(options=self.claude_options)
-                await self.claude_client.__aenter__()
+                from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+                client_manager = await ClaudeSDKClientManager.get_instance()
+                self.claude_client = await client_manager.get_client("trading", self.claude_options)
 
             # Gather comprehensive data for Claude analysis
             fundamental_data = await self.state_manager.get_fundamental_analysis(symbol, 1)
@@ -756,16 +757,10 @@ class RecommendationEngine:
             # Build comprehensive prompt for Claude
             prompt = self._build_claude_analysis_prompt(symbol, factors, fundamental_data, news_data, earnings_data)
 
-            # Use Claude Agent SDK query pattern
-            await self.claude_client.query(prompt)
-
-            # Get SDK response
-            response_text = ""
-            async for response in self.claude_client.receive_response():
-                if hasattr(response, 'content'):
-                    for block in response.content:
-                        if hasattr(block, 'text'):
-                            response_text += block.text
+            # Use timeout helpers (MANDATORY per architecture pattern)
+            # query_with_timeout handles both query() and receive_response() internally
+            from src.core.sdk_helpers import query_with_timeout
+            response_text = await query_with_timeout(self.claude_client, prompt, timeout=60.0)
 
             # Parse Claude's response
             return self._parse_claude_response(response_text)

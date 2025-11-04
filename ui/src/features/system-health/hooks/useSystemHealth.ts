@@ -1,77 +1,95 @@
 /**
  * System Health Hook
- * Aggregates system health data from various monitoring sources
+ * Uses centralized system status store for consistent state management
  */
 
-import { useState, useEffect } from 'react'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 
 export const useSystemHealth = () => {
-  const [schedulerStatus, setSchedulerStatus] = useState<any>(null)
-  const [queueHealth, setQueueHealth] = useState<any>(null)
-  const [dbHealth, setDbHealth] = useState<any>(null)
-  const [resources, setResources] = useState<any>(null)
-  const [errors, setErrors] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const {
+    systemStatus,
+    isConnected,
+    errors,
+    lastUpdate,
+    getOverallHealth,
+    getComponentHealth
+  } = useSystemStatusStore()
 
-  useEffect(() => {
-    const fetchHealthData = async () => {
-      try {
-        setIsLoading(true)
+  // WebSocket is now initialized globally in App.tsx, so no need to initialize here
+  // This hook now only reads from the store
 
-        // Fetch real system health from backend
-        const response = await fetch('/api/system/health')
-        if (!response.ok) {
-          throw new Error('Failed to fetch system health')
-        }
+  // Extract component-specific data
+  const schedulerStatus = getComponentHealth('scheduler')
+  const queueHealth = getComponentHealth('queue')
+  const dbHealth = getComponentHealth('database')
+  const resources = getComponentHealth('resources')
+  const websocketHealth = getComponentHealth('websocket')
+  const claudeHealth = getComponentHealth('claudeAgent')
 
-        const data = await response.json()
+  
+  // Format data for compatibility with enhanced components
+  const formattedData = {
+    scheduler: schedulerStatus ? {
+      healthy: schedulerStatus.status === 'healthy',
+      lastRun: schedulerStatus.lastRun,
+      activeJobs: schedulerStatus.activeJobs,
+      completedJobs: schedulerStatus.completedJobs,
+      schedulers: schedulerStatus.schedulers,
+      totalSchedulers: schedulerStatus.totalSchedulers,
+      runningSchedulers: schedulerStatus.runningSchedulers
+    } : null,
 
-        // Transform backend response to frontend format
-        const components = data.components || {}
+    queue: queueHealth ? {
+      healthy: ['healthy', 'idle'].includes(queueHealth.status),
+      totalTasks: queueHealth.totalTasks,
+      runningQueues: queueHealth.runningQueues,
+      totalQueues: queueHealth.totalQueues,
+      queues: queueHealth.queues
+    } : null,
 
-        setSchedulerStatus({
-          healthy: components.scheduler?.status === 'healthy',
-          lastRun: components.scheduler?.lastRun || new Date().toISOString()
-        })
+    database: dbHealth ? {
+      healthy: dbHealth.status === 'connected',
+      activeConnections: dbHealth.connections,
+      portfolioLoaded: dbHealth.portfolioLoaded
+    } : null,
 
-        setQueueHealth({
-          healthy: true,  // TODO: Get from components
-          totalTasks: 0  // TODO: Get from components
-        })
+    resources: resources ? {
+      cpu: resources.cpu,
+      memory: resources.memory,
+      disk: resources.disk
+    } : null,
 
-        setDbHealth({
-          healthy: components.database?.status === 'connected',
-          activeConnections: components.database?.connections || 0
-        })
+    websocket: websocketHealth ? {
+      healthy: websocketHealth.status === 'connected',
+      clients: websocketHealth.clients
+    } : null,
 
-        setResources({
-          cpu: 0,  // TODO: Implement resource monitoring
-          memory: 0,
-          disk: 0
-        })
-
-        setErrors([])
-      } catch (err) {
-        console.error('Failed to fetch system health:', err)
-        setErrors(['Failed to fetch system health data'])
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchHealthData()
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchHealthData, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    claudeAgent: claudeHealth ? {
+      healthy: ['active', 'authenticated'].includes(claudeHealth.status),
+      status: claudeHealth.status,
+      authMethod: claudeHealth.authMethod,
+      tasksCompleted: claudeHealth.tasksCompleted
+    } : null
+  }
 
   return {
-    schedulerStatus,
-    queueHealth,
-    dbHealth,
-    resources,
+    // System-wide data
+    overallHealth: getOverallHealth(),
+    isConnected,
+    lastUpdate,
     errors,
-    isLoading,
+    isLoading: systemStatus === null,
+
+    // Component-specific data (formatted for existing UI)
+    schedulerStatus: formattedData.scheduler,
+    queueHealth: formattedData.queue,
+    dbHealth: formattedData.database,
+    resources: formattedData.resources,
+    websocketHealth: formattedData.websocket,
+    claudeHealth: formattedData.claudeAgent,
+
+    // Raw data access
+    rawSystemStatus: systemStatus,
+    getComponentHealth
   }
 }

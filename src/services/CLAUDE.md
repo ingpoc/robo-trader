@@ -1,8 +1,25 @@
 # Services Layer Guidelines
 
 > **Scope**: Applies to `src/services/` directory. Read after `src/CLAUDE.md` and `src/core/CLAUDE.md` for context.
+> **Last Updated**: 2025-11-04 | **Status**: Production Ready | **Tier**: Reference
+
+## Quick Reference - SDK Usage
+
+- **Client Manager**: Get from container: `await container.get("claude_sdk_client_manager")`
+- **Timeout Helpers**: Use `query_with_timeout()` and `receive_response_with_timeout()` for all SDK calls
+- **Client Types**: Use `"trading"` for MCP tools, `"query"` for general queries, `"conversation"` for chat
 
 Services layer contains domain-specific business logic. Each service manages one core responsibility and communicates with other services through the EventBus, never directly.
+
+## Contents
+
+- [Claude Agent SDK Integration](#claude-agent-sdk-integration-critical)
+- [Service Architecture Patterns](#service-architecture-patterns)
+- [Event-Driven Service Communication](#event-driven-service-communication)
+- [Service Lifecycle Management](#service-lifecycle-management)
+- [Error Handling in Services](#error-handling-in-services)
+- [Development Workflow - Services](#development-workflow---services)
+- [Quick Reference - Services](#quick-reference---services)
 
 ## Claude Agent SDK Integration (CRITICAL)
 
@@ -19,37 +36,25 @@ All AI-related services must use **ONLY** Claude Agent SDK. No direct Anthropic 
 
 **SDK Integration Pattern**:
 ```python
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import ClaudeAgentOptions
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+from src.core.sdk_helpers import query_with_timeout, receive_response_with_timeout
 
 class AIService:
-    def __init__(self, container):
-        self.container = container
-        self.sdk_client = None  # Initialize on first use
-
-    async def _ensure_sdk_client(self):
-        """Lazy initialization of SDK client."""
-        if not self.sdk_client:
-            options = ClaudeAgentOptions(
-                allowed_tools=[],  # Define allowed tools
-                system_prompt="AI service prompt",
-                max_turns=20
-            )
-            self.sdk_client = ClaudeSDKClient(options=options)
-            await self.sdk_client.__aenter__()
+    async def _ensure_client(self):
+        """Lazy initialization using client manager."""
+        if not self.client:
+            client_manager = await self.container.get("claude_sdk_client_manager")
+            options = ClaudeAgentOptions(...)
+            self.client = await client_manager.get_client("query", options)
 
     async def perform_ai_task(self, prompt: str) -> Dict[str, Any]:
-        """Perform AI task using SDK only."""
-        await self._ensure_sdk_client()
-        await self.sdk_client.query(prompt)
-
-        response_text = ""
-        async for response in self.sdk_client.receive_response():
-            if hasattr(response, 'content'):
-                for block in response.content:
-                    if hasattr(block, 'text'):
-                        response_text += block.text
-
-        return self._parse_response(response_text)
+        """Perform AI task with timeout protection."""
+        await self._ensure_client()
+        await query_with_timeout(self.client, prompt, timeout=60.0)
+        
+        async for response in receive_response_with_timeout(self.client, timeout=120.0):
+            # Process response
 ```
 
 **❌ FORBIDDEN - Direct API Usage:**
@@ -166,7 +171,7 @@ async def _handle_portfolio_change(self, event: Event) -> None:
         # Process change
 
         # Emit follow-up event if needed
-        await self.event_bus.emit(Event(
+        await self.event_bus.publish(Event(
             id=str(uuid.uuid4()),
             type=EventType.PORTFOLIO_ANALYZED,
             source=self.__class__.__name__,
@@ -309,7 +314,7 @@ TIMEOUT_SECONDS = 30
 | Task | Pattern | Reference |
 |------|---------|-----------|
 | React to events | Inherit `EventHandler`, implement `handle_event()` | Event Handler Pattern |
-| Emit event | Create `Event`, await `event_bus.emit()` | Event Structure |
+| Emit event | Create `Event`, await `event_bus.publish()` | Event Structure |
 | Handle error | Raise specific error type, inherit from `TradingError` | Error Handling |
 | Async file I/O | Use `aiofiles` with `async with` | Async Pattern |
 | Initialize service | Implement `initialize()` and `cleanup()` | Service Structure |

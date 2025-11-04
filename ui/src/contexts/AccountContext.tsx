@@ -212,7 +212,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteAccount = async (accountId: string) => {
-    try:
+    try {
       setError(null)
 
       // Call backend API to delete account

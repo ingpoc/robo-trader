@@ -1,0 +1,14 @@
+{
+  "technical_analyst": {
+    "enabled": true,
+    "use_claude": true,
+    "tools": [
+      "analyze_chart_patterns",
+      "calculate_indicators"
+    ],
+    "response_frequency": 15,
+    "response_frequency_unit": "minutes",
+    "scope": "portfolio",
+    "max_tokens_per_request": 2500
+  }
+}

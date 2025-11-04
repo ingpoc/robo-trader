@@ -101,10 +101,13 @@ class FeatureManagementService(EventHandler):
                 
                 # Load all features and states
                 await self._load_features()
-                
+
+                # Register agents from config.json as features
+                await self._register_config_agents_as_features()
+
                 # Update dependency resolver
                 self.dependency_resolver.update_graph(self.features, self.states)
-                
+
                 # Initialize deactivation system components
                 await self._initialize_deactivation_system()
                 
@@ -189,6 +192,76 @@ class FeatureManagementService(EventHandler):
         except Exception as e:
             logger.error(f"Failed to load features: {e}")
             raise
+
+    async def _register_config_agents_as_features(self) -> None:
+        """Register agents from config.json as features in the feature management system."""
+        try:
+            if not hasattr(self.config, 'agents'):
+                logger.debug("No agents configuration found to register as features")
+                return
+
+            agents_config = self.config.agents
+            if hasattr(agents_config, '__dict__'):
+                for agent_name, agent_cfg in agents_config.__dict__.items():
+                    if hasattr(agent_cfg, 'enabled'):
+                        # Check if feature already exists
+                        if agent_name not in self.features:
+                            # Create feature configuration for agent
+                            feature_config = self._create_agent_feature_config(agent_name, agent_cfg)
+
+                            # Register feature in database
+                            if await self.database.create_feature_config(feature_config):
+                                self.features[agent_name] = feature_config
+
+                                # Create initial state
+                                initial_state = FeatureState(
+                                    feature_id=agent_name,
+                                    status=FeatureStatus.ENABLED if getattr(agent_cfg, 'enabled', False) else FeatureStatus.DISABLED,
+                                    enabled=getattr(agent_cfg, 'enabled', False)
+                                )
+                                self.states[agent_name] = initial_state
+                                await self.database.update_feature_state(initial_state)
+
+                                logger.info(f"Registered agent '{agent_name}' as feature from config.json")
+                            else:
+                                logger.warning(f"Failed to register agent '{agent_name}' as feature in database")
+                        else:
+                            logger.debug(f"Agent '{agent_name}' already registered as feature, skipping")
+
+            logger.info(f"Agent-to-feature registration completed. Total features: {len(self.features)}")
+
+        except Exception as e:
+            logger.error(f"Failed to register config agents as features: {e}")
+            # Don't raise - this is a non-critical initialization step
+
+    def _create_agent_feature_config(self, agent_name: str, agent_cfg: Any) -> FeatureConfig:
+        """Create a FeatureConfig from agent configuration."""
+        return FeatureConfig(
+            feature_id=agent_name,
+            metadata=FeatureMetadata(
+                name=agent_name.replace('_', ' ').title(),
+                description=f"Agent feature: {agent_name}",
+                feature_type=FeatureType.AGENT,
+                version="1.0.0",
+                author="system",
+                tags=["agent", "config-based"],
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
+            ),
+            configuration={
+                "use_claude": getattr(agent_cfg, 'use_claude', True),
+                "frequency_seconds": getattr(agent_cfg, 'frequency_seconds', 300),
+                "priority": getattr(agent_cfg, 'priority', 'medium'),
+                "source": "config.json"
+            },
+            dependencies=[],
+            auto_start=getattr(agent_cfg, 'enabled', False),
+            max_retries=3,
+            retry_delay_seconds=60,
+            health_check_interval_seconds=300,
+            rollback_enabled=True,
+            rollback_timeout_seconds=300
+        )
 
     async def _auto_start_features(self) -> None:
         """Auto-start features that are configured to do so."""

@@ -27,9 +27,9 @@ const NewsEarningsFeature = memo(() => {
   } = useNewsEarnings()
 
   const tabs = [
-    { id: 'news', label: 'News Feed', icon: '📰' },
-    { id: 'earnings', label: 'Earnings', icon: '📊' },
-    { id: 'recommendations', label: 'AI Recommendations', icon: '🤖' },
+    { id: 'news', label: 'News Feed', active: activeTab === 'news' },
+    { id: 'earnings', label: 'Earnings', active: activeTab === 'earnings' },
+    { id: 'recommendations', label: 'AI Recommendations', active: activeTab === 'recommendations' },
   ] as const
 
   const renderTabContent = () => {
@@ -103,7 +103,6 @@ const NewsEarningsFeature = memo(() => {
             <>
               {/* Tab Navigation */}
               <TabNavigation
-                activeTab={activeTab}
                 onTabChange={setActiveTab}
                 tabs={tabs}
               />

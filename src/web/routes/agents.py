@@ -10,7 +10,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
-from src.core.errors import TradingError
+from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ..dependencies import get_container
 from ..utils.error_handlers import (
     handle_trading_error,
@@ -214,12 +214,98 @@ async def update_agent_feature(request: Request, feature_name: str, feature_data
         feature_management = await container.get("feature_management_service")
 
         if feature_management:
-            await feature_management.update_feature(feature_name, feature_data)
+            try:
+                # Try to update via feature management system first
+                if feature_data.get("enabled", False):
+                    await feature_management.enable_feature(feature_name, reason="user_request", requested_by="ui")
+                else:
+                    await feature_management.disable_feature(feature_name, reason="user_request", requested_by="ui")
 
-        logger.info(f"Updated feature {feature_name}")
-        return {"status": "Feature updated", "feature": feature_name}
+                logger.info(f"Updated feature {feature_name} via feature management system")
+                return {"status": "Feature updated", "feature": feature_name, "enabled": feature_data.get("enabled", False)}
+
+            except TradingError as e:
+                # If feature not found in feature management system, fall back to config.json
+                if "not found" in str(e) and "Feature" in str(e):
+                    logger.info(f"Feature {feature_name} not found in feature management, falling back to config.json")
+                    return await _update_agent_config_fallback(feature_name, feature_data, container)
+                else:
+                    # Re-raise other feature management errors
+                    raise
+        else:
+            # No feature management service, fall back to config.json
+            logger.info(f"Feature management service not available, falling back to config.json for {feature_name}")
+            return await _update_agent_config_fallback(feature_name, feature_data, container)
+
     except Exception as e:
         return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+
+
+async def _update_agent_config_fallback(feature_name: str, feature_data: Dict[str, Any], container: DependencyContainer) -> Dict[str, str]:
+    """Fallback method to update agent configuration directly in config.json."""
+    try:
+        import json
+        import tempfile
+        import os
+        from pathlib import Path
+
+        config = await container.get("config")
+        config_path = Path("config/config.json")
+
+        if not config_path.exists():
+            raise TradingError(
+                "Configuration file not found",
+                category=ErrorCategory.CONFIGURATION,
+                severity=ErrorSeverity.HIGH
+            )
+
+        # Read current config
+        with open(config_path, 'r') as f:
+            config_data = json.load(f)
+
+        # Update agent configuration
+        if "agents" not in config_data:
+            config_data["agents"] = {}
+
+        if feature_name not in config_data["agents"]:
+            # Create new agent configuration
+            config_data["agents"][feature_name] = {
+                "enabled": feature_data.get("enabled", False),
+                "use_claude": feature_data.get("use_claude", True),
+                "frequency_seconds": feature_data.get("frequency_seconds", 300),
+                "priority": feature_data.get("priority", "medium")
+            }
+        else:
+            # Update existing agent configuration
+            agent_config = config_data["agents"][feature_name]
+            agent_config["enabled"] = feature_data.get("enabled", agent_config.get("enabled", False))
+
+            if "use_claude" in feature_data:
+                agent_config["use_claude"] = feature_data["use_claude"]
+            if "frequency_seconds" in feature_data:
+                agent_config["frequency_seconds"] = feature_data["frequency_seconds"]
+            if "priority" in feature_data:
+                agent_config["priority"] = feature_data["priority"]
+
+        # Write updated config atomically
+        with tempfile.NamedTemporaryFile(mode='w', dir=config_path.parent, delete=False) as tmp_file:
+            json.dump(config_data, tmp_file, indent=2)
+            tmp_file.flush()
+            temp_path = tmp_file.name
+
+        # Atomic replace
+        os.replace(temp_path, config_path)
+
+        logger.info(f"Updated agent {feature_name} configuration via config.json fallback")
+        return {"status": "Configuration updated", "feature": feature_name, "enabled": feature_data.get("enabled", False)}
+
+    except Exception as e:
+        raise TradingError(
+            f"Failed to update agent configuration: {str(e)}",
+            category=ErrorCategory.CONFIGURATION,
+            severity=ErrorSeverity.MEDIUM,
+            feature_id=feature_name
+        )
 
 
 @router.get("/claude-agent/token-budget")

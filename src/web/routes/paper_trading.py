@@ -21,6 +21,15 @@ from ..utils.error_handlers import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["paper-trading"])
+
+# Global container reference for legacy compatibility
+_container = None
+
+def set_container(container):
+    """Set container reference for this module."""
+    global _container
+    _container = container
+
 limiter = Limiter(key_func=get_remote_address)
 
 paper_trading_limit = os.getenv("RATE_LIMIT_PAPER_TRADING", "20/minute")
@@ -75,7 +84,7 @@ async def create_paper_trading_account(
                 "initialBalance": account.initial_balance,
                 "currentBalance": account.current_balance,
                 "strategyType": strategy_type,
-                "createdAt": account.created_at.isoformat() if hasattr(account, 'created_at') else datetime.now(timezone.utc).isoformat()
+                "createdAt": account.created_at if isinstance(account.created_at, str) else (account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else datetime.now(timezone.utc).isoformat())
             }
         }
 
@@ -166,7 +175,7 @@ async def get_paper_trading_accounts(
                 "accountId": acc.account_id,
                 "accountType": acc.strategy_type.value if hasattr(acc.strategy_type, 'value') else str(acc.strategy_type),
                 "currency": "INR",
-                "createdDate": acc.created_at.isoformat() if hasattr(acc, 'created_at') else datetime.now(timezone.utc).isoformat(),
+                "createdDate": acc.created_at if isinstance(acc.created_at, str) else (acc.created_at.isoformat() if hasattr(acc, 'created_at') and acc.created_at else datetime.now(timezone.utc).isoformat()),
                 "initialCapital": acc.initial_balance,
                 "currentBalance": acc.current_balance,
                 "totalInvested": deployed_capital,
@@ -226,7 +235,7 @@ async def get_paper_trading_account_overview(
             "accountId": account.account_id,
             "accountType": account.strategy_type.value if hasattr(account.strategy_type, 'value') else str(account.strategy_type),
             "currency": "INR",
-            "createdDate": account.created_at.isoformat() if hasattr(account, 'created_at') else "2025-01-01",
+            "createdDate": account.created_at if isinstance(account.created_at, str) else (account.created_at.isoformat() if hasattr(account, 'created_at') and account.created_at else "2025-01-01"),
             "initialCapital": account.initial_balance,
             "currentBalance": account.current_balance,
             "totalInvested": deployed_capital,

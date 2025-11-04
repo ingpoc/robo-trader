@@ -370,31 +370,36 @@ async def run_portfolio_scan(
     falling back to CSV data if not connected.
     """
     # Try to fetch live data from broker first
-    from ..mcp.broker import get_broker
-    broker = get_broker(config)
-    
-    if is_broker_connected(broker):
-        logger.info("Using live data from Zerodha broker")
-        live_data = await get_live_portfolio_data(broker)
-        
-        if live_data and live_data.get("holdings"):
-            holdings = live_data["holdings"]
-            
-            # Update cash info
-            portfolio_state, analytics = _build_portfolio_state(holdings, config)
-            portfolio_state.cash = live_data.get("cash", {"free": 0.0, "margin": 0.0})
-            
-            await state_manager.update_portfolio(portfolio_state)
-            return {
-                "source": "zerodha_live",
-                "portfolio": portfolio_state.to_dict(),
-                "analytics": analytics,
-            }
+    try:
+        from src.mcp.broker import get_broker
+        broker = await get_broker(config)
+
+        if is_broker_connected(broker):
+            logger.info("Using live data from Zerodha broker")
+            live_data = await get_live_portfolio_data(broker)
+
+            if live_data and live_data.get("holdings"):
+                holdings = live_data["holdings"]
+
+                # Update cash info
+                portfolio_state, analytics = _build_portfolio_state(holdings, config)
+                portfolio_state.cash = live_data.get("cash", {"free": 0.0, "margin": 0.0})
+
+                await state_manager.update_portfolio(portfolio_state)
+                return {
+                    "source": "zerodha_live",
+                    "portfolio": portfolio_state.to_dict(),
+                    "analytics": analytics,
+                }
+            else:
+                logger.warning("Broker returned no holdings, falling back to CSV")
         else:
-            logger.warning("Broker returned no holdings, falling back to CSV")
-    else:
-        logger.info("Broker not connected, using CSV data as fallback")
-    
+            logger.info("Broker not connected, using CSV data as fallback")
+    except ImportError as e:
+        logger.warning(f"Broker module not available: {e}, using CSV data as fallback")
+    except Exception as e:
+        logger.warning(f"Broker connection failed: {e}, using CSV data as fallback")
+
     # Fallback to CSV data
     try:
         csv_path = _find_holdings_csv(config)
@@ -409,19 +414,30 @@ async def run_portfolio_scan(
         }
     except FileNotFoundError as e:
         logger.warning(f"No CSV fallback available: {e}")
-        # Return empty portfolio
+        # Check if we already have portfolio data in database
+        existing_portfolio = await state_manager.get_portfolio()
+        if existing_portfolio:
+            logger.info("Using existing portfolio data from database")
+            return {
+                "source": "database_existing",
+                "portfolio": existing_portfolio.to_dict(),
+                "analytics": existing_portfolio.risk_aggregates or {},
+            }
+
+        # Return empty portfolio only if no existing data
+        logger.info("No portfolio data available, creating empty portfolio")
         empty_portfolio = PortfolioState(
             as_of=datetime.now(timezone.utc).isoformat(),
-            cash={"currency": "INR", "free": 0.0, "margin": 0.0},
+            cash={"currency": "INR", "free": 100000.0, "margin": 0.0},  # Default cash
             holdings=[],
             exposure_total=0.0,
-            risk_aggregates={"portfolio": {}, "per_symbol": {}}
+            risk_aggregates={"portfolio": {"total_invested": 0.0, "total_current_value": 0.0, "total_pnl": 0.0, "total_pnl_pct": 0.0, "holdings_count": 0}, "per_symbol": {}}
         )
         await state_manager.update_portfolio(empty_portfolio)
         return {
             "source": "empty",
             "portfolio": empty_portfolio.to_dict(),
-            "analytics": {},
+            "analytics": empty_portfolio.risk_aggregates or {},
         }
 
 
@@ -432,8 +448,8 @@ async def run_market_screening(
     Run market screening using live data if available.
     """
     # Try live data first
-    from ..mcp.broker import get_broker
-    broker = get_broker(config)
+    from src.mcp.broker import get_broker
+    broker = await get_broker(config)
     
     if is_broker_connected(broker):
         live_data = await get_live_portfolio_data(broker)
@@ -469,8 +485,8 @@ async def run_strategy_analysis(
     Run strategy analysis using live data if available.
     """
     # Try live data first
-    from ..mcp.broker import get_broker
-    broker = get_broker(config)
+    from src.mcp.broker import get_broker
+    broker = await get_broker(config)
     
     if is_broker_connected(broker):
         live_data = await get_live_portfolio_data(broker)

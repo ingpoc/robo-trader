@@ -1,0 +1,27 @@
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    - name: Install Python dependencies
+      run: pip install -r requirements.txt
+    - name: Run architecture validation
+      run: python scripts/validators/architecture-validator.py
+    - name: Run tests
+      run: pytest --cov=src --cov-fail-under=80
+    - name: Install Node dependencies
+      run: npm install
+    - name: Run linting
+      run: npm run lint
+    - name: Run tests
+      run: npm run test
+name: Quality Checks
+'on':
+- push
+- pull_request

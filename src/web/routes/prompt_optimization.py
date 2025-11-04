@@ -13,10 +13,10 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import json
 
-from ..dependencies import get_database, get_current_user, get_container
-from ..services.prompt_optimization_service import PromptOptimizationService
-from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ..core.di import DependencyContainer
+from ..dependencies import get_container
+from ...services.prompt_optimization_service import PromptOptimizationService
+from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
+from ...core.di import DependencyContainer
 from ..utils.error_handlers import (
     handle_trading_error,
     handle_unexpected_error,
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/prompts", tags=["prompt-optimization"])
 async def get_active_prompt(
     data_type: str,
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Get current active optimized prompt for data type."""
 
@@ -94,7 +94,7 @@ async def get_optimization_history(
     days: int = Query(default=30, ge=1, le=365),
     limit: int = Query(default=10, ge=1, le=50),
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Get optimization history for a data type."""
 
@@ -106,7 +106,7 @@ async def get_optimization_history(
         )
 
     try:
-        prompt_service = await container.get(PromptOptimizationService)
+        prompt_service = await container.get("prompt_optimization_service")
         history = await prompt_service.get_prompt_history(data_type, days)
 
         # Limit results
@@ -129,7 +129,7 @@ async def get_optimization_history(
 async def get_prompt_attempts(
     prompt_id: str,
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Get detailed optimization attempts for a specific prompt."""
 
@@ -196,7 +196,7 @@ async def get_prompt_attempts(
 async def get_quality_trends(
     days: int = Query(default=30, ge=1, le=365),
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Get quality trends for all data types over time."""
 
@@ -220,7 +220,7 @@ async def get_quality_trends(
 async def get_session_prompt_usage(
     session_id: str,
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Get all prompts used in a specific Claude session."""
 
@@ -276,7 +276,7 @@ async def trigger_manual_optimization(
     force_optimization: bool = True,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Manually trigger prompt optimization for testing/improvement."""
 
@@ -324,7 +324,7 @@ async def trigger_manual_optimization(
 async def get_optimization_status(
     session_id: str,
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Get status of an optimization session."""
 
@@ -369,7 +369,7 @@ async def get_optimization_status(
 async def get_performance_summary(
     days: int = Query(default=30, ge=1, le=365),
     container: DependencyContainer = Depends(get_container),
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)  # TODO: Implement user authentication
 ):
     """Get overall performance summary of prompt optimization."""
 

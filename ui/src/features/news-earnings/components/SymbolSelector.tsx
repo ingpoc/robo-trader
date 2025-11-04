@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Select } from '@/components/ui/Select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { BarChart3 } from 'lucide-react'
@@ -31,20 +31,24 @@ export const SymbolSelector = memo<SymbolSelectorProps>(({
               Select Portfolio Stock
             </label>
             <Select
-              id="symbol-select"
               value={selectedSymbol}
-              onChange={(e) => onSymbolChange(e.target.value)}
+              onValueChange={onSymbolChange}
               disabled={isLoading}
-              className="w-full"
             >
-              <option value="">
-                {isLoading ? 'Loading stocks...' : 'Choose a stock to analyze...'}
-              </option>
-              {portfolioSymbols.map((symbol) => (
-                <option key={symbol} value={symbol}>
-                  {symbol}
-                </option>
-              ))}
+              <SelectTrigger className="w-full bg-white dark:bg-warmgray-800 border-warmgray-300 dark:border-warmgray-600">
+                <SelectValue placeholder={isLoading ? 'Loading stocks...' : 'Choose a stock to analyze...'} />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-warmgray-800 border-warmgray-300 dark:border-warmgray-600">
+                {portfolioSymbols.map((symbol) => (
+                  <SelectItem
+                    key={symbol}
+                    value={symbol}
+                    className="text-warmgray-900 dark:text-warmgray-100 hover:bg-warmgray-100 dark:hover:bg-warmgray-700 focus:bg-warmgray-100 dark:focus:bg-warmgray-700"
+                  >
+                    {symbol}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div className="flex gap-3">

@@ -14,7 +14,7 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 
 if TYPE_CHECKING:
-    from src.core.database_state import DatabaseStateManager
+    from src.core.database_state.database_state import DatabaseStateManager
 
 logger = logging.getLogger(__name__)
 
@@ -120,13 +120,10 @@ class PaperTradingExecutionService:
 
             try:
                 await self._ensure_client()
-                await asyncio.wait_for(self._client.query(prompt), timeout=30.0)
-                response_text = ""
-                async for response in self._client.receive_response():
-                    if hasattr(response, 'content'):
-                        for block in response.content:
-                            if hasattr(block, 'text'):
-                                response_text += block.text
+                # Use timeout helpers (MANDATORY per architecture pattern)
+                from src.core.sdk_helpers import query_with_timeout
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
 
                 loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
 
@@ -279,13 +276,10 @@ class PaperTradingExecutionService:
 
             try:
                 await self._ensure_client()
-                await asyncio.wait_for(self._client.query(prompt), timeout=30.0)
-                response_text = ""
-                async for response in self._client.receive_response():
-                    if hasattr(response, 'content'):
-                        for block in response.content:
-                            if hasattr(block, 'text'):
-                                response_text += block.text
+                # Use timeout helpers (MANDATORY per architecture pattern)
+                from src.core.sdk_helpers import query_with_timeout
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
 
                 loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
 
@@ -410,13 +404,10 @@ class PaperTradingExecutionService:
 
             try:
                 await self._ensure_client()
-                await asyncio.wait_for(self._client.query(prompt), timeout=30.0)
-                response_text = ""
-                async for response in self._client.receive_response():
-                    if hasattr(response, 'content'):
-                        for block in response.content:
-                            if hasattr(block, 'text'):
-                                response_text += block.text
+                # Use timeout helpers (MANDATORY per architecture pattern)
+                from src.core.sdk_helpers import query_with_timeout
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
 
                 loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
 
@@ -498,9 +489,11 @@ class PaperTradingExecutionService:
                     max_turns=1,
                     disallowed_tools=["WebSearch", "WebFetch", "Bash", "Read", "Write"],
                 )
-                self._client = ClaudeSDKClient(options=options)
-                await self._client.__aenter__()
-                loguru_logger.debug("Initialized Claude SDK client for trade execution")
+                # Use client manager instead of direct creation
+                from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+                client_manager = await ClaudeSDKClientManager.get_instance()
+                self._client = await client_manager.get_client("trading", options)
+                loguru_logger.debug("Initialized Claude SDK client for trade execution via manager")
             except Exception as e:
                 loguru_logger.error(f"Failed to initialize Claude SDK client: {e}")
                 raise TradingError(

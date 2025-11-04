@@ -69,7 +69,7 @@ export const apiClient = new ApiClient()
 // Portfolio API
 export const portfolioApi = {
   getPortfolio: () => apiClient.get('/api/portfolio'),
-  scanPortfolio: () => apiClient.post('/api/portfolio/scan'),
+  scanPortfolio: () => apiClient.post('/api/portfolio-scan'),
   getAnalytics: (period: string) => apiClient.get(`/api/analytics?period=${period}`),
 }
 

@@ -63,6 +63,12 @@ export interface Recommendation {
   status: RecommendationStatus
   created_at: string
   updated_at?: string
+  thesis?: string
+  target_price?: number
+  stop_loss?: number
+  time_horizon?: string
+  risk_level?: string
+  sector?: string
 }
 
 export interface NewsEarningsData {

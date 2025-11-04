@@ -283,7 +283,7 @@ class EventRouterService:
         }
 
         # Add event-specific data
-        if event.event_type == EventType.TASK_COMPLETED:
+        if event.event_type == EventType.FEATURE_UPDATED:
             base_payload.update({
                 "completed_task_id": event.data.get("task_id"),
                 "completed_task_type": event.data.get("task_type"),
@@ -310,12 +310,12 @@ class EventRouterService:
         """Determine the appropriate task type for the trigger."""
         # Map event types to task types based on target queue
         if trigger.target_queue == QueueName.DATA_FETCHER:
-            if event.event_type == EventType.TASK_COMPLETED:
+            if event.event_type == EventType.FEATURE_UPDATED:
                 return TaskType.FUNDAMENTALS_UPDATE
             elif event.event_type == EventType.MARKET_NEWS:
                 return TaskType.NEWS_MONITORING
         elif trigger.target_queue == QueueName.AI_ANALYSIS:
-            if event.event_type == EventType.TASK_COMPLETED:
+            if event.event_type == EventType.FEATURE_UPDATED:
                 return TaskType.CLAUDE_MORNING_PREP
             elif event.event_type in [EventType.MARKET_NEWS, EventType.EARNINGS_ANNOUNCEMENT]:
                 return TaskType.RECOMMENDATION_GENERATION
@@ -404,7 +404,7 @@ class EventRouterService:
             await self.register_trigger(
                 source_queue=QueueName.PORTFOLIO_SYNC,
                 target_queue=QueueName.DATA_FETCHER,
-                event_type=EventType.TASK_COMPLETED,
+                event_type=EventType.FEATURE_UPDATED,
                 condition={"task_types": ["sync_account_balances", "update_positions"]}
             )
 
@@ -412,7 +412,7 @@ class EventRouterService:
             await self.register_trigger(
                 source_queue=QueueName.DATA_FETCHER,
                 target_queue=QueueName.AI_ANALYSIS,
-                event_type=EventType.TASK_COMPLETED,
+                event_type=EventType.FEATURE_UPDATED,
                 condition={"task_types": ["fundamentals_update", "news_monitoring"]}
             )
 

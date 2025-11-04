@@ -42,18 +42,32 @@ async def get_portfolio(
 ) -> Dict[str, Any]:
     """Get portfolio data with lazy bootstrap."""
     try:
+        logger.info("Portfolio data requested")
         orchestrator = await container.get_orchestrator()
         if not orchestrator or not orchestrator.state_manager:
-            logger.error("Orchestrator not available")
+            logger.error("Orchestrator not available for portfolio request")
             return JSONResponse({"error": "System not available"}, status_code=500)
 
         portfolio = await orchestrator.state_manager.get_portfolio()
 
+        if portfolio:
+            holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
+            logger.info(f"Portfolio retrieved from database: {holdings_count} holdings")
+        else:
+            logger.info("No portfolio found in database, attempting bootstrap")
+
         if not portfolio:
             try:
-                logger.debug("Triggering portfolio bootstrap")
+                logger.info("Triggering portfolio bootstrap scan")
                 await orchestrator.run_portfolio_scan()
                 portfolio = await orchestrator.state_manager.get_portfolio()
+
+                if portfolio:
+                    holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
+                    logger.info(f"Portfolio bootstrap completed: {holdings_count} holdings loaded")
+                else:
+                    logger.warning("Portfolio bootstrap completed but still no data available")
+
             except TradingError as e:
                 logger.warning(f"Bootstrap failed with trading error: {e}")
                 # Continue to check if portfolio is now available
@@ -63,10 +77,11 @@ async def get_portfolio(
                 logger.warning(f"Bootstrap failed with unexpected error: {e}")
 
         if not portfolio:
-            logger.warning("No portfolio data available")
+            logger.warning("No portfolio data available after bootstrap")
             return JSONResponse({"error": "No portfolio data available"}, status_code=404)
 
-        logger.info("Portfolio retrieved successfully")
+        holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
+        logger.info(f"Portfolio data returned successfully: {holdings_count} holdings")
         return portfolio.to_dict()
 
     except TradingError as e:
@@ -188,13 +203,27 @@ async def get_claude_status(request: Request, container: DependencyContainer = D
         # TODO: Get actual token usage from claude_token_usage table
         # TODO: Get trades count from paper_trades table for today
 
+        # Determine status based on actual SDK connection state
+        if not claude_auth_status or not claude_auth_status.is_valid:
+            status = "disconnected"
+        else:
+            # Check if SDK client is actually connected to CLI process
+            sdk_connected = claude_auth_status.account_info.get("sdk_connected", False)
+            cli_process_running = claude_auth_status.account_info.get("cli_process_running", False)
+
+            if sdk_connected and cli_process_running:
+                status = "connected/idle"  # SDK client is connected to running CLI process
+            else:
+                status = "authenticated"  # CLI is authenticated but no active SDK session
+
         return {
-            "status": "idle" if claude_auth_status else "not_configured",
+            "status": status,
             "tokensUsed": 0,
             "tokensBudget": daily_budget,
             "tradesExecutedToday": 0,
             "nextScheduledTask": None,
-            "lastAction": None
+            "lastAction": None,
+            "auth_method": claude_auth_status.account_info.get("auth_method") if claude_auth_status else None
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -208,7 +237,12 @@ async def get_system_health(request: Request, container: DependencyContainer = D
     """Get system health status from orchestrator."""
     try:
         orchestrator = await container.get_orchestrator()
-        system_status = await orchestrator.get_system_status()
+
+        # Try to get system status, fall back if method not implemented
+        try:
+            system_status = await orchestrator.get_system_status()
+        except (AttributeError, NotImplementedError):
+            system_status = {}
 
         # Transform to frontend format
         components = {}

@@ -17,6 +17,15 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from src.config import Config
 from ..core.database_state import DatabaseStateManager
+from ..core.sdk_helpers import (
+    query_with_timeout,
+    receive_response_with_timeout,
+    validate_system_prompt_size
+)
+
+# Type hint for forward reference
+if False:
+    from ..core.di import DependencyContainer
 
 
 class ConversationMessage:
@@ -112,9 +121,15 @@ class ConversationManager:
     - Educational explanations
     """
 
-    def __init__(self, config: Config, state_manager: DatabaseStateManager):
+    def __init__(
+        self,
+        config: Config,
+        state_manager: DatabaseStateManager,
+        container: Optional["DependencyContainer"] = None
+    ):
         self.config = config
         self.state_manager = state_manager
+        self.container = container
         self.client: Optional[ClaudeSDKClient] = None
         self._client_initialized = False
         self.active_sessions: Dict[str, ConversationSession] = {}
@@ -134,27 +149,60 @@ class ConversationManager:
         logger.info("Conversation Manager initialized successfully (Claude client will initialize on demand)")
 
     async def _ensure_client(self) -> None:
-        """Lazy initialization of Claude SDK client."""
+        """Lazy initialization of Claude SDK client using client manager."""
         if self.client is None:
+            # Use client manager if available (singleton pattern)
+            if self.container:
+                try:
+                    from ..core.claude_sdk_client_manager import ClaudeSDKClientManager
+                    client_manager = await self.container.get("claude_sdk_client_manager")
+                    
+                    system_prompt = self._get_conversation_prompt()
+                    # Validate prompt size
+                    is_valid, token_count = validate_system_prompt_size(system_prompt)
+                    if not is_valid:
+                        logger.warning(f"System prompt is {token_count} tokens, may cause issues")
+                    
+                    options = ClaudeAgentOptions(
+                        allowed_tools=[],
+                        system_prompt=system_prompt,
+                        max_turns=50
+                    )
+                    
+                    self.client = await client_manager.get_client("conversation", options)
+                    self._client_initialized = True
+                    logger.info("Conversation Manager Claude client initialized via client manager")
+                    return
+                except Exception as e:
+                    logger.warning(f"Failed to get client from manager, falling back to direct init: {e}")
+            
+            # Fallback to direct initialization
             options = ClaudeAgentOptions(
                 allowed_tools=[],
                 system_prompt=self._get_conversation_prompt(),
                 max_turns=50
             )
-            self.client = ClaudeSDKClient(options=options)
-            await self.client.__aenter__()
+            # Use client manager instead of direct creation
+            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            client_manager = await ClaudeSDKClientManager.get_instance()
+            self.client = await client_manager.get_client("conversation", options)
             self._client_initialized = True
-            logger.info("Conversation Manager Claude client initialized")
+            logger.info("Conversation Manager Claude client initialized via manager")
 
     async def cleanup(self) -> None:
         """Cleanup conversation manager resources."""
+        # Note: Client manager handles cleanup of shared clients
+        # Only cleanup if we created a direct client (fallback case)
         if self.client and self._client_initialized:
-            try:
-                await self.client.__aexit__(None, None, None)
-                logger.info("Conversation Manager client cleaned up")
-            except Exception as e:
-                logger.warning(f"Error cleaning up Conversation Manager client: {e}")
-            finally:
+            # Only cleanup if not using client manager
+            if not self.container:
+                try:
+                    await self.client.__aexit__(None, None, None)
+                    logger.info("Conversation Manager client cleaned up")
+                except Exception as e:
+                    logger.warning(f"Error cleaning up Conversation Manager client: {e}")
+            
+            # Always cleanup client reference
                 self.client = None
                 self._client_initialized = False
 
@@ -199,9 +247,10 @@ class ConversationManager:
 
         if self.client:
             try:
-                await asyncio.wait_for(self.client.query(conversation_prompt), timeout=30.0)
+                # Use timeout wrapper with comprehensive error handling
+                await query_with_timeout(self.client, conversation_prompt, timeout=60.0)
 
-                async for response_msg in self.client.receive_response():
+                async for response_msg in receive_response_with_timeout(self.client, timeout=120.0):
                     if hasattr(response_msg, 'content'):
                         for block in response_msg.content:
                             if hasattr(block, 'text'):
@@ -223,12 +272,13 @@ class ConversationManager:
                                 except (json.JSONDecodeError, KeyError):
                                     pass  # Not structured data, continue
 
-            except asyncio.TimeoutError:
-                logger.error(f"Conversation query timed out: {message[:100]}...")
-                response_content = "I apologize, but my response is taking longer than expected. Please try again."
             except Exception as e:
+                # Error handling is now done in query_with_timeout and receive_response_with_timeout
                 logger.error(f"Error in Claude conversation: {e}", exc_info=True)
-                response_content = "I apologize, but I'm having trouble processing your request right now. Please try again."
+                if isinstance(e, Exception) and "timeout" in str(e).lower():
+                    response_content = "I apologize, but my response is taking longer than expected. Please try again."
+                else:
+                    response_content = "I apologize, but I'm having trouble processing your request right now. Please try again."
         else:
             # Fallback response when Claude is unavailable
             response_content = self._generate_fallback_response(message, session)

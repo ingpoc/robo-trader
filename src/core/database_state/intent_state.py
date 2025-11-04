@@ -184,7 +184,7 @@ class IntentStateManager:
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
-            await self.event_bus.emit(event)
+            await self.event_bus.publish(event)
         except Exception as e:
             logger.warning(f"Failed to emit intent created event: {e}")
 
@@ -210,6 +210,6 @@ class IntentStateManager:
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
-            await self.event_bus.emit(event)
+            await self.event_bus.publish(event)
         except Exception as e:
             logger.warning(f"Failed to emit intent updated event: {e}")

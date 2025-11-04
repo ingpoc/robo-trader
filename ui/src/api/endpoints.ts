@@ -24,7 +24,17 @@ import type {
 
 export const dashboardAPI = {
   getDashboardData: () => api.get<DashboardData>('/api/dashboard'),
-  portfolioScan: () => api.post<{ status: string }>('/api/portfolio-scan'),
+  portfolioScan: () => api.post<{ 
+    status: string
+    message?: string
+    auth_url?: string
+    state?: string
+    redirect_url?: string
+    instructions?: string
+    source?: string
+    holdings_count?: number
+    portfolio?: unknown
+  }>('/api/portfolio-scan'),
   marketScreening: () => api.post<{ status: string }>('/api/market-screening'),
 }
 
@@ -102,6 +112,69 @@ export const configAPI = {
   get: () => api.get<Record<string, unknown>>('/api/config'),
   update: (config: Record<string, unknown>) =>
     api.post<{ status: string }>('/api/config', config),
+}
+
+export const configurationAPI = {
+  // Background tasks configuration
+  getBackgroundTasks: () =>
+    api.get<{ background_tasks: Record<string, BackgroundTaskConfig> }>('/api/configuration/background-tasks'),
+
+  updateBackgroundTask: (taskName: string, config: Partial<BackgroundTaskConfig>) =>
+    api.put<{ status: string; task: string }>(`/api/configuration/background-tasks/${taskName}`, config),
+
+  // AI agents configuration
+  getAIAgents: () =>
+    api.get<{ ai_agents: Record<string, AIAgentConfig> }>('/api/configuration/ai-agents'),
+
+  updateAIAgent: (agentName: string, config: Partial<AIAgentConfig>) =>
+    api.put<{ status: string; agent: string }>(`/api/configuration/ai-agents/${agentName}`, config),
+
+  // Global settings configuration
+  getGlobalSettings: () =>
+    api.get<{ global_settings: GlobalConfig }>('/api/configuration/global-settings'),
+
+  updateGlobalSettings: (settings: Partial<GlobalConfig>) =>
+    api.put<{ status: string }>('/api/configuration/global-settings', settings),
+
+  // Configuration management
+  backupConfiguration: () =>
+    api.post<{ status: string; timestamp: string }>('/api/configuration/backup'),
+
+  restoreConfiguration: (timestamp: string) =>
+    api.post<{ status: string; timestamp: string }>('/api/configuration/restore', { timestamp }),
+
+  getStatus: () =>
+    api.get<{ configuration_status: Record<string, unknown> }>('/api/configuration/status'),
+
+  // AI prompts configuration (individual)
+  getPrompt: (promptName: string) =>
+    api.get<PromptConfig>(`/api/configuration/prompts/${promptName}`),
+  updatePrompt: (promptName: string, prompt: Partial<PromptConfig>) =>
+    api.put<{ status: string; prompt: string }>(`/api/configuration/prompts/${promptName}`, prompt),
+
+  // Manual scheduler execution
+  executeScheduler: (taskName: string) =>
+    api.post<{
+      status: string;
+      task_id: string;
+      task_name: string;
+      task_type: string;
+      message: string;
+      timestamp: string;
+    }>(`/api/configuration/schedulers/${taskName}/execute`),
+
+  // Manual AI agent execution
+  executeAgent: (agentName: string) =>
+    api.post<{
+      status: string;
+      agent_name: string;
+      analysis_id: string;
+      symbols_analyzed: number;
+      recommendations_count: number;
+      prompt_updates: number;
+      message: string;
+      timestamp: string;
+    }>(`/api/configuration/ai-agents/${agentName}/execute`),
 }
 
 export const analyticsAPI = {

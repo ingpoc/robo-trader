@@ -1,126 +1,169 @@
 import React from 'react'
-import { ClaudeIcon } from './icons/ClaudeIcon'
 import { useClaudeStatus } from '@/hooks/useClaudeStatus'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export function ClaudeStatusIndicator() {
-  const { status, message, currentTask } = useClaudeStatus()
+   const { status } = useClaudeStatus()
 
   const getStatusConfig = () => {
     switch (status) {
       case 'unavailable':
         return {
-          color: 'red' as const,
-          bgColor: 'bg-red-50 dark:bg-red-950/20',
-          borderColor: 'border-red-200 dark:border-red-800',
-          textColor: 'text-red-700 dark:text-red-300',
-          statusDot: 'bg-red-500',
-          animate: false,
-          label: 'Unavailable',
+          label: 'Offline',
+          description: 'Claude AI agent is not configured or disconnected',
+        }
+      case 'authenticated':
+        return {
+          label: 'Authenticated',
+          description: 'CLI is authenticated but SDK not connected',
         }
       case 'idle':
         return {
-          color: 'orange' as const,
-          bgColor: 'bg-orange-50 dark:bg-orange-950/20',
-          borderColor: 'border-orange-200 dark:border-orange-800',
-          textColor: 'text-orange-700 dark:text-orange-300',
-          statusDot: 'bg-orange-500',
-          animate: false,
-          label: 'Ready',
+          label: 'Available',
+          description: 'Claude AI agent is connected and ready',
+        }
+      case 'connected/idle':
+        return {
+          label: 'SDK Connected',
+          description: 'Claude SDK is actively connected to CLI process',
         }
       case 'analyzing':
         return {
-          color: 'orange' as const,
-          bgColor: 'bg-orange-50 dark:bg-orange-950/20',
-          borderColor: 'border-orange-200 dark:border-orange-800',
-          textColor: 'text-orange-700 dark:text-orange-300',
-          statusDot: 'bg-orange-500 animate-pulse',
-          animate: true,
           label: 'Analyzing',
+          description: 'Claude is analyzing market data and executing strategies',
         }
       default:
         return {
-          color: 'gray' as const,
-          bgColor: 'bg-gray-50 dark:bg-gray-950/20',
-          borderColor: 'border-gray-200 dark:border-gray-800',
-          textColor: 'text-gray-700 dark:text-gray-300',
-          statusDot: 'bg-gray-500',
-          animate: false,
           label: 'Unknown',
+          description: 'Claude status is unknown',
         }
     }
   }
 
-  const config = getStatusConfig()
+  const getClaudeIcon = () => {
+    // Main Claude icon that changes based on status
+    // Using actual Claude images for online/thinking states
+    switch (status) {
+      case 'unavailable':
+        // Offline - Grayed out circle
+        return (
+          <svg
+            className="w-6 h-6 text-gray-400"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/* Claude circle - grayed out when offline */}
+            <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.4" />
+          </svg>
+        )
+      case 'authenticated':
+        // CLI authenticated but no SDK connection - Claude online image
+        return (
+          <img
+            src="/Claude_online.svg"
+            alt="Claude Authenticated"
+            className="w-6 h-6 text-green-500"
+          />
+        )
+      case 'idle':
+        // Available/Connected - Claude online image
+        return (
+          <img
+            src="/Claude_online.svg"
+            alt="Claude Online"
+            className="w-6 h-6 text-green-500"
+          />
+        )
+      case 'connected/idle':
+        // SDK actively connected - Claude online image with green tint
+        return (
+          <img
+            src="/Claude_online.svg"
+            alt="Claude SDK Connected"
+            className="w-6 h-6 text-green-600"
+          />
+        )
+      case 'analyzing':
+        // Analyzing/Thinking - Claude online image with pulse animation
+        return (
+          <img
+            src="/Claude_online.svg"
+            alt="Claude Analyzing"
+            className="w-6 h-6 text-orange-500 animate-pulse"
+          />
+        )
+      default:
+        return (
+          <svg
+            className="w-6 h-6 text-gray-400"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.4" />
+          </svg>
+        )
+    }
+  }
+
+  const getWebSocketIcon = () => {
+    // WiFi-style icon for WebSocket status
+    switch (wsStatus) {
+      case 'connected':
+        return (
+          <svg
+            className="w-5 h-5 text-green-500"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/* WiFi connected - all bars filled */}
+            <path d="M12 18c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0-5c2.8 0 5.3 1 7.3 2.8l1.4-1.4C17.7 12.3 15 11 12 11s-5.7 1.3-7.7 3.4l1.4 1.4c2-1.8 4.5-2.8 7.3-2.8zm0-5C8.3 8 5.1 9.1 2.7 10.9l1.4 1.4c2-1.5 4.5-2.3 7.9-2.3s5.9.8 7.9 2.3l1.4-1.4C18.9 9.1 15.7 8 12 8z" />
+          </svg>
+        )
+      case 'connecting':
+        return (
+          <svg
+            className="w-5 h-5 text-yellow-500 animate-pulse"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/* WiFi connecting - partial bars */}
+            <path d="M12 18c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0-5c2.8 0 5.3 1 7.3 2.8l1.4-1.4C17.7 12.3 15 11 12 11s-5.7 1.3-7.7 3.4l1.4 1.4c2-1.8 4.5-2.8 7.3-2.8z" opacity="0.5" />
+            <path d="M12 8c2.8 0 5.3 1 7.3 2.8l1.4-1.4C17.7 6.3 15 5 12 5s-5.7 1.3-7.7 3.4l1.4 1.4c2-1.8 4.5-2.8 7.3-2.8z" />
+          </svg>
+        )
+      case 'disconnected':
+        return (
+          <svg
+            className="w-5 h-5 text-red-500"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/* WiFi disconnected - X mark */}
+            <path d="M12 18c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0-5c2.8 0 5.3 1 7.3 2.8l1.4-1.4C17.7 12.3 15 11 12 11s-5.7 1.3-7.7 3.4l1.4 1.4c2-1.8 4.5-2.8 7.3-2.8z" opacity="0.3" />
+            <path d="M1 9l2 2c2.97-2.97 6.94-4.71 10.99-4.71 4.05 0 8.02 1.74 10.99 4.71l2-2C20.55 5.08 16.41 3 12 3 7.59 3 3.45 5.08 1 9zm8 8l3 3 3-3c1.65-1.66 2.57-3.92 2.57-6.29 0-2.37-.92-4.63-2.57-6.29L12 2 9.71 4.29C8.06 5.92 7.14 8.17 7.14 10.54c0 2.37.92 4.63 2.57 6.29L12 19l-3-3z" />
+          </svg>
+        )
+      default:
+        return (
+          <svg
+            className="w-5 h-5 text-gray-400"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M12 18c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2z" opacity="0.3" />
+          </svg>
+        )
+    }
+  }
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          className={`
-            fixed bottom-4 left-4 z-50
-            flex items-center gap-3 px-4 py-3
-            rounded-full shadow-lg border-2
-            ${config.bgColor} ${config.borderColor}
-            transition-all duration-300 hover:shadow-xl hover:scale-105
-            cursor-pointer
-          `}
-          role="status"
-          aria-label={`Claude status: ${config.label}`}
-        >
-          {/* Claude Icon */}
-          <div className="relative">
-            <ClaudeIcon color={config.color} animate={config.animate} className="w-6 h-6" />
-            {/* Status dot indicator */}
-            <div
-              className={`
-                absolute -top-1 -right-1 w-3 h-3 rounded-full
-                ${config.statusDot}
-                ring-2 ring-white dark:ring-gray-900
-              `}
-              aria-hidden="true"
-            />
-          </div>
-
-          {/* Status text */}
-          <div className="flex flex-col">
-            <span className={`text-sm font-bold ${config.textColor}`}>
-              Claude
-            </span>
-            <span className={`text-xs ${config.textColor} opacity-80`}>
-              {config.label}
-            </span>
-          </div>
-
-          {/* Analyzing animation ripple effect */}
-          {status === 'analyzing' && (
-            <div className="absolute inset-0 rounded-full">
-              <span className="absolute inset-0 rounded-full bg-orange-400 opacity-20 animate-ping" />
-            </div>
-          )}
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-xs">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${config.statusDot}`} />
-            <span className="font-semibold">{config.label}</span>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            {message}
-          </p>
-          {currentTask && (
-            <p className="text-xs text-gray-500 dark:text-gray-500 italic">
-              Task: {currentTask}
-            </p>
-          )}
-          <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500">
-            <p><span className="font-semibold text-red-500">●</span> Unavailable: Not connected</p>
-            <p><span className="font-semibold text-orange-500">●</span> Ready: Connected, idle</p>
-            <p><span className="font-semibold text-orange-500 animate-pulse">●</span> Analyzing: Processing data</p>
-          </div>
-        </div>
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex items-center justify-center">
+      {getClaudeIcon()}
+    </div>
   )
 }

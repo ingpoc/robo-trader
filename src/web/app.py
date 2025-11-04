@@ -16,10 +16,70 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
+# Setup very early logging to capture import errors
+try:
+    from pathlib import Path as PathLibPath
+    from loguru import logger
+    
+    # Configure minimal logging early to capture all errors
+    logs_dir = PathLibPath.cwd() / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Clear log files on startup
+    for log_file in ["backend.log", "errors.log", "critical.log", "frontend.log"]:
+        log_path = logs_dir / log_file
+        if log_path.exists():
+            try:
+                log_path.unlink()
+            except Exception:
+                pass  # Ignore errors clearing logs
+    
+    # Set up basic file logging immediately
+    logger.remove()
+    backend_log = logs_dir / "backend.log"
+    logger.add(
+        backend_log,
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="INFO",
+        backtrace=True,
+        diagnose=True,
+        enqueue=False  # Synchronous to capture startup errors
+    )
+    logger.info("=== EARLY LOGGING SETUP ===")
+    logger.info(f"Starting application - Python {sys.version}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    
+    # Setup global exception handler to capture all errors in log file
+    original_excepthook = sys.excepthook
+    def log_exception(exc_type, exc_value, exc_traceback):
+        """Log all unhandled exceptions to log file before printing to stderr."""
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        
+        try:
+            logger.critical(
+                f"Unhandled exception during startup: {exc_value}",
+                exc_info=(exc_type, exc_value, exc_traceback)
+            )
+        except Exception:
+            pass  # If logging fails, fall back to original handler
+        
+        # Also call original handler to print to stderr
+        original_excepthook(exc_type, exc_value, exc_traceback)
+    
+    sys.excepthook = log_exception
+    logger.info("Global exception handler installed to capture all errors")
+except Exception as e:
+    # If early logging fails, at least print to stderr
+    print(f"CRITICAL: Failed early logging setup: {e}", file=sys.stderr)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from loguru import logger
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -29,7 +89,7 @@ import httpx
 
 from src.config import load_config
 from src.core.di import initialize_container, cleanup_container, DependencyContainer
-from src.core.database_state import DatabaseStateManager
+from src.core.database_state.database_state import DatabaseStateManager
 from src.core.errors import TradingError, ErrorHandler
 from .chat_api import router as chat_router
 from .claude_agent_api import router as claude_agent_router
@@ -48,15 +108,229 @@ from .routes import (
 )
 from .routes.paper_trading import router as paper_trading_router
 from .routes.news_earnings import router as news_earnings_router
+from .routes.zerodha_auth import router as zerodha_auth_router
 from .routes.claude_transparency import router as claude_transparency_router
 from .routes.config import router as config_router
+from .routes.configuration import router as configuration_router
 from .routes.logs import router as logs_router
 from .routes.prompt_optimization import router as prompt_optimization_router
 from .routes.symbols import router as symbols_router
+from .routes.database_backups import router as database_backups_router
+
+# ============================================================================
+# Global Variables
+# ============================================================================
+
+# Background task status tracking
+initialization_status = {
+    "orchestrator_initialized": False,
+    "bootstrap_completed": False,
+    "initialization_errors": [],
+    "last_error": None
+}
+
+# Event for shutdown coordination
+shutdown_event = asyncio.Event()
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+async def bootstrap_state(orchestrator, config):
+    """Bootstrap the application state after orchestrator initialization."""
+    try:
+        logger.info("Bootstrap state skipped for faster startup")
+        # Skip all bootstrap operations to prevent hanging during startup
+        # This will be handled by background tasks after server is running
+        return
+    except Exception as exc:
+        logger.warning(f"Bootstrap failed: {exc}")
+        # Don't fail initialization for bootstrap issues
+
+async def initialize_orchestrator(config, container, connection_manager):
+    """Initialize orchestrator in background."""
+    try:
+        logger.info("Starting orchestrator initialization...")
+
+        # Get orchestrator from container
+        orchestrator = await container.get_orchestrator()
+
+        await asyncio.wait_for(orchestrator.initialize(), timeout=60.0)
+        logger.info("Orchestrator initialized")
+
+        await orchestrator.start_session()
+        logger.info("Orchestrator session started")
+
+        initialization_status["orchestrator_initialized"] = True
+
+        # Run bootstrap state
+        logger.info("Running bootstrap state...")
+        await bootstrap_state(orchestrator, config)
+        initialization_status["bootstrap_completed"] = True
+        logger.info("Bootstrap state completed successfully")
+    except asyncio.TimeoutError:
+        error_msg = "Orchestrator initialization timed out"
+        logger.error(error_msg)
+        initialization_status["initialization_errors"].append(error_msg)
+        initialization_status["last_error"] = error_msg
+    except Exception as exc:
+        error_msg = f"Orchestrator initialization failed: {exc}"
+        logger.error(error_msg, exc_info=True)
+        initialization_status["initialization_errors"].append(error_msg)
+        initialization_status["last_error"] = error_msg
 
 # ============================================================================
 # FastAPI Application Setup
 # ============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events."""
+    global config, container, connection_manager, service_client, initialization_status
+
+    # Startup - Enhance logging (already set up early, but add console handler and error handlers)
+    try:
+        # Enhance logging setup with console handler and error handlers
+        from src.core.logging_config import setup_logging
+        logs_dir = Path.cwd() / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Enhance existing logging (early logging already set up, just add handlers)
+        setup_logging(logs_dir, 'INFO', clear_logs=False)  # Don't clear again, already cleared
+        
+        # Configure uvicorn access logger to use our logger
+        import logging as std_logging
+        uvicorn_access_logger = std_logging.getLogger("uvicorn.access")
+        uvicorn_error_logger = std_logging.getLogger("uvicorn.error")
+        
+        # Create a handler that forwards uvicorn logs to loguru
+        class LoguruHandler(std_logging.Handler):
+            def emit(self, record):
+                try:
+                    level = logger.level(record.levelname).name
+                except ValueError:
+                    level = "INFO"
+                
+                logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+        
+        # Add loguru handler to uvicorn loggers
+        uvicorn_handler = LoguruHandler()
+        uvicorn_access_logger.addHandler(uvicorn_handler)
+        uvicorn_error_logger.addHandler(uvicorn_handler)
+        uvicorn_access_logger.setLevel(std_logging.INFO)
+        uvicorn_error_logger.setLevel(std_logging.INFO)
+        
+        # Log immediately to confirm logging is working and capture in log file
+        logger.info("=== LIFESPAN STARTUP EVENT STARTED ===")
+        logger.info(f"Enhanced logging with all handlers: {logs_dir}")
+        logger.info("Uvicorn access logger configured to use loguru")
+    except Exception as e:
+        # Log the error using existing logger
+        logger.error(f"Failed to enhance logging setup: {e}", exc_info=True)
+        raise
+
+    config = load_config()
+    logger.info("Config loaded successfully")
+
+    logger.info("Initializing DI container...")
+    container = await initialize_container(config)
+    logger.info("DI container initialized")
+
+    app.state.container = container
+    logger.info("Container stored in app.state")
+
+    # Set container for paper trading routes
+    from .routes.paper_trading import set_container as set_paper_trading_container
+    set_paper_trading_container(container)
+    logger.info("Paper trading routes initialized with container")
+
+    connection_manager = ConnectionManager()
+    app.state.connection_manager = connection_manager
+    logger.info("ConnectionManager created")
+
+    logger.info("Getting orchestrator from container...")
+    orchestrator = await container.get_orchestrator()
+    logger.info("Orchestrator retrieved")
+
+    # Initialize orchestrator (starts BackgroundScheduler and SequentialQueueManager)
+    logger.info("Initializing orchestrator (starting background scheduler and queue manager)...")
+    await orchestrator.initialize()
+    logger.info("Orchestrator initialization complete - BackgroundScheduler and SequentialQueueManager are now running")
+
+    # Start queue execution after orchestrator initialization
+    logger.info("Starting queue execution...")
+    try:
+        queue_coordinator = orchestrator.queue_coordinator
+        if queue_coordinator:
+            await queue_coordinator.start_queues()
+            logger.info("Queue execution started - queues are now processing pending tasks")
+        else:
+            logger.warning("Queue coordinator not available - queues will not start")
+    except Exception as e:
+        logger.warning(f"Failed to start queues: {e} - continuing without queue execution")
+
+    # Set orchestrator initialization status
+    initialization_status["orchestrator_initialized"] = True
+
+    logger.info("Wiring WebSocket broadcasting...")
+
+    # Create safe broadcast function with exception handling
+    async def safe_broadcast(data):
+        """Safely broadcast data with exception handling to prevent TaskGroup errors."""
+        try:
+            await connection_manager.broadcast(data)
+        except Exception as e:
+            logger.debug(f"Broadcast failed (likely no active connections): {e}")
+
+    orchestrator.broadcast_coordinator.set_broadcast_callback(
+        lambda data: asyncio.create_task(safe_broadcast(data))
+    )
+
+    # Set connection manager on status coordinator for real WebSocket client count
+    if orchestrator.status_coordinator:
+        orchestrator.status_coordinator.set_connection_manager(connection_manager)
+        orchestrator.status_coordinator.set_container(container)
+        logger.info("Connection manager set on status coordinator")
+
+    logger.info("WebSocket broadcasting wired")
+
+    # Run bootstrap state
+    logger.info("Running bootstrap state...")
+    await bootstrap_state(orchestrator, config)
+    initialization_status["bootstrap_completed"] = True
+    logger.info("Bootstrap state completed successfully")
+
+    logger.info("Background tasks created...")
+    logger.info("Background tasks created")
+
+    logger.info("Background initialization completed")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutdown initiated")
+    shutdown_event.set()
+
+    try:
+        if service_client:
+            logger.info("Closing HTTP client...")
+            await service_client.aclose()
+
+        if connection_manager:
+            logger.info("Closing WebSocket connections...")
+            await connection_manager.broadcast({
+                "type": "shutdown",
+                "message": "Server shutting down",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+
+        await cleanup_container()
+        logger.info("DI container cleanup completed")
+
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+
+    logger.info("Shutdown completed")
 
 app = FastAPI(
     title="Robo Trader API",
@@ -64,6 +338,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Rate Limiting Configuration
@@ -90,8 +365,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:3001",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
         "http://127.0.0.1:5173",
     ],
     allow_credentials=True,
@@ -103,6 +380,47 @@ app.add_middleware(
 # ============================================================================
 # Middleware
 # ============================================================================
+
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    """Log all API requests and responses."""
+    import time
+    
+    # Get client IP
+    client_ip = request.client.host if request.client else "unknown"
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    
+    # Log request
+    start_time = time.time()
+    method = request.method
+    url = str(request.url)
+    path = request.url.path
+    
+    logger.info(f"{method} {path} - Client: {client_ip}")
+    
+    try:
+        response = await call_next(request)
+        
+        # Calculate response time
+        process_time = time.time() - start_time
+        
+        # Log response
+        status_code = response.status_code
+        if status_code >= 500:
+            logger.error(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
+        elif status_code >= 400:
+            logger.warning(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
+        else:
+            logger.info(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
+        
+        return response
+    except Exception as e:
+        # Calculate response time even on error
+        process_time = time.time() - start_time
+        logger.error(f"{method} {path} - Exception: {type(e).__name__}: {str(e)} - Time: {process_time:.3f}s - Client: {client_ip}", exc_info=True)
+        raise
 
 @app.middleware("http")
 async def error_handling_middleware(request: Request, call_next):
@@ -154,11 +472,14 @@ app.include_router(agents_router)
 app.include_router(analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(news_earnings_router)
+app.include_router(zerodha_auth_router)
 app.include_router(claude_transparency_router)
 app.include_router(symbols_router)
 app.include_router(config_router)
+app.include_router(configuration_router)
 app.include_router(logs_router)
 app.include_router(prompt_optimization_router)
+app.include_router(database_backups_router)
 
 # ============================================================================
 # Global State
@@ -169,14 +490,6 @@ container: Optional[DependencyContainer] = None
 connection_manager = None
 service_client = None
 shutdown_event = asyncio.Event()
-
-# Initialization status tracking
-initialization_status = {
-    "orchestrator_initialized": False,
-    "bootstrap_completed": False,
-    "initialization_errors": [],
-    "last_error": None
-}
 
 # ============================================================================
 # Request Models
@@ -250,6 +563,8 @@ async def get_ai_data_with_retry(orchestrator, connection_id: str, max_retries: 
 
 async def get_dashboard_data() -> Dict[str, Any]:
     """Get dashboard data for display."""
+    global initialization_status
+
     if not container:
         return {
             "error": "System not initialized",
@@ -282,8 +597,17 @@ async def get_dashboard_data() -> Dict[str, Any]:
             logger.warning(f"Bootstrap failed: {exc}")
 
     intents = await orchestrator.state_manager.get_all_intents()
-    screening = await orchestrator.state_manager.get_screening_results()
-    strategy = await orchestrator.state_manager.get_strategy_results()
+
+    # Get screening and strategy results with fallback to None if not implemented
+    try:
+        screening = await orchestrator.state_manager.get_screening_results()
+    except (NotImplementedError, AttributeError):
+        screening = None
+
+    try:
+        strategy = await orchestrator.state_manager.get_strategy_results()
+    except (NotImplementedError, AttributeError):
+        strategy = None
 
     portfolio_dict = portfolio.to_dict() if portfolio else None
     analytics = portfolio_dict.get("risk_aggregates") if portfolio_dict else None
@@ -302,149 +626,6 @@ async def get_dashboard_data() -> Dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-# ============================================================================
-# Lifecycle Events
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the system on startup."""
-    global config, container, connection_manager, service_client
-
-    logger.info("=== STARTUP EVENT STARTED ===")
-
-    config = load_config()
-    logger.info("Config loaded successfully")
-
-    logger.info("Initializing DI container...")
-    container = await initialize_container(config)
-    logger.info("DI container initialized")
-
-    app.state.container = container
-    logger.info("Container stored in app.state")
-
-    # Set container for paper trading routes
-    from .routes.paper_trading import set_container as set_paper_trading_container
-    set_paper_trading_container(container)
-    logger.info("Paper trading routes initialized with container")
-
-    connection_manager = ConnectionManager()
-    logger.info("ConnectionManager created")
-
-    logger.info("Getting orchestrator from container...")
-    orchestrator = await container.get_orchestrator()
-    logger.info("Orchestrator retrieved")
-
-    logger.info("Wiring WebSocket broadcasting...")
-    async def broadcast_to_ui_impl(message: Dict[str, Any]):
-        result = await connection_manager.broadcast(message)
-        logger.debug(f"Broadcast: {result.successful_sends}/{result.total_connections}")
-
-    orchestrator.broadcast_coordinator.set_broadcast_callback(broadcast_to_ui_impl)
-    logger.info("WebSocket broadcasting wired")
-
-    async def initialize_orchestrator():
-        """Initialize orchestrator in background."""
-        try:
-            logger.info("Starting orchestrator initialization...")
-            await asyncio.wait_for(orchestrator.initialize(), timeout=60.0)
-            logger.info("Orchestrator initialized")
-            await orchestrator.start_session()
-            logger.info("Orchestrator session started")
-            initialization_status["orchestrator_initialized"] = True
-        except asyncio.TimeoutError:
-            error_msg = "Orchestrator initialization timed out"
-            logger.error(error_msg)
-            initialization_status["initialization_errors"].append(error_msg)
-            initialization_status["last_error"] = error_msg
-        except Exception as exc:
-            error_msg = f"Orchestrator initialization failed: {exc}"
-            logger.error(error_msg, exc_info=True)
-            initialization_status["initialization_errors"].append(error_msg)
-            initialization_status["last_error"] = error_msg
-
-    async def bootstrap_state():
-        """Prime initial analytics."""
-        if not orchestrator:
-            return
-        try:
-            if config.agents.portfolio_scan.enabled:
-                try:
-                    await asyncio.wait_for(orchestrator.run_portfolio_scan(), timeout=30.0)
-                except Exception as exc:
-                    error_msg = f"Portfolio scan failed: {exc}"
-                    logger.warning(error_msg)
-                    initialization_status["initialization_errors"].append(error_msg)
-
-            if config.agents.market_screening.enabled:
-                try:
-                    await asyncio.wait_for(orchestrator.run_market_screening(), timeout=30.0)
-                except Exception as exc:
-                    error_msg = f"Market screening failed: {exc}"
-                    logger.warning(error_msg)
-                    initialization_status["initialization_errors"].append(error_msg)
-
-            initialization_status["bootstrap_completed"] = True
-            logger.info("Bootstrap state completed successfully")
-        except Exception as exc:
-            error_msg = f"Bootstrap state failed: {exc}"
-            logger.error(error_msg, exc_info=True)
-            initialization_status["initialization_errors"].append(error_msg)
-            initialization_status["last_error"] = error_msg
-
-    try:
-        orchestrator_task = asyncio.create_task(initialize_orchestrator())
-        bootstrap_task = asyncio.create_task(bootstrap_state())
-        logger.info("Background tasks created")
-
-        # Wait for orchestrator initialization to complete before proceeding
-        await orchestrator_task
-        await bootstrap_task
-        logger.info("Background initialization completed")
-
-    except Exception as e:
-        error_msg = f"Failed to create or complete background tasks: {e}"
-        logger.error(error_msg, exc_info=True)
-        initialization_status["initialization_errors"].append(error_msg)
-        initialization_status["last_error"] = error_msg
-
-        # Claude Agent SDK best practices: Graceful degradation
-        # If Claude initialization fails, continue with paper trading only
-        if "Claude" in str(e) or "anthropic" in str(e).lower() or "open_process" in str(e):
-            logger.warning("Claude agent initialization failed - continuing with paper trading only")
-            logger.info("System will operate in paper trading mode without AI agent features")
-        else:
-            # Re-raise non-Claude related errors
-            raise
-
-
-@app.on_event("shutdown")
-async def shutdown_handler():
-    """Cleanup resources on shutdown."""
-    global container, connection_manager, service_client
-    logger.info("Shutdown initiated")
-
-    shutdown_event.set()
-
-    try:
-        if service_client:
-            logger.info("Closing HTTP client...")
-            await service_client.aclose()
-
-        if connection_manager:
-            logger.info("Closing WebSocket connections...")
-            await connection_manager.broadcast({
-                "type": "shutdown",
-                "message": "Server shutting down",
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-
-        await cleanup_container()
-
-    except Exception as e:
-        logger.error(f"Shutdown error: {e}", exc_info=True)
-
-    logger.info("Shutdown complete")
 
 # ============================================================================
 # Root Endpoint
@@ -552,6 +733,14 @@ async def health_check(request: Request) -> Dict[str, Any]:
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""
+    # Get connection manager from app state
+    connection_manager = getattr(websocket.app.state, "connection_manager", None)
+    if not connection_manager:
+        await websocket.close(code=1011, reason="Connection manager not initialized")
+        return
+    
+    container = getattr(websocket.app.state, "container", None)
+    
     client_id = None
     try:
         client_id = await connection_manager.connect(websocket)
@@ -563,6 +752,24 @@ async def websocket_endpoint(websocket: WebSocket):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "message": "WebSocket connection established successfully"
         })
+
+        # Broadcast current status to the newly connected client
+        if container:
+            try:
+                orchestrator = await container.get_orchestrator()
+                if orchestrator:
+                    # Trigger status broadcasts for the new client
+                    await orchestrator.get_system_status()  # This broadcasts system health
+                    await orchestrator.get_claude_status()  # This broadcasts Claude status
+
+                    # Also broadcast queue status
+                    queue_coordinator = await container.get('queue_coordinator')
+                    if queue_coordinator:
+                        await queue_coordinator.get_queue_status()  # This broadcasts queue status
+
+                    logger.info(f"Broadcast initial status updates to client {client_id}")
+            except Exception as e:
+                logger.warning(f"Failed to broadcast initial status to client {client_id}: {e}")
 
         while True:
             data = await websocket.receive_json()
@@ -599,11 +806,12 @@ async def websocket_endpoint(websocket: WebSocket):
 def run_web_server():
     """Run the web server."""
     uvicorn.run(
-        app,
+        "src.web.app:app",  # Use import string for reload support
         host="0.0.0.0",
         port=8000,
         log_level="info",
         access_log=True,
+        reload=True,  # Enable auto-reload for development
     )
 
 # ============================================================================

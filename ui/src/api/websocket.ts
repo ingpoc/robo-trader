@@ -17,10 +17,12 @@ export class WebSocketClient {
   private reconnectTimer: number | null = null
   private shouldReconnect = true
   private isConnecting = false
+  private hasConnected = false  // Track if we've ever connected
   private connectionId: string
   private isChromium: boolean
   private lastProcessedTime: number = 0
   private throttleInterval: number
+  private messageQueue: any[] = []  // Queue messages when not connected
 
   constructor() {
     this.connectionId = `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -29,10 +31,20 @@ export class WebSocketClient {
   }
 
   connect() {
-    if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
-      console.log(`[${this.connectionId}] WebSocket already connected or connecting`)
+    // Check if we already have a healthy connection
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      console.log(`[${this.connectionId}] WebSocket already connected`)
       return
     }
+
+    // Prevent multiple concurrent connection attempts
+    if (this.isConnecting) {
+      console.log(`[${this.connectionId}] WebSocket connection already in progress`)
+      return
+    }
+
+    // Force cleanup of any existing connection
+    this.forceCleanup()
 
     this.isConnecting = true
     console.log(`[${this.connectionId}] Attempting to connect to ${WS_URL}`)
@@ -46,6 +58,14 @@ export class WebSocketClient {
       this.ws.onerror = this.handleError.bind(this)
       this.ws.onclose = this.handleClose.bind(this)
 
+      // Set connection timeout
+      setTimeout(() => {
+        if (this.isConnecting && this.ws?.readyState === WebSocket.CONNECTING) {
+          console.warn(`[${this.connectionId}] WebSocket connection timeout`)
+          this.ws.close()
+        }
+      }, 10000) // 10 second timeout
+
     } catch (error) {
       this.isConnecting = false
       console.error(`[${this.connectionId}] Failed to create WebSocket connection:`, error)
@@ -53,20 +73,65 @@ export class WebSocketClient {
     }
   }
 
+  private forceCleanup() {
+    // Clean up any existing connection forcefully
+    if (this.ws) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[${this.connectionId}] Force cleaning up existing WebSocket connection`)
+      }
+      try {
+        // Remove all event listeners first
+        this.ws.onopen = null
+        this.ws.onmessage = null
+        this.ws.onerror = null
+        this.ws.onclose = null
+
+        // Close the connection
+        if (this.ws.readyState !== WebSocket.CLOSED) {
+          this.ws.close(1000, 'Force cleanup')
+        }
+      } catch (error) {
+        console.warn(`[${this.connectionId}] Error during force cleanup:`, error)
+      }
+      this.ws = null
+    }
+
+    // Reset state
+    this.isConnecting = false
+    this.messageQueue.length = 0
+  }
+
   private handleOpen = () => {
     this.isConnecting = false
+    this.hasConnected = true
     this.reconnectAttempts = 0
     this.reconnectDelay = 1000
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[${this.connectionId}] WebSocket connected successfully`)
+    }
+
     // Notify connection callbacks that connection is successful
     this.connectionCallbacks.forEach((callback) => callback())
+
+    // Process any queued messages
+    if (this.messageQueue.length > 0) {
+      console.log(`[${this.connectionId}] Processing ${this.messageQueue.length} queued messages`)
+      const queuedMessages = this.messageQueue.splice(0) // Clear queue
+      queuedMessages.forEach(message => {
+        this.callbacks.forEach((callback) => callback(message))
+      })
+    }
   }
 
   private handleMessage = (event: MessageEvent) => {
     try {
       const message = JSON.parse(event.data)
 
-      // Log received message for debugging
-      console.log(`[${this.connectionId}] Received WebSocket message:`, message)
+      // Log received message for debugging (reduced verbosity)
+      if (message.type !== 'system_health_update' || process.env.NODE_ENV === 'development') {
+        console.log(`[${this.connectionId}] Received WebSocket message:`, message.type)
+      }
 
       // Validate message structure
       if (typeof message === 'object' && message !== null) {
@@ -79,8 +144,15 @@ export class WebSocketClient {
 
         this.lastProcessedTime = now
 
-        // Any message received means we're connected - pass data to callbacks
-        this.callbacks.forEach((callback) => callback(message as DashboardData))
+        // If we have callbacks, process immediately
+        if (this.callbacks.size > 0) {
+          this.callbacks.forEach((callback) => callback(message as DashboardData))
+        } else {
+          // Queue messages until callbacks are registered
+          if (this.messageQueue.length < 100) { // Prevent unlimited queue growth
+            this.messageQueue.push(message)
+          }
+        }
       } else {
         console.warn(`[${this.connectionId}] Received invalid message format:`, message)
       }
@@ -191,9 +263,12 @@ export class WebSocketClient {
       this.ws = null
     }
 
+    // Clear all callbacks and message queue
     this.callbacks.clear()
     this.errorCallbacks.clear()
     this.connectionCallbacks.clear()
+    this.messageQueue.length = 0  // Clear message queue
+    this.hasConnected = false
   }
 
   isConnected(): boolean {
@@ -225,6 +300,9 @@ export class WebSocketClient {
     isReconnecting: boolean
     isChromium: boolean
     throttleInterval: number
+    hasConnected: boolean
+    callbackCount: number
+    queuedMessages: number
   } {
     return {
       id: this.connectionId,
@@ -232,7 +310,10 @@ export class WebSocketClient {
       reconnectAttempts: this.reconnectAttempts,
       isReconnecting: this.shouldReconnect && !this.isConnected(),
       isChromium: this.isChromium,
-      throttleInterval: this.throttleInterval
+      throttleInterval: this.throttleInterval,
+      hasConnected: this.hasConnected,
+      callbackCount: this.callbacks.size,
+      queuedMessages: this.messageQueue.length
     }
   }
 }

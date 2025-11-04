@@ -1,8 +1,28 @@
 import React from 'react'
-import { useDashboardStore } from '@/store/dashboardStore'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 
 export function ConnectionStatus() {
-  const backendStatus = useDashboardStore((state) => state.backendStatus)
+  const isConnected = useSystemStatusStore((state) => state.isConnected)
+  const connectionInfo = useSystemStatusStore((state) => state.connectionInfo)
+
+  // Convert connection state to backendStatus equivalent
+  const getBackendStatus = () => {
+    if (!connectionInfo) return 'unknown'
+
+    switch (connectionInfo.state) {
+      case 'connected':
+        return 'connected'
+      case 'connecting':
+        return 'connecting'
+      case 'closing':
+      case 'closed':
+        return 'disconnected'
+      default:
+        return isConnected ? 'connected' : 'disconnected'
+    }
+  }
+
+  const backendStatus = getBackendStatus()
 
   const getStatusInfo = () => {
     switch (backendStatus) {

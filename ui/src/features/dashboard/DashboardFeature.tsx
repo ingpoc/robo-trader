@@ -125,7 +125,6 @@ export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }
         <TabsContent value="overview" className="space-y-6">
           <MetricsGrid portfolio={portfolio} analytics={analytics} />
           <PerformanceCharts analytics={analytics} portfolio={portfolio} />
-          <PortfolioOverview portfolio={portfolio} />
           <AlertsSummary />
         </TabsContent>
 

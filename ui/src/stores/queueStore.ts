@@ -98,7 +98,28 @@ export const useQueueStore = create<QueueStore>()(
 
       switch (type) {
         case 'queue_status_update':
-          get().updateQueueStatus(data.queue_type, data)
+          // Handle the backend's queue status update format
+          if (event.queues) {
+            // Backend sends all queues at once
+            const queues = event.queues
+            const stats = event.stats || {}
+
+            // Update all queues in the store
+            set((state) => ({
+              queues: Object.entries(queues).map(([queueName, queueInfo]: [string, any]) => ({
+                queue_type: queueName,
+                running: queueInfo.running || false,
+                status: queueInfo.status || 'unknown',
+                details: queueInfo.details || {},
+                last_updated: event.timestamp || new Date().toISOString()
+              })),
+              stats: stats,
+              lastUpdated: event.timestamp || new Date().toISOString()
+            }))
+          } else if (data && data.queue_type) {
+            // Legacy format support
+            get().updateQueueStatus(data.queue_type, data)
+          }
           break
         case 'task_status_update':
           get().updateTaskStatus(data.id, data)

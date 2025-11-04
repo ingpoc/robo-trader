@@ -123,7 +123,7 @@ class PortfolioStateManager:
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
-            await self.event_bus.emit(event)
+            await self.event_bus.publish(event)
             logger.debug("Portfolio updated event emitted")
         except Exception as e:
             logger.warning(f"Failed to emit portfolio updated event: {e}")

@@ -11,7 +11,7 @@ Original monolithic database_state.py (1,412 lines, 62 methods) refactored into:
 - database_state.py: Facade coordinating all managers
 
 Backward compatible exports maintain existing imports:
-    from src.core.database_state import DatabaseStateManager
+    from src.core.database_state.database_state import DatabaseStateManager
 """
 
 from .database_state import DatabaseStateManager

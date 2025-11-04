@@ -37,6 +37,7 @@ class RoboTraderOrchestrator:
         self.status_coordinator = None
         self.lifecycle_coordinator = None
         self.broadcast_coordinator = None
+        self.queue_coordinator = None
 
         self.state_manager = None
         self.ai_planner = None
@@ -100,6 +101,7 @@ class RoboTraderOrchestrator:
             system_prompt=self._get_system_prompt(),
             cwd=self.config.project_dir,
             max_turns=self.config.max_turns,
+            setting_sources=["user"],  # Load ~/.claude/settings.json for global CLI settings
         )
 
         self.session_coordinator.options = self.options
@@ -108,12 +110,24 @@ class RoboTraderOrchestrator:
         await self.conversation_manager.initialize()
         await self.learning_engine.initialize()
 
-        self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
-        self.background_scheduler._run_market_screening = self.run_market_screening
-        self.background_scheduler._ai_planner_create_plan = self.ai_planner.create_daily_plan
-        self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
+        # Start BackgroundScheduler if available
+        if self.background_scheduler:
+            logger.info("BackgroundScheduler found - starting...")
+            self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
+            self.background_scheduler._run_market_screening = self.run_market_screening
+            self.background_scheduler._ai_planner_create_plan = self.ai_planner.create_daily_plan
+            self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
 
-        self.background_tasks = await self.background_scheduler.start()
+            logger.info("Calling BackgroundScheduler.start()...")
+            try:
+                self.background_tasks = await self.background_scheduler.start()
+                logger.info("BackgroundScheduler started successfully")
+            except Exception as e:
+                logger.error(f"Failed to start BackgroundScheduler: {e}")
+                logger.exception("BackgroundScheduler startup exception:")
+                raise
+        else:
+            logger.error("BackgroundScheduler is None - not starting")
 
         logger.info("Orchestrator initialized successfully")
 
@@ -249,7 +263,10 @@ Use the available tools to coordinate between agents. Maintain state and create 
         if not self.options:
             await self.initialize()
 
-        return ClaudeSDKClient(options=self.options)
+        # Use client manager instead of direct creation
+        from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+        client_manager = await ClaudeSDKClientManager.get_instance()
+        return await client_manager.get_client("trading", self.options)
 
     async def run_portfolio_scan(self) -> Dict[str, Any]:
         """Run a portfolio scan using live portfolio data."""

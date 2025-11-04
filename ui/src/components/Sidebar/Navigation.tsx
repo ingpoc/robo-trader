@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/utils/cn'
-import { useDashboardStore } from '@/store/dashboardStore'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 import { Button } from '@/components/ui/Button'
+import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,17 +11,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Home, Newspaper, Users, Settings, FileText, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet, Eye, Database } from 'lucide-react'
+import { Home, Newspaper, Users, Settings, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet, Eye, Database } from 'lucide-react'
 
 const menuItems = [
   { path: '/', label: 'Overview', icon: Home },
   { path: '/news-earnings', label: 'News & Earnings', icon: Newspaper },
-  { path: '/agents', label: 'Agents', icon: Users },
+  { path: '/configuration', label: 'Configuration', icon: Settings },
   { path: '/paper-trading', label: 'Paper Trading', icon: Wallet },
   { path: '/ai-transparency', label: 'AI Transparency', icon: Eye },
   { path: '/system-health', label: 'System Health', icon: Database },
-  { path: '/config', label: 'Config', icon: Settings },
-  { path: '/logs', label: 'Logs', icon: FileText },
 ]
 
 interface NavigationProps {
@@ -28,7 +27,7 @@ interface NavigationProps {
 }
 
 export function Navigation({ onClose }: NavigationProps) {
-  const isConnected = useDashboardStore((state) => state.isConnected)
+  const isConnected = useSystemStatusStore((state) => state.isConnected)
 
   return (
     <nav
@@ -126,25 +125,31 @@ export function Navigation({ onClose }: NavigationProps) {
       </div>
 
       <div
-        className="flex items-center gap-3 h-16 px-6 border-t border-warmgray-200 dark:border-warmgray-700 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 dark:from-warmgray-900/80 dark:to-warmgray-800/60 text-xs"
+        className="flex items-center justify-between h-16 px-6 border-t border-warmgray-200 dark:border-warmgray-700 bg-gradient-to-r from-warmgray-50/80 to-warmgray-100/60 dark:from-warmgray-900/80 dark:to-warmgray-800/60 text-xs gap-6"
         role="status"
         aria-live="polite"
-        aria-label="Connection status"
+        aria-label="System status"
       >
-        {isConnected ? (
-          <Wifi className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
-        ) : (
-          <WifiOff className="w-5 h-5 text-warmgray-400 dark:text-warmgray-500" />
-        )}
-        <span
-          className={cn(
-            'font-bold transition-colors duration-200',
-            isConnected ? 'text-emerald-700 dark:text-emerald-300' : 'text-warmgray-500 dark:text-warmgray-400'
+        {/* WebSocket Status */}
+        <div className="flex items-center gap-3">
+          {isConnected ? (
+            <Wifi className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+          ) : (
+            <WifiOff className="w-5 h-5 text-warmgray-400 dark:text-warmgray-500" />
           )}
-          id="connection-status"
-        >
-          {isConnected ? 'Connected' : 'Offline'}
-        </span>
+          <span
+            className={cn(
+              'font-bold transition-colors duration-200',
+              isConnected ? 'text-emerald-700 dark:text-emerald-300' : 'text-warmgray-500 dark:text-warmgray-400'
+            )}
+            id="connection-status"
+          >
+            {isConnected ? 'Connected' : 'Offline'}
+          </span>
+        </div>
+
+        {/* Claude Status - Integrated seamlessly */}
+        <ClaudeStatusIndicator />
       </div>
     </nav>
   )

@@ -21,13 +21,13 @@ async def fetch_live_holdings_from_broker(broker) -> Optional[List[Dict[str, Any
         if not broker or not broker.is_authenticated():
             logger.warning("Broker not authenticated, cannot fetch live holdings")
             return None
-        
+
         logger.info("Fetching live holdings from Zerodha...")
-        holdings = broker.kite.holdings()
-        
+        holdings = await broker.holdings()
+
         logger.info(f"Fetched {len(holdings)} holdings from Zerodha")
         return holdings
-        
+
     except Exception as e:
         logger.error(f"Error fetching holdings from broker: {e}")
         return None
@@ -41,13 +41,13 @@ async def fetch_live_positions_from_broker(broker) -> Optional[Dict[str, Any]]:
         if not broker or not broker.is_authenticated():
             logger.warning("Broker not authenticated, cannot fetch live positions")
             return None
-        
+
         logger.info("Fetching live positions from Zerodha...")
-        positions = broker.kite.positions()
-        
+        positions = await broker.positions()
+
         logger.info("Fetched positions from Zerodha")
         return positions
-        
+
     except Exception as e:
         logger.error(f"Error fetching positions from broker: {e}")
         return None
@@ -61,12 +61,12 @@ async def fetch_margins_from_broker(broker) -> Optional[Dict[str, Any]]:
         if not broker or not broker.is_authenticated():
             logger.warning("Broker not authenticated, cannot fetch margins")
             return None
-        
+
         logger.info("Fetching margins from Zerodha...")
-        margins = broker.kite.margins()
-        
+        margins = await broker.margins()
+
         return margins
-        
+
     except Exception as e:
         logger.error(f"Error fetching margins from broker: {e}")
         return None

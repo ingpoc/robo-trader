@@ -14,8 +14,7 @@ import json
 from loguru import logger
 
 from ...core.background_scheduler import BackgroundScheduler
-from ...services.queue_management.core.queue_orchestration_layer import QueueOrchestrationLayer
-from ...models.scheduler import QueueName, TaskType, TaskStatus
+from src.models.scheduler import QueueName, TaskType, TaskStatus
 from ...services.scheduler.task_service import SchedulerTaskService
 from ...core.event_bus import EventBus, Event, EventType
 from .models import FeatureConfig, FeatureType
@@ -101,7 +100,7 @@ class BackgroundSchedulerIntegration:
     def __init__(
         self,
         background_scheduler: Optional[BackgroundScheduler] = None,
-        queue_orchestration_layer: Optional[QueueOrchestrationLayer] = None,
+        queue_orchestration_layer: Optional[Any] = None,
         task_service: Optional[SchedulerTaskService] = None,
         event_bus: Optional[EventBus] = None
     ):

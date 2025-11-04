@@ -177,7 +177,7 @@ class ApprovalStateManager:
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
-            await self.event_bus.emit(event)
+            await self.event_bus.publish(event)
         except Exception as e:
             logger.warning(f"Failed to emit approval queued event: {e}")
 
@@ -199,6 +199,6 @@ class ApprovalStateManager:
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
-            await self.event_bus.emit(event)
+            await self.event_bus.publish(event)
         except Exception as e:
             logger.warning(f"Failed to emit approval decision event: {e}")

@@ -72,6 +72,11 @@ export function useClaudeTransparency() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Add fields for feature hook compatibility
+  const [tradeLogs, setTradeLogs] = useState<any[]>([])
+  const [strategyReflections, setStrategyReflections] = useState<any[]>([])
+  const [sessionData, setSessionData] = useState<any[]>([])
+
   const fetchResearchActivity = async () => {
     try {
       const response = await apiClient.get('/api/claude/transparency/research')
@@ -97,6 +102,10 @@ export function useClaudeTransparency() {
     try {
       const response = await apiClient.get('/api/claude/transparency/analysis')
       setAnalysisActivity(response.data)
+      // Also populate tradeLogs from analysis data for Recommendations tab
+      if (response.data && response.data.recent_decisions) {
+        setTradeLogs(response.data.recent_decisions)
+      }
     } catch (err) {
       console.error('Failed to fetch analysis activity:', err)
       // Set default data for demo purposes
@@ -263,6 +272,10 @@ export function useClaudeTransparency() {
     dailyEvaluation,
     dailySummary,
     strategyEvolution,
+    // Feature hook compatibility fields
+    tradeLogs,
+    strategyReflections,
+    sessionData,
     isLoading,
     error,
     refetchAll,
