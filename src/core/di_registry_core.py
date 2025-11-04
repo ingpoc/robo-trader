@@ -109,43 +109,20 @@ async def register_core_services(container: 'DependencyContainer') -> None:
             """Handle portfolio intelligence analysis tasks with batch processing."""
             analyzer = await container.get("portfolio_intelligence_analyzer")
 
-            # Get symbols to analyze (if None, get all portfolio stocks)
+            # Get symbols to analyze (if None, get stocks with oldest analysis)
             symbols_to_analyze = task.payload.get("symbols")
 
-            # If no specific symbols provided, get all stocks and create batch tasks
+            # If no specific symbols provided, select 2-3 stocks with oldest analysis
             if symbols_to_analyze is None:
-                # Get all portfolio stocks
-                portfolio_state = await container.get("portfolio_state")
-                all_symbols = list(portfolio_state.portfolio.holdings.keys())
+                # Get stocks with oldest analysis (priority: no analysis > oldest analysis)
+                from ..services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+                symbols_to_analyze = await analyzer._get_stocks_with_updates()
 
-                # Create batch tasks for 3 stocks at a time to prevent turn limit exhaustion
-                batch_size = 3
-                task_service = await container.get("task_service")
-                from ..models.scheduler import QueueName, TaskType
+                # Select only 2-3 stocks with oldest/first analysis
+                # This prevents processing all 81 stocks at once
+                symbols_to_analyze = symbols_to_analyze[:3]
 
-                tasks_created = 0
-                for i in range(0, len(all_symbols), batch_size):
-                    batch_symbols = all_symbols[i:i + batch_size]
-                    await task_service.create_task(
-                        queue_name=QueueName.AI_ANALYSIS,
-                        task_type=TaskType.RECOMMENDATION_GENERATION,
-                        payload={
-                            "agent_name": task.payload["agent_name"],
-                            "symbols": batch_symbols,
-                            "batch_id": i // batch_size,
-                            "total_batches": (len(all_symbols) + batch_size - 1) // batch_size
-                        },
-                        priority=7
-                    )
-                    tasks_created += 1
-
-                logger.info(f"Created {tasks_created} batch tasks for {len(all_symbols)} symbols")
-                return {
-                    "status": "batched",
-                    "tasks_created": tasks_created,
-                    "total_symbols": len(all_symbols),
-                    "batch_size": batch_size
-                }
+                logger.info(f"Selected {len(symbols_to_analyze)} stocks for analysis: {symbols_to_analyze}")
 
             # Process specific symbols (should be 2-3 max per task)
             return await analyzer.analyze_portfolio_intelligence(
