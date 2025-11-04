@@ -186,7 +186,8 @@ async def initialize_orchestrator(config, container, connection_manager):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
-    global config, container, connection_manager, service_client, initialization_status
+    # Use local variables and app.state instead of globals for better testability
+    service_client = None
 
     # Startup - Enhance logging (already set up early, but add console handler and error handlers)
     try:
@@ -237,12 +238,7 @@ async def lifespan(app: FastAPI):
     logger.info("DI container initialized")
 
     app.state.container = container
-    logger.info("Container stored in app.state")
-
-    # Set container for paper trading routes
-    from .routes.paper_trading import set_container as set_paper_trading_container
-    set_paper_trading_container(container)
-    logger.info("Paper trading routes initialized with container")
+    logger.info("Container stored in app.state - all routes can access via Depends(get_container)")
 
     connection_manager = ConnectionManager()
     app.state.connection_manager = connection_manager
@@ -312,10 +308,14 @@ async def lifespan(app: FastAPI):
     shutdown_event.set()
 
     try:
+        # Get service_client from app.state if it was stored there
+        service_client = getattr(app.state, "service_client", None)
         if service_client:
             logger.info("Closing HTTP client...")
             await service_client.aclose()
 
+        # Get connection_manager from app.state
+        connection_manager = getattr(app.state, "connection_manager", None)
         if connection_manager:
             logger.info("Closing WebSocket connections...")
             await connection_manager.broadcast({
@@ -482,13 +482,10 @@ app.include_router(prompt_optimization_router)
 app.include_router(database_backups_router)
 
 # ============================================================================
-# Global State
+# Global State (removed - use app.state or dependency injection instead)
 # ============================================================================
 
-config = None
-container: Optional[DependencyContainer] = None
-connection_manager = None
-service_client = None
+# shutdown_event remains module-level as it's used for coordination
 shutdown_event = asyncio.Event()
 
 # ============================================================================
@@ -796,8 +793,8 @@ async def websocket_endpoint(websocket: WebSocket):
         if connection_manager:
             try:
                 await connection_manager.disconnect(websocket)
-            except:
-                pass
+            except Exception as disconnect_error:
+                logger.warning(f"Failed to disconnect WebSocket {client_id}: {disconnect_error}")
 
 # ============================================================================
 # Server Startup Function

@@ -78,7 +78,8 @@ async def register_sdk_services(container: 'DependencyContainer') -> None:
     async def create_analysis_logger():
         from src.services.claude_agent.analysis_logger import AnalysisLogger
         strategy_store = await container.get("claude_strategy_store")
-        return AnalysisLogger(strategy_store)
+        config_state = await container.get("configuration_state")
+        return AnalysisLogger(strategy_store, config_state)
 
     container._register_singleton("analysis_logger", create_analysis_logger)
 

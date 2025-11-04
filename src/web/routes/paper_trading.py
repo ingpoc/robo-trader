@@ -22,14 +22,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["paper-trading"])
 
-# Global container reference for legacy compatibility
-_container = None
-
-def set_container(container):
-    """Set container reference for this module."""
-    global _container
-    _container = container
-
 limiter = Limiter(key_func=get_remote_address)
 
 paper_trading_limit = os.getenv("RATE_LIMIT_PAPER_TRADING", "20/minute")

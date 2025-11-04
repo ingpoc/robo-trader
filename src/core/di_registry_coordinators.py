@@ -83,8 +83,8 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
             connection_manager = await container.get("connection_manager")
             if connection_manager:
                 coordinator.set_connection_manager(connection_manager)
-        except:
-            pass  # Connection manager optional
+        except Exception as e:
+            logger.debug(f"Connection manager not available for InfrastructureStatusCoordinator: {e}")
         return coordinator
 
     container._register_singleton("infrastructure_status_coordinator", create_infrastructure_status_coordinator)
