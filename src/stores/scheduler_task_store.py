@@ -281,18 +281,65 @@ class SchedulerTaskStore:
 
     async def get_queue_statistics(self, queue_name: QueueName) -> QueueStatistics:
         """Get statistics for a queue."""
-        # For now, return default statistics since queue_tasks table may not exist
-        # This is a simplified implementation for the monitoring API
-        return QueueStatistics(
-            queue_name=queue_name,
-            pending_count=0,
-            running_count=0,
-            completed_today=0,
-            failed_count=0,
-            average_duration_ms=0.0,
-            last_completed_task_id=None,
-            last_completed_at=None
-        )
+        async with self._lock:
+            # Get pending tasks count
+            pending_query = """
+                SELECT COUNT(*) FROM queue_tasks
+                WHERE queue_name = ? AND status = 'pending'
+            """
+            cursor = await self.db_connection.execute(pending_query, (queue_name.value,))
+            pending_row = await cursor.fetchone()
+            pending_count = pending_row[0] if pending_row else 0
+
+            # Get running tasks count
+            running_query = """
+                SELECT COUNT(*) FROM queue_tasks
+                WHERE queue_name = ? AND status = 'running'
+            """
+            cursor = await self.db_connection.execute(running_query, (queue_name.value,))
+            running_row = await cursor.fetchone()
+            running_count = running_row[0] if running_row else 0
+
+            # Get completed tasks today
+            completed_query = """
+                SELECT COUNT(*) FROM queue_tasks
+                WHERE queue_name = ? AND status = 'completed'
+                  AND DATE(completed_at) = DATE('now')
+            """
+            cursor = await self.db_connection.execute(completed_query, (queue_name.value,))
+            completed_row = await cursor.fetchone()
+            completed_today = completed_row[0] if completed_row else 0
+
+            # Get failed tasks count
+            failed_query = """
+                SELECT COUNT(*) FROM queue_tasks
+                WHERE queue_name = ? AND status = 'failed'
+            """
+            cursor = await self.db_connection.execute(failed_query, (queue_name.value,))
+            failed_row = await cursor.fetchone()
+            failed_count = failed_row[0] if failed_row else 0
+
+            # Get last completed task info
+            last_completed_query = """
+                SELECT task_id, completed_at FROM queue_tasks
+                WHERE queue_name = ? AND status = 'completed'
+                ORDER BY completed_at DESC LIMIT 1
+            """
+            cursor = await self.db_connection.execute(last_completed_query, (queue_name.value,))
+            last_completed_row = await cursor.fetchone()
+            last_completed_task_id = last_completed_row[0] if last_completed_row else None
+            last_completed_at = last_completed_row[1] if last_completed_row else None
+
+            return QueueStatistics(
+                queue_name=queue_name,
+                pending_count=pending_count,
+                running_count=running_count,
+                completed_today=completed_today,
+                failed_count=failed_count,
+                average_duration_ms=0.0,  # TODO: Calculate average duration
+                last_completed_task_id=last_completed_task_id,
+                last_completed_at=last_completed_at
+            )
 
     async def get_completed_task_ids_today(self) -> List[str]:
         """Get IDs of tasks completed today."""
@@ -300,7 +347,7 @@ class SchedulerTaskStore:
             query = """
                 SELECT task_id
                 FROM queue_tasks
-                WHERE status = 'COMPLETED'
+                WHERE status = 'completed'
                   AND DATE(completed_at) = DATE('now')
             """
 
@@ -315,7 +362,7 @@ class SchedulerTaskStore:
 
             query = """
                 DELETE FROM queue_tasks
-                WHERE status IN ('COMPLETED', 'FAILED')
+                WHERE status IN ('completed', 'failed')
                   AND completed_at < ?
             """
 
@@ -334,7 +381,7 @@ class SchedulerTaskStore:
                        status, retry_count, max_retries, scheduled_at, started_at,
                        completed_at, error_message, created_at, updated_at
                 FROM queue_tasks
-                WHERE status = 'FAILED'
+                WHERE status = 'failed'
                   AND retry_count < max_retries
                   AND completed_at > datetime('now', '-' || ? || ' hours')
                 ORDER BY priority DESC, completed_at ASC
