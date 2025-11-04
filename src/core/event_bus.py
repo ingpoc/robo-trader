@@ -24,28 +24,23 @@ class EventType(Enum):
     MARKET_VOLUME_SPIKE = "market.volume_spike"
     MARKET_NEWS = "market.news"
     MARKET_EARNINGS = "market.earnings"
-
     # Portfolio events
     PORTFOLIO_POSITION_CHANGE = "portfolio.position_change"
     PORTFOLIO_PNL_UPDATE = "portfolio.pnl_update"
     PORTFOLIO_CASH_CHANGE = "portfolio.cash_change"
-
     # Risk events
     RISK_BREACH = "risk.breach"
     RISK_STOP_LOSS_TRIGGER = "risk.stop_loss_trigger"
     RISK_EXPOSURE_CHANGE = "risk.exposure_change"
-
     # Execution events
     EXECUTION_ORDER_PLACED = "execution.order_placed"
     EXECUTION_ORDER_FILLED = "execution.order_filled"
     EXECUTION_ORDER_REJECTED = "execution.order_rejected"
     EXECUTION_ORDER_CANCELLED = "execution.order_cancelled"
-
     # AI events
     AI_RECOMMENDATION = "ai.recommendation"
     AI_ANALYSIS_COMPLETE = "ai.analysis_complete"
     AI_LEARNING_UPDATE = "ai.learning_update"
-
     # Feature Management events
     FEATURE_CREATED = "feature.created"
     FEATURE_UPDATED = "feature.updated"
@@ -56,12 +51,10 @@ class EventType(Enum):
     FEATURE_HEALTH_CHANGE = "feature.health_change"
     FEATURE_DEPENDENCY_RESOLVED = "feature.dependency_resolved"
     FEATURE_BULK_UPDATE = "feature.bulk_update"
-
     # System events
     SYSTEM_HEALTH_CHECK = "system.health_check"
     SYSTEM_ERROR = "system.error"
     SYSTEM_MAINTENANCE = "system.maintenance"
-
     # Prompt Optimization events
     PROMPT_OPTIMIZED = "prompt.optimized"
     PROMPT_QUALITY_ANALYSIS = "prompt.quality_analysis"
@@ -71,7 +64,6 @@ class EventType(Enum):
     DATA_ACQUISITION_COMPLETED = "data.acquisition_completed"
     MARKET_OPEN = "market.open"
     MARKET_CLOSE = "market.close"
-
     # OAuth events
     OAUTH_INITIATED = "oauth.initiated"
     OAUTH_SUCCESS = "oauth.success"
@@ -102,16 +94,12 @@ class Event:
         data_copy = data.copy()
         data_copy['type'] = EventType(data['type'])
         return cls(**data_copy)
-
-
 class EventHandler:
     """Base class for event handlers."""
 
     async def handle_event(self, event: Event) -> None:
         """Handle an event. Override in subclasses."""
         raise NotImplementedError
-
-
 class EventBus:
     """
     Event Bus for service communication.
@@ -145,7 +133,6 @@ class EventBus:
     async def _create_tables(self) -> None:
         """Create event bus database tables."""
         schema = """
-        -- Events table
         CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL,
@@ -158,8 +145,6 @@ class EventBus:
             retry_count INTEGER DEFAULT 0,
             status TEXT DEFAULT 'pending'
         );
-
-        -- Dead letter queue
         CREATE TABLE IF NOT EXISTS dead_letter_queue (
             id TEXT PRIMARY KEY,
             event_id TEXT NOT NULL,
@@ -168,8 +153,6 @@ class EventBus:
             retry_count INTEGER DEFAULT 0,
             FOREIGN KEY (event_id) REFERENCES events(id)
         );
-
-        -- Event handlers tracking
         CREATE TABLE IF NOT EXISTS event_handlers (
             id INTEGER PRIMARY KEY,
             event_type TEXT NOT NULL,
@@ -177,8 +160,6 @@ class EventBus:
             last_processed_id TEXT,
             created_at TEXT NOT NULL
         );
-
-        -- Indexes
         CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
         CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
         CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
@@ -351,19 +332,13 @@ class EventBus:
         if self._db_connection:
             await self._db_connection.close()
             self._db_connection = None
-
-
 # Global event bus instance
 _event_bus_instance: Optional[EventBus] = None
-
-
 async def get_event_bus() -> EventBus:
     """Get the global event bus instance."""
     if _event_bus_instance is None:
         raise RuntimeError("Event bus not initialized. Call initialize_event_bus() first.")
     return _event_bus_instance
-
-
 async def initialize_event_bus(config: Config) -> EventBus:
     """Initialize the global event bus."""
     global _event_bus_instance

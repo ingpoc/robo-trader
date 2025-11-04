@@ -42,8 +42,6 @@ from .di_registry_sdk import register_sdk_services
 from .di_registry_coordinators import register_coordinators, register_orchestrator
 
 T = TypeVar('T')
-
-
 class DependencyContainer:
     """
     Centralized dependency injection container.
@@ -80,8 +78,6 @@ class DependencyContainer:
 
         # Orchestrator must be last (depends on all coordinators)
         await register_orchestrator(self)
-
-
     def _register_singleton(self, name: str, factory: callable) -> None:
         """Register a singleton service."""
         self._factories[name] = factory
@@ -159,8 +155,6 @@ class DependencyContainer:
     async def get_learning_service(self) -> LearningService:
         """Get the learning service instance."""
         return await self.get("learning_service")
-
-
     async def cleanup(self) -> None:
         """Cleanup all services."""
         logger.info("Cleaning up dependency container")
@@ -201,8 +195,6 @@ class DependencyContainer:
         # Clear all instances
         self._singletons.clear()
         logger.info("Dependency container cleanup complete")
-
-
 @asynccontextmanager
 async def dependency_container(config: Config):
     """
@@ -220,8 +212,6 @@ async def dependency_container(config: Config):
         yield container
     finally:
         await container.cleanup()
-
-
 class ServiceProvider:
     """
     Service provider for accessing services without global state.
@@ -317,24 +307,16 @@ class ServiceProvider:
         if not self._container:
             raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
         return await self._container.get_learning_service()
-
-
 # Global container instance for backward compatibility
 _global_container: Optional[DependencyContainer] = None
-
-
 async def get_container() -> Optional[DependencyContainer]:
     """Get the global container instance."""
     global _global_container
     return _global_container
-
-
 async def set_container(container: DependencyContainer) -> None:
     """Set the global container instance."""
     global _global_container
     _global_container = container
-
-
 # Legacy functions for backward compatibility (deprecated)
 # These will be removed in a future version
 async def initialize_container(config: Config) -> DependencyContainer:
@@ -348,16 +330,12 @@ async def initialize_container(config: Config) -> DependencyContainer:
     await container.initialize(config)
     _global_container = container
     return container
-
-
 async def cleanup_container():
     """DEPRECATED: Cleanup is now handled by context managers."""
     global _global_container
     if _global_container:
         await _global_container.cleanup()
         _global_container = None
-
-
 # Import logger at the end to avoid circular imports
 from loguru import logger
 
