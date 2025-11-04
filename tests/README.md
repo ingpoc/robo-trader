@@ -215,6 +215,34 @@ The test script can be integrated into CI/CD pipelines:
 - Run backend and wait for initialization
 - Check startup logs for database creation
 
+## UI Functional Testing Reference
+
+For comprehensive UI functional testing, use the definitive reference document:
+
+**📋 [UI_FUNCTIONAL_TESTING_REFERENCE.md](./UI_FUNCTIONAL_TESTING_REFERENCE.md)**
+
+This document maps every UI interaction to:
+- Expected database table updates (INSERT/UPDATE operations)
+- Which API endpoints are called
+- Which UI sections should reflect the changes
+- WebSocket events that trigger real-time updates
+- Complete data flows from UI action → Database → UI display
+
+**Use this document for**:
+- Manual browser testing workflows
+- Creating automated test cases
+- Debugging UI-backend mismatches
+- Verifying data persistence
+- Understanding complete system architecture
+
+**Covers**:
+- Configuration Tab (AI Agents, Schedulers, Prompts)
+- System Health Page (Queue monitoring, Scheduler tracking)
+- AI Transparency Page (Recommendations, Sessions, Trades)
+- Paper Trading Page (Trade execution, Positions)
+- News & Earnings Page (News display, Sentiment)
+- Dashboard Page (Portfolio overview, Performance metrics)
+
 ## Additional Documentation
 
 - **Comprehensive Testing Report**: `FUNCTIONAL_TESTING_REPORT_20251104.md`
