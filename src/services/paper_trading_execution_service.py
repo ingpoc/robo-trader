@@ -92,31 +92,35 @@ class PaperTradingExecutionService:
                 )
 
             # Use Claude Agent SDK to validate and execute trade (create fresh client)
-            prompt = f"""
-            Validate and execute a BUY trade with these parameters:
-            - Account ID: {account_id}
-            - Symbol: {symbol}
-            - Quantity: {quantity} shares
-            - Order Type: {order_type}
-            - Price: {price if price else 'Market price'}
-            - Strategy Rationale: {strategy_rationale}
+            prompt = f"""You are a paper trading execution engine. Your ONLY job is to validate trade parameters and return a JSON decision.
 
-            Please:
-            1. Validate the trade parameters
-            2. Check if sufficient balance exists (assume ₹100,000 initial per account)
-            3. Calculate the required amount based on current market price
-            4. Provide decision: APPROVE or REJECT with reason
-            5. If approved, provide execution details
+TRADE REQUEST:
+- Account ID: {account_id}
+- Symbol: {symbol}
+- Quantity: {quantity} shares
+- Order Type: {order_type}
+- Price: {price if price else 'Market price'}
+- Strategy Rationale: {strategy_rationale}
 
-            Return a JSON response with:
-            {{
-              "decision": "APPROVE" or "REJECT",
-              "reason": "explanation",
-              "trade_price": number or null,
-              "required_amount": number or null,
-              "execution_details": {{...}} or null
-            }}
-            """
+VALIDATION RULES:
+- Symbol must be uppercase, 1-10 characters, letters only
+- Quantity must be positive integer ≤ 10000
+- Assume account balance: ₹100,000
+- Assume reasonable market price: ₹2000-3000 for Indian stocks
+- Required amount = price × quantity
+
+RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
+{{
+  "decision": "APPROVE" or "REJECT",
+  "reason": "Brief explanation",
+  "trade_price": assumed_market_price_number,
+  "required_amount": calculated_amount
+}}
+
+Example:
+{{"decision": "APPROVE", "reason": "Valid parameters", "trade_price": 2500, "required_amount": 25000}}
+
+Respond with ONLY the JSON object. No explanation text."""
 
             try:
                 await self._ensure_client()
@@ -246,33 +250,37 @@ class PaperTradingExecutionService:
                 )
 
             # Use Claude Agent SDK to validate and execute SELL trade (create fresh client)
-            prompt = f"""
-            Validate and execute a SELL trade with these parameters:
-            - Account ID: {account_id}
-            - Symbol: {symbol}
-            - Quantity: {quantity} shares
-            - Order Type: {order_type}
-            - Price: {price if price else 'Market price'}
-            - Strategy Rationale: {strategy_rationale}
+            prompt = f"""You are a paper trading execution engine. Your ONLY job is to validate sell trade parameters and return a JSON decision.
 
-            Please:
-            1. Validate the trade parameters
-            2. Assume we have a position in {symbol} with 10 shares at ₹2750 entry price
-            3. Check if we have sufficient quantity to sell
-            4. Calculate proceeds at current market price
-            5. Calculate realized P&L
-            6. Provide decision: APPROVE or REJECT with reason
+TRADE REQUEST:
+- Account ID: {account_id}
+- Symbol: {symbol}
+- Quantity: {quantity} shares
+- Order Type: {order_type}
+- Price: {price if price else 'Market price'}
+- Strategy Rationale: {strategy_rationale}
 
-            Return a JSON response with:
-            {{
-              "decision": "APPROVE" or "REJECT",
-              "reason": "explanation",
-              "trade_price": number or null,
-              "proceeds": number or null,
-              "realized_pnl": number or null,
-              "execution_details": {{...}} or null
-            }}
-            """
+VALIDATION RULES:
+- Symbol must be uppercase, 1-10 characters, letters only
+- Quantity must be positive integer ≤ 10000
+- Assume we hold position: 10 shares at ₹2750 entry price
+- Assume reasonable market price: ₹2000-3000 for Indian stocks
+- Proceeds = price × quantity
+- Realized P&L = proceeds - (quantity × 2750)
+
+RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
+{{
+  "decision": "APPROVE" or "REJECT",
+  "reason": "Brief explanation",
+  "trade_price": assumed_market_price_number,
+  "proceeds": calculated_proceeds,
+  "realized_pnl": calculated_pnl
+}}
+
+Example:
+{{"decision": "APPROVE", "reason": "Valid sell parameters", "trade_price": 2500, "proceeds": 25000, "realized_pnl": -2500}}
+
+Respond with ONLY the JSON object. No explanation text."""
 
             try:
                 await self._ensure_client()
@@ -489,10 +497,10 @@ class PaperTradingExecutionService:
                     max_turns=1,
                     disallowed_tools=["WebSearch", "WebFetch", "Bash", "Read", "Write"],
                 )
-                # Use client manager instead of direct creation
+                # Use client manager with unique client type for paper trading
                 from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
                 client_manager = await ClaudeSDKClientManager.get_instance()
-                self._client = await client_manager.get_client("trading", options)
+                self._client = await client_manager.get_client("paper_trading", options)
                 loguru_logger.debug("Initialized Claude SDK client for trade execution via manager")
             except Exception as e:
                 loguru_logger.error(f"Failed to initialize Claude SDK client: {e}")

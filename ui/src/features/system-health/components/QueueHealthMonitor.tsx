@@ -32,7 +32,7 @@ interface QueueInfo {
   failed_count: number
   total_tasks: number
   last_activity: string
-  average_duration: number
+  average_duration_ms: number
 }
 
 export interface QueueHealthMonitorProps {
@@ -67,17 +67,17 @@ const useRealQueueData = () => {
 
         const data: QueueStatusResponse = await response.json()
 
-        // Transform API data to component format
+              // Transform API data to component format
         const transformedQueues: QueueInfo[] = data.queues.map(queue => ({
           queue_name: queue.name,
-          status: queue.status === 'healthy' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+          status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
           pending_count: queue.pending_tasks,
           running_count: queue.active_tasks,
           completed_today: queue.completed_tasks,
           failed_count: queue.failed_tasks,
           total_tasks: queue.completed_tasks + queue.failed_tasks + queue.pending_tasks + queue.active_tasks,
-          last_activity: queue.last_execution_time || '',
-          average_duration: queue.average_execution_time || 0
+          last_activity: queue.last_activity || '',
+          average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
         }))
 
         setQueueData(transformedQueues)
@@ -191,74 +191,7 @@ const QueueCard: React.FC<{ queue: QueueInfo; isExpanded: boolean; onToggle: () 
     return new Date(timestamp).toLocaleTimeString()
   }
 
-  // Custom hook to fetch real queue data
-  const useRealQueueData = () => {
-    const [queueData, setQueueData] = useState<QueueInfo[]>([])
-    const [loading, setLoading] = useState(true)
-    const [error, setError] = useState<string | null>(null)
-
-    useEffect(() => {
-      const fetchQueueData = async () => {
-        try {
-          setLoading(true)
-          setError(null)
-
-          // Fetch real queue data from the enhanced API
-          const response = await fetch('/api/queues/status')
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-          }
-
-          const data: QueueStatusResponse = await response.json()
-
-          // Transform API data to component format
-          const transformedQueues: QueueInfo[] = data.queues.map(queue => ({
-            queue_name: queue.name,
-            status: queue.status === 'healthy' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
-            pending_count: queue.pending_tasks,
-            running_count: queue.active_tasks,
-            completed_today: queue.completed_tasks,
-            failed_count: queue.failed_tasks,
-            average_duration_ms: Math.round(queue.average_execution_time * 1000), // Convert to ms
-            last_completed_at: queue.last_execution_time,
-            last_completed_task_id: queue.current_task_id,
-            current_tasks: queue.details.current_task ? [{
-              task_id: queue.details.current_task.task_id || queue.current_task_id || '',
-              task_type: queue.details.current_task.task_type || 'unknown',
-              priority: queue.details.current_task.priority || 5,
-              status: queue.running ? 'running' : 'pending',
-              retry_count: 0,
-              max_retries: 3,
-              scheduled_at: queue.details.current_task?.started_at || new Date().toISOString(),
-              started_at: queue.details.current_task?.started_at,
-              duration_ms: queue.details.current_task ? Date.now() - new Date(queue.details.current_task.started_at).getTime() : undefined
-            }] : []
-          }))
-
-          setQueueData(transformedQueues)
-        } catch (err) {
-          console.error('Failed to fetch queue data:', err)
-          setError(err instanceof Error ? err.message : 'Failed to load queue data')
-          setQueueData([])
-        } finally {
-          setLoading(false)
-        }
-      }
-
-      fetchQueueData()
-
-      // Set up polling for real-time updates (every 10 seconds)
-      const interval = setInterval(fetchQueueData, 10000)
-
-      return () => {
-        clearInterval(interval)
-      }
-    }, [])
-
-    return { queueData, loading, error }
-  }
-
+  
   return (
     <Card className={cn(
       "transition-all duration-200",

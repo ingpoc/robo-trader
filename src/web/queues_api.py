@@ -5,171 +5,104 @@ Follows the FastAPI microservice pattern used by other services.
 """
 
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from loguru import logger
+from datetime import datetime, timezone
+
+from src.web.dependencies import get_container
+from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 
 router = APIRouter(prefix="/queues", tags=["Queue Management"])
 
 
 @router.get("/status", summary="Get all queue statuses")
-async def get_queue_statuses() -> Dict[str, Any]:
+async def get_queue_statuses(container: Any = Depends(get_container)) -> Dict[str, Any]:
     """Get detailed status of all queues in the system."""
     logger.info("Retrieving all queue statuses")
 
-    # Temporarily return mock data to fix startup loop
-    # TODO: Re-enable real queue status fetching after fixing container issues
-    from datetime import datetime, timezone
+    try:
+        # Get real queue statistics from the task service
+        task_service = await container.get("task_service")
 
-    queues = [
-        {
-            "name": "portfolio_sync",
-            "status": "idle",
-            "running": False,
-            "type": "task_queue",
-            "details": {},
-            "current_task_id": None,
-            "pending_tasks": 0,
-            "active_tasks": 0,
-            "completed_tasks": 0,
-            "failed_tasks": 0,
-            "average_execution_time": 0.0,
-            "last_activity": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "name": "data_fetcher",
-            "status": "idle",
-            "running": False,
-            "type": "task_queue",
-            "details": {},
-            "current_task_id": None,
-            "pending_tasks": 0,
-            "active_tasks": 0,
-            "completed_tasks": 0,
-            "failed_tasks": 0,
-            "average_execution_time": 0.0,
-            "last_activity": datetime.now(timezone.utc).isoformat()
-        },
-        {
-            "name": "ai_analysis",
-            "status": "idle",
-            "running": False,
-            "type": "task_queue",
-            "details": {},
-            "current_task_id": None,
-            "pending_tasks": 0,
-            "active_tasks": 0,
-            "completed_tasks": 0,
-            "failed_tasks": 0,
-            "average_execution_time": 0.0,
-            "last_activity": datetime.now(timezone.utc).isoformat()
-        }
-    ]
-
-    stats = {
-        "total_queues": len(queues),
-        "active_queues": len([q for q in queues if q["running"]]),
-        "idle_queues": len([q for q in queues if not q["running"]]),
-        "total_pending_tasks": sum(q["pending_tasks"] for q in queues),
-        "total_active_tasks": sum(q["active_tasks"] for q in queues),
-        "total_completed_tasks": sum(q["completed_tasks"] for q in queues),
-        "total_failed_tasks": sum(q["failed_tasks"] for q in queues),
-        "last_updated": datetime.now(timezone.utc).isoformat()
-    }
-
-    return {
-        "queues": queues,
-        "stats": stats,
-        "status": "operational"
-    }
-
-    # TODO: Re-enable real queue status fetching after fixing container circular dependency
-    return {
-        "queues": [
-            {
-                "name": "portfolio_sync",
-                "status": "healthy",
-                "running": True,
-                "type": "queue_service",
-                "current_task_id": None,
-                "pending_tasks": 0,
-                "active_tasks": 0,
-                "completed_tasks": 5,
-                "failed_tasks": 0,
-                "average_execution_time": 2.5,
-                "last_execution_time": "2025-10-27T11:37:32Z",
-                "registered_handlers": ["balance_sync", "position_update", "pnl_calculation"],
-                "details": {
-                    "queue_type": "PORTFOLIO_SYNC",
-                    "max_concurrent_tasks": 3,
-                    "timeout_seconds": 300
-                }
-            },
-            {
-                "name": "data_fetcher",
-                "status": "healthy",
-                "running": True,
-                "type": "queue_service",
-                "current_task_id": "task_123",
-                "pending_tasks": 2,
-                "active_tasks": 1,
-                "completed_tasks": 15,
-                "failed_tasks": 1,
-                "average_execution_time": 4.2,
-                "last_execution_time": "2025-10-27T11:38:15Z",
-                "registered_handlers": ["news_monitoring", "earnings_fetcher", "fundamentals_checker"],
-                "details": {
-                    "queue_type": "DATA_FETCHER",
-                    "max_concurrent_tasks": 5,
-                    "timeout_seconds": 600,
-                    "current_task": {
-                        "task_id": "task_123",
-                        "task_type": "NEWS_MONITORING",
-                        "symbol": "RELIANCE",
-                        "started_at": "2025-10-27T11:38:15Z",
-                        "priority": 3
-                    }
-                }
-            },
-            {
-                "name": "ai_analysis",
-                "status": "idle",
-                "running": False,
-                "type": "queue_service",
-                "current_task_id": None,
-                "pending_tasks": 0,
-                "active_tasks": 0,
-                "completed_tasks": 3,
-                "failed_tasks": 0,
-                "average_execution_time": 12.8,
-                "last_execution_time": "2025-10-27T11:35:00Z",
-                "registered_handlers": ["claude_morning_prep", "claude_evening_review", "recommendation_generator"],
-                "details": {
-                    "queue_type": "AI_ANALYSIS",
-                    "max_concurrent_tasks": 1,
-                    "timeout_seconds": 1800,
-                    "last_completed_task": {
-                        "task_id": "task_122",
-                        "task_type": "CLAUDE_EVENING_REVIEW",
-                        "completed_at": "2025-10-27T11:35:00Z",
-                        "duration_seconds": 15.2
-                    }
-                }
+        if not task_service:
+            logger.warning("Task service not available")
+            return {
+                "queues": [],
+                "stats": {},
+                "status": "service_unavailable",
+                "error": "Task service not available"
             }
-        ],
-        "stats": {
-            "total_queues": 3,
-            "active_queues": 2,
-            "total_tasks": 2,
-            "active_tasks": 1,
-            "completed_tasks": 23,
-            "failed_tasks": 1
-        },
-        "coordinator_status": {
-            "coordinator_running": True,
-            "queues_running": True,
-            "event_router_status": "healthy"
+
+        # Get real queue statistics
+        queue_stats = await task_service.get_all_queue_statistics()
+
+        # Get queue manager for additional status info
+        queue_manager = await container.get("sequential_queue_manager")
+        is_running = queue_manager.is_running() if queue_manager else False
+        current_task = queue_manager.get_current_task() if queue_manager else None
+
+        # Transform queue statistics to API format
+        queues = []
+        for queue_name, stats in queue_stats.items():
+            # Determine queue status based on activity
+            if stats.running_count > 0:
+                status = "running"
+            elif stats.pending_count > 0:
+                status = "active"
+            else:
+                status = "idle"
+
+            queue_info = {
+                "name": queue_name,
+                "status": status,
+                "running": is_running,
+                "type": "task_queue",
+                "details": {},
+                "current_task_id": current_task.task_id if current_task and current_task.queue_name == queue_name else None,
+                "pending_tasks": stats.pending_count,
+                "active_tasks": stats.running_count,
+                "completed_tasks": stats.completed_today,
+                "failed_tasks": stats.failed_count,
+                "average_execution_time": stats.average_duration_ms / 1000.0 if stats.average_duration_ms > 0 else 0.0,
+                "last_activity": stats.last_completed_at or datetime.now(timezone.utc).isoformat()
+            }
+            queues.append(queue_info)
+
+        # Calculate overall stats
+        stats = {
+            "total_queues": len(queues),
+            "active_queues": len([q for q in queues if q["running"]]),
+            "idle_queues": len([q for q in queues if not q["running"]]),
+            "total_pending_tasks": sum(q["pending_tasks"] for q in queues),
+            "total_active_tasks": sum(q["active_tasks"] for q in queues),
+            "total_completed_tasks": sum(q["completed_tasks"] for q in queues),
+            "total_failed_tasks": sum(q["failed_tasks"] for q in queues),
+            "last_updated": datetime.now(timezone.utc).isoformat()
         }
-    }
+
+        return {
+            "queues": queues,
+            "stats": stats,
+            "status": "operational"
+        }
+
+    except TradingError as e:
+        logger.error(f"Trading error in get_queue_statuses: {e.context.code}")
+        return {
+            "queues": [],
+            "stats": {},
+            "status": "error",
+            "error": e.context.message,
+            "error_code": e.context.code
+        }
+    except Exception as e:
+        logger.error(f"Failed to get queue statuses: {e}")
+        return {
+            "queues": [],
+            "stats": {},
+            "status": "error",
+            "error": str(e)
+        }
 
 
 @router.get("/status/{queue_type}", summary="Get specific queue status")

@@ -106,14 +106,26 @@ async def query_with_timeout(
 
         response_parts = []
         async for message in client.receive_response():
+            # Skip SystemMessage objects - they're session metadata, not content
+            if hasattr(message, 'subtype') and message.subtype == 'init':
+                continue
+
             if hasattr(message, 'content'):
                 for content_block in message.content:
                     if hasattr(content_block, 'text'):
                         response_parts.append(content_block.text)
             elif hasattr(message, 'text'):
                 response_parts.append(message.text)
+            elif hasattr(message, 'data') and isinstance(message.data, dict):
+                # Handle SystemMessage data objects
+                if message.data.get('type') == 'system':
+                    continue  # Skip system messages
+                else:
+                    response_parts.append(str(message.data))
             else:
-                response_parts.append(str(message))
+                # Only add non-system messages
+                if not (hasattr(message, 'subtype') and message.subtype == 'init'):
+                    response_parts.append(str(message))
 
         return "\n".join(response_parts) if response_parts else "No response content received"
     except Exception as e:
