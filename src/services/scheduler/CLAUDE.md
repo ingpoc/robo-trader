@@ -2,7 +2,7 @@
 
 > **Scope**: Applies to `src/services/scheduler/` directory. Read `src/services/CLAUDE.md` for context.
 >
-> **Last Updated**: 2025-11-03 | **Status**: Active | **Tier**: Reference + Explanation
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference + Explanation
 >
 > **Read in this order**:
 > 1. `src/services/CLAUDE.md` - Services layer overview

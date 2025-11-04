@@ -2,7 +2,7 @@
 
 > **Scope**: Applies to `src/core/` directory. Read after `src/CLAUDE.md` for context.
 >
-> **Last Updated**: 2025-11-03 | **Status**: Active | **Tier**: Reference + How-To + Explanation
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference + How-To + Explanation
 >
 > **Read in this order**:
 > 1. `src/CLAUDE.md` - Backend architecture overview (read first)

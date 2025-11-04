@@ -308,3 +308,40 @@ class ConfigurationState:
             except Exception as e:
                 logger.error(f"Failed to store recommendation for {symbol}: {e}")
                 return False
+
+    async def get_analysis_history(self, limit: int = 10) -> Dict[str, Any]:
+        """
+        Get analysis history with proper locking.
+
+        Args:
+            limit: Maximum number of records to retrieve
+
+        Returns:
+            Dictionary with analyses list
+        """
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT symbol, timestamp, analysis, created_at
+                       FROM analysis_history
+                       WHERE json_extract(analysis, '$.analysis_type') = 'portfolio_intelligence'
+                       ORDER BY created_at DESC
+                       LIMIT ?""",
+                    (limit,)
+                )
+                rows = await cursor.fetchall()
+
+                analyses = []
+                for row in rows:
+                    analyses.append({
+                        "symbol": row[0],
+                        "timestamp": row[1],
+                        "analysis": row[2],
+                        "created_at": row[3]
+                    })
+
+                return {"analyses": analyses}
+
+            except Exception as e:
+                logger.error(f"Failed to get analysis history: {e}")
+                return {"analyses": []}

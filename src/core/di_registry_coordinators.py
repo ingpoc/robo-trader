@@ -112,7 +112,9 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
     container._register_singleton("ai_status_coordinator", create_ai_status_coordinator)
 
     async def create_agent_status_coordinator():
-        return AgentStatusCoordinator(container.config)
+        agent_status_coordinator = AgentStatusCoordinator(container.config)
+        agent_status_coordinator.set_container(container)
+        return agent_status_coordinator
 
     container._register_singleton("agent_status_coordinator", create_agent_status_coordinator)
 

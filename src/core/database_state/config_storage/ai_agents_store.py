@@ -62,15 +62,15 @@ class AIAgentsStore(BaseConfigStore):
 
                 agents = {}
                 for row in rows:
-                    tools = json.loads(row[3]) if row[3] else []
+                    tools = json.loads(row[4]) if row[4] else []
                     agents[row[1]] = {
                         "enabled": bool(row[2]),
                         "useClaude": bool(row[3]),
                         "tools": tools,
-                        "responseFrequency": row[4],
-                        "responseFrequencyUnit": row[5],
-                        "scope": row[6],
-                        "maxTokensPerRequest": row[7]
+                        "responseFrequency": row[5],
+                        "responseFrequencyUnit": row[6],
+                        "scope": row[7],
+                        "maxTokensPerRequest": row[8]
                     }
 
                 return {"ai_agents": agents}

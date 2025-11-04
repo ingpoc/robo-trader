@@ -80,48 +80,46 @@ async def get_research_transparency(request: Request, container: DependencyConta
 async def get_analysis_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's analysis activities transparency."""
     try:
-        # Get portfolio analysis data from database
+        # Get portfolio analysis data from configuration state (with proper locking)
         portfolio_analyses = []
         try:
-            database = await container.get("database")
-            conn = database.connection
-            cursor = await conn.execute("""
-                SELECT symbol, timestamp, analysis, created_at
-                FROM analysis_history
-                WHERE json_extract(analysis, '$.analysis_type') = 'portfolio_intelligence'
-                ORDER BY created_at DESC
-                LIMIT 10
-            """)
-            rows = await cursor.fetchall()
+            configuration_state = await container.get("configuration_state")
 
-            for row in rows:
-                symbol, timestamp, analysis_json, created_at = row
-                try:
-                    analysis_data = json.loads(analysis_json)
-                    # Extract claude_response for UI display
-                    claude_response = analysis_data.get("claude_response", "")
-                    # Create analysis_summary from claude_response, truncating if too long
-                    analysis_summary = claude_response[:200] + "..." if len(claude_response) > 200 else claude_response
+            if not configuration_state:
+                logger.warning("Configuration state not available")
+                portfolio_analyses = []
+            else:
+                # Use configuration state's locked database access
+                config_data = await configuration_state.get_analysis_history()
 
-                    portfolio_analyses.append({
-                        "symbol": symbol,
-                        "timestamp": timestamp,
-                        "created_at": created_at,
-                        "analysis_type": analysis_data.get("analysis_type", "unknown"),
-                        "recommendations_count": analysis_data.get("recommendations_count", 0),
-                        "confidence_score": analysis_data.get("confidence_score", 0.0),
-                        "key_insights": [],  # Not available in current structure
-                        "data_sources": [],  # Not available in current structure
-                        "analysis_summary": analysis_summary,
-                        "analysis_content": claude_response,  # Full content for detailed view
-                        "data_quality": analysis_data.get("data_quality", {})
-                    })
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse analysis JSON for {symbol}: {e}")
-                    continue
+                if config_data and "analyses" in config_data:
+                    for analysis_record in config_data["analyses"]:
+                        try:
+                            analysis_data = json.loads(analysis_record["analysis"]) if isinstance(analysis_record["analysis"], str) else analysis_record["analysis"]
+                            # Extract claude_response for UI display
+                            claude_response = analysis_data.get("claude_response", "")
+                            # Create analysis_summary from claude_response, truncating if too long
+                            analysis_summary = claude_response[:200] + "..." if len(claude_response) > 200 else claude_response
+
+                            portfolio_analyses.append({
+                                "symbol": analysis_record.get("symbol", ""),
+                                "timestamp": analysis_record.get("timestamp", ""),
+                                "created_at": analysis_record.get("created_at", ""),
+                                "analysis_type": analysis_data.get("analysis_type", "unknown"),
+                                "recommendations_count": analysis_data.get("recommendations_count", 0),
+                                "confidence_score": analysis_data.get("confidence_score", 0.0),
+                                "key_insights": [],  # Not available in current structure
+                                "data_sources": [],  # Not available in current structure
+                                "analysis_summary": analysis_summary,
+                                "analysis_content": claude_response,  # Full content for detailed view
+                                "data_quality": analysis_data.get("data_quality", {})
+                            })
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Failed to parse analysis JSON for {analysis_record.get('symbol', 'unknown')}: {e}")
+                            continue
 
         except Exception as e:
-            logger.warning(f"Could not get portfolio analyses from database: {e}")
+            logger.warning(f"Could not get portfolio analyses from configuration state: {e}")
             portfolio_analyses = []
 
         # Calculate portfolio analysis stats

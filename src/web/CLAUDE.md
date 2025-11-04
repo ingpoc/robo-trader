@@ -304,6 +304,48 @@ async def websocket_dashboard(websocket: WebSocket):
 
 ---
 
+## API Endpoint Patterns
+
+### Database Access in Endpoints (CRITICAL - Database Locking)
+
+**Rule**: Always use ConfigurationState's locked methods for database access in web endpoints. Never access database connection directly.
+
+**Why**: Direct database access bypasses `asyncio.Lock()` protection, causing "database is locked" errors during concurrent operations.
+
+**✅ CORRECT Pattern**:
+```python
+@router.get("/api/claude/transparency/analysis")
+async def get_analysis_transparency(request: Request, container: DependencyContainer = Depends(get_container)):
+    """Get Claude's analysis activities."""
+    try:
+        configuration_state = await container.get("configuration_state")
+        if not configuration_state:
+            return {"analysis": {}}
+
+        # Use locked method - prevents "database is locked"
+        config_data = await configuration_state.get_analysis_history()
+        return {"analysis": config_data}
+    except Exception as e:
+        logger.warning(f"Could not get analysis: {e}")
+        return {"analysis": {}}
+```
+
+**❌ WRONG Pattern** (causes database locks):
+```python
+# NEVER DO THIS:
+database = await container.get("database")
+conn = database.connection
+cursor = await conn.execute(...)  # NO LOCK - CAUSES CONTENTION!
+```
+
+**Key Points**:
+- Web endpoints must use ConfigurationState's public methods with internal locking
+- Methods like `get_analysis_history()`, `store_analysis_history()`, `store_recommendation()` all use `async with self._lock:`
+- Direct connection access is only acceptable within database_state classes that manage the lock
+- Pages freeze when multiple concurrent requests hit direct database access
+
+---
+
 ## Input Validation Pattern
 
 All endpoints must validate request data using Pydantic v2 with proper Field constraints:

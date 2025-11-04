@@ -2,7 +2,7 @@
 
 > **Scope**: Applies to `src/core/background_scheduler/` directory. Read `src/core/CLAUDE.md` for context.
 >
-> **Last Updated**: 2025-11-03 | **Status**: Active | **Tier**: Reference + How-To
+> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference + How-To
 >
 > **Read in this order**:
 > 1. `src/core/CLAUDE.md` - Initialization error handling pattern (CRITICAL for background scheduler)

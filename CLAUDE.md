@@ -373,6 +373,39 @@ for stock in portfolio:
 
 **Key**: Don't skip database persistence thinking logging is optional - UI depends on it.
 
+**Web Endpoint Pattern - Database Access** (CRITICAL):
+
+✅ **CORRECT** - Uses locked ConfigurationState method:
+```python
+@router.get("/api/claude/transparency/analysis")
+async def get_analysis_transparency(request: Request, container: DependencyContainer = Depends(get_container)):
+    """Get Claude's analysis activities transparency."""
+    try:
+        configuration_state = await container.get("configuration_state")
+        if not configuration_state:
+            return {"analysis": {}}
+
+        # Use configuration state's locked database access
+        config_data = await configuration_state.get_analysis_history()
+        return {"analysis": config_data}
+    except Exception as e:
+        logger.warning(f"Could not get analysis: {e}")
+        return {"analysis": {}}
+```
+
+❌ **WRONG** - Direct database access causes locks:
+```python
+# NEVER DO THIS IN WEB ENDPOINTS:
+database = await container.get("database")
+cursor = await database.connection.execute(...)  # NO LOCK!
+```
+
+**Why This Matters**:
+- Direct database access bypasses ConfigurationState's internal `asyncio.Lock()`
+- Multiple concurrent requests cause SQLite "database is locked" errors
+- Pages freeze during long-running analysis (30+ seconds)
+- Solution: Always use locked methods like `get_analysis_history()` from ConfigurationState
+
 ### Queue-Based Claude Analysis Pattern (BEST PRACTICE)
 
 **Rule**: All Claude analysis requests must go through the AI_ANALYSIS queue, NOT direct service calls.
