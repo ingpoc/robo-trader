@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/robo-trader/docs
+    about: Please check the documentation for common questions
+  - name: 💬 Discussions
+    url: https://github.com/robo-trader/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 🔒 Security Issue
+    url: https://github.com/robo-trader/security/policy
+    about: Please report security vulnerabilities privately
