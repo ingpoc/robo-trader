@@ -21,6 +21,7 @@ from src.core.database_state.database_state import DatabaseStateManager
 from src.core.database_state.configuration_state import ConfigurationState
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 from src.services.claude_agent.analysis_logger import AnalysisLogger
+from src.services.portfolio_intelligence.data_gatherer import DataGatherer
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,9 @@ class PortfolioIntelligenceAnalyzer:
         self.status_coordinator = status_coordinator
         self.client_manager = None
         self._active_analyses: Dict[str, Any] = {}  # Track active analyses for logging
+
+        # Initialize data gatherer module
+        self.data_gatherer = DataGatherer(state_manager)
     
     async def initialize(self) -> None:
         """Initialize the analyzer with Claude SDK client."""
@@ -247,160 +251,18 @@ class PortfolioIntelligenceAnalyzer:
             )
     
     async def _get_stocks_with_updates(self) -> List[str]:
-        """Get stocks from portfolio that have recent updates (earnings, news, fundamentals)."""
-        try:
-            # Get portfolio holdings
-            portfolio = await self.state_manager.get_portfolio()
-            if not portfolio or not portfolio.holdings:
-                logger.warning("No portfolio holdings found")
-                return []
-            
-            portfolio_symbols = [
-                holding.get("symbol") 
-                for holding in portfolio.holdings 
-                if holding.get("symbol")
-            ]
-            
-            if not portfolio_symbols:
-                return []
-            
-            # Get stock state store
-            stock_state_store = self.state_manager.get_stock_state_store()
-            await stock_state_store.initialize()
-            
-            # Find stocks with recent updates (within last 7 days)
-            stocks_with_updates = []
-            cutoff_date = date.today() - timedelta(days=7)
-            
-            for symbol in portfolio_symbols:
-                state = await stock_state_store.get_state(symbol)
-                
-                # Check if any data type was updated recently
-                # Convert date strings to date objects if needed
-                news_check_date = state.last_news_check
-                if isinstance(news_check_date, str):
-                    try:
-                        # Handle YYYY-MM-DD format from database
-                        if len(news_check_date) == 10 and news_check_date.count('-') == 2:
-                            from datetime import datetime
-                            news_check_date = datetime.strptime(news_check_date, '%Y-%m-%d').date()
-                        else:
-                            # Handle ISO datetime format with timezone
-                            news_check_date = datetime.fromisoformat(news_check_date.replace('Z', '+00:00')).date()
-                    except (ValueError, AttributeError):
-                        news_check_date = None
+        """Get stocks from portfolio that have recent updates (earnings, news, fundamentals).
 
-                earnings_check_date = state.last_earnings_check
-                if isinstance(earnings_check_date, str):
-                    try:
-                        # Handle YYYY-MM-DD format from database
-                        if len(earnings_check_date) == 10 and earnings_check_date.count('-') == 2:
-                            from datetime import datetime
-                            earnings_check_date = datetime.strptime(earnings_check_date, '%Y-%m-%d').date()
-                        else:
-                            # Handle ISO datetime format with timezone
-                            earnings_check_date = datetime.fromisoformat(earnings_check_date.replace('Z', '+00:00')).date()
-                    except (ValueError, AttributeError):
-                        earnings_check_date = None
-
-                fundamentals_check_date = state.last_fundamentals_check
-                if isinstance(fundamentals_check_date, str):
-                    try:
-                        # Handle YYYY-MM-DD format from database
-                        if len(fundamentals_check_date) == 10 and fundamentals_check_date.count('-') == 2:
-                            from datetime import datetime
-                            fundamentals_check_date = datetime.strptime(fundamentals_check_date, '%Y-%m-%d').date()
-                        else:
-                            # Handle ISO datetime format with timezone
-                            fundamentals_check_date = datetime.fromisoformat(fundamentals_check_date.replace('Z', '+00:00')).date()
-                    except (ValueError, AttributeError):
-                        fundamentals_check_date = None
-                
-                has_recent_news = (
-                    news_check_date and 
-                    isinstance(news_check_date, date) and
-                    news_check_date >= cutoff_date
-                )
-                has_recent_earnings = (
-                    earnings_check_date and 
-                    isinstance(earnings_check_date, date) and
-                    earnings_check_date >= cutoff_date
-                )
-                has_recent_fundamentals = (
-                    fundamentals_check_date and 
-                    isinstance(fundamentals_check_date, date) and
-                    fundamentals_check_date >= cutoff_date
-                )
-                
-                if has_recent_news or has_recent_earnings or has_recent_fundamentals:
-                    stocks_with_updates.append(symbol)
-            
-            # If no stocks with recent updates, return stocks that need updates (oldest first)
-            if not stocks_with_updates:
-                logger.info("No stocks with recent updates, selecting oldest stocks")
-                news_stocks = await stock_state_store.get_oldest_news_stocks(portfolio_symbols, limit=5)
-                earnings_stocks = await stock_state_store.get_oldest_earnings_stocks(portfolio_symbols, limit=5)
-                fundamentals_stocks = await stock_state_store.get_oldest_fundamentals_stocks(portfolio_symbols, limit=5)
-                stocks_with_updates = list(set(news_stocks + earnings_stocks + fundamentals_stocks))[:10]
-            
-            logger.info(f"Cutoff date: {cutoff_date}, Found {len(stocks_with_updates)} stocks with updates: {stocks_with_updates}")
-
-            # Add debug info for first few stocks
-            if portfolio_symbols:
-                sample_symbol = portfolio_symbols[0]
-                sample_state = await stock_state_store.get_state(sample_symbol)
-                logger.info(f"Sample stock {sample_symbol}: news={sample_state.last_news_check}, earnings={sample_state.last_earnings_check}, fundamentals={sample_state.last_fundamentals_check}")
-
-            return stocks_with_updates
-            
-        except Exception as e:
-            logger.error(f"Error getting stocks with updates: {e}", exc_info=True)
-            return []
+        Delegates to DataGatherer module for cleaner separation of concerns.
+        """
+        return await self.data_gatherer.get_stocks_with_updates()
     
     async def _gather_stocks_data(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-        """Gather all available data (earnings, news, fundamentals) for each stock."""
-        stocks_data = {}
-        
-        for symbol in symbols:
-            try:
-                # Get earnings data
-                earnings = await self.state_manager.get_earnings_for_symbol(symbol, limit=5)
-                
-                # Get news data
-                news = await self.state_manager.get_news_for_symbol(symbol, limit=10)
-                
-                # Get fundamental analysis (if available)
-                fundamental_analysis = await self.state_manager.get_fundamental_analysis(symbol, limit=1)
-                
-                # Get stock state (last check dates)
-                stock_state_store = self.state_manager.get_stock_state_store()
-                await stock_state_store.initialize()
-                state = await stock_state_store.get_state(symbol)
-                
-                stocks_data[symbol] = {
-                    "symbol": symbol,
-                    "earnings": earnings,
-                    "news": news,
-                    "fundamental_analysis": [fa.to_dict() if hasattr(fa, 'to_dict') else fa for fa in fundamental_analysis],
-                    "last_news_check": state.last_news_check.isoformat() if state.last_news_check and hasattr(state.last_news_check, 'isoformat') else (str(state.last_news_check) if state.last_news_check else None),
-                    "last_earnings_check": state.last_earnings_check.isoformat() if state.last_earnings_check and hasattr(state.last_earnings_check, 'isoformat') else (str(state.last_earnings_check) if state.last_earnings_check else None),
-                    "last_fundamentals_check": state.last_fundamentals_check.isoformat() if state.last_fundamentals_check and hasattr(state.last_fundamentals_check, 'isoformat') else (str(state.last_fundamentals_check) if state.last_fundamentals_check else None),
-                    "data_summary": {
-                        "earnings_count": len(earnings),
-                        "news_count": len(news),
-                        "fundamental_count": len(fundamental_analysis)
-                    }
-                }
-                
-            except Exception as e:
-                logger.error(f"Error gathering data for {symbol}: {e}")
-                stocks_data[symbol] = {
-                    "symbol": symbol,
-                    "error": str(e),
-                    "data_summary": {"earnings_count": 0, "news_count": 0, "fundamental_count": 0}
-                }
-        
-        return stocks_data
+        """Gather all available data (earnings, news, fundamentals) for each stock.
+
+        Delegates to DataGatherer module for cleaner separation of concerns.
+        """
+        return await self.data_gatherer.gather_stocks_data(symbols)
     
     def _create_system_prompt(self, stocks_data: Dict[str, Dict[str, Any]]) -> str:
         """Create system prompt explaining the analysis task to Claude."""

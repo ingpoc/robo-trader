@@ -186,6 +186,213 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         task_service.register_handler(TaskType.SYNC_ACCOUNT_BALANCES, handle_sync_account_balances)
         logger.info("Registered SYNC_ACCOUNT_BALANCES task handler")
 
+        # Register CLAUDE_MORNING_PREP handler
+        async def handle_claude_morning_prep(task):
+            """Handle morning market preparation with AI analysis."""
+            try:
+                logger.info("Processing Claude morning prep routine")
+
+                symbols = task.payload.get("symbols", [])
+                if not symbols:
+                    logger.warning("No symbols provided for morning prep")
+                    return {"status": "skipped", "reason": "no_symbols"}
+
+                # Get portfolio intelligence analyzer
+                analyzer = await container.get("portfolio_intelligence_analyzer")
+
+                # Run morning analysis on portfolio symbols (batched)
+                # Process in smaller batches to avoid turn limit exhaustion
+                batch_size = 3
+                results = []
+
+                for i in range(0, len(symbols), batch_size):
+                    batch_symbols = symbols[i:i + batch_size]
+                    logger.info(f"Morning prep batch {i//batch_size + 1}: analyzing {len(batch_symbols)} symbols")
+
+                    result = await analyzer.analyze_portfolio_intelligence(
+                        agent_name="morning_prep",
+                        symbols=batch_symbols,
+                        batch_info={
+                            "batch_id": i // batch_size,
+                            "total_batches": (len(symbols) + batch_size - 1) // batch_size,
+                            "routine": "morning_prep"
+                        }
+                    )
+                    results.append(result)
+
+                logger.info(f"Morning prep completed: processed {len(symbols)} symbols in {len(results)} batches")
+                return {
+                    "status": "completed",
+                    "symbols_processed": len(symbols),
+                    "batches": len(results)
+                }
+            except Exception as e:
+                logger.error(f"Error in morning prep handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.CLAUDE_MORNING_PREP, handle_claude_morning_prep)
+        logger.info("Registered CLAUDE_MORNING_PREP task handler")
+
+        # Register CLAUDE_EVENING_REVIEW handler
+        async def handle_claude_evening_review(task):
+            """Handle evening market close review with AI analysis."""
+            try:
+                logger.info("Processing Claude evening review routine")
+
+                # Get portfolio intelligence analyzer
+                analyzer = await container.get("portfolio_intelligence_analyzer")
+
+                # Run evening review on all positions
+                result = await analyzer.analyze_portfolio_intelligence(
+                    agent_name="evening_review",
+                    symbols=None,  # Will analyze all positions
+                    batch_info={"routine": "evening_review"}
+                )
+
+                logger.info(f"Evening review completed")
+                return {
+                    "status": "completed",
+                    "analysis": result
+                }
+            except Exception as e:
+                logger.error(f"Error in evening review handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.CLAUDE_EVENING_REVIEW, handle_claude_evening_review)
+        logger.info("Registered CLAUDE_EVENING_REVIEW task handler")
+
+        # Register CLAUDE_NEWS_ANALYSIS handler
+        async def handle_claude_news_analysis(task):
+            """Handle AI-powered news analysis for a specific symbol."""
+            try:
+                symbol = task.payload.get("symbol")
+                if not symbol:
+                    return {"status": "skipped", "reason": "no_symbol"}
+
+                logger.info(f"Processing Claude news analysis for {symbol}")
+
+                # Get portfolio intelligence analyzer
+                analyzer = await container.get("portfolio_intelligence_analyzer")
+
+                # Analyze news impact for the symbol
+                result = await analyzer.analyze_portfolio_intelligence(
+                    agent_name="news_analysis",
+                    symbols=[symbol],
+                    batch_info={
+                        "trigger": "news",
+                        "trigger_type": task.payload.get("trigger")
+                    }
+                )
+
+                logger.info(f"News analysis completed for {symbol}")
+                return {
+                    "status": "completed",
+                    "symbol": symbol,
+                    "analysis": result
+                }
+            except Exception as e:
+                logger.error(f"Error in news analysis handler for {task.payload.get('symbol')}: {e}")
+                raise
+
+        task_service.register_handler(TaskType.CLAUDE_NEWS_ANALYSIS, handle_claude_news_analysis)
+        logger.info("Registered CLAUDE_NEWS_ANALYSIS task handler")
+
+        # Register CLAUDE_EARNINGS_REVIEW handler
+        async def handle_claude_earnings_review(task):
+            """Handle AI-powered earnings review for a specific symbol."""
+            try:
+                symbol = task.payload.get("symbol")
+                if not symbol:
+                    return {"status": "skipped", "reason": "no_symbol"}
+
+                logger.info(f"Processing Claude earnings review for {symbol}")
+
+                # Get portfolio intelligence analyzer
+                analyzer = await container.get("portfolio_intelligence_analyzer")
+
+                # Analyze earnings data for the symbol
+                result = await analyzer.analyze_portfolio_intelligence(
+                    agent_name="earnings_review",
+                    symbols=[symbol],
+                    batch_info={
+                        "trigger": "earnings",
+                        "trigger_type": task.payload.get("trigger")
+                    }
+                )
+
+                logger.info(f"Earnings review completed for {symbol}")
+                return {
+                    "status": "completed",
+                    "symbol": symbol,
+                    "analysis": result
+                }
+            except Exception as e:
+                logger.error(f"Error in earnings review handler for {task.payload.get('symbol')}: {e}")
+                raise
+
+        task_service.register_handler(TaskType.CLAUDE_EARNINGS_REVIEW, handle_claude_earnings_review)
+        logger.info("Registered CLAUDE_EARNINGS_REVIEW task handler")
+
+        # Register CLAUDE_FUNDAMENTAL_ANALYSIS handler
+        async def handle_claude_fundamental_analysis(task):
+            """Handle AI-powered fundamental analysis for a specific symbol."""
+            try:
+                symbol = task.payload.get("symbol")
+                if not symbol:
+                    return {"status": "skipped", "reason": "no_symbol"}
+
+                logger.info(f"Processing Claude fundamental analysis for {symbol}")
+
+                # Get portfolio intelligence analyzer
+                analyzer = await container.get("portfolio_intelligence_analyzer")
+
+                # Analyze fundamentals for the symbol
+                result = await analyzer.analyze_portfolio_intelligence(
+                    agent_name="fundamental_analysis",
+                    symbols=[symbol],
+                    batch_info={
+                        "trigger": "fundamentals",
+                        "trigger_type": task.payload.get("trigger")
+                    }
+                )
+
+                logger.info(f"Fundamental analysis completed for {symbol}")
+                return {
+                    "status": "completed",
+                    "symbol": symbol,
+                    "analysis": result
+                }
+            except Exception as e:
+                logger.error(f"Error in fundamental analysis handler for {task.payload.get('symbol')}: {e}")
+                raise
+
+        task_service.register_handler(TaskType.CLAUDE_FUNDAMENTAL_ANALYSIS, handle_claude_fundamental_analysis)
+        logger.info("Registered CLAUDE_FUNDAMENTAL_ANALYSIS task handler")
+
+        # Register VALIDATE_PORTFOLIO_RISKS handler
+        async def handle_validate_portfolio_risks(task):
+            """Handle portfolio risk validation."""
+            try:
+                logger.info("Processing portfolio risk validation")
+
+                # Get portfolio service for risk calculations
+                portfolio_service = await container.get("portfolio_service")
+
+                # Validate current portfolio risk levels
+                risk_assessment = await portfolio_service.validate_portfolio_risks()
+
+                logger.info(f"Portfolio risk validation completed: {risk_assessment}")
+                return {
+                    "status": "completed",
+                    "risk_assessment": risk_assessment
+                }
+            except Exception as e:
+                logger.error(f"Error in portfolio risk validation handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.VALIDATE_PORTFOLIO_RISKS, handle_validate_portfolio_risks)
+        logger.info("Registered VALIDATE_PORTFOLIO_RISKS task handler")
+
         return task_service
 
     # Execution Tracker Service

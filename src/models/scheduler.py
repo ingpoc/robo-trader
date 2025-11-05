@@ -29,6 +29,7 @@ class TaskType(str, Enum):
     SYNC_ACCOUNT_BALANCES = "sync_account_balances"
     UPDATE_POSITIONS = "update_positions"
     CALCULATE_OVERNIGHT_PNL = "calculate_overnight_pnl"
+    VALIDATE_PORTFOLIO_RISKS = "validate_portfolio_risks"
 
     # Data fetcher queue
     NEWS_MONITORING = "news_monitoring"
@@ -40,6 +41,9 @@ class TaskType(str, Enum):
     CLAUDE_MORNING_PREP = "claude_morning_prep"
     CLAUDE_EVENING_REVIEW = "claude_evening_review"
     RECOMMENDATION_GENERATION = "recommendation_generation"
+    CLAUDE_NEWS_ANALYSIS = "claude_news_analysis"
+    CLAUDE_EARNINGS_REVIEW = "claude_earnings_review"
+    CLAUDE_FUNDAMENTAL_ANALYSIS = "claude_fundamental_analysis"
 
 
 @dataclass

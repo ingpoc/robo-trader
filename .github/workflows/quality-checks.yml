@@ -1,27 +1,48 @@
+# DEPRECATED: This workflow has been replaced by ci.yml
+#
+# This file is kept for reference only. The new comprehensive CI/CD pipeline
+# is defined in .github/workflows/ci.yml
+#
+# Migration notes:
+# - All quality checks now in ci.yml (lint-python, lint-frontend)
+# - All tests now in ci.yml (test-backend, test-frontend)
+# - Added integration tests, Docker builds, security scanning
+# - See .github/WORKFLOWS.md for complete documentation
+#
+# To remove this file after migration is complete, delete it from the repository.
+
+name: Quality Checks (Deprecated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'This workflow is deprecated. Use ci.yml instead.'
+        required: true
+        default: 'deprecated'
+
 jobs:
-  quality:
+  deprecation-notice:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    - uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-    - name: Install Python dependencies
-      run: pip install -r requirements.txt
-    - name: Run architecture validation
-      run: python scripts/validators/architecture-validator.py
-    - name: Run tests
-      run: pytest --cov=src --cov-fail-under=80
-    - name: Install Node dependencies
-      run: npm install
-    - name: Run linting
-      run: npm run lint
-    - name: Run tests
-      run: npm run test
-name: Quality Checks
-'on':
-- push
-- pull_request
+      - name: Deprecation Notice
+        run: |
+          echo "⚠️  This workflow is DEPRECATED"
+          echo ""
+          echo "Please use the new comprehensive CI/CD pipeline:"
+          echo "  - .github/workflows/ci.yml"
+          echo "  - .github/workflows/security.yml"
+          echo "  - .github/workflows/deploy.yml"
+          echo ""
+          echo "See .github/WORKFLOWS.md for complete documentation."
+          echo ""
+          echo "New features:"
+          echo "  ✅ Comprehensive security scanning"
+          echo "  ✅ Docker build validation"
+          echo "  ✅ Integration testing"
+          echo "  ✅ Deployment automation"
+          echo "  ✅ Multi-environment support"
+          echo "  ✅ Code coverage reporting"
+          echo "  ✅ Type checking and formatting"
+          echo ""
+          exit 1
