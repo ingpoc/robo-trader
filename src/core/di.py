@@ -61,7 +61,9 @@ class DependencyContainer:
 
         # Setup logging if not already configured (don't clear logs - already cleared in app.py)
         from .logging_config import ensure_logging_setup
-        ensure_logging_setup(config.logs_dir, 'INFO', clear_logs=False)
+        # Use LOG_LEVEL from environment (set by CLI flag or .env)
+        log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        ensure_logging_setup(config.logs_dir, log_level, clear_logs=False)
 
         # Register all services through modular registries
         await register_core_services(self)

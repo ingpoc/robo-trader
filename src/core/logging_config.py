@@ -153,7 +153,7 @@ def ensure_logging_setup(logs_dir: Path = None, log_level: str = "INFO", clear_l
 
     This is a convenience function for scripts and tests that need logging
     but don't want to worry about configuration details.
-    
+
     Args:
         logs_dir: Directory to store log files (defaults to ./logs)
         log_level: Logging level (defaults to INFO)

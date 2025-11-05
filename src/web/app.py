@@ -26,7 +26,8 @@ try:
     logs_dir.mkdir(exist_ok=True)
 
     # Get log level from environment (default: INFO)
-    # Set LOG_LEVEL=DEBUG to see detailed debug logs
+    # Priority: 1) --log-level CLI flag, 2) .env file, 3) default INFO
+    # Command line --log-level flag sets this via main.py
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
     # Clear log files on startup
@@ -213,6 +214,7 @@ async def lifespan(app: FastAPI):
         
         # Enhance existing logging (early logging already set up, just add handlers)
         # Use LOG_LEVEL environment variable set by command-line argument for consistency
+        # Priority: 1) --log-level CLI flag, 2) .env file, 3) default INFO
         log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         setup_logging(logs_dir, log_level, clear_logs=False)  # Don't clear again, already cleared
         
@@ -403,27 +405,27 @@ app.add_middleware(
 async def logging_middleware(request: Request, call_next):
     """Log all API requests and responses."""
     import time
-    
+
     # Get client IP
     client_ip = request.client.host if request.client else "unknown"
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
         client_ip = forwarded_for.split(",")[0].strip()
-    
+
     # Log request
     start_time = time.time()
     method = request.method
     url = str(request.url)
     path = request.url.path
-    
-    logger.info(f"{method} {path} - Client: {client_ip}")
-    
+
+    logger.debug(f"{method} {path} - Client: {client_ip}")
+
     try:
         response = await call_next(request)
-        
+
         # Calculate response time
         process_time = time.time() - start_time
-        
+
         # Log response
         status_code = response.status_code
         if status_code >= 500:
@@ -431,8 +433,8 @@ async def logging_middleware(request: Request, call_next):
         elif status_code >= 400:
             logger.warning(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
         else:
-            logger.info(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
-        
+            logger.debug(f"{method} {path} - Status: {status_code} - Time: {process_time:.3f}s - Client: {client_ip}")
+
         return response
     except Exception as e:
         # Calculate response time even on error
@@ -820,14 +822,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
 def run_web_server():
     """Run the web server."""
-    # Get log level from environment variable (default: WARNING to reduce noise)
-    log_level = os.getenv("LOG_LEVEL", "WARNING").lower()
+    # Get log level from environment variable (default: INFO)
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
+    # Uvicorn expects lowercase log level
+    uvicorn_log_level = log_level.lower()
 
     uvicorn.run(
         "src.web.app:app",  # Use import string for reload support
         host="0.0.0.0",
         port=8000,
-        log_level=log_level,
+        log_level=uvicorn_log_level,
         access_log=True,
         reload=True,  # Enable auto-reload for development
     )
