@@ -283,33 +283,23 @@ class BackgroundScheduler:
 
     async def _run_queue_executor(self) -> None:
         """Run SequentialQueueManager for continuous task processing."""
-        print("*** _run_queue_executor() CALLED - About to execute ***")
-        print(f"*** About to call logger.info(), logger={logger} ***")
-        try:
-            logger.info("Queue executor started - processing queued tasks")
-            print("*** logger.info() SUCCESSFUL - about to continue ***")
-        except Exception as e:
-            import traceback
-            print(f"*** CRITICAL ERROR in _run_queue_executor before first log: {e} ***")
-            print(f"*** TRACEBACK: {traceback.format_exc()} ***")
-            raise
+        logger.debug("Queue executor started - processing queued tasks")
 
         try:
             while self._running:
                 try:
                     # Execute queued tasks through SequentialQueueManager
-                    print(f"*** About to call execute_queues(), _running={self._running} ***")
+                    logger.debug(f"About to execute queues, _running={self._running}")
                     await self.sequential_queue_manager.execute_queues()
-                    print(f"*** execute_queues() completed successfully ***")
+                    logger.debug("Queue execution cycle completed")
 
                     # Wait 30 seconds before next cycle
                     await asyncio.sleep(30)
 
                 except Exception as e:
                     import traceback
-                    print(f"*** ERROR in queue executor cycle: {e} ***")
-                    print(f"*** TRACEBACK: {traceback.format_exc()} ***")
                     logger.error(f"Error in queue executor cycle: {e}")
+                    logger.debug(f"Queue executor error details: {traceback.format_exc()}")
                     await asyncio.sleep(60)  # Wait longer on error
 
         except asyncio.CancelledError:

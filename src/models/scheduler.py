@@ -5,6 +5,9 @@ from datetime import datetime
 from typing import Optional, Dict, List, Any
 from enum import Enum
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class QueueName(str, Enum):
@@ -104,11 +107,11 @@ class SchedulerTask:
 
     def is_ready_to_run(self, completed_tasks: List[str]) -> bool:
         """Check if all dependencies are satisfied."""
-        print(f"*** is_ready_to_run() for {self.task_id}: dependencies={self.dependencies} (type={type(self.dependencies)}), completed_tasks={completed_tasks[:5] if completed_tasks else []} ***")
+        logger.debug(f"is_ready_to_run() for {self.task_id}: dependencies={self.dependencies} (type={type(self.dependencies)}), completed_tasks={completed_tasks[:5] if completed_tasks else []}")
         dep_checks = [(dep_id, dep_id in completed_tasks) for dep_id in self.dependencies]
-        print(f"*** dependency checks: {dep_checks} ***")
+        logger.debug(f"dependency checks: {dep_checks}")
         result = all(dep_id in completed_tasks for dep_id in self.dependencies)
-        print(f"*** is_ready_to_run() result: {result} ***")
+        logger.debug(f"is_ready_to_run() result: {result}")
         return result
 
     def mark_started(self) -> None:

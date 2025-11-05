@@ -6,6 +6,7 @@ Starts the autonomous trading system.
 
 import asyncio
 import argparse
+import os
 from pathlib import Path
 
 from loguru import logger
@@ -24,8 +25,13 @@ def main():
     parser.add_argument("--env", choices=["paper", "live"], help="Override environment mode")
     parser.add_argument("--host", default="0.0.0.0", help="Web server host")
     parser.add_argument("--port", type=int, default=8000, help="Web server port")
+    parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                       default="INFO", help="Set logging level (default: INFO)")
 
     args = parser.parse_args()
+
+    # Set logging level environment variable for the web app
+    os.environ["LOG_LEVEL"] = args.log_level
 
     # Load configuration
     config = load_config(args.config)
@@ -36,6 +42,7 @@ def main():
         logger.info(f"Environment overridden to {args.env} mode")
 
     logger.info(f"Starting Robo Trader in {config.environment} mode")
+    logger.info(f"Logging level: {args.log_level}")
 
     if args.command == "web":
         # Start web server (this will run its own event loop)

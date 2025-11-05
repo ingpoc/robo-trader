@@ -41,24 +41,33 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
     Args:
         logs_dir: Directory to store log files
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+                       - DEBUG: Detailed information for debugging
+                       - INFO:  General operational events (default)
+                       - WARNING: Important events that don't stop execution
+                       - ERROR: Error events that may still allow execution
         clear_logs: Whether to clear existing log files on startup
     """
     # Create logs directory if it doesn't exist
     logs_dir.mkdir(exist_ok=True)
-    
+
     # Clear log files on startup if requested
     if clear_logs:
         clear_log_files(logs_dir)
-    
+
     # Remove default handler
     logger.remove()
+
+    # Determine if we should show DEBUG logs in console
+    # Always write DEBUG to file, but only show in console if DEBUG level explicitly requested
+    console_level = log_level
+    file_level = "DEBUG"  # Always capture DEBUG in file for troubleshooting
 
     # Add file handler for backend logs FIRST (before console) to capture all startup errors
     backend_log = logs_dir / "backend.log"
     logger.add(
         backend_log,
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        level=log_level,
+        level=file_level,  # Always capture DEBUG in file
         rotation="10 MB",
         retention="7 days",
         compression="zip",
@@ -67,11 +76,11 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
         enqueue=False  # Synchronous for startup errors to ensure they're written immediately
     )
 
-    # Add console handler with colorful output
+    # Add console handler with colorful output (only show logs at configured level)
     logger.add(
         sys.stdout,
         format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level=log_level,
+        level=console_level,  # Only show logs at configured level in console
         colorize=True,
         backtrace=True,
         diagnose=True

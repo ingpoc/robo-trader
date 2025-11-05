@@ -55,24 +55,19 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
     """
 
     try:
-        logger.info("=" * 80)
-        logger.info("PORTFOLIO SCAN REQUEST - Starting")
-        logger.info("=" * 80)
+        logger.info("Portfolio scan request initiated")
 
         # Get OAuth service to check for stored token
         oauth_service = await container.get("zerodha_oauth_service")
-        logger.info(f"OAuth service retrieved: {oauth_service is not None}")
 
         # Check if a valid token already exists (same check as /api/auth/zerodha/login)
         token_data = await oauth_service.get_stored_token()
-        logger.info(f"Stored token check: {token_data is not None}")
 
         if token_data:
-            logger.info(f"Found valid OAuth token for user: {token_data.get('user_id')}")
-            logger.info(f"Token expires at: {token_data.get('expires_at')}")
+            logger.info(f"Valid OAuth token found for user: {token_data.get('user_id')}, expires at: {token_data.get('expires_at')}")
             logger.info("Proceeding with broker connection using stored token")
         else:
-            logger.info("No valid OAuth token found in storage")
+            logger.debug("No valid OAuth token found in storage")
 
             # Check if API credentials are present for OAuth flow
             from src.config import load_config
@@ -80,20 +75,15 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
             api_key = config.integration.zerodha_api_key
             api_secret = config.integration.zerodha_api_secret
 
-            logger.info(f"Checking API credentials - Key present: {bool(api_key)}, Secret present: {bool(api_secret)}")
+            logger.debug(f"API credentials check - Key present: {bool(api_key)}, Secret present: {bool(api_secret)}")
 
             if api_key and api_secret:
-                logger.info("OAuth token not found but API credentials present, initiating OAuth flow")
-
                 if oauth_service:
                     auth_data = await oauth_service.generate_auth_url(user_id=None)
 
                     # Return auth URL for frontend to open
                     auth_url = auth_data["auth_url"]
-                    logger.info(f"Generated OAuth URL: {auth_url}")
-                    logger.info("=" * 80)
-                    logger.info("RETURNING OAUTH REQUIRED RESPONSE")
-                    logger.info("=" * 80)
+                    logger.info("OAuth authentication required - returning auth URL")
 
                     return {
                         "status": "oauth_required",
@@ -106,12 +96,12 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
                 else:
                     logger.error("OAuth service is None")
             else:
-                logger.info("No API credentials found, will fallback to CSV or database")
-        
+                logger.debug("No API credentials found, will fallback to CSV or database")
+
         # If we get here and no OAuth was triggered, proceed with normal scan
         # (either we have a token or we're falling back to CSV)
 
-        logger.info("Proceeding with normal portfolio scan (no OAuth required)")
+        logger.info("Executing portfolio scan")
 
         # Try broker connection (if token exists)
         broker = None
@@ -122,7 +112,7 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
                 broker = await get_broker(config)
             except Exception as e:
                 logger.warning(f"Failed to initialize broker: {e}")
-        
+
         # Get orchestrator
         orchestrator = await container.get_orchestrator()
         if not orchestrator:
@@ -130,9 +120,7 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
             return {"error": "System not available for portfolio scan"}
 
         # Run portfolio scan
-        logger.info("Executing portfolio scan")
         result = await orchestrator.run_portfolio_scan()
-        logger.info(f"Portfolio scan result: {result}")
 
         # Get updated portfolio to return holdings
         portfolio = await orchestrator.state_manager.get_portfolio()

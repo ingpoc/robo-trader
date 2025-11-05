@@ -106,8 +106,7 @@ class PortfolioIntelligenceAnalyzer:
 
         try:
             # DEBUG: Log entry point
-            print(f"DEBUG: PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
-            logger.info(f"DEBUG: PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
+            logger.debug(f"PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
 
             # Register active analysis
             PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id] = {
@@ -129,12 +128,12 @@ class PortfolioIntelligenceAnalyzer:
 
             # Step 1: Get stocks with updates
             if symbols is None:
-                print(f"DEBUG: Getting stocks with updates...")
+                logger.debug("Getting stocks with updates...")
                 symbols = await self.data_gatherer.get_stocks_with_updates()
-                print(f"DEBUG: Found {len(symbols)} stocks with updates: {symbols[:5]}...")
+                logger.debug(f"Found {len(symbols)} stocks with updates: {symbols[:5]}...")
 
             logger.info(f"Starting portfolio intelligence analysis for {len(symbols)} stocks: {symbols}")
-            print(f"DEBUG: About to queue {len(symbols)} stocks for sequential analysis")
+            logger.debug(f"About to queue {len(symbols)} stocks for sequential analysis")
 
             # Update active analysis with symbol count
             if analysis_id in PortfolioIntelligenceAnalyzer._active_analysis_tasks:
@@ -181,8 +180,7 @@ class PortfolioIntelligenceAnalyzer:
             )
 
             # Step 8: Execute Claude analysis
-            print(f"DEBUG: About to execute Claude analysis for {len(stocks_data)} stocks...")
-            logger.info(f"DEBUG: About to execute Claude analysis for {len(stocks_data)} stocks with analysis_id={analysis_id}")
+            logger.debug(f"About to execute Claude analysis for {len(stocks_data)} stocks with analysis_id={analysis_id}")
 
             analysis_result = await self.analysis_executor.execute_claude_analysis(
                 system_prompt=system_prompt,
@@ -193,8 +191,7 @@ class PortfolioIntelligenceAnalyzer:
                 tool_names=tool_names
             )
 
-            print(f"DEBUG: Claude analysis completed. Result keys: {list(analysis_result.keys())}")
-            logger.info(f"DEBUG: Claude analysis completed. Result keys: {list(analysis_result.keys())}")
+            logger.debug(f"Claude analysis completed. Result keys: {list(analysis_result.keys())}")
 
             # Step 9: Store results in database
             await self.storage_handler.store_analysis_results(

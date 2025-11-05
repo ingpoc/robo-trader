@@ -24,7 +24,11 @@ try:
     # Configure minimal logging early to capture all errors
     logs_dir = PathLibPath.cwd() / "logs"
     logs_dir.mkdir(exist_ok=True)
-    
+
+    # Get log level from environment (default: INFO)
+    # Set LOG_LEVEL=DEBUG to see detailed debug logs
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
     # Clear log files on startup
     for log_file in ["backend.log", "errors.log", "critical.log", "frontend.log"]:
         log_path = logs_dir / log_file
@@ -33,19 +37,30 @@ try:
                 log_path.unlink()
             except Exception:
                 pass  # Ignore errors clearing logs
-    
+
     # Set up basic file logging immediately
     logger.remove()
     backend_log = logs_dir / "backend.log"
     logger.add(
         backend_log,
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="INFO",
+        level="DEBUG",  # Always capture DEBUG in file
         backtrace=True,
         diagnose=True,
         enqueue=False  # Synchronous to capture startup errors
     )
-    logger.info("=== EARLY LOGGING SETUP ===")
+
+    # Console handler - only show logs at configured level
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level=log_level,
+        colorize=True,
+        backtrace=True,
+        diagnose=True
+    )
+
+    logger.info(f"=== EARLY LOGGING SETUP (Level: {log_level}) ===")
     logger.info(f"Starting application - Python {sys.version}")
     logger.info(f"Working directory: {os.getcwd()}")
     
@@ -197,34 +212,37 @@ async def lifespan(app: FastAPI):
         logs_dir.mkdir(exist_ok=True)
         
         # Enhance existing logging (early logging already set up, just add handlers)
-        setup_logging(logs_dir, 'INFO', clear_logs=False)  # Don't clear again, already cleared
+        # Use LOG_LEVEL environment variable set by command-line argument for consistency
+        log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        setup_logging(logs_dir, log_level, clear_logs=False)  # Don't clear again, already cleared
         
         # Configure uvicorn access logger to use our logger
         import logging as std_logging
         uvicorn_access_logger = std_logging.getLogger("uvicorn.access")
         uvicorn_error_logger = std_logging.getLogger("uvicorn.error")
-        
+
         # Create a handler that forwards uvicorn logs to loguru
         class LoguruHandler(std_logging.Handler):
             def emit(self, record):
                 try:
                     level = logger.level(record.levelname).name
                 except ValueError:
-                    level = "INFO"
-                
+                    level = log_level  # Use configured level instead of defaulting to INFO
+
                 logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
-        
+
         # Add loguru handler to uvicorn loggers
         uvicorn_handler = LoguruHandler()
         uvicorn_access_logger.addHandler(uvicorn_handler)
         uvicorn_error_logger.addHandler(uvicorn_handler)
-        uvicorn_access_logger.setLevel(std_logging.INFO)
-        uvicorn_error_logger.setLevel(std_logging.INFO)
-        
-        # Log immediately to confirm logging is working and capture in log file
-        logger.info("=== LIFESPAN STARTUP EVENT STARTED ===")
-        logger.info(f"Enhanced logging with all handlers: {logs_dir}")
-        logger.info("Uvicorn access logger configured to use loguru")
+        # Set uvicorn loggers to use the same level as our configured log level
+        uvicorn_access_logger.setLevel(getattr(std_logging, log_level))
+        uvicorn_error_logger.setLevel(getattr(std_logging, log_level))
+
+        # Log startup confirmation at WARNING level (always visible)
+        logger.warning("=== LIFESPAN STARTUP EVENT STARTED ===")
+        logger.warning(f"Enhanced logging with all handlers: {logs_dir}")
+        logger.warning("Uvicorn access logger configured to use loguru")
     except Exception as e:
         # Log the error using existing logger
         logger.error(f"Failed to enhance logging setup: {e}", exc_info=True)
@@ -802,11 +820,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
 def run_web_server():
     """Run the web server."""
+    # Get log level from environment variable (default: WARNING to reduce noise)
+    log_level = os.getenv("LOG_LEVEL", "WARNING").lower()
+
     uvicorn.run(
         "src.web.app:app",  # Use import string for reload support
         host="0.0.0.0",
         port=8000,
-        log_level="info",
+        log_level=log_level,
         access_log=True,
         reload=True,  # Enable auto-reload for development
     )

@@ -38,8 +38,7 @@ class PortfolioAnalysisExecutor:
 
         start_time = time.time()
 
-        print(f"DEBUG: _execute_claude_analysis() called with {len(stocks_data)} stocks, analysis_id={analysis_id}")
-        logger.info(f"DEBUG: _execute_claude_analysis() called with {len(stocks_data)} stocks, analysis_id={analysis_id}")
+        logger.debug(f"_execute_claude_analysis() called with {len(stocks_data)} stocks, analysis_id={analysis_id}")
 
         try:
             # Initialize analysis logging for portfolio analysis (not a single trade)
@@ -109,8 +108,7 @@ TASK:
 Begin your analysis now."""
 
             # Execute query with streaming and real-time progress monitoring
-            print(f"DEBUG: Starting Claude analysis with streaming (analysis_id={analysis_id})")
-            logger.info(f"DEBUG: Starting Claude analysis with streaming for {len(stocks_data)} stocks")
+            logger.info(f"Starting Claude analysis with streaming for {len(stocks_data)} stocks")
 
             # Send query and monitor responses in real-time
             await client.query(user_prompt)
@@ -119,7 +117,7 @@ Begin your analysis now."""
             last_activity = time.time()
             message_timeout = 120.0  # Timeout if no message for 2 minutes (indicates hung state)
 
-            print(f"DEBUG: Entering receive_messages() loop to monitor Claude progress")
+            logger.debug("Entering receive_messages() loop to monitor Claude progress")
 
             async for message in client.receive_messages():
                 # Check for message timeout (indicates hung state)
@@ -127,7 +125,6 @@ Begin your analysis now."""
                 if time_since_activity > message_timeout:
                     error_msg = f"No activity from Claude for {int(time_since_activity)} seconds - analysis may be hung"
                     logger.error(error_msg)
-                    print(f"DEBUG: {error_msg}")
                     raise TradingError(
                         error_msg,
                         category=ErrorCategory.SYSTEM,
@@ -145,24 +142,20 @@ Begin your analysis now."""
                         for block in message.content:
                             if isinstance(block, ToolUseBlock):
                                 # Claude is ACTIVELY using a tool - RUNNING
-                                print(f"DEBUG: Claude using tool: {block.name}")
-                                logger.info(f"Claude executing tool: {block.name}")
+                                logger.debug(f"Claude using tool: {block.name}")
 
                             elif isinstance(block, TextBlock):
                                 # Claude is responding - RUNNING
                                 response_chunks.append(block.text)
-                                print(f"DEBUG: Received text chunk ({len(block.text)} chars, {len(response_chunks)} total chunks)")
-                                logger.info(f"Claude text response ({len(response_chunks)} chunks total)")
+                                logger.debug(f"Received text chunk ({len(block.text)} chars, {len(response_chunks)} total chunks)")
 
                     elif isinstance(message, ToolResultBlock):
                         # Tool completed - STILL RUNNING
-                        print(f"DEBUG: Tool result received")
-                        logger.info("Tool execution result received")
+                        logger.debug("Tool result received")
 
                     elif isinstance(message, ResultMessage):
                         # Analysis complete - READY
-                        print(f"DEBUG: Claude analysis complete (ResultMessage received)")
-                        logger.info("Claude analysis completed - ResultMessage received")
+                        logger.debug("Claude analysis complete (ResultMessage received)")
                         break
 
                 except Exception as e:
@@ -170,14 +163,13 @@ Begin your analysis now."""
                     # Continue processing - don't fail on message type issues
                     pass
 
-            print(f"DEBUG: Exit receive_messages() loop - received {len(response_chunks)} text chunks")
-            logger.info(f"Claude analysis streaming complete: {len(response_chunks)} response chunks collected")
+            logger.debug(f"Exit receive_messages() loop - received {len(response_chunks)} text chunks")
 
             # Assemble final response from chunks
             response = "\n".join(response_chunks) if response_chunks else ""
             execution_time_ms = int((time.time() - start_time) * 1000)
 
-            print(f"DEBUG: Final response length: {len(response)} chars, execution time: {execution_time_ms}ms")
+            logger.debug(f"Final response length: {len(response)} chars, execution time: {execution_time_ms}ms")
 
             # Log Claude analysis completion
             await self.analysis_logger.log_analysis_step(
@@ -194,10 +186,9 @@ Begin your analysis now."""
             # Extract recommendations and prompt updates from response
 
             # DEBUG: Log Claude's actual response
-            print(f"DEBUG: Claude response type: {type(response)}")
-            print(f"DEBUG: Claude response length: {len(response)}")
-            print(f"DEBUG: Claude response (first 500 chars): {response[:500]}")
-            logger.info(f"DEBUG: Claude response type: {type(response)}, length: {len(response)}")
+            logger.debug(f"Claude response type: {type(response)}")
+            logger.debug(f"Claude response length: {len(response)}")
+            logger.debug(f"Claude response (first 500 chars): {response[:500]}")
 
             # Parse Claude's response to extract structured recommendations and updates
             recommendations = []

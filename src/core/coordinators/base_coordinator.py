@@ -36,8 +36,12 @@ class BaseCoordinator(ABC):
         """Cleanup coordinator resources. Must be implemented by subclasses."""
         pass
 
+    def _log_debug(self, message: str) -> None:
+        """Log debug message with coordinator name for detailed internal operations."""
+        logger.debug(f"[{self.__class__.__name__}] {message}")
+
     def _log_info(self, message: str) -> None:
-        """Log info message with coordinator name."""
+        """Log info message with coordinator name for important milestones and user actions."""
         logger.info(f"[{self.__class__.__name__}] {message}")
 
     def _log_error(self, message: str, exc_info: bool = False) -> None:
