@@ -10,6 +10,10 @@ import os
 from pathlib import Path
 
 from loguru import logger
+from dotenv import load_dotenv
+
+# Load .env file first to get default LOG_LEVEL
+load_dotenv()
 
 from src.config import load_config
 from .core.di import initialize_container, cleanup_container
@@ -26,12 +30,23 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="Web server host")
     parser.add_argument("--port", type=int, default=8000, help="Web server port")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                       default="INFO", help="Set logging level (default: INFO)")
+                       default=None, help="Set logging level (overrides .env config)")
 
     args = parser.parse_args()
 
-    # Set logging level environment variable for the web app
-    os.environ["LOG_LEVEL"] = args.log_level
+    # Determine log level with proper priority:
+    # 1. Command-line flag (highest priority)
+    # 2. .env file LOG_LEVEL
+    # 3. Default to INFO (lowest priority)
+    if args.log_level is not None:
+        # CLI flag provided - highest priority
+        log_level = args.log_level
+    else:
+        # Use .env file or default to INFO
+        log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
+    # Set environment variable for web app (inherited by uvicorn subprocess)
+    os.environ["LOG_LEVEL"] = log_level
 
     # Load configuration
     config = load_config(args.config)
@@ -42,7 +57,7 @@ def main():
         logger.info(f"Environment overridden to {args.env} mode")
 
     logger.info(f"Starting Robo Trader in {config.environment} mode")
-    logger.info(f"Logging level: {args.log_level}")
+    logger.info(f"Logging level: {log_level}")
 
     if args.command == "web":
         # Start web server (this will run its own event loop)

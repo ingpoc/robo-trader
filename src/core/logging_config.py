@@ -34,7 +34,7 @@ def clear_log_files(logs_dir: Path):
                 print(f"Failed to clear log file {log_file}: {e}", file=sys.stderr)
 
 
-def setup_logging(logs_dir: Path, log_level: str = "WARNING", clear_logs: bool = True):
+def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = True):
     """
     Configure logging to output to both console and files.
 
@@ -147,13 +147,13 @@ def setup_logging(logs_dir: Path, log_level: str = "WARNING", clear_logs: bool =
     asyncio.get_event_loop().set_exception_handler(handle_asyncio_exception)
 
 
-def ensure_logging_setup(logs_dir: Path = None, log_level: str = "WARNING", clear_logs: bool = True):
+def ensure_logging_setup(logs_dir: Path = None, log_level: str = "INFO", clear_logs: bool = True):
     """
     Ensure logging is set up, using default logs directory if not provided.
 
     This is a convenience function for scripts and tests that need logging
     but don't want to worry about configuration details.
-    
+
     Args:
         logs_dir: Directory to store log files (defaults to ./logs)
         log_level: Logging level (defaults to INFO)

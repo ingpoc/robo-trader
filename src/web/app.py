@@ -25,9 +25,10 @@ try:
     logs_dir = PathLibPath.cwd() / "logs"
     logs_dir.mkdir(exist_ok=True)
 
-    # Get log level from environment (default: WARNING for production)
+    # Get log level from environment (default: INFO)
+    # Priority: 1) --log-level CLI flag, 2) .env file, 3) default INFO
     # Command line --log-level flag sets this via main.py
-    log_level = os.getenv("LOG_LEVEL", "WARNING").upper()
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
     # Clear log files on startup
     for log_file in ["backend.log", "errors.log", "critical.log", "frontend.log"]:
@@ -213,7 +214,8 @@ async def lifespan(app: FastAPI):
         
         # Enhance existing logging (early logging already set up, just add handlers)
         # Use LOG_LEVEL environment variable set by command-line argument for consistency
-        log_level = os.getenv("LOG_LEVEL", "WARNING").upper()
+        # Priority: 1) --log-level CLI flag, 2) .env file, 3) default INFO
+        log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         setup_logging(logs_dir, log_level, clear_logs=False)  # Don't clear again, already cleared
         
         # Configure uvicorn access logger to use our logger
