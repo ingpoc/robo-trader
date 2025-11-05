@@ -17,13 +17,13 @@ Phase 2 focuses on refactoring large files (>350 lines backend, >300 lines front
 | #1: Add missing task types | ✅ Complete | - | - | 100% |
 | #2: Register task handlers | ✅ Complete | - | - | 100% |
 | #3: Refactor portfolio_intelligence_analyzer.py | ✅ Complete | 1,052 lines | 7 modules (~300 lines each) | 100% |
-| #4: Refactor recommendation_service.py | ⏳ In Progress | 916 lines | Planned | 0% |
+| #4: Refactor recommendation_service.py | ✅ Complete | 916 lines | 8 modules (~292 lines max) | 100% |
 | #5: Split SchedulerStatus.tsx | ⏳ Pending | 558 lines | Planned | 0% |
 | #6: Split QueueHealthMonitor.tsx | ⏳ Pending | 472 lines | Planned | 0% |
 | #7: Refactor usePaperTrading.ts | ⏳ Pending | 360 lines | Planned | 0% |
 | #8: Refactor useQueue.ts | ⏳ Pending | 306 lines | Planned | 0% |
 
-**Overall Progress**: 3/8 tasks complete (37.5%)
+**Overall Progress**: 4/8 tasks complete (50%)
 
 ---
 
@@ -84,32 +84,30 @@ Status: Pushed to origin/claude/phase-2-remaining-tasks-011CUpJd6chtnXQ3QmLMmgqk
 
 ## Remaining Tasks
 
-### Task #4: Refactor recommendation_service.py (916 lines)
+### Task #4: Refactor recommendation_service.py (916 lines) ✅ COMPLETE
 
-**Status**: ⏳ Pending
+**Status**: ✅ Complete (2-3 hours estimated → 2 hours actual)
 
-**Analysis**:
-- Main class: RecommendationEngine with 25+ methods
-- Logical groups:
-  - Factor calculation (6 methods)
-  - Decision logic (4 methods)
-  - Claude integration (3 methods)
-  - Performance tracking (2 methods)
-
-**Planned Structure**:
+**Completed Structure**:
 ```
 src/services/recommendation_engine/
-├── __init__.py
-├── engine.py (main orchestrator, ~250 lines)
-├── models.py (dataclasses)
-├── factor_calculator.py (scoring logic)
-├── decision_maker.py (recommendation type, confidence)
-├── price_calculator.py (target prices, stop loss)
-├── claude_analyzer.py (Claude integration)
-└── performance_tracker.py (tracking & stats)
+├── __init__.py (12 lines) - Module exports
+├── engine.py (292 lines) - Main orchestrator
+├── models.py (72 lines) - Data models & configuration
+├── factor_calculator.py (240 lines) - Factor scoring logic
+├── decision_maker.py (216 lines) - Decision logic & thresholds
+├── price_calculator.py (163 lines) - Target price & stop loss calculations
+├── claude_analyzer.py (202 lines) - Claude Agent SDK integration
+└── performance_tracker.py (230 lines) - Performance tracking & stats
 ```
 
-**Estimated Time**: 2-3 hours
+**Achievements**:
+- All files under 350-line limit (largest: 292 lines)
+- 100% backward compatibility maintained
+- Clear separation: factors → decisions → pricing → Claude → performance
+- Better testability with focused modules
+
+**Commit**: `926e863` - refactor(recommendation-engine): Split 916-line monolith into focused modules
 
 ---
 
