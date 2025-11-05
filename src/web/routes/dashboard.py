@@ -28,10 +28,77 @@ dashboard_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 
 @router.get("/dashboard")
 @router.get("/dashboard/")
-async def api_dashboard(request: Request) -> Dict[str, Any]:
+async def api_dashboard(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get dashboard data."""
-    from ..app import get_dashboard_data
-    return await get_dashboard_data()
+    try:
+        # Get required dependencies from container
+        orchestrator = await container.get_orchestrator()
+        config = await container.get("config")
+
+        # Use module-level initialization_status from app
+        from ..app import initialization_status
+
+        if not orchestrator or not orchestrator.state_manager:
+            return {
+                "error": "System not initialized",
+                "initialization_status": initialization_status
+            }
+
+        # Check if initialization is complete
+        if not initialization_status["orchestrator_initialized"]:
+            return {
+                "error": "System initialization in progress",
+                "initialization_status": initialization_status,
+                "message": "Please wait for system initialization to complete"
+            }
+
+        portfolio = await orchestrator.state_manager.get_portfolio()
+
+        if not portfolio and orchestrator and config and hasattr(config, 'agents') and config.agents.portfolio_scan.enabled:
+            try:
+                logger.info("Triggering bootstrap portfolio scan")
+                await orchestrator.run_portfolio_scan()
+                portfolio = await orchestrator.state_manager.get_portfolio()
+            except Exception as exc:
+                logger.warning(f"Bootstrap failed: {exc}")
+
+        intents = await orchestrator.state_manager.get_all_intents()
+
+        # Get screening and strategy results with fallback to None if not implemented
+        try:
+            screening = await orchestrator.state_manager.get_screening_results()
+        except (NotImplementedError, AttributeError):
+            screening = None
+
+        try:
+            strategy = await orchestrator.state_manager.get_strategy_results()
+        except (NotImplementedError, AttributeError):
+            strategy = None
+
+        portfolio_dict = portfolio.to_dict() if portfolio else None
+        analytics = portfolio_dict.get("risk_aggregates") if portfolio_dict else None
+
+        return {
+            "portfolio": portfolio_dict,
+            "analytics": analytics,
+            "screening": screening,
+            "strategy": strategy,
+            "intents": [intent.to_dict() for intent in intents],
+            "config": {
+                "environment": config.environment if config else "unknown",
+                "max_turns": getattr(config, 'max_turns', 50) if config else 50
+            },
+            "initialization_status": initialization_status,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "api_dashboard")
 
 
 @router.get("/portfolio")

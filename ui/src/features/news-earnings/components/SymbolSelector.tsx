@@ -54,7 +54,7 @@ export const SymbolSelector = memo<SymbolSelectorProps>(({
           <div className="flex gap-3">
             {onRefresh && (
               <Button
-                variant="outline"
+                variant="tertiary"
                 onClick={onRefresh}
                 disabled={isLoading}
                 className="flex items-center gap-2"

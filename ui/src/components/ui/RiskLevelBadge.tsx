@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Shield, AlertTriangle, AlertCircle } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { RISK_LEVEL_COLORS } from '@/lib/constants'
 import type { RiskLevel } from '@/types/domain'
 

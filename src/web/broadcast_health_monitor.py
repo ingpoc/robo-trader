@@ -211,7 +211,7 @@ class BroadcastHealthMonitor:
 
         except Exception as e:
             # Record failure
-            self._record_failure(e, message)
+            await self._record_failure(e, message)
             return False
 
     def _is_circuit_breaker_open(self) -> bool:
@@ -265,7 +265,7 @@ class BroadcastHealthMonitor:
 
         self._metrics.update_success_rate()
 
-    def _record_failure(self, error: Exception, context: Dict[str, Any]) -> None:
+    async def _record_failure(self, error: Exception, context: Dict[str, Any]) -> None:
         """Record a failed broadcast."""
         self._metrics.failed_broadcasts += 1
         self._consecutive_failures += 1

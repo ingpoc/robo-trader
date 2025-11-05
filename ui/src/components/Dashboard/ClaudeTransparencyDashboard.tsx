@@ -5,10 +5,10 @@
  */
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -101,7 +101,7 @@ export function ClaudeTransparencyDashboard() {
           </h1>
           <p className="text-muted-foreground">Complete visibility into Claude's learning and trading process</p>
         </div>
-        <Button onClick={refetchAll} variant="outline">
+        <Button onClick={refetchAll} variant="tertiary">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh Data
         </Button>
@@ -270,7 +270,7 @@ export function ClaudeTransparencyDashboard() {
                         <span className="text-sm font-medium capitalize">
                           {strategy.replace('_', ' ')}
                         </span>
-                        <Badge variant="outline">
+                        <Badge variant="tertiary">
                           {metrics.win_rate ? `${(metrics.win_rate * 100).toFixed(1)}%` : '0%'} win rate
                         </Badge>
                       </div>
@@ -382,7 +382,7 @@ export function ClaudeTransparencyDashboard() {
                           {session.symbols_analyzed?.length || 0} symbols analyzed
                         </p>
                       </div>
-                      <Badge variant="outline">
+                      <Badge variant="tertiary">
                         {session.confidence_score ? `${(session.confidence_score * 100).toFixed(0)}%` : '0%'}
                       </Badge>
                     </div>
@@ -643,7 +643,7 @@ export function ClaudeTransparencyDashboard() {
                         }>
                           {refinement.implementation_priority}
                         </Badge>
-                        <Badge variant="outline">
+                        <Badge variant="tertiary">
                           {refinement.confidence_score ? `${(refinement.confidence_score * 100).toFixed(0)}%` : '0%'}
                         </Badge>
                       </div>

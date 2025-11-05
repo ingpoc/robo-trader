@@ -111,7 +111,7 @@ export const RecommendationsPanel = memo<RecommendationsPanelProps>(({
               <h3 className="text-lg font-semibold text-red-900 dark:text-red-100 mb-2">Unable to load recommendations</h3>
               <p className="text-red-700 dark:text-red-300 text-sm mb-4">{error}</p>
               {onRetry && (
-                <Button onClick={onRetry} variant="outline" className="border-red-300 text-red-700 hover:bg-red-50">
+                <Button onClick={onRetry} variant="tertiary" className="border-red-300 text-red-700 hover:bg-red-50">
                   Retry
                 </Button>
               )}
@@ -237,7 +237,7 @@ export const RecommendationsPanel = memo<RecommendationsPanelProps>(({
                     </Button>
                     <Button
                       onClick={() => handleReject(rec.id)}
-                      variant="outline"
+                      variant="tertiary"
                       className="flex-1 border-red-300 text-red-700 hover:bg-red-50"
                       size="sm"
                     >
@@ -246,7 +246,7 @@ export const RecommendationsPanel = memo<RecommendationsPanelProps>(({
                     </Button>
                     <Button
                       onClick={() => handleDiscuss(rec.id)}
-                      variant="outline"
+                      variant="tertiary"
                       className="flex-1 border-amber-300 text-amber-700 hover:bg-amber-50"
                       size="sm"
                     >

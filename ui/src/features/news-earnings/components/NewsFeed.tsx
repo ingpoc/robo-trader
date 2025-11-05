@@ -62,7 +62,7 @@ export const NewsFeed = memo<NewsFeedProps>(({
               <h3 className="text-lg font-semibold text-red-900 dark:text-red-100 mb-2">Unable to load news data</h3>
               <p className="text-red-700 dark:text-red-300 text-sm mb-4">{error}</p>
               {onRetry && (
-                <Button onClick={onRetry} variant="outline" className="border-red-300 text-red-700 hover:bg-red-50">
+                <Button onClick={onRetry} variant="tertiary" className="border-red-300 text-red-700 hover:bg-red-50">
                   Retry
                 </Button>
               )}

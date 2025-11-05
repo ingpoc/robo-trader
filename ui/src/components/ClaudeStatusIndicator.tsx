@@ -108,7 +108,7 @@ export function ClaudeStatusIndicator() {
 
   const getWebSocketIcon = () => {
     // WiFi-style icon for WebSocket status
-    switch (wsStatus) {
+    switch (status) {
       case 'connected':
         return (
           <svg

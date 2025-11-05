@@ -179,7 +179,7 @@ export function AgentConfigPanel({ agentName, onClose }: AgentConfigPanelProps) 
             {updateConfig.isPending ? 'Saving...' : 'Save Configuration'}
           </Button>
           {onClose && (
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="tertiary" onClick={onClose}>
               Cancel
             </Button>
           )}

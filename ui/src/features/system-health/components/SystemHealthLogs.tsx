@@ -143,7 +143,7 @@ export const SystemHealthLogs: React.FC<SystemHealthLogsProps> = ({ isLoading = 
             <AlertCircle className="w-12 h-12 mx-auto mb-3 text-red-400" />
             <p className="text-red-600 font-medium mb-2">Failed to load system logs</p>
             <p className="text-sm text-warmgray-500 mb-4">{error}</p>
-            <Button onClick={fetchLogs} variant="outline" size="sm">
+            <Button onClick={fetchLogs} variant="tertiary" size="sm">
               <RefreshCw className="w-4 h-4 mr-2" />
               Retry
             </Button>
@@ -200,7 +200,7 @@ export const SystemHealthLogs: React.FC<SystemHealthLogsProps> = ({ isLoading = 
               />
               <Button
                 onClick={fetchLogs}
-                variant="outline"
+                variant="tertiary"
                 size="sm"
               >
                 <RefreshCw className="w-4 h-4" />

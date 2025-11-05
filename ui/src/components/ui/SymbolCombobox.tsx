@@ -58,7 +58,7 @@ export function SymbolCombobox({
   useEffect(() => {
     const stored = localStorage.getItem(RECENT_SYMBOLS_KEY)
     if (stored) {
-      try:
+      try {
         setRecentSymbols(JSON.parse(stored))
       } catch (error) {
         console.error('Failed to parse recent symbols:', error)
@@ -104,7 +104,7 @@ export function SymbolCombobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant="tertiary"
           role="combobox"
           aria-expanded={open}
           className={cn("w-full justify-between", className)}

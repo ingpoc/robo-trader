@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Eye, TrendingUp, AlertTriangle, CheckCircle, Clock, Zap, Database, RefreshCw } from 'lucide-react'
@@ -132,7 +132,7 @@ export const DataPipelineAnalysis: React.FC<DataPipelineAnalysisProps> = ({ isLo
         <Button
           onClick={handleRefresh}
           disabled={isRefreshing}
-          variant="outline"
+          variant="tertiary"
           size="sm"
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -240,7 +240,7 @@ export const DataPipelineAnalysis: React.FC<DataPipelineAnalysisProps> = ({ isLo
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-2xl">{type.icon}</span>
                     {metrics?.prompt_optimized && (
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="tertiary" className="text-xs">
                         <Zap className="h-3 w-3 mr-1" />
                         Optimized
                       </Badge>
@@ -306,7 +306,7 @@ export const DataPipelineAnalysis: React.FC<DataPipelineAnalysisProps> = ({ isLo
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">
+                      <Badge variant="tertiary">
                         Version {item.optimization_version}
                       </Badge>
                       <span className={`font-semibold ${getQualityColor(item.quality_score)}`}>

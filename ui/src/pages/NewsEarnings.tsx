@@ -210,7 +210,7 @@ export function NewsEarnings() {
               </div>
               <div className="flex gap-3">
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   onClick={() => window.location.reload()}
                   className="flex items-center gap-2"
                 >
@@ -286,7 +286,7 @@ export function NewsEarnings() {
                       </p>
                       <Button
                         onClick={() => window.location.reload()}
-                        variant="outline"
+                        variant="tertiary"
                         className="border-rose-300 text-rose-700 hover:bg-rose-50"
                       >
                         Retry
@@ -715,7 +715,7 @@ export function NewsEarnings() {
                               </Button>
                               <Button
                                 onClick={() => reject(rec.id)}
-                                variant="outline"
+                                variant="tertiary"
                                 className="flex-1 border-red-300 text-red-700 hover:bg-red-50"
                                 size="sm"
                               >
@@ -724,7 +724,7 @@ export function NewsEarnings() {
                               </Button>
                               <Button
                                 onClick={() => discuss(rec.id)}
-                                variant="outline"
+                                variant="tertiary"
                                 className="flex-1 border-amber-300 text-amber-700 hover:bg-amber-50"
                                 size="sm"
                               >

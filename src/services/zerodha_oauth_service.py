@@ -169,7 +169,7 @@ class ZerodhaOAuthService:
             # Note: Zerodha may not always send the state parameter back,
             # so we make it optional but still validate if present
             if state:
-            if not await self._validate_state(state):
+                if not await self._validate_state(state):
                     logger.warning(f"State parameter validation failed: {state}")
                     # Don't fail hard - Zerodha's request token is still valid
                     # Just log the warning and continue
@@ -297,6 +297,12 @@ class ZerodhaOAuthService:
                     # 1. API secret in .env matches Zerodha Kite Connect app settings EXACTLY
                     # 2. API key matches the one used in auth URL
                     # 3. Request token is not expired (tokens expire after ~2 minutes)
+                    # 4. Checksum calculation: checksum = sha256(api_key + request_token + api_secret)
+
+                    logger.info(f"Calling kite.generate_session with:")
+                    logger.info(f"  Request token: {request_token_clean[:10]}...")
+                    logger.info(f"  API key: {api_key[:10]}...")
+
                     data = kite.generate_session(request_token=request_token_clean, api_secret=api_secret)
                     logger.info(f"generate_session succeeded. User: {data.get('user_id')}")
                     return data
@@ -315,19 +321,19 @@ class ZerodhaOAuthService:
             # Execute in thread pool to avoid blocking
             token_data = await loop.run_in_executor(None, exchange_token)
 
-                # Add expiry information
-                login_time = datetime.now(timezone.utc)
-                expires_at = login_time + timedelta(hours=24)  # Zerodha tokens last 24 hours
+            # Add expiry information
+            login_time = datetime.now(timezone.utc)
+            expires_at = login_time + timedelta(hours=24)  # Zerodha tokens last 24 hours
 
             logger.info(f"Successfully exchanged request token for access token. User: {token_data.get('user_id')}")
 
-                return {
-                    "access_token": token_data.get("access_token"),
-                    "request_token": request_token,
-                    "user_id": token_data.get("user_id"),
-                    "login_time": login_time.isoformat(),
-                    "expires_at": expires_at.isoformat()
-                }
+            return {
+                "access_token": token_data.get("access_token"),
+                "request_token": request_token,
+                "user_id": token_data.get("user_id"),
+                "login_time": login_time.isoformat(),
+                "expires_at": expires_at.isoformat()
+            }
 
         except ImportError as e:
             logger.error(f"kiteconnect library not installed: {e}")

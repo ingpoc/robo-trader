@@ -374,7 +374,14 @@ async def run_portfolio_scan(
         from src.mcp.broker import get_broker
         broker = await get_broker(config)
 
-        if is_broker_connected(broker):
+        # Check broker authentication status with detailed logging
+        if not broker:
+            logger.info("Broker client not available, using CSV fallback")
+        elif not broker.is_authenticated():
+            logger.info("Broker not authenticated - OAuth token may be expired or missing")
+            # The broker will automatically handle token expiration and deletion
+            # This will trigger OAuth flow on next scan if needed
+        else:
             logger.info("Using live data from Zerodha broker")
             live_data = await get_live_portfolio_data(broker)
 
@@ -393,8 +400,6 @@ async def run_portfolio_scan(
                 }
             else:
                 logger.warning("Broker returned no holdings, falling back to CSV")
-        else:
-            logger.info("Broker not connected, using CSV data as fallback")
     except ImportError as e:
         logger.warning(f"Broker module not available: {e}, using CSV data as fallback")
     except Exception as e:

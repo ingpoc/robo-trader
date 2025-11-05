@@ -8,6 +8,7 @@ import type {
   TaskFilter,
   QueueTriggerRequest,
   QueueConfigurationUpdate,
+  QueueConfiguration,
 } from '@/types/queue'
 import { api } from './client'
 import type {
@@ -20,6 +21,10 @@ import type {
   AgentConfig,
   PerformanceData,
   SymbolData,
+  BackgroundTaskConfig,
+  AIAgentConfig,
+  GlobalConfig,
+  PromptConfig,
 } from '@/types/api'
 
 export const dashboardAPI = {
@@ -305,7 +310,7 @@ export const queueAPI = {
 
   // Get specific queue status
   getQueueStatus: (queueType: QueueType) =>
-    api.get<{ queue: QueueStatus }>('/api/queues/status/${queueType}'),
+    api.get<{ queue: QueueStatus }>(`/api/queues/status/${queueType}`),
 
   // Get queue tasks with filtering
   getQueueTasks: (filters?: TaskFilter) => {

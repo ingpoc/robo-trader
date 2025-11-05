@@ -14,7 +14,6 @@ import { AITransparencyFeature } from '@/features/ai-transparency/AITransparency
 import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeature'
 import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
 import { PaperTrading } from '@/pages/PaperTrading'
-import { Config } from '@/pages/Config'
 import { Button } from '@/components/ui/Button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 

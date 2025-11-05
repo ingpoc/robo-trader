@@ -1,11 +1,11 @@
 import React from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/Label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select'
+import { Input } from '@/components/ui/Input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Brain, RefreshCw, Play, Loader2 } from 'lucide-react'
 import type { AIAgentConfig } from '@/types/api'
@@ -153,7 +153,7 @@ export const AIAgentConfigComponent: React.FC<AIAgentConfigProps> = ({
                 <Label>Available Tools</Label>
                 <div className="flex flex-wrap gap-1">
                   {config.tools.map(tool => (
-                    <Badge key={tool} variant="outline" className="text-xs">
+                    <Badge key={tool} variant="tertiary" className="text-xs">
                       {tool.replace('_', ' ')}
                     </Badge>
                   ))}
@@ -168,7 +168,7 @@ export const AIAgentConfigComponent: React.FC<AIAgentConfigProps> = ({
               {/* Action Button */}
               <div className="pt-4 border-t">
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   size="sm"
                   onClick={() => onExecuteAgent(agentName)}
                   disabled={executingAgents.has(agentName) || !config.enabled}

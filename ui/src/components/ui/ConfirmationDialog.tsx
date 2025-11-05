@@ -58,7 +58,7 @@ export const ConfirmationDialog = forwardRef<HTMLDivElement, ConfirmationDialogP
 
             <div className="flex gap-3 pt-4">
               <Button
-                variant="outline"
+                variant="tertiary"
                 onClick={handleCancel}
                 disabled={isLoading}
                 className="flex-1"

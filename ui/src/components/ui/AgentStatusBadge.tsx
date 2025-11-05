@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { AGENT_STATUS_COLORS } from '@/lib/constants'
 import type { AgentStatus } from '@/types/domain'
 

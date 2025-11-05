@@ -4,14 +4,14 @@
  */
 
 import React, { useState, useMemo } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Label } from '@/components/ui/Label'
+import { Select } from '@/components/ui/Select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
 import { usePaperTrading } from '@/hooks/usePaperTrading'
 import { useAccount } from '@/contexts/AccountContext'
 import { AccountSelector } from '@/components/AccountSelector'
@@ -316,7 +316,7 @@ export function PaperTrading() {
             Account: <span className="font-mono">{selectedAccount?.account_id || 'No account selected'}</span>
           </p>
         </div>
-        <Button onClick={refetchAccountOverview} variant="outline" size="sm">
+        <Button onClick={refetchAccountOverview} variant="tertiary" size="sm">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
@@ -947,7 +947,7 @@ export function PaperTrading() {
                   <Button onClick={confirmClosePosition} className="flex-1 bg-orange-600 hover:bg-orange-700">
                     Confirm Close
                   </Button>
-                  <Button onClick={() => setCloseForm(null)} variant="outline" className="flex-1">
+                  <Button onClick={() => setCloseForm(null)} variant="tertiary" className="flex-1">
                     Cancel
                   </Button>
                 </div>
@@ -1039,7 +1039,7 @@ export function PaperTrading() {
                   >
                     Update Levels
                   </Button>
-                  <Button onClick={() => setModifyStopLossTarget(null)} variant="outline" className="flex-1">
+                  <Button onClick={() => setModifyStopLossTarget(null)} variant="tertiary" className="flex-1">
                     Cancel
                   </Button>
                 </div>
@@ -1204,7 +1204,7 @@ export function PaperTrading() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRiskDialog(false)}>
+            <Button variant="tertiary" onClick={() => setShowRiskDialog(false)}>
               Cancel
             </Button>
             <Button

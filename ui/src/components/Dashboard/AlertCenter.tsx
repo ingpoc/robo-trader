@@ -2,7 +2,7 @@ import { useAlerts } from '@/hooks/useAlerts'
 import { AlertItem } from './AlertItem'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { Bell, CheckCircle, AlertTriangle } from 'lucide-react'
 
 export function AlertCenter() {

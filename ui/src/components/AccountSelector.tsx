@@ -3,14 +3,14 @@
  * Allows users to select between different paper trading accounts
  */
 
-import React, { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Select } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Select, SelectItem } from '@/components/ui/Select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
+import { Input } from '@/components/ui/Input'
+import { Label } from '@/components/ui/Label'
+import { Badge } from '@/components/ui/Badge'
 import { useAccount, Account } from '@/contexts/AccountContext'
 import {
   ChevronDown,
@@ -164,15 +164,17 @@ export function AccountSelector({ className }: AccountSelectorProps) {
               <Label className="text-sm font-medium">Switch Account</Label>
               <Select
                 value={selectedAccount?.account_id || ''}
-                onChange={(e) => {
-                  const account = accounts.find(acc => acc.account_id === e.target.value)
+                onValueChange={(value) => {
+                  const account = accounts.find(acc => acc.account_id === value)
                   if (account) selectAccount(account)
                 }}
-                options={accounts.map(account => ({
-                  value: account.account_id,
-                  label: `${account.account_name} (${account.account_id})`
-                }))}
-              />
+              >
+                {accounts.map(account => (
+                  <SelectItem key={account.account_id} value={account.account_id}>
+                    {`${account.account_name} (${account.account_id})`}
+                  </SelectItem>
+                ))}
+              </Select>
             </div>
           )}
 
@@ -223,26 +225,24 @@ export function AccountSelector({ className }: AccountSelectorProps) {
               <Label>Strategy Type</Label>
               <Select
                 value={createForm.strategy_type}
-                onChange={(e) => setCreateForm({ ...createForm, strategy_type: e.target.value as any })}
-                options={[
-                  { value: 'swing', label: 'Swing Trading' },
-                  { value: 'options', label: 'Options Trading' },
-                  { value: 'hybrid', label: 'Hybrid' },
-                ]}
-              />
+                onValueChange={(value) => setCreateForm({ ...createForm, strategy_type: value as any })}
+              >
+                <SelectItem value="swing">Swing Trading</SelectItem>
+                <SelectItem value="options">Options Trading</SelectItem>
+                <SelectItem value="hybrid">Hybrid</SelectItem>
+              </Select>
             </div>
 
             <div>
               <Label>Risk Level</Label>
               <Select
                 value={createForm.risk_level}
-                onChange={(e) => setCreateForm({ ...createForm, risk_level: e.target.value as any })}
-                options={[
-                  { value: 'low', label: 'Low Risk' },
-                  { value: 'moderate', label: 'Moderate Risk' },
-                  { value: 'high', label: 'High Risk' },
-                ]}
-              />
+                onValueChange={(value) => setCreateForm({ ...createForm, risk_level: value as any })}
+              >
+                <SelectItem value="low">Low Risk</SelectItem>
+                <SelectItem value="moderate">Moderate Risk</SelectItem>
+                <SelectItem value="high">High Risk</SelectItem>
+              </Select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -268,7 +268,7 @@ export function AccountSelector({ className }: AccountSelectorProps) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="tertiary" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
             <Button

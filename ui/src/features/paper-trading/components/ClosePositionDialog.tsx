@@ -131,7 +131,7 @@ export const ClosePositionDialog: React.FC<ClosePositionDialogProps> = ({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="tertiary"
             onClick={onClose}
             disabled={isLoading}
           >

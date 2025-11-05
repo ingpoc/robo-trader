@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { TrendingUp, TrendingDown, Target } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { RECOMMENDATION_COLORS } from '@/lib/constants'
 import type { RecommendationAction } from '@/types/domain'
 

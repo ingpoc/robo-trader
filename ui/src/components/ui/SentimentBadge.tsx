@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { SENTIMENT_COLORS } from '@/lib/constants'
 import type { SentimentType } from '@/types/domain'
 

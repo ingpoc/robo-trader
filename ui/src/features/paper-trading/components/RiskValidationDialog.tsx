@@ -168,7 +168,7 @@ export const RiskValidationDialog: React.FC<RiskValidationDialogProps> = ({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="tertiary"
             onClick={onClose}
             disabled={isLoading}
           >

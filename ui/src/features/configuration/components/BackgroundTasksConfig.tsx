@@ -1,12 +1,12 @@
 import React from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/Label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select'
+import { Input } from '@/components/ui/Input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Cpu, Clock, RefreshCw, Eye, Play, Loader2, Save } from 'lucide-react'
 import type { BackgroundTaskConfig } from '@/types/api'
@@ -165,7 +165,7 @@ export const BackgroundTasksConfig: React.FC<BackgroundTasksConfigProps> = ({
               <div className="pt-4 border-t space-y-2">
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
+                    variant="tertiary"
                     size="sm"
                     onClick={() => onExecuteTask(taskName)}
                     disabled={executingTasks.has(taskName) || !config.enabled}
@@ -184,7 +184,7 @@ export const BackgroundTasksConfig: React.FC<BackgroundTasksConfigProps> = ({
                     )}
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="tertiary"
                     size="sm"
                     onClick={() => onTogglePrompt(taskName)}
                     className="flex-1"
@@ -201,7 +201,7 @@ export const BackgroundTasksConfig: React.FC<BackgroundTasksConfigProps> = ({
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium text-sm">Perplexity API Prompt:</h4>
                     <Button
-                      variant="outline"
+                      variant="tertiary"
                       size="sm"
                       onClick={() => onTogglePromptEditing(taskName)}
                     >
@@ -251,7 +251,7 @@ export const BackgroundTasksConfig: React.FC<BackgroundTasksConfigProps> = ({
                           {isSaving ? 'Saving...' : 'Save Prompt'}
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="tertiary"
                           size="sm"
                           onClick={() => onTogglePromptEditing(taskName)}
                           className="flex-1"

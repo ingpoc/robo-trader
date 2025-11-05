@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChevronDown, ChevronUp, Eye, TrendingUp, AlertTriangle, Info } from 'lucide-react'
 
@@ -167,7 +167,7 @@ export const PromptOptimizationHistory: React.FC<PromptOptimizationHistoryProps>
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Badge variant="outline">
+                        <Badge variant="tertiary">
                           Attempt {attempt.attempt_number}
                         </Badge>
                         <Badge variant={getQualityBadgeVariant(attempt.quality_score) as any}>
@@ -228,7 +228,7 @@ export const PromptOptimizationHistory: React.FC<PromptOptimizationHistoryProps>
                                   {element.description}
                                 </p>
                                 {element.importance && (
-                                  <Badge variant="outline" className="mt-2 text-xs">
+                                  <Badge variant="tertiary" className="mt-2 text-xs">
                                     {element.importance}
                                   </Badge>
                                 )}
@@ -246,7 +246,7 @@ export const PromptOptimizationHistory: React.FC<PromptOptimizationHistoryProps>
                           </h5>
                           <div className="flex flex-wrap gap-2">
                             {attempt.redundant_elements.map((element, i) => (
-                              <Badge key={i} variant="outline" className="bg-red-50 dark:bg-red-950">
+                              <Badge key={i} variant="tertiary" className="bg-red-50 dark:bg-red-950">
                                 {element}
                               </Badge>
                             ))}

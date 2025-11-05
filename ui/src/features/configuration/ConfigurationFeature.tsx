@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/Button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Settings, Cpu, Brain, Globe, Save, RefreshCw, AlertTriangle } from 'lucide-react'
 import { BackgroundTasksConfig } from './components/BackgroundTasksConfig'
@@ -70,7 +70,7 @@ const ConfigurationFeature: React.FC = () => {
 
         <div className="flex gap-2">
           <Button
-            variant="outline"
+            variant="tertiary"
             onClick={loadConfiguration}
             disabled={isLoading || isSaving}
           >

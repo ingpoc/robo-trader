@@ -9,7 +9,7 @@
 import React, { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { useClaudeTransparency } from '@/hooks/useClaudeTransparency'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 
 interface DataQuality {
   has_earnings?: boolean

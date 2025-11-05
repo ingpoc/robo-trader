@@ -81,7 +81,7 @@ export const AccountStatusCard: React.FC<AccountStatusCardProps> = ({
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">Account Overview</h2>
         <Button
-          variant="outline"
+          variant="tertiary"
           size="sm"
           onClick={onRefresh}
           disabled={isRefreshing}

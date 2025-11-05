@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Progress } from '@/components/ui/progress'
 import { Brain, Target, Database, TrendingUp, AlertTriangle, Eye, RefreshCw, CheckCircle } from 'lucide-react'
 
@@ -111,7 +111,7 @@ export const CurrentStrategyPanel: React.FC<CurrentStrategyPanelProps> = ({
           <Button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            variant="outline"
+            variant="tertiary"
             size="sm"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -153,7 +153,7 @@ export const CurrentStrategyPanel: React.FC<CurrentStrategyPanelProps> = ({
                     {type}
                   </div>
                   {metrics.prompt_optimized && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="tertiary" className="text-xs">
                       <CheckCircle className="h-3 w-3 mr-1" />
                       Optimized
                     </Badge>
@@ -203,7 +203,7 @@ export const CurrentStrategyPanel: React.FC<CurrentStrategyPanelProps> = ({
                   <p className="text-sm text-muted-foreground mb-2">Focus Areas</p>
                   <div className="flex flex-wrap gap-2">
                     {currentStrategy.focus_areas.map((area, index) => (
-                      <Badge key={index} variant="outline">
+                      <Badge key={index} variant="tertiary">
                         {area}
                       </Badge>
                     ))}

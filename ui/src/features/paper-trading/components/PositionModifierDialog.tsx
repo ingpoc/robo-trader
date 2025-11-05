@@ -170,7 +170,7 @@ export const PositionModifierDialog: React.FC<PositionModifierDialogProps> = ({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="tertiary"
             onClick={onClose}
             disabled={isLoading}
           >

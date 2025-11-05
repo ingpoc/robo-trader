@@ -1,7 +1,7 @@
 import { forwardRef, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { RiskLevelBadge } from '@/components/ui/RiskLevelBadge'
 import { cn } from '@/utils/cn'
 import { formatCurrency } from '@/utils/format'
@@ -149,7 +149,7 @@ export const TradeConfirmationDialog = forwardRef<HTMLDivElement, TradeConfirmat
             {/* Action Buttons */}
             <div className="flex gap-3 pt-4">
               <Button
-                variant="outline"
+                variant="tertiary"
                 onClick={handleCancel}
                 disabled={isExecuting}
                 className="flex-1"
