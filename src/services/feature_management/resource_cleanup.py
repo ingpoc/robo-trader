@@ -520,7 +520,8 @@ class ResourceCleanupManager:
             try:
                 disk_usage = shutil.disk_usage(str(self.temp_dir))
                 disk_usage_mb = disk_usage.used / 1024 / 1024
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to get disk usage for {self.temp_dir}: {e}")
                 disk_usage_mb = 0.0
             
             return ResourceMetrics(

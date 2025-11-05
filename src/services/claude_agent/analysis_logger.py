@@ -13,6 +13,7 @@ from dataclasses import dataclass, asdict
 
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...stores.claude_strategy_store import ClaudeStrategyStore
+from ...core.database_state.configuration_state import ConfigurationState
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +123,9 @@ class AnalysisLogger:
     - Performance analysis
     """
 
-    def __init__(self, strategy_store: ClaudeStrategyStore):
+    def __init__(self, strategy_store: ClaudeStrategyStore, config_state: ConfigurationState):
         self.strategy_store = strategy_store
+        self.config_state = config_state
         self.active_decisions: Dict[str, TradeDecisionLog] = {}
 
     async def start_trade_analysis(
@@ -400,44 +402,43 @@ class AnalysisLogger:
         }
 
     async def _save_trade_decision(self, decision: TradeDecisionLog) -> None:
-        """Save trade decision to database."""
+        """Save trade decision to database using ConfigurationState's locked method."""
         try:
-            # Save to analysis_history table for AI Transparency
-            decision_data = decision.to_dict()
+            # Save to analysis_history table for AI Transparency using locked method
+            analysis_json = json.dumps({
+                "decision_id": decision.decision_id,
+                "session_id": decision.session_id,
+                "action": decision.action,
+                "quantity": decision.quantity,
+                "entry_price": decision.entry_price,
+                "strategy_rationale": decision.strategy_rationale,
+                "confidence_score": decision.confidence_score,
+                "technical_signals": decision.technical_signals,
+                "fundamental_factors": decision.fundamental_factors,
+                "risk_assessment": decision.risk_assessment,
+                "market_context": decision.market_context,
+                "analysis_steps": [step.to_dict() for step in decision.analysis_steps],
+                "executed": decision.executed,
+                "execution_result": decision.execution_result,
+                "analysis_type": "trade_decision"  # Add type for filtering
+            })
 
-            # Insert into analysis_history table
-            await self.strategy_store.db.connection.execute(
-                """INSERT INTO analysis_history
-                   (symbol, timestamp, analysis, created_at)
-                   VALUES (?, ?, ?, ?)""",
-                (
-                    decision.symbol,
-                    decision.created_at,
-                    json.dumps({
-                        "decision_id": decision.decision_id,
-                        "session_id": decision.session_id,
-                        "action": decision.action,
-                        "quantity": decision.quantity,
-                        "entry_price": decision.entry_price,
-                        "strategy_rationale": decision.strategy_rationale,
-                        "confidence_score": decision.confidence_score,
-                        "technical_signals": decision.technical_signals,
-                        "fundamental_factors": decision.fundamental_factors,
-                        "risk_assessment": decision.risk_assessment,
-                        "market_context": decision.market_context,
-                        "analysis_steps": [step.to_dict() for step in decision.analysis_steps],
-                        "executed": decision.executed,
-                        "execution_result": decision.execution_result
-                    }),
-                    datetime.now(timezone.utc).isoformat()
-                )
+            # Use ConfigurationState's locked method to prevent database contention
+            success = await self.config_state.store_analysis_history(
+                symbol=decision.symbol,
+                timestamp=decision.decision_timestamp,
+                analysis=analysis_json
             )
 
-            # Commit the transaction to save to database
-            await self.strategy_store.db.connection.commit()
-
-            logger.info(f"Trade decision saved to database: {decision.decision_id} for {decision.symbol}")
-            logger.debug(f"Decision data saved with {len(decision.analysis_steps)} analysis steps")
+            if success:
+                logger.info(f"Trade decision saved to database: {decision.decision_id} for {decision.symbol}")
+                logger.debug(f"Decision data saved with {len(decision.analysis_steps)} analysis steps")
+            else:
+                logger.error(f"Failed to save trade decision to database for {decision.decision_id}")
+                # Fallback: log the decision data
+                decision_data = decision.to_dict()
+                logger.info(f"Trade decision logged (fallback): {decision.decision_id}")
+                logger.debug(f"Decision data: {json.dumps(decision_data, indent=2)}")
 
         except Exception as e:
             logger.error(f"Failed to save trade decision to database: {e}")
