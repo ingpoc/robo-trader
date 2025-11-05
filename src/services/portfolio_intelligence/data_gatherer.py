@@ -1,21 +1,24 @@
 """
-Data Gatherer Module
+Data Gatherer for Portfolio Intelligence
 
-Handles stock data collection and filtering for portfolio intelligence analysis.
+Handles:
+- Stock selection (stocks with recent updates)
+- Data gathering (earnings, news, fundamentals)
 """
 
 import logging
-from datetime import date, timedelta, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
 
-class DataGatherer:
-    """Gathers and filters stock data for analysis."""
+class PortfolioDataGatherer:
+    """Gathers data for portfolio intelligence analysis."""
 
-    def __init__(self, state_manager):
+    def __init__(self, state_manager, config_state):
         self.state_manager = state_manager
+        self.config_state = config_state
 
     async def get_stocks_with_updates(self) -> List[str]:
         """Get stocks from portfolio that have recent updates (earnings, news, fundamentals)."""
@@ -47,6 +50,7 @@ class DataGatherer:
                 state = await stock_state_store.get_state(symbol)
 
                 # Check if any data type was updated recently
+                # Convert date strings to date objects if needed
                 news_check_date = self._parse_date(state.last_news_check)
                 earnings_check_date = self._parse_date(state.last_earnings_check)
                 fundamentals_check_date = self._parse_date(state.last_fundamentals_check)
@@ -92,27 +96,6 @@ class DataGatherer:
             logger.error(f"Error getting stocks with updates: {e}", exc_info=True)
             return []
 
-    def _parse_date(self, date_value) -> date:
-        """Parse date from various formats."""
-        if not date_value:
-            return None
-
-        if isinstance(date_value, date):
-            return date_value
-
-        if isinstance(date_value, str):
-            try:
-                # Handle YYYY-MM-DD format from database
-                if len(date_value) == 10 and date_value.count('-') == 2:
-                    return datetime.strptime(date_value, '%Y-%m-%d').date()
-                else:
-                    # Handle ISO datetime format with timezone
-                    return datetime.fromisoformat(date_value.replace('Z', '+00:00')).date()
-            except (ValueError, AttributeError):
-                return None
-
-        return None
-
     async def gather_stocks_data(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """Gather all available data (earnings, news, fundamentals) for each stock."""
         stocks_data = {}
@@ -157,3 +140,17 @@ class DataGatherer:
                 }
 
         return stocks_data
+
+    def _parse_date(self, date_value):
+        """Parse date string to date object."""
+        if isinstance(date_value, str):
+            try:
+                # Handle YYYY-MM-DD format from database
+                if len(date_value) == 10 and date_value.count('-') == 2:
+                    return datetime.strptime(date_value, '%Y-%m-%d').date()
+                else:
+                    # Handle ISO datetime format with timezone
+                    return datetime.fromisoformat(date_value.replace('Z', '+00:00')).date()
+            except (ValueError, AttributeError):
+                return None
+        return date_value

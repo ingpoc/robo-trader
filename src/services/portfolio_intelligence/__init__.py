@@ -1,21 +1,11 @@
-"""
-Portfolio Intelligence Analyzer - Modular Components
+Portfolio Intelligence Module
 
-Focused modules for portfolio intelligence analysis:
-- data_gatherer: Stock data collection and filtering
-- prompt_manager: Claude prompt creation and tool management
-- claude_executor: Claude SDK interaction and analysis execution
-- transparency_logger: AI transparency logging and storage
+Analyzes portfolio stocks with available data (earnings, news, fundamentals),
+determines if data is sufficient/outdated, optimizes prompts, and provides recommendations.
+
+All components are modularized for maintainability.
 """
 
-from .data_gatherer import DataGatherer
-from .prompt_manager import PromptManager
-from .claude_executor import ClaudeExecutor
-from .transparency_logger import TransparencyLogger
+from src.services.portfolio_intelligence.analyzer import PortfolioIntelligenceAnalyzer
 
-__all__ = [
-    "DataGatherer",
-    "PromptManager",
-    "ClaudeExecutor",
-    "TransparencyLogger",
-]
+__all__ = ["PortfolioIntelligenceAnalyzer"]
