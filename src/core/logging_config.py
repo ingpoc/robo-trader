@@ -34,7 +34,7 @@ def clear_log_files(logs_dir: Path):
                 print(f"Failed to clear log file {log_file}: {e}", file=sys.stderr)
 
 
-def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = True):
+def setup_logging(logs_dir: Path, log_level: str = "WARNING", clear_logs: bool = True):
     """
     Configure logging to output to both console and files.
 
@@ -147,7 +147,7 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
     asyncio.get_event_loop().set_exception_handler(handle_asyncio_exception)
 
 
-def ensure_logging_setup(logs_dir: Path = None, log_level: str = "INFO", clear_logs: bool = True):
+def ensure_logging_setup(logs_dir: Path = None, log_level: str = "WARNING", clear_logs: bool = True):
     """
     Ensure logging is set up, using default logs directory if not provided.
 

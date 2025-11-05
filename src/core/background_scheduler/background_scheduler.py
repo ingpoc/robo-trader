@@ -154,15 +154,12 @@ class BackgroundScheduler:
         """Log initialization step with detailed context."""
         if success:
             msg = f"[INIT] {step}"
-            print(f"*** {msg} - OK ***")
-            logger.info(msg)
+            logger.debug(msg)
         else:
             msg = f"[INIT FAILED] {step}"
-            print(f"*** {msg}: {error} ***")
             logger.error(f"{msg}: {error}")
             if error:
                 tb = traceback.format_exc()
-                print(f"*** TRACEBACK: {tb} ***")
                 logger.error(f"Traceback: {tb}")
 
     def get_initialization_status(self) -> Tuple[bool, Optional[str]]:
