@@ -179,7 +179,7 @@ jobs:
           bandit -r src/ -f screen
 
       - name: Upload Bandit results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: bandit-report
@@ -212,7 +212,7 @@ jobs:
           cat python-licenses.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload license report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: license-report
           path: python-licenses.md
