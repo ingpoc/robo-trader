@@ -376,11 +376,29 @@ async def run_portfolio_scan(
 
         # Check broker authentication status with detailed logging
         if not broker:
-            logger.info("Broker client not available, using CSV fallback")
+            logger.warning("Broker client not available - cannot fetch live portfolio data")
+            raise TradingError(
+                "Broker client not available",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+                details={"reason": "broker_client_unavailable"}
+            )
         elif not broker.is_authenticated():
-            logger.info("Broker not authenticated - OAuth token may be expired or missing")
-            # The broker will automatically handle token expiration and deletion
-            # This will trigger OAuth flow on next scan if needed
+            logger.warning("Broker not authenticated - OAuth token may be expired or missing")
+            # Try to re-authenticate
+            auth_success = await broker.authenticate()
+            if not auth_success:
+                # Token is invalid/expired
+                raise TradingError(
+                    "Zerodha authentication required or expired",
+                    category=ErrorCategory.API,
+                    severity=ErrorSeverity.MEDIUM,
+                    recoverable=True,
+                    retry_after_seconds=60,
+                    details={"reason": "broker_auth_failed"},
+                    message="Please re-authenticate with Zerodha to fetch live portfolio data"
+                )
         else:
             logger.info("Using live data from Zerodha broker")
             live_data = await get_live_portfolio_data(broker)
@@ -399,11 +417,36 @@ async def run_portfolio_scan(
                     "analytics": analytics,
                 }
             else:
-                logger.warning("Broker returned no holdings, falling back to CSV")
+                logger.warning("Broker returned no holdings")
+                raise TradingError(
+                    "Broker returned no portfolio holdings",
+                    category=ErrorCategory.API,
+                    severity=ErrorSeverity.MEDIUM,
+                    recoverable=True,
+                    retry_after_seconds=300,
+                    details={"reason": "no_holdings"}
+                )
     except ImportError as e:
-        logger.warning(f"Broker module not available: {e}, using CSV data as fallback")
+        logger.warning(f"Broker module not available: {e}")
+        raise TradingError(
+            "Broker integration not available",
+            category=ErrorCategory.CONFIGURATION,
+            severity=ErrorSeverity.HIGH,
+            recoverable=False,
+            details={"error": str(e)}
+        )
+    except TradingError:
+        # Re-raise TradingError as-is
+        raise
     except Exception as e:
-        logger.warning(f"Broker connection failed: {e}, using CSV data as fallback")
+        logger.error(f"Broker connection failed: {e}", exc_info=True)
+        raise TradingError(
+            f"Failed to fetch portfolio from broker: {e}",
+            category=ErrorCategory.API,
+            severity=ErrorSeverity.MEDIUM,
+            recoverable=True,
+            retry_after_seconds=60
+        )
 
     # Fallback to CSV data
     try:

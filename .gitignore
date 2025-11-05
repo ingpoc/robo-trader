@@ -59,3 +59,4 @@ docs/_build/
 ui/playwright-report/
 ui/test-results/
 documentation/
+data/

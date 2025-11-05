@@ -44,6 +44,20 @@ async def initiate_zerodha_auth(
     try:
         oauth_service = await container.get("zerodha_oauth_service")
 
+        # Check if a valid token already exists
+        token_data = await oauth_service.get_stored_token()
+        if token_data:
+            logger.info(f"Valid OAuth token found for user: {token_data.get('user_id')}, token not expired")
+            return {
+                "success": False,
+                "auth_required": False,
+                "message": "You are already authenticated with Zerodha",
+                "user_id": token_data.get("user_id"),
+                "login_time": token_data.get("login_time"),
+                "expires_at": token_data.get("expires_at"),
+                "note": "No need to authenticate again. Your session is valid."
+            }
+
         # Generate authorization URL
         auth_data = await oauth_service.generate_auth_url(user_id=user_id)
 
@@ -101,9 +115,27 @@ async def zerodha_oauth_callback(
         # Automatically trigger portfolio scan after successful authentication
         try:
             logger.info("Auto-triggering portfolio scan after OAuth success...")
+
+            # Get config from container
+            config = await container.get("config")
+
+            # Initialize broker client with the new token
+            from src.mcp.broker import get_broker
+            broker = await get_broker(config)
+            if broker:
+                logger.info("Initializing broker client with new OAuth token...")
+                auth_success = await broker.authenticate()
+                if auth_success:
+                    logger.info(f"Broker client initialized successfully for user: {result.get('user_id')}")
+                else:
+                    logger.warning("Failed to initialize broker client with new token")
+            else:
+                logger.warning("Broker client not available")
+
+            # Now run portfolio scan
             orchestrator = await container.get_orchestrator()
             if orchestrator:
-                # Run portfolio scan in background
+                # Run portfolio scan
                 scan_result = await orchestrator.run_portfolio_scan()
                 logger.info(f"Portfolio scan completed after OAuth: {scan_result.get('source', 'unknown')}")
             else:

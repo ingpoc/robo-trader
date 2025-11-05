@@ -51,8 +51,8 @@ class PortfolioCoordinator(BaseCoordinator):
             Portfolio scan results with holdings data
         """
         try:
-            from ...services.analytics import run_portfolio_scan as analytics_scan
-            from ...config import load_config
+            from ....services.analytics import run_portfolio_scan as analytics_scan
+            from ....config import load_config
 
             config = load_config()
             result = await analytics_scan(config, self.state_manager)
