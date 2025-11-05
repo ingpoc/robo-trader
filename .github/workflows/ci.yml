@@ -150,7 +150,7 @@ jobs:
             --tb=short
 
       - name: Upload coverage to artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: matrix.python-version == '3.11'
         with:
           name: coverage-report
@@ -198,7 +198,7 @@ jobs:
           CI: true
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure()
         with:
           name: playwright-report
@@ -230,7 +230,7 @@ jobs:
           outputs: type=docker,dest=/tmp/robo-trader-image.tar
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: docker-image
           path: /tmp/robo-trader-image.tar
@@ -298,7 +298,7 @@ jobs:
           fi
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-dist
           path: ui/dist/
@@ -379,7 +379,7 @@ jobs:
 
       - name: Upload logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: integration-test-logs
           path: app-logs.txt
