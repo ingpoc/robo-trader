@@ -115,7 +115,7 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
 
     # Portfolio Intelligence Analyzer Service
     async def create_portfolio_intelligence_analyzer():
-        from src.services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+        from src.services.portfolio_intelligence import PortfolioIntelligenceAnalyzer
         state_manager = await container.get("state_manager")
         config_state = await container.get("configuration_state")
         analysis_logger = await container.get("analysis_logger")
