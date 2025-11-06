@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { Breadcrumb } from '@/components/common/Breadcrumb'
 import { Activity, Database, Radio, Cpu, AlertCircle } from 'lucide-react'
 import { useSystemHealth } from './hooks/useSystemHealth'

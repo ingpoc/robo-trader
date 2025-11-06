@@ -13,7 +13,7 @@ import {
   AreaChart,
 } from 'recharts'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { Tooltip as UITooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Tooltip as UITooltip, TooltipTrigger, TooltipContent } from '@/components/ui/Tooltip'
 
 interface ChartCardProps {
   title: string

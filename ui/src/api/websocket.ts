@@ -76,7 +76,7 @@ export class WebSocketClient {
   private forceCleanup() {
     // Clean up any existing connection forcefully
     if (this.ws) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         console.log(`[${this.connectionId}] Force cleaning up existing WebSocket connection`)
       }
       try {
@@ -107,7 +107,7 @@ export class WebSocketClient {
     this.reconnectAttempts = 0
     this.reconnectDelay = 1000
 
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log(`[${this.connectionId}] WebSocket connected successfully`)
     }
 
@@ -129,7 +129,7 @@ export class WebSocketClient {
       const message = JSON.parse(event.data)
 
       // Log received message for debugging (reduced verbosity)
-      if (message.type !== 'system_health_update' || process.env.NODE_ENV === 'development') {
+      if (message.type !== 'system_health_update' || import.meta.env.DEV) {
         console.log(`[${this.connectionId}] Received WebSocket message:`, message.type)
       }
 
