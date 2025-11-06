@@ -14,7 +14,7 @@ from src.config import Config
 from ..base_coordinator import BaseCoordinator
 
 try:
-    from ..web.broadcast_health_monitor import BroadcastHealthMonitor, BroadcastError, BroadcastErrorSeverity
+    from src.web.broadcast_health_monitor import BroadcastHealthMonitor, BroadcastError, BroadcastErrorSeverity
     HEALTH_MONITOR_AVAILABLE = True
 except ImportError:
     HEALTH_MONITOR_AVAILABLE = False
