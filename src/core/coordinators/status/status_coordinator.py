@@ -56,12 +56,13 @@ class StatusCoordinator(BaseCoordinator):
     async def initialize(self) -> None:
         """Initialize status coordinator."""
         self._log_info("Initializing StatusCoordinator")
-        
+
         await self.aggregation_coordinator.initialize()
         await self.broadcast_coordinator_internal.initialize()
-        
+
         self._initialized = True
-        await self.get_system_status(force_broadcast=True)
+        # Note: Initial status broadcast happens after WebSocket callback is wired in app.py
+        # to avoid broadcasting before the callback is ready
     
     async def get_ai_status(self) -> Dict[str, Any]:
         """Get current AI activity status."""

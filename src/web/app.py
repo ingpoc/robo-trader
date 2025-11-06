@@ -310,6 +310,11 @@ async def lifespan(app: FastAPI):
 
     logger.info("WebSocket broadcasting wired")
 
+    # Trigger initial status broadcast now that callback is ready
+    logger.info("Broadcasting initial system status...")
+    await orchestrator.status_coordinator.get_system_status(force_broadcast=True)
+    logger.info("Initial status broadcast complete")
+
     # Run bootstrap state
     logger.info("Running bootstrap state...")
     await bootstrap_state(orchestrator, config)
