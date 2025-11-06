@@ -60,3 +60,9 @@ ui/playwright-report/
 ui/test-results/
 documentation/
 data/
+
+# NEW: MCP Server (shared)
+shared/robotrader_mcp/node_modules/
+shared/robotrader_mcp/dist/
+shared/robotrader_mcp/.env
+shared/robotrader_mcp/*.log
