@@ -6,15 +6,14 @@ Refactored from 210-line monolith into focused coordinators.
 """
 
 import json
-from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-from loguru import logger
 
 from src.config import Config
+
 from ..base_coordinator import BaseCoordinator
-from .session_coordinator import SessionCoordinator
 from .query_processing_coordinator import QueryProcessingCoordinator
+from .session_coordinator import SessionCoordinator
 
 
 class QueryCoordinator(BaseCoordinator):
@@ -27,23 +26,19 @@ class QueryCoordinator(BaseCoordinator):
     - Handle market alerts
     """
 
-    def __init__(
-        self,
-        config: Config,
-        session_coordinator: SessionCoordinator
-    ):
+    def __init__(self, config: Config, session_coordinator: SessionCoordinator):
         super().__init__(config)
         self.session_coordinator = session_coordinator
-        
+
         # Focused coordinator
         self.processing_coordinator = QueryProcessingCoordinator(config)
 
     async def initialize(self) -> None:
         """Initialize query coordinator."""
         self._log_info("Initializing QueryCoordinator")
-        
+
         await self.processing_coordinator.initialize()
-        
+
         self._initialized = True
 
     async def process_query(self, query: str) -> List[Any]:
@@ -73,10 +68,7 @@ class QueryCoordinator(BaseCoordinator):
         return await self.processing_coordinator.process_query_enhanced(client, query)
 
     async def handle_market_alert(
-        self,
-        symbol: str,
-        alert_type: str,
-        data: Dict[str, Any]
+        self, symbol: str, alert_type: str, data: Dict[str, Any]
     ) -> List[Any]:
         """
         Handle real-time market alerts.
@@ -102,7 +94,9 @@ class QueryCoordinator(BaseCoordinator):
         """
 
         responses = await self.process_query(query)
-        self._log_info(f"Market alert handled for {symbol} with {len(responses)} responses")
+        self._log_info(
+            f"Market alert handled for {symbol} with {len(responses)} responses"
+        )
         return responses
 
     async def cleanup(self) -> None:

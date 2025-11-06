@@ -1,11 +1,10 @@
 """Persist daily strategy logs and Claude's self-reflection."""
 
 import json
-from datetime import datetime, date
-from pathlib import Path
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, field, asdict
 import logging
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +12,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class StrategyLog:
     """Daily strategy log entry."""
+
     date: str  # ISO format date
     strategy_type: str  # "swing_trading" or "options_trading"
     what_worked: List[str] = field(default_factory=list)
@@ -23,7 +23,9 @@ class StrategyLog:
     wins: int = 0
     losses: int = 0
     pnl_realized: float = 0.0
-    token_usage: Dict[str, int] = field(default_factory=lambda: {"used": 0, "limit": 10000})
+    token_usage: Dict[str, int] = field(
+        default_factory=lambda: {"used": 0, "limit": 10000}
+    )
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -76,17 +78,19 @@ class StrategyLogStore:
                     wins=row[8] or 0,
                     losses=row[9] or 0,
                     pnl_realized=row[10] or 0.0,
-                    token_usage=json.loads(row[11]) if row[11] else {"used": 0, "limit": 10000},
+                    token_usage=(
+                        json.loads(row[11]) if row[11] else {"used": 0, "limit": 10000}
+                    ),
                     metadata=json.loads(row[12]) if row[12] else {},
                     created_at=row[13] or datetime.now().isoformat(),
-                    updated_at=row[14] or datetime.now().isoformat()
+                    updated_at=row[14] or datetime.now().isoformat(),
                 )
 
                 if strategy_type not in self._logs:
                     self._logs[strategy_type] = []
                 self._logs[strategy_type].append(log)
 
-            logger.info(f"Loaded strategy logs from database")
+            logger.info("Loaded strategy logs from database")
 
         except Exception as e:
             logger.error(f"Failed to load strategy logs from database: {e}")
@@ -142,10 +146,7 @@ class StrategyLogStore:
         return None
 
     async def get_logs_for_period(
-        self,
-        strategy_type: str,
-        start_date: date,
-        end_date: date
+        self, strategy_type: str, start_date: date, end_date: date
     ) -> List[StrategyLog]:
         """Get logs for a date range."""
         if strategy_type not in self._logs:
@@ -161,16 +162,21 @@ class StrategyLogStore:
 
         return sorted(result, key=lambda x: x.date)
 
-    async def get_recent_logs(self, strategy_type: str, days: int = 30) -> List[StrategyLog]:
+    async def get_recent_logs(
+        self, strategy_type: str, days: int = 30
+    ) -> List[StrategyLog]:
         """Get recent logs (last N days)."""
         start_date = date.today()
         from datetime import timedelta
+
         start_date = start_date - timedelta(days=days)
         end_date = date.today()
 
         return await self.get_logs_for_period(strategy_type, start_date, end_date)
 
-    async def get_performance_summary(self, strategy_type: str, days: int = 30) -> Dict[str, Any]:
+    async def get_performance_summary(
+        self, strategy_type: str, days: int = 30
+    ) -> Dict[str, Any]:
         """Get performance summary for a strategy."""
         logs = await self.get_recent_logs(strategy_type, days)
 
@@ -212,8 +218,12 @@ class StrategyLogStore:
                 what_didnt_all[item] = what_didnt_all.get(item, 0) + 1
 
         # Sort by frequency
-        top_working = sorted(what_worked_all.items(), key=lambda x: x[1], reverse=True)[:5]
-        top_failing = sorted(what_didnt_all.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_working = sorted(what_worked_all.items(), key=lambda x: x[1], reverse=True)[
+            :5
+        ]
+        top_failing = sorted(what_didnt_all.items(), key=lambda x: x[1], reverse=True)[
+            :5
+        ]
 
         return {
             "period_days": days,
@@ -262,7 +272,7 @@ class StrategyLogStore:
                     json.dumps(log.token_usage),
                     json.dumps(log.metadata),
                     log.created_at,
-                    log.updated_at
+                    log.updated_at,
                 ),
             )
             await self.db.commit()

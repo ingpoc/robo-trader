@@ -8,9 +8,10 @@ Handles:
 """
 
 import logging
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from loguru import logger
+
 from src.core.state_models import FundamentalAnalysis
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class TargetPriceCalculator:
         symbol: str,
         fundamental_data: Optional[FundamentalAnalysis],
         recommendation_type: str,
-        claude_analysis: Optional[Dict[str, Any]]
+        claude_analysis: Optional[Dict[str, Any]],
     ) -> Tuple[Optional[float], Optional[float]]:
         """Calculate target price and stop loss based on analysis."""
         try:
@@ -67,9 +68,7 @@ class TargetPriceCalculator:
             return None, None
 
     async def _get_current_price(
-        self,
-        symbol: str,
-        fundamental_data: Optional[FundamentalAnalysis]
+        self, symbol: str, fundamental_data: Optional[FundamentalAnalysis]
     ) -> Optional[float]:
         """Get current price for symbol."""
         try:
@@ -77,7 +76,11 @@ class TargetPriceCalculator:
             current_price = await self.claude_analyzer.get_current_price(symbol)
 
             # Fallback to fundamental data
-            if not current_price and fundamental_data and hasattr(fundamental_data, 'current_price'):
+            if (
+                not current_price
+                and fundamental_data
+                and hasattr(fundamental_data, "current_price")
+            ):
                 current_price = fundamental_data.current_price
 
             return current_price
@@ -90,11 +93,14 @@ class TargetPriceCalculator:
         self,
         fundamental_data: FundamentalAnalysis,
         recommendation_type: str,
-        current_price: float
+        current_price: float,
     ) -> Optional[float]:
         """Calculate target price based on fundamental analysis."""
         try:
-            if not hasattr(fundamental_data, 'pe_ratio') or not fundamental_data.pe_ratio:
+            if (
+                not hasattr(fundamental_data, "pe_ratio")
+                or not fundamental_data.pe_ratio
+            ):
                 return None
 
             # Simple target price based on P/E ratio
@@ -107,7 +113,7 @@ class TargetPriceCalculator:
             else:  # HOLD
                 target_pe *= 1.05  # 5% P/E expansion
 
-            if hasattr(fundamental_data, 'eps') and fundamental_data.eps:
+            if hasattr(fundamental_data, "eps") and fundamental_data.eps:
                 return target_pe * fundamental_data.eps
 
             return None
@@ -117,9 +123,7 @@ class TargetPriceCalculator:
             return None
 
     def _calculate_default_stop_loss(
-        self,
-        current_price: float,
-        recommendation_type: str
+        self, current_price: float, recommendation_type: str
     ) -> float:
         """Calculate default stop loss based on recommendation type."""
         if recommendation_type == "BUY":
@@ -133,25 +137,31 @@ class TargetPriceCalculator:
         self,
         factors,
         decision: Dict[str, Any],
-        claude_analysis: Optional[Dict[str, Any]]
+        claude_analysis: Optional[Dict[str, Any]],
     ) -> str:
         """Build comprehensive reasoning for recommendation."""
         try:
             reasoning_parts = []
 
             # Add factor-based reasoning
-            if hasattr(factors, 'fundamental_score') and factors.fundamental_score:
-                reasoning_parts.append(f"Fundamental score: {factors.fundamental_score:.1f}/100")
-            if hasattr(factors, 'valuation_score') and factors.valuation_score:
-                reasoning_parts.append(f"Valuation score: {factors.valuation_score:.1f}/100")
-            if hasattr(factors, 'growth_score') and factors.growth_score:
+            if hasattr(factors, "fundamental_score") and factors.fundamental_score:
+                reasoning_parts.append(
+                    f"Fundamental score: {factors.fundamental_score:.1f}/100"
+                )
+            if hasattr(factors, "valuation_score") and factors.valuation_score:
+                reasoning_parts.append(
+                    f"Valuation score: {factors.valuation_score:.1f}/100"
+                )
+            if hasattr(factors, "growth_score") and factors.growth_score:
                 reasoning_parts.append(f"Growth score: {factors.growth_score:.1f}/100")
-            if hasattr(factors, 'risk_score') and factors.risk_score:
+            if hasattr(factors, "risk_score") and factors.risk_score:
                 reasoning_parts.append(f"Risk score: {factors.risk_score:.1f}/100")
 
             # Add Claude's qualitative analysis
             if claude_analysis and claude_analysis.get("reasoning"):
-                reasoning_parts.append(f"AI Analysis: {claude_analysis['reasoning'][:300]}...")
+                reasoning_parts.append(
+                    f"AI Analysis: {claude_analysis['reasoning'][:300]}..."
+                )
 
             # Combine reasoning
             if reasoning_parts:

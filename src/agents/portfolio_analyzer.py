@@ -4,16 +4,17 @@ Portfolio Analyzer Agent
 Analyzes current portfolio holdings, P&L, exposures, and risk metrics.
 """
 
-import json
 import csv
-from pathlib import Path
-from typing import Dict, List, Any
+import json
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict
 
 from claude_agent_sdk import tool
 from loguru import logger
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
 from ..core.state_models import PortfolioState
 
@@ -21,11 +22,11 @@ from ..core.state_models import PortfolioState
 def create_portfolio_analyzer_tool(config: Config, state_manager: DatabaseStateManager):
     """
     Create portfolio analyzer tool with dependencies via closure.
-    
+
     This follows Claude Agent SDK best practices by using closures
     to capture dependencies rather than monkey-patching attributes.
     """
-    
+
     @tool("analyze_portfolio", "Analyze current portfolio state and risk metrics", {})
     async def analyze_portfolio_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -41,7 +42,9 @@ def create_portfolio_analyzer_tool(config: Config, state_manager: DatabaseStateM
             try:
                 portfolio_data = await _get_portfolio_from_csv()
             except Exception as e:
-                logger.warning(f"Failed to get portfolio from CSV: {e}, using dummy data")
+                logger.warning(
+                    f"Failed to get portfolio from CSV: {e}, using dummy data"
+                )
                 portfolio_data = await _simulate_portfolio_data()
 
             # Calculate risk metrics
@@ -53,24 +56,34 @@ def create_portfolio_analyzer_tool(config: Config, state_manager: DatabaseStateM
                 cash={"currency": "INR", "free": 100000, "margin": 50000},
                 holdings=portfolio_data["holdings"],
                 exposure_total=portfolio_data["total_exposure"],
-                risk_aggregates=risk_metrics
+                risk_aggregates=risk_metrics,
             )
 
             # Update state
-            logger.info(f"Updating portfolio state with {len(portfolio_data['holdings'])} holdings, total exposure: {portfolio_data['total_exposure']}")
+            logger.info(
+                f"Updating portfolio state with {len(portfolio_data['holdings'])} holdings, total exposure: {portfolio_data['total_exposure']}"
+            )
             await state_manager.update_portfolio(portfolio_state)
 
             # Verify the state was updated
             updated_portfolio = await state_manager.get_portfolio()
             if updated_portfolio:
-                logger.info(f"Portfolio state updated successfully: {len(updated_portfolio.holdings)} holdings")
+                logger.info(
+                    f"Portfolio state updated successfully: {len(updated_portfolio.holdings)} holdings"
+                )
             else:
                 logger.error("Portfolio state update failed!")
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Portfolio analysis completed with {len(portfolio_data['holdings'])} holdings"},
-                    {"type": "text", "text": json.dumps(portfolio_state.to_dict(), indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Portfolio analysis completed with {len(portfolio_data['holdings'])} holdings",
+                    },
+                    {
+                        "type": "text",
+                        "text": json.dumps(portfolio_state.to_dict(), indent=2),
+                    },
                 ]
             }
 
@@ -78,15 +91,16 @@ def create_portfolio_analyzer_tool(config: Config, state_manager: DatabaseStateM
             logger.error(f"Portfolio analysis failed: {e}")
             return {
                 "content": [{"type": "text", "text": f"Error: {str(e)}"}],
-                "is_error": True
+                "is_error": True,
             }
-    
+
     return analyze_portfolio_tool
 
 
 async def _get_portfolio_from_csv() -> Dict[str, Any]:
     """Get portfolio data from CSV file."""
     import aiofiles
+
     holdings_dir = Path("holdings")
     csv_files = list(holdings_dir.glob("*.csv"))
 
@@ -99,7 +113,7 @@ async def _get_portfolio_from_csv() -> Dict[str, Any]:
     processed_holdings = []
     total_exposure = 0
 
-    async with aiofiles.open(csv_file, 'r', encoding='utf-8') as f:
+    async with aiofiles.open(csv_file, "r", encoding="utf-8") as f:
         content = await f.read()
         reader = csv.reader(content.splitlines())
         headers = next(reader)
@@ -119,13 +133,30 @@ async def _get_portfolio_from_csv() -> Dict[str, Any]:
                 exposure = qty * last_price
 
                 risk_tags = ["equity"]
-                if any(bank in symbol for bank in ["BANK", "HDFC", "ICICI", "KOTAK", "PNB", "CANBK", "UNIONBANK", "IDBI", "KARURVYSYA"]):
+                if any(
+                    bank in symbol
+                    for bank in [
+                        "BANK",
+                        "HDFC",
+                        "ICICI",
+                        "KOTAK",
+                        "PNB",
+                        "CANBK",
+                        "UNIONBANK",
+                        "IDBI",
+                        "KARURVYSYA",
+                    ]
+                ):
                     risk_tags.append("banking")
                 elif any(it in symbol for it in ["TCS", "INFY", "HCLTECH"]):
                     risk_tags.append("it")
-                elif any(energy in symbol for energy in ["RELIANCE", "ONGC", "IOC", "OIL"]):
+                elif any(
+                    energy in symbol for energy in ["RELIANCE", "ONGC", "IOC", "OIL"]
+                ):
                     risk_tags.append("energy")
-                elif any(consumer in symbol for consumer in ["ITC", "HINDUNILVR", "SWIGGY"]):
+                elif any(
+                    consumer in symbol for consumer in ["ITC", "HINDUNILVR", "SWIGGY"]
+                ):
                     risk_tags.append("consumer")
                 elif any(infra in symbol for infra in ["IRFC", "IREDA", "HUDCO"]):
                     risk_tags.append("infrastructure")
@@ -134,16 +165,18 @@ async def _get_portfolio_from_csv() -> Dict[str, Any]:
                 else:
                     risk_tags.append("other")
 
-                processed_holdings.append({
-                    "symbol": symbol,
-                    "qty": qty,
-                    "avg_price": round(avg_price, 2),
-                    "last_price": round(last_price, 2),
-                    "pnl_abs": round(pnl_abs, 2),
-                    "pnl_pct": round(pnl_pct, 2),
-                    "exposure": round(exposure, 2),
-                    "risk_tags": risk_tags
-                })
+                processed_holdings.append(
+                    {
+                        "symbol": symbol,
+                        "qty": qty,
+                        "avg_price": round(avg_price, 2),
+                        "last_price": round(last_price, 2),
+                        "pnl_abs": round(pnl_abs, 2),
+                        "pnl_pct": round(pnl_pct, 2),
+                        "exposure": round(exposure, 2),
+                        "risk_tags": risk_tags,
+                    }
+                )
 
                 total_exposure += exposure
 
@@ -151,12 +184,11 @@ async def _get_portfolio_from_csv() -> Dict[str, Any]:
                 logger.warning(f"Skipping invalid row: {row} - {e}")
                 continue
 
-    logger.info(f"Loaded {len(processed_holdings)} holdings from CSV, total exposure: {total_exposure:.2f}")
+    logger.info(
+        f"Loaded {len(processed_holdings)} holdings from CSV, total exposure: {total_exposure:.2f}"
+    )
 
-    return {
-        "holdings": processed_holdings,
-        "total_exposure": round(total_exposure, 2)
-    }
+    return {"holdings": processed_holdings, "total_exposure": round(total_exposure, 2)}
 
 
 async def _simulate_portfolio_data() -> Dict[str, Any]:
@@ -171,7 +203,7 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 864.13,
             "pnl_pct": 1.31,
             "exposure": 67135.00,
-            "risk_tags": ["largecap", "energy"]
+            "risk_tags": ["largecap", "energy"],
         },
         {
             "symbol": "TCS",
@@ -181,7 +213,7 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 979.50,
             "pnl_pct": 1.58,
             "exposure": 62787.00,
-            "risk_tags": ["largecap", "it"]
+            "risk_tags": ["largecap", "it"],
         },
         {
             "symbol": "HDFCBANK",
@@ -191,7 +223,7 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 1070.25,
             "pnl_pct": 2.11,
             "exposure": 51627.00,
-            "risk_tags": ["largecap", "banking"]
+            "risk_tags": ["largecap", "banking"],
         },
         {
             "symbol": "ICICIBANK",
@@ -201,7 +233,7 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 1311.20,
             "pnl_pct": 2.91,
             "exposure": 46344.00,
-            "risk_tags": ["largecap", "banking"]
+            "risk_tags": ["largecap", "banking"],
         },
         {
             "symbol": "INFY",
@@ -211,7 +243,7 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 607.00,
             "pnl_pct": 1.60,
             "exposure": 38515.00,
-            "risk_tags": ["largecap", "it"]
+            "risk_tags": ["largecap", "it"],
         },
         {
             "symbol": "HINDUNILVR",
@@ -221,7 +253,7 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 413.64,
             "pnl_pct": 1.24,
             "exposure": 33845.40,
-            "risk_tags": ["largecap", "consumer"]
+            "risk_tags": ["largecap", "consumer"],
         },
         {
             "symbol": "ITC",
@@ -231,7 +263,7 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 229.25,
             "pnl_pct": 1.35,
             "exposure": 17230.50,
-            "risk_tags": ["largecap", "consumer"]
+            "risk_tags": ["largecap", "consumer"],
         },
         {
             "symbol": "KOTAKBANK",
@@ -241,15 +273,12 @@ async def _simulate_portfolio_data() -> Dict[str, Any]:
             "pnl_abs": 277.20,
             "pnl_pct": 1.87,
             "exposure": 15082.00,
-            "risk_tags": ["largecap", "banking"]
-        }
+            "risk_tags": ["largecap", "banking"],
+        },
     ]
 
     total_exposure = sum(h["exposure"] for h in holdings)
-    return {
-        "holdings": holdings,
-        "total_exposure": total_exposure
-    }
+    return {"holdings": holdings, "total_exposure": total_exposure}
 
 
 def _calculate_risk_metrics(portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -268,8 +297,10 @@ def _calculate_risk_metrics(portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
         pnl_abs = holding["pnl_abs"]
 
         per_symbol_risk[symbol] = {
-            "exposure_percent": (exposure / total_exposure) * 100 if total_exposure > 0 else 0,
-            "pnl_abs": pnl_abs
+            "exposure_percent": (
+                (exposure / total_exposure) * 100 if total_exposure > 0 else 0
+            ),
+            "pnl_abs": pnl_abs,
         }
 
         # Simple sector classification
@@ -283,6 +314,10 @@ def _calculate_risk_metrics(portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
         "portfolio": {
             "total_pnl": total_pnl,
             "sector_exposure": sector_exposure,
-            "concentration_risk": max((exp / total_exposure) * 100 for exp in sector_exposure.values()) if sector_exposure else 0
-        }
+            "concentration_risk": (
+                max((exp / total_exposure) * 100 for exp in sector_exposure.values())
+                if sector_exposure
+                else 0
+            ),
+        },
     }

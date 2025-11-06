@@ -5,29 +5,28 @@ Refactored to use coordinators and follow the 350-line rule.
 Provides high-level coordination while delegating to specialized coordinators.
 """
 
-import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
-from ..core.event_bus import EventBus, Event, EventType
-from typing import TYPE_CHECKING
-from .coordinators.task.collaboration_task import CollaborationMode, CollaborationTask
+from ..core.event_bus import EventBus
 from .coordinators.agent.agent_profile import AgentRole
-from .coordinators.message.agent_message import AgentMessage, MessageType
+from .coordinators.message.agent_message import AgentMessage
+from .coordinators.task.collaboration_task import (CollaborationMode,
+                                                   CollaborationTask)
 
 if TYPE_CHECKING:
     from .coordinators.agent.agent_coordinator import AgentCoordinator
-    from .coordinators.task.task_coordinator import TaskCoordinator
-    from .coordinators.message.message_coordinator import MessageCoordinator
     from .coordinators.agent.agent_profile import AgentRole
+    from .coordinators.message.agent_message import AgentMessage
+    from .coordinators.message.message_coordinator import MessageCoordinator
     from .coordinators.task.collaboration_task import CollaborationTask
-    from .coordinators.message.agent_message import AgentMessage, MessageType
+    from .coordinators.task.task_coordinator import TaskCoordinator
 
 
 class MultiAgentFramework:
@@ -38,7 +37,9 @@ class MultiAgentFramework:
     Provides high-level orchestration while delegating to specialized coordinators.
     """
 
-    def __init__(self, config: Config, state_manager: DatabaseStateManager, event_bus: EventBus):
+    def __init__(
+        self, config: Config, state_manager: DatabaseStateManager, event_bus: EventBus
+    ):
         self.config = config
         self.state_manager = state_manager
         self.event_bus = event_bus
@@ -57,9 +58,15 @@ class MultiAgentFramework:
         logger.info("Initializing Multi-Agent Framework")
 
         # Initialize coordinators
-        self.agent_coordinator = AgentCoordinator(self.config, self.state_manager, self.event_bus)
-        self.task_coordinator = TaskCoordinator(self.config, self.state_manager, self.event_bus)
-        self.message_coordinator = MessageCoordinator(self.config, self.state_manager, self.event_bus)
+        self.agent_coordinator = AgentCoordinator(
+            self.config, self.state_manager, self.event_bus
+        )
+        self.task_coordinator = TaskCoordinator(
+            self.config, self.state_manager, self.event_bus
+        )
+        self.message_coordinator = MessageCoordinator(
+            self.config, self.state_manager, self.event_bus
+        )
 
         # Initialize all coordinators
         await self.agent_coordinator.initialize()
@@ -93,7 +100,7 @@ class MultiAgentFramework:
         description: str,
         required_roles: List[AgentRole],
         collaboration_mode: CollaborationMode = CollaborationMode.SEQUENTIAL,
-        deadline: Optional[str] = None
+        deadline: Optional[str] = None,
     ) -> Optional[CollaborationTask]:
         """
         Create a new collaborative task.
@@ -116,7 +123,7 @@ class MultiAgentFramework:
             description=description,
             required_roles=required_roles,
             collaboration_mode=collaboration_mode,
-            deadline=deadline
+            deadline=deadline,
         )
 
         if not task:
@@ -129,7 +136,9 @@ class MultiAgentFramework:
             available_agents[role] = agents
 
         # Assign agents to task
-        success = await self.task_coordinator.assign_agents_to_task(task, available_agents)
+        success = await self.task_coordinator.assign_agents_to_task(
+            task, available_agents
+        )
 
         if success:
             # Start the task
@@ -211,7 +220,7 @@ class MultiAgentFramework:
             "coordinators": {},
             "active_tasks": 0,
             "registered_agents": 0,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         # Check coordinators
@@ -237,7 +246,9 @@ class MultiAgentFramework:
         # Get agent count
         if self.agent_coordinator:
             # Count registered agents (simplified)
-            health_status["registered_agents"] = len(self.agent_coordinator.registered_agents)
+            health_status["registered_agents"] = len(
+                self.agent_coordinator.registered_agents
+            )
 
         return health_status
 
@@ -247,10 +258,12 @@ class MultiAgentFramework:
             options = ClaudeAgentOptions(
                 allowed_tools=[],
                 system_prompt=self._get_collaboration_prompt(),
-                max_turns=15
+                max_turns=15,
             )
             # Use client manager instead of direct creation
-            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            from src.core.claude_sdk_client_manager import \
+                ClaudeSDKClientManager
+
             client_manager = await ClaudeSDKClientManager.get_instance()
             self.client = await client_manager.get_client("trading", options)
             logger.info("Multi-Agent Framework Claude client initialized via manager")

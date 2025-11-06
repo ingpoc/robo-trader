@@ -1,12 +1,10 @@
 """Paper trade execution service with REAL MARKET PRICES."""
 
 import logging
-import uuid
-from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
-from ...models.paper_trading import PaperTrade, TradeType, TradeStatus
-from ...models.market_data import SubscriptionMode, MarketDataProvider
+from ...models.market_data import MarketDataProvider, SubscriptionMode
+from ...models.paper_trading import TradeStatus, TradeType
 from ...stores.paper_trading_store import PaperTradingStore
 from .account_manager import PaperTradingAccountManager
 
@@ -16,7 +14,12 @@ logger = logging.getLogger(__name__)
 class PaperTradeExecutor:
     """Execute paper trades with real-time market prices from Zerodha."""
 
-    def __init__(self, store: PaperTradingStore, account_manager: PaperTradingAccountManager, market_data_service=None):
+    def __init__(
+        self,
+        store: PaperTradingStore,
+        account_manager: PaperTradingAccountManager,
+        market_data_service=None,
+    ):
         """Initialize executor.
 
         Args:
@@ -31,7 +34,9 @@ class PaperTradeExecutor:
         # Slippage configuration (Phase 3)
         self.max_slippage_pct = 0.5  # 0.5% max slippage tolerance
 
-    async def get_current_price(self, symbol: str, fallback_price: Optional[float] = None) -> float:
+    async def get_current_price(
+        self, symbol: str, fallback_price: Optional[float] = None
+    ) -> float:
         """Fetch current market price from Zerodha.
 
         Args:
@@ -46,9 +51,13 @@ class PaperTradeExecutor:
         """
         if not self.market_data_service:
             if fallback_price is not None:
-                logger.warning(f"MarketDataService not available, using fallback price ₹{fallback_price} for {symbol}")
+                logger.warning(
+                    f"MarketDataService not available, using fallback price ₹{fallback_price} for {symbol}"
+                )
                 return fallback_price
-            raise ValueError(f"Cannot fetch price for {symbol}: MarketDataService not configured")
+            raise ValueError(
+                f"Cannot fetch price for {symbol}: MarketDataService not configured"
+            )
 
         try:
             # Get current market data
@@ -60,18 +69,26 @@ class PaperTradeExecutor:
 
             # Market data not available, use fallback
             if fallback_price is not None:
-                logger.warning(f"Market data unavailable for {symbol}, using fallback price ₹{fallback_price}")
+                logger.warning(
+                    f"Market data unavailable for {symbol}, using fallback price ₹{fallback_price}"
+                )
                 return fallback_price
 
-            raise ValueError(f"No market data available for {symbol} and no fallback price provided")
+            raise ValueError(
+                f"No market data available for {symbol} and no fallback price provided"
+            )
 
         except Exception as e:
             if fallback_price is not None:
-                logger.error(f"Error fetching price for {symbol}: {e}. Using fallback price ₹{fallback_price}")
+                logger.error(
+                    f"Error fetching price for {symbol}: {e}. Using fallback price ₹{fallback_price}"
+                )
                 return fallback_price
             raise ValueError(f"Failed to fetch price for {symbol}: {e}")
 
-    def validate_slippage(self, requested_price: float, actual_price: float, symbol: str) -> tuple[bool, Optional[str]]:
+    def validate_slippage(
+        self, requested_price: float, actual_price: float, symbol: str
+    ) -> tuple[bool, Optional[str]]:
         """Validate slippage tolerance.
 
         Args:
@@ -96,7 +113,9 @@ class PaperTradeExecutor:
             logger.warning(error)
             return False, error
 
-        logger.info(f"Slippage OK for {symbol}: {slippage_pct:.2f}% (within {self.max_slippage_pct}%)")
+        logger.info(
+            f"Slippage OK for {symbol}: {slippage_pct:.2f}% (within {self.max_slippage_pct}%)"
+        )
         return True, None
 
     async def execute_buy(
@@ -109,7 +128,7 @@ class PaperTradeExecutor:
         claude_session_id: str,
         stop_loss: Optional[float] = None,
         target_price: Optional[float] = None,
-        use_market_price: bool = True  # Phase 3: Use real-time price by default
+        use_market_price: bool = True,  # Phase 3: Use real-time price by default
     ) -> Dict[str, Any]:
         """Execute a BUY trade with REAL-TIME MARKET PRICE.
 
@@ -130,24 +149,32 @@ class PaperTradeExecutor:
         # Phase 3: Fetch real-time market price from Zerodha
         if use_market_price:
             try:
-                actual_price = await self.get_current_price(symbol, fallback_price=entry_price)
+                actual_price = await self.get_current_price(
+                    symbol, fallback_price=entry_price
+                )
 
                 # Validate slippage tolerance
-                is_valid, slippage_error = self.validate_slippage(entry_price, actual_price, symbol)
+                is_valid, slippage_error = self.validate_slippage(
+                    entry_price, actual_price, symbol
+                )
                 if not is_valid:
                     return {
                         "success": False,
                         "error": slippage_error,
                         "trade_id": None,
                         "requested_price": entry_price,
-                        "market_price": actual_price
+                        "market_price": actual_price,
                     }
 
                 # Use actual market price for execution
                 execution_price = actual_price
-                logger.info(f"Using real-time price for {symbol}: ₹{execution_price} (requested: ₹{entry_price})")
+                logger.info(
+                    f"Using real-time price for {symbol}: ₹{execution_price} (requested: ₹{entry_price})"
+                )
             except Exception as e:
-                logger.error(f"Failed to fetch market price for {symbol}: {e}. Using requested price ₹{entry_price}")
+                logger.error(
+                    f"Failed to fetch market price for {symbol}: {e}. Using requested price ₹{entry_price}"
+                )
                 execution_price = entry_price
         else:
             # Use requested price directly (backward compatibility)
@@ -158,17 +185,11 @@ class PaperTradeExecutor:
 
         # Validate account can execute trade
         can_execute, error = await self.account_manager.can_execute_trade(
-            account_id=account_id,
-            trade_value=trade_value,
-            max_position_pct=5.0
+            account_id=account_id, trade_value=trade_value, max_position_pct=5.0
         )
 
         if not can_execute:
-            return {
-                "success": False,
-                "error": error,
-                "trade_id": None
-            }
+            return {"success": False, "error": error, "trade_id": None}
 
         # Execute trade with real market price
         trade = await self.store.create_trade(
@@ -180,7 +201,7 @@ class PaperTradeExecutor:
             strategy_rationale=strategy_rationale,
             claude_session_id=claude_session_id,
             stop_loss=stop_loss,
-            target_price=target_price
+            target_price=target_price,
         )
 
         # Update account balance (deduct from buying power)
@@ -189,18 +210,26 @@ class PaperTradeExecutor:
         # Phase 4: Auto-subscribe to market data for real-time price tracking
         if self.market_data_service:
             try:
-                subscriptions = await self.market_data_service.get_active_subscriptions()
+                subscriptions = (
+                    await self.market_data_service.get_active_subscriptions()
+                )
                 if symbol not in subscriptions:
                     await self.market_data_service.subscribe_market_data(
                         symbol=symbol,
                         mode=SubscriptionMode.LTP,  # Last Traded Price for efficiency
-                        provider=MarketDataProvider.ZERODHA_KITE
+                        provider=MarketDataProvider.ZERODHA_KITE,
                     )
-                    logger.info(f"Auto-subscribed to market data for {symbol} after BUY execution")
+                    logger.info(
+                        f"Auto-subscribed to market data for {symbol} after BUY execution"
+                    )
             except Exception as e:
-                logger.warning(f"Failed to auto-subscribe to market data for {symbol}: {e}")
+                logger.warning(
+                    f"Failed to auto-subscribe to market data for {symbol}: {e}"
+                )
 
-        logger.info(f"BUY trade executed: {symbol} {quantity}@₹{execution_price} (market price from Zerodha)")
+        logger.info(
+            f"BUY trade executed: {symbol} {quantity}@₹{execution_price} (market price from Zerodha)"
+        )
 
         return {
             "success": True,
@@ -210,7 +239,7 @@ class PaperTradeExecutor:
             "quantity": quantity,
             "entry_price": entry_price,
             "trade_value": trade_value,
-            "timestamp": trade.entry_timestamp
+            "timestamp": trade.entry_timestamp,
         }
 
     async def execute_sell(
@@ -222,7 +251,7 @@ class PaperTradeExecutor:
         strategy_rationale: str,
         claude_session_id: str,
         stop_loss: Optional[float] = None,
-        target_price: Optional[float] = None
+        target_price: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute a SELL trade."""
         # Calculate trade value
@@ -238,7 +267,7 @@ class PaperTradeExecutor:
             strategy_rationale=strategy_rationale,
             claude_session_id=claude_session_id,
             stop_loss=stop_loss,
-            target_price=target_price
+            target_price=target_price,
         )
 
         # Update account balance (add to buying power)
@@ -247,16 +276,22 @@ class PaperTradeExecutor:
         # Phase 4: Auto-subscribe to market data for real-time price tracking
         if self.market_data_service:
             try:
-                subscriptions = await self.market_data_service.get_active_subscriptions()
+                subscriptions = (
+                    await self.market_data_service.get_active_subscriptions()
+                )
                 if symbol not in subscriptions:
                     await self.market_data_service.subscribe_market_data(
                         symbol=symbol,
                         mode=SubscriptionMode.LTP,  # Last Traded Price for efficiency
-                        provider=MarketDataProvider.ZERODHA_KITE
+                        provider=MarketDataProvider.ZERODHA_KITE,
                     )
-                    logger.info(f"Auto-subscribed to market data for {symbol} after SELL execution")
+                    logger.info(
+                        f"Auto-subscribed to market data for {symbol} after SELL execution"
+                    )
             except Exception as e:
-                logger.warning(f"Failed to auto-subscribe to market data for {symbol}: {e}")
+                logger.warning(
+                    f"Failed to auto-subscribe to market data for {symbol}: {e}"
+                )
 
         logger.info(f"SELL trade executed: {symbol} {quantity}@{exit_price}")
 
@@ -268,7 +303,7 @@ class PaperTradeExecutor:
             "quantity": quantity,
             "exit_price": exit_price,
             "trade_value": trade_value,
-            "timestamp": trade.entry_timestamp
+            "timestamp": trade.entry_timestamp,
         }
 
     async def close_position(
@@ -276,7 +311,7 @@ class PaperTradeExecutor:
         trade_id: str,
         exit_price: Optional[float] = None,
         reason: str = "Manual exit",
-        use_market_price: bool = True  # Phase 3: Use real-time price by default
+        use_market_price: bool = True,  # Phase 3: Use real-time price by default
     ) -> Dict[str, Any]:
         """Close an open position with REAL-TIME MARKET PRICE.
 
@@ -294,15 +329,24 @@ class PaperTradeExecutor:
             return {"success": False, "error": "Trade not found"}
 
         if trade.status != TradeStatus.OPEN:
-            return {"success": False, "error": f"Trade is {trade.status.value}, cannot close"}
+            return {
+                "success": False,
+                "error": f"Trade is {trade.status.value}, cannot close",
+            }
 
         # Phase 3: Fetch real-time market price for closing
         if use_market_price:
             try:
-                actual_exit_price = await self.get_current_price(trade.symbol, fallback_price=exit_price or trade.entry_price)
-                logger.info(f"Using real-time exit price for {trade.symbol}: ₹{actual_exit_price}")
+                actual_exit_price = await self.get_current_price(
+                    trade.symbol, fallback_price=exit_price or trade.entry_price
+                )
+                logger.info(
+                    f"Using real-time exit price for {trade.symbol}: ₹{actual_exit_price}"
+                )
             except Exception as e:
-                logger.error(f"Failed to fetch market price for closing {trade.symbol}: {e}")
+                logger.error(
+                    f"Failed to fetch market price for closing {trade.symbol}: {e}"
+                )
                 actual_exit_price = exit_price or trade.entry_price
         else:
             actual_exit_price = exit_price or trade.entry_price
@@ -318,43 +362,55 @@ class PaperTradeExecutor:
             trade_id=trade_id,
             exit_price=actual_exit_price,  # Real-time market price!
             realized_pnl=realized_pnl,
-            reason=reason
+            reason=reason,
         )
 
         # Update account balance
         if trade.trade_type == TradeType.BUY:
             # Release locked buying power + realized P&L
             await self.account_manager.unlock_buying_power(
-                account_id=trade.account_id,
-                amount=trade.entry_price * trade.quantity
+                account_id=trade.account_id, amount=trade.entry_price * trade.quantity
             )
             # Add realized P&L to balance
             if realized_pnl > 0:
-                await self.account_manager.update_balance(trade.account_id, realized_pnl)
+                await self.account_manager.update_balance(
+                    trade.account_id, realized_pnl
+                )
         else:  # SELL
             # Release locked value + realized P&L
             await self.account_manager.unlock_buying_power(
-                account_id=trade.account_id,
-                amount=trade.entry_price * trade.quantity
+                account_id=trade.account_id, amount=trade.entry_price * trade.quantity
             )
 
-        logger.info(f"Position closed: {trade.symbol} P&L: ₹{realized_pnl} (exit price: ₹{actual_exit_price} from market)")
+        logger.info(
+            f"Position closed: {trade.symbol} P&L: ₹{realized_pnl} (exit price: ₹{actual_exit_price} from market)"
+        )
 
         # Phase 4: Auto-unsubscribe from market data if no more positions for this symbol
         if self.market_data_service:
             try:
                 # Check if there are any remaining open positions for this symbol
                 remaining_trades = await self.store.get_open_trades(trade.account_id)
-                symbol_still_active = any(t.symbol == trade.symbol for t in remaining_trades)
+                symbol_still_active = any(
+                    t.symbol == trade.symbol for t in remaining_trades
+                )
 
                 if not symbol_still_active:
                     # No more positions for this symbol - unsubscribe to save resources
-                    subscriptions = await self.market_data_service.get_active_subscriptions()
+                    subscriptions = (
+                        await self.market_data_service.get_active_subscriptions()
+                    )
                     if trade.symbol in subscriptions:
-                        await self.market_data_service.unsubscribe_market_data(trade.symbol)
-                        logger.info(f"Auto-unsubscribed from market data for {trade.symbol} (no more positions)")
+                        await self.market_data_service.unsubscribe_market_data(
+                            trade.symbol
+                        )
+                        logger.info(
+                            f"Auto-unsubscribed from market data for {trade.symbol} (no more positions)"
+                        )
             except Exception as e:
-                logger.warning(f"Failed to auto-unsubscribe from market data for {trade.symbol}: {e}")
+                logger.warning(
+                    f"Failed to auto-unsubscribe from market data for {trade.symbol}: {e}"
+                )
 
         return {
             "success": True,
@@ -362,13 +418,15 @@ class PaperTradeExecutor:
             "symbol": trade.symbol,
             "exit_price": exit_price,
             "realized_pnl": realized_pnl,
-            "pnl_percentage": (realized_pnl / (trade.entry_price * trade.quantity)) * 100 if trade.entry_price > 0 else 0.0
+            "pnl_percentage": (
+                (realized_pnl / (trade.entry_price * trade.quantity)) * 100
+                if trade.entry_price > 0
+                else 0.0
+            ),
         }
 
     async def check_stop_loss(
-        self,
-        trade_id: str,
-        current_price: float
+        self, trade_id: str, current_price: float
     ) -> Dict[str, Any]:
         """Check if stop loss is triggered."""
         trade = await self.store.get_trade(trade_id)
@@ -379,29 +437,29 @@ class PaperTradeExecutor:
             return {"triggered": False, "trade_id": trade_id}
 
         # Stop loss hit - close position
-        realized_pnl = (current_price - trade.entry_price) * trade.quantity if trade.trade_type == TradeType.BUY else (trade.entry_price - current_price) * trade.quantity
-
-        await self.store.mark_stopped_out(
-            trade_id=trade_id,
-            exit_price=current_price,
-            realized_pnl=realized_pnl
+        realized_pnl = (
+            (current_price - trade.entry_price) * trade.quantity
+            if trade.trade_type == TradeType.BUY
+            else (trade.entry_price - current_price) * trade.quantity
         )
 
-        logger.warning(f"Stop loss triggered: {trade.symbol} {trade.trade_type.value} at {current_price}")
+        await self.store.mark_stopped_out(
+            trade_id=trade_id, exit_price=current_price, realized_pnl=realized_pnl
+        )
+
+        logger.warning(
+            f"Stop loss triggered: {trade.symbol} {trade.trade_type.value} at {current_price}"
+        )
 
         return {
             "triggered": True,
             "trade_id": trade_id,
             "symbol": trade.symbol,
             "exit_price": current_price,
-            "realized_pnl": realized_pnl
+            "realized_pnl": realized_pnl,
         }
 
-    async def check_target(
-        self,
-        trade_id: str,
-        current_price: float
-    ) -> Dict[str, Any]:
+    async def check_target(self, trade_id: str, current_price: float) -> Dict[str, Any]:
         """Check if target price is hit."""
         trade = await self.store.get_trade(trade_id)
         if not trade or trade.status != TradeStatus.OPEN:
@@ -417,5 +475,5 @@ class PaperTradeExecutor:
             "trade_id": trade_id,
             "symbol": trade.symbol,
             "target_price": trade.target_price,
-            "current_price": current_price
+            "current_price": current_price,
         }

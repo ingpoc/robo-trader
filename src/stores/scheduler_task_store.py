@@ -1,15 +1,15 @@
 """Database store for scheduler tasks and queues."""
 
-import logging
 import asyncio
-import aiosqlite
 import json
-from typing import List, Optional, Dict, Any
+import logging
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from ..models.scheduler import (
-    SchedulerTask, QueueName, TaskType, TaskStatus, QueueStatistics
-)
+import aiosqlite
+
+from ..models.scheduler import (QueueName, QueueStatistics, SchedulerTask,
+                                TaskType)
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,8 @@ class SchedulerTaskStore:
         """Initialize database schema if it doesn't exist."""
         async with self._lock:
             # Create queue_tasks table
-            await self.db_connection.execute("""
+            await self.db_connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS queue_tasks (
                     task_id TEXT PRIMARY KEY,
                     queue_name TEXT NOT NULL,
@@ -48,23 +49,30 @@ class SchedulerTaskStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """)
+            """
+            )
 
             # Create indexes for performance
-            await self.db_connection.execute("""
+            await self.db_connection.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_queue_tasks_queue_name
                 ON queue_tasks(queue_name)
-            """)
+            """
+            )
 
-            await self.db_connection.execute("""
+            await self.db_connection.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_queue_tasks_status
                 ON queue_tasks(status)
-            """)
+            """
+            )
 
-            await self.db_connection.execute("""
+            await self.db_connection.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_queue_tasks_scheduled_at
                 ON queue_tasks(scheduled_at)
-            """)
+            """
+            )
 
             await self.db_connection.commit()
             logger.info("Scheduler task store schema initialized")
@@ -76,7 +84,7 @@ class SchedulerTaskStore:
         payload: Dict[str, Any],
         priority: int = 5,
         dependencies: Optional[List[str]] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
     ) -> SchedulerTask:
         """Create a new scheduler task."""
         async with self._lock:
@@ -94,8 +102,16 @@ class SchedulerTaskStore:
 
             self.db_connection.row_factory = aiosqlite.Row
             await self.db_connection.execute(
-                query, (task_id, queue_name.value, task_type.value,
-                       priority, payload_json, dependencies_json, max_retries)
+                query,
+                (
+                    task_id,
+                    queue_name.value,
+                    task_type.value,
+                    priority,
+                    payload_json,
+                    dependencies_json,
+                    max_retries,
+                ),
             )
             await self.db_connection.commit()
 
@@ -107,7 +123,7 @@ class SchedulerTaskStore:
                 payload=payload,
                 dependencies=dependencies or [],
                 max_retries=max_retries,
-                created_at=datetime.utcnow().isoformat()
+                created_at=datetime.utcnow().isoformat(),
             )
 
             logger.info(f"Created task in database: {task_id}")
@@ -139,22 +155,24 @@ class SchedulerTaskStore:
         if dependencies is None:
             dependencies = "[]"
 
-        return SchedulerTask.from_dict({
-            "task_id": row[0],
-            "queue_name": row[1],
-            "task_type": row[2],
-            "priority": row[3],
-            "payload": payload,
-            "dependencies": dependencies,
-            "status": row[6],
-            "retry_count": row[7],
-            "max_retries": row[8],
-            "scheduled_at": row[9],
-            "started_at": row[10],
-            "completed_at": row[11],
-            "error_message": row[12],
-            "created_at": row[13],
-        })
+        return SchedulerTask.from_dict(
+            {
+                "task_id": row[0],
+                "queue_name": row[1],
+                "task_type": row[2],
+                "priority": row[3],
+                "payload": payload,
+                "dependencies": dependencies,
+                "status": row[6],
+                "retry_count": row[7],
+                "max_retries": row[8],
+                "scheduled_at": row[9],
+                "started_at": row[10],
+                "completed_at": row[11],
+                "error_message": row[12],
+                "created_at": row[13],
+            }
+        )
 
     async def get_task(self, task_id: str) -> Optional[SchedulerTask]:
         """Get task by ID."""
@@ -188,22 +206,24 @@ class SchedulerTaskStore:
                 if dependencies is None:
                     dependencies = "[]"
 
-                task = SchedulerTask.from_dict({
-                    "task_id": row[0],
-                    "queue_name": row[1],
-                    "task_type": row[2],
-                    "priority": row[3],
-                    "payload": payload,
-                    "dependencies": dependencies,
-                    "status": row[6],
-                    "retry_count": row[7],
-                    "max_retries": row[8],
-                    "scheduled_at": row[9],
-                    "started_at": row[10],
-                    "completed_at": row[11],
-                    "error_message": row[12],
-                    "created_at": row[13],
-                })
+                task = SchedulerTask.from_dict(
+                    {
+                        "task_id": row[0],
+                        "queue_name": row[1],
+                        "task_type": row[2],
+                        "priority": row[3],
+                        "payload": payload,
+                        "dependencies": dependencies,
+                        "status": row[6],
+                        "retry_count": row[7],
+                        "max_retries": row[8],
+                        "scheduled_at": row[9],
+                        "started_at": row[10],
+                        "completed_at": row[11],
+                        "error_message": row[12],
+                        "created_at": row[13],
+                    }
+                )
                 tasks.append(task)
 
             return tasks
@@ -276,7 +296,9 @@ class SchedulerTaskStore:
 
             task = await self._get_task_unlocked(task_id)
             if task:
-                logger.info(f"Incremented retry for task: {task_id} (attempt {task.retry_count})")
+                logger.info(
+                    f"Incremented retry for task: {task_id} (attempt {task.retry_count})"
+                )
             return task
 
     async def get_queue_statistics(self, queue_name: QueueName) -> QueueStatistics:
@@ -287,7 +309,9 @@ class SchedulerTaskStore:
                 SELECT COUNT(*) FROM queue_tasks
                 WHERE queue_name = ? AND status = 'pending'
             """
-            cursor = await self.db_connection.execute(pending_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(
+                pending_query, (queue_name.value,)
+            )
             pending_row = await cursor.fetchone()
             pending_count = pending_row[0] if pending_row else 0
 
@@ -296,7 +320,9 @@ class SchedulerTaskStore:
                 SELECT COUNT(*) FROM queue_tasks
                 WHERE queue_name = ? AND status = 'running'
             """
-            cursor = await self.db_connection.execute(running_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(
+                running_query, (queue_name.value,)
+            )
             running_row = await cursor.fetchone()
             running_count = running_row[0] if running_row else 0
 
@@ -306,7 +332,9 @@ class SchedulerTaskStore:
                 WHERE queue_name = ? AND status = 'completed'
                   AND DATE(completed_at) = DATE('now')
             """
-            cursor = await self.db_connection.execute(completed_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(
+                completed_query, (queue_name.value,)
+            )
             completed_row = await cursor.fetchone()
             completed_today = completed_row[0] if completed_row else 0
 
@@ -325,9 +353,13 @@ class SchedulerTaskStore:
                 WHERE queue_name = ? AND status = 'completed'
                 ORDER BY completed_at DESC LIMIT 1
             """
-            cursor = await self.db_connection.execute(last_completed_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(
+                last_completed_query, (queue_name.value,)
+            )
             last_completed_row = await cursor.fetchone()
-            last_completed_task_id = last_completed_row[0] if last_completed_row else None
+            last_completed_task_id = (
+                last_completed_row[0] if last_completed_row else None
+            )
             last_completed_at = last_completed_row[1] if last_completed_row else None
 
             return QueueStatistics(
@@ -338,7 +370,7 @@ class SchedulerTaskStore:
                 failed_count=failed_count,
                 average_duration_ms=0.0,  # TODO: Calculate average duration
                 last_completed_task_id=last_completed_task_id,
-                last_completed_at=last_completed_at
+                last_completed_at=last_completed_at,
             )
 
     async def get_completed_task_ids_today(self) -> List[str]:
@@ -369,11 +401,15 @@ class SchedulerTaskStore:
             cursor = await self.db_connection.execute(query, (cutoff_date.isoformat(),))
             await self.db_connection.commit()
 
-            deleted_count = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
-            logger.info(f"Cleaned up {deleted_count} old tasks older than {days_to_keep} days")
+            deleted_count = cursor.rowcount if hasattr(cursor, "rowcount") else 0
+            logger.info(
+                f"Cleaned up {deleted_count} old tasks older than {days_to_keep} days"
+            )
             return deleted_count
 
-    async def get_failed_tasks_for_retry(self, max_age_hours: int = 1) -> List[SchedulerTask]:
+    async def get_failed_tasks_for_retry(
+        self, max_age_hours: int = 1
+    ) -> List[SchedulerTask]:
         """Get failed tasks that can be retried."""
         async with self._lock:
             query = """
@@ -402,22 +438,24 @@ class SchedulerTaskStore:
                 if dependencies is None:
                     dependencies = "[]"
 
-                task = SchedulerTask.from_dict({
-                    "task_id": row[0],
-                    "queue_name": row[1],
-                    "task_type": row[2],
-                    "priority": row[3],
-                    "payload": payload,
-                    "dependencies": dependencies,
-                    "status": row[6],
-                    "retry_count": row[7],
-                    "max_retries": row[8],
-                    "scheduled_at": row[9],
-                    "started_at": row[10],
-                    "completed_at": row[11],
-                    "error_message": row[12],
-                    "created_at": row[13],
-                })
+                task = SchedulerTask.from_dict(
+                    {
+                        "task_id": row[0],
+                        "queue_name": row[1],
+                        "task_type": row[2],
+                        "priority": row[3],
+                        "payload": payload,
+                        "dependencies": dependencies,
+                        "status": row[6],
+                        "retry_count": row[7],
+                        "max_retries": row[8],
+                        "scheduled_at": row[9],
+                        "started_at": row[10],
+                        "completed_at": row[11],
+                        "error_message": row[12],
+                        "created_at": row[13],
+                    }
+                )
                 tasks.append(task)
 
             return tasks

@@ -8,7 +8,9 @@ New Code: Use modular imports from src.core.background_scheduler.* directly
 Legacy Code: Can continue using imports from this file
 """
 
-from src.core.background_scheduler.background_scheduler import BackgroundScheduler
-from src.core.background_scheduler.models import TaskType, TaskPriority, BackgroundTask
+from src.core.background_scheduler.background_scheduler import \
+    BackgroundScheduler
+from src.core.background_scheduler.models import (BackgroundTask, TaskPriority,
+                                                  TaskType)
 
 __all__ = ["BackgroundScheduler", "TaskType", "TaskPriority", "BackgroundTask"]

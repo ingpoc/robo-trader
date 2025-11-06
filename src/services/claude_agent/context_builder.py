@@ -3,7 +3,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class ContextBuilder:
         market_data: Optional[Dict[str, Any]] = None,
         earnings_today: Optional[List[Dict[str, Any]]] = None,
         strategy_learnings: Optional[List[Dict[str, Any]]] = None,
-        monthly_performance: Optional[Dict[str, Any]] = None
+        monthly_performance: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Build token-optimized morning context.
@@ -38,8 +38,8 @@ class ContextBuilder:
             "acct": {
                 "bal": account_data.get("current_balance", 0),
                 "bp": account_data.get("buying_power", 0),
-                "type": account_data.get("account_type", "swing")
-            }
+                "type": account_data.get("account_type", "swing"),
+            },
         }
 
         # Compact positions format
@@ -50,7 +50,7 @@ class ContextBuilder:
                     "q": p.get("quantity"),
                     "e": p.get("entry_price"),
                     "t": p.get("target_price"),
-                    "sl": p.get("stop_loss")
+                    "sl": p.get("stop_loss"),
                 }
                 for p in open_positions[:5]  # Limit to 5
             ]
@@ -60,7 +60,7 @@ class ContextBuilder:
             context["mkt"] = {
                 "open": market_data.get("market_open"),
                 "vol": market_data.get("volume"),
-                "senti": market_data.get("sentiment")
+                "senti": market_data.get("sentiment"),
             }
 
         # Earnings today (if available)
@@ -76,8 +76,10 @@ class ContextBuilder:
                 {
                     "name": s.get("strategy"),
                     "score": s.get("effectiveness_score"),
-                    "rec": s.get("recommendation"),  # increase_use, maintain_use, modify, reduce_use, retire
-                    "wr": s.get("win_rate")  # Win rate %
+                    "rec": s.get(
+                        "recommendation"
+                    ),  # increase_use, maintain_use, modify, reduce_use, retire
+                    "wr": s.get("win_rate"),  # Win rate %
                 }
                 for s in strategy_learnings[:3]  # Top 3 strategies
             ]
@@ -89,10 +91,12 @@ class ContextBuilder:
                 "pnl_pct": monthly_performance.get("profit_loss_percentage"),
                 "trades": monthly_performance.get("total_trades"),
                 "wr": monthly_performance.get("win_rate"),  # Win rate %
-                "dd": monthly_performance.get("max_drawdown")  # Max drawdown %
+                "dd": monthly_performance.get("max_drawdown"),  # Max drawdown %
             }
 
-        logger.debug(f"Built morning context (~{self._estimate_tokens(context)} tokens)")
+        logger.debug(
+            f"Built morning context (~{self._estimate_tokens(context)} tokens)"
+        )
         return context
 
     async def build_evening_context(
@@ -100,14 +104,14 @@ class ContextBuilder:
         account_data: Dict[str, Any],
         today_trades: List[Dict[str, Any]],
         daily_pnl: float,
-        strategy_effectiveness: Optional[Dict[str, Any]] = None
+        strategy_effectiveness: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Build token-optimized evening context."""
         context = {
             "ts": datetime.utcnow().isoformat(),
             "acct": account_data.get("account_type", "swing"),
             "pnl": daily_pnl,
-            "n_trades": len(today_trades)
+            "n_trades": len(today_trades),
         }
 
         # Compact trades format (only essential fields)
@@ -118,7 +122,7 @@ class ContextBuilder:
                     "a": t.get("action"),
                     "q": t.get("quantity"),
                     "p": t.get("price"),
-                    "pnl": t.get("pnl")
+                    "pnl": t.get("pnl"),
                 }
                 for t in today_trades[:10]
             ]
@@ -127,10 +131,12 @@ class ContextBuilder:
         if strategy_effectiveness:
             context["strat"] = {
                 "worked": strategy_effectiveness.get("what_worked", [])[:3],
-                "failed": strategy_effectiveness.get("what_failed", [])[:3]
+                "failed": strategy_effectiveness.get("what_failed", [])[:3],
             }
 
-        logger.debug(f"Built evening context (~{self._estimate_tokens(context)} tokens)")
+        logger.debug(
+            f"Built evening context (~{self._estimate_tokens(context)} tokens)"
+        )
         return context
 
     async def build_analysis_context(
@@ -138,22 +144,15 @@ class ContextBuilder:
         symbol: str,
         latest_news: List[Dict[str, Any]],
         earnings_data: Optional[Dict[str, Any]] = None,
-        fundamentals: Optional[Dict[str, Any]] = None
+        fundamentals: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Build context for stock analysis recommendations."""
-        context = {
-            "s": symbol,
-            "ts": datetime.utcnow().isoformat()
-        }
+        context = {"s": symbol, "ts": datetime.utcnow().isoformat()}
 
         # News (compact format, recent only)
         if latest_news:
             context["news"] = [
-                {
-                    "h": n.get("headline"),
-                    "sent": n.get("sentiment"),
-                    "d": n.get("date")
-                }
+                {"h": n.get("headline"), "sent": n.get("sentiment"), "d": n.get("date")}
                 for n in latest_news[:3]
             ]
 
@@ -164,7 +163,7 @@ class ContextBuilder:
                 "eps_a": earnings_data.get("eps_actual"),
                 "surp": earnings_data.get("surprise_pct"),
                 "rev": earnings_data.get("revenue"),
-                "guid": earnings_data.get("guidance")
+                "guid": earnings_data.get("guidance"),
             }
 
         # Fundamentals (only key metrics)
@@ -174,10 +173,12 @@ class ContextBuilder:
                 "roe": fundamentals.get("roe"),
                 "de": fundamentals.get("debt_equity"),
                 "rg": fundamentals.get("revenue_growth"),
-                "eg": fundamentals.get("earnings_growth")
+                "eg": fundamentals.get("earnings_growth"),
             }
 
-        logger.debug(f"Built analysis context (~{self._estimate_tokens(context)} tokens)")
+        logger.debug(
+            f"Built analysis context (~{self._estimate_tokens(context)} tokens)"
+        )
         return context
 
     def _estimate_tokens(self, obj: Any) -> int:
@@ -191,9 +192,7 @@ class ContextBuilder:
         return int((len(json_str) / 4) * 1.1)
 
     async def truncate_context(
-        self,
-        context: Dict[str, Any],
-        target_tokens: int
+        self, context: Dict[str, Any], target_tokens: int
     ) -> Dict[str, Any]:
         """Truncate context to fit token budget."""
         if self._estimate_tokens(context) <= target_tokens:

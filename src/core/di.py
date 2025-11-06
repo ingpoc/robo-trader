@@ -14,34 +14,36 @@ The main DI container delegates to modular registries for organization:
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Type, TypeVar
 from contextlib import asynccontextmanager
+from typing import Any, Dict, Optional, TypeVar
 
 logger = logging.getLogger(__name__)
 
 from src.config import Config
+from src.services.analytics_service import AnalyticsService
+from src.services.execution_service import ExecutionService
+from src.services.learning_service import LearningService
+from src.services.market_data_service import MarketDataService
+# Type annotations for convenience methods
+from src.services.portfolio_service import PortfolioService
+from src.services.risk_service import RiskService
+
 from .database_state import DatabaseStateManager
+from .di_registry_coordinators import (register_coordinators,
+                                       register_orchestrator)
+# Import registries
+from .di_registry_core import register_core_services
+from .di_registry_paper_trading import register_paper_trading_services
+from .di_registry_sdk import register_sdk_services
+from .di_registry_services import register_domain_services
 from .event_bus import EventBus
 from .orchestrator import RoboTraderOrchestrator
 from .resource_manager import ResourceManager
 from .safety_layer import SafetyLayer
 
-# Type annotations for convenience methods
-from src.services.portfolio_service import PortfolioService
-from src.services.risk_service import RiskService
-from src.services.execution_service import ExecutionService
-from src.services.analytics_service import AnalyticsService
-from src.services.learning_service import LearningService
-from src.services.market_data_service import MarketDataService
+T = TypeVar("T")
 
-# Import registries
-from .di_registry_core import register_core_services
-from .di_registry_services import register_domain_services
-from .di_registry_paper_trading import register_paper_trading_services
-from .di_registry_sdk import register_sdk_services
-from .di_registry_coordinators import register_coordinators, register_orchestrator
 
-T = TypeVar('T')
 class DependencyContainer:
     """
     Centralized dependency injection container.
@@ -61,6 +63,7 @@ class DependencyContainer:
 
         # Setup logging if not already configured (don't clear logs - already cleared in app.py)
         from .logging_config import ensure_logging_setup
+
         # Use LOG_LEVEL from environment (set by CLI flag or .env)
         log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         ensure_logging_setup(config.logs_dir, log_level, clear_logs=False)
@@ -80,6 +83,7 @@ class DependencyContainer:
 
         # Orchestrator must be last (depends on all coordinators)
         await register_orchestrator(self)
+
     def _register_singleton(self, name: str, factory: callable) -> None:
         """Register a singleton service."""
         self._factories[name] = factory
@@ -113,6 +117,7 @@ class DependencyContainer:
     async def get_resource_manager(self) -> ResourceManager:
         """Get the resource manager instance."""
         return await self.get("resource_manager")
+
     async def get_claude_sdk_auth(self):
         """Get the Claude SDK authentication instance."""
         return await self.get("claude_sdk_auth")
@@ -124,6 +129,7 @@ class DependencyContainer:
     async def get_safety_layer(self) -> SafetyLayer:
         """Get the safety layer instance."""
         return await self.get("safety_layer")
+
     async def get_claude_agent_mcp_server(self):
         """Get the Claude Agent MCP server instance."""
         return await self.get("claude_agent_mcp_server")
@@ -135,13 +141,14 @@ class DependencyContainer:
     async def get_risk_service(self) -> RiskService:
         """Get the risk service instance."""
         return await self.get("risk_service")
-    # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
+        # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
         """Get the queue coordinator instance."""
         return await self.get("queue_coordinator")
 
     async def get_execution_service(self) -> ExecutionService:
         """Get the execution service instance."""
         return await self.get("execution_service")
+
     async def get_event_router_service(self) -> "EventRouterService":
         """Get the event router service instance."""
         return await self.get("event_router_service")
@@ -157,6 +164,7 @@ class DependencyContainer:
     async def get_learning_service(self) -> LearningService:
         """Get the learning service instance."""
         return await self.get("learning_service")
+
     async def cleanup(self) -> None:
         """Cleanup all services."""
         logger.info("Cleaning up dependency container")
@@ -179,17 +187,29 @@ class DependencyContainer:
 
         # Cleanup services in reverse order
         services_to_cleanup = [
-            "market_data_service", "learning_service", "analytics_service",
-            "execution_service", "risk_service", "portfolio_service", "feature_management_service",
-            "strategy_evolution_engine", "event_router_service",
-            "safety_layer", "event_bus", "learning_engine", "conversation_manager",
-            "background_scheduler", "ai_planner", "state_manager", "resource_manager"
+            "market_data_service",
+            "learning_service",
+            "analytics_service",
+            "execution_service",
+            "risk_service",
+            "portfolio_service",
+            "feature_management_service",
+            "strategy_evolution_engine",
+            "event_router_service",
+            "safety_layer",
+            "event_bus",
+            "learning_engine",
+            "conversation_manager",
+            "background_scheduler",
+            "ai_planner",
+            "state_manager",
+            "resource_manager",
         ]
 
         for service_name in services_to_cleanup:
             try:
                 service = self._singletons.get(service_name)
-                if service and hasattr(service, 'close'):
+                if service and hasattr(service, "close"):
                     await service.close()
             except Exception as e:
                 logger.warning(f"Error during {service_name} cleanup: {e}")
@@ -197,6 +217,8 @@ class DependencyContainer:
         # Clear all instances
         self._singletons.clear()
         logger.info("Dependency container cleanup complete")
+
+
 @asynccontextmanager
 async def dependency_container(config: Config):
     """
@@ -214,6 +236,8 @@ async def dependency_container(config: Config):
         yield container
     finally:
         await container.cleanup()
+
+
 class ServiceProvider:
     """
     Service provider for accessing services without global state.
@@ -238,87 +262,124 @@ class ServiceProvider:
     async def get_orchestrator(self) -> RoboTraderOrchestrator:
         """Get the orchestrator instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_orchestrator()
 
     async def get_state_manager(self) -> DatabaseStateManager:
         """Get the state manager instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_state_manager()
 
     async def get_claude_sdk_auth(self):
         """Get the Claude SDK authentication instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_claude_sdk_auth()
+
     async def get_event_bus(self) -> EventBus:
         """Get the event bus instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_event_bus()
 
     async def get_safety_layer(self) -> SafetyLayer:
         """Get the safety layer instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_safety_layer()
+
     async def get_claude_agent_mcp_server(self):
         """Get the Claude Agent MCP server instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_claude_agent_mcp_server()
 
     async def get_portfolio_service(self) -> PortfolioService:
         """Get the portfolio service instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_portfolio_service()
 
     async def get_risk_service(self) -> RiskService:
         """Get the risk service instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_risk_service()
 
-    # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
+        # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
         """Get the queue coordinator instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_queue_coordinator()
 
     async def get_execution_service(self) -> ExecutionService:
         """Get the execution service instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_execution_service()
+
     async def get_event_router_service(self) -> "EventRouterService":
         """Get the event router service instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_event_router_service()
 
     async def get_analytics_service(self) -> AnalyticsService:
         """Get the analytics service instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_analytics_service()
 
     async def get_learning_service(self) -> LearningService:
         """Get the learning service instance."""
         if not self._container:
-            raise RuntimeError("ServiceProvider not initialized. Use async context manager.")
+            raise RuntimeError(
+                "ServiceProvider not initialized. Use async context manager."
+            )
         return await self._container.get_learning_service()
+
+
 # Global container instance for backward compatibility
 _global_container: Optional[DependencyContainer] = None
+
+
 async def get_container() -> Optional[DependencyContainer]:
     """Get the global container instance."""
     global _global_container
     return _global_container
+
+
 async def set_container(container: DependencyContainer) -> None:
     """Set the global container instance."""
     global _global_container
     _global_container = container
+
+
 # Legacy functions for backward compatibility (deprecated)
 # These will be removed in a future version
 async def initialize_container(config: Config) -> DependencyContainer:
@@ -332,16 +393,18 @@ async def initialize_container(config: Config) -> DependencyContainer:
     await container.initialize(config)
     _global_container = container
     return container
+
+
 async def cleanup_container():
     """DEPRECATED: Cleanup is now handled by context managers."""
     global _global_container
     if _global_container:
         await _global_container.cleanup()
         _global_container = None
-# Import logger at the end to avoid circular imports
-from loguru import logger
+
 
 # Add missing imports for the new services
 import os
-import base64
-from cryptography.fernet import Fernet
+
+# Import logger at the end to avoid circular imports
+from loguru import logger

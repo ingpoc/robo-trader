@@ -6,13 +6,13 @@ Extracted from MessageCoordinator for single responsibility.
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
 from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from ...event_bus import EventBus, Event, EventType
+from ...event_bus import Event, EventBus, EventType
 from ..base_coordinator import BaseCoordinator
 from ..message.agent_message import AgentMessage, MessageType
 
@@ -20,7 +20,7 @@ from ..message.agent_message import AgentMessage, MessageType
 class MessageRoutingCoordinator(BaseCoordinator):
     """
     Coordinates message routing and processing.
-    
+
     Responsibilities:
     - Message queuing and delivery
     - Message routing logic
@@ -41,11 +41,11 @@ class MessageRoutingCoordinator(BaseCoordinator):
     async def initialize(self) -> None:
         """Initialize message routing coordinator."""
         logger.info("Initializing Message Routing Coordinator")
-        
+
         # Start message processing
         self._running = True
         self._processing_task = asyncio.create_task(self._process_messages())
-        
+
         logger.info("Message Routing Coordinator initialized successfully")
 
     async def cleanup(self) -> None:
@@ -76,20 +76,24 @@ class MessageRoutingCoordinator(BaseCoordinator):
         await self.message_queue.put(message)
 
         # Emit event for monitoring
-        await self.event_bus.publish(Event(
-            event_type=EventType.TASK_COMPLETED,
-            data={
-                "event_type": "message_sent",
-                "message_id": message.message_id,
-                "message_type": message.message_type.value,
-                "sender": message.sender_agent,
-                "recipient": message.recipient_agent,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            },
-            source="message_routing_coordinator"
-        ))
+        await self.event_bus.publish(
+            Event(
+                event_type=EventType.TASK_COMPLETED,
+                data={
+                    "event_type": "message_sent",
+                    "message_id": message.message_id,
+                    "message_type": message.message_type.value,
+                    "sender": message.sender_agent,
+                    "recipient": message.recipient_agent,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                source="message_routing_coordinator",
+            )
+        )
 
-    async def register_handler(self, message_type: MessageType, handler: callable) -> None:
+    async def register_handler(
+        self, message_type: MessageType, handler: callable
+    ) -> None:
         """
         Register a handler for a message type.
 
@@ -101,9 +105,7 @@ class MessageRoutingCoordinator(BaseCoordinator):
         logger.debug(f"Registered handler for {message_type.value}")
 
     async def send_request_response(
-        self,
-        request: AgentMessage,
-        timeout: float = 30.0
+        self, request: AgentMessage, timeout: float = 30.0
     ) -> Optional[AgentMessage]:
         """
         Send a request and wait for response.
@@ -142,8 +144,7 @@ class MessageRoutingCoordinator(BaseCoordinator):
                 # Get message with timeout
                 try:
                     message = await asyncio.wait_for(
-                        self.message_queue.get(),
-                        timeout=1.0
+                        self.message_queue.get(), timeout=1.0
                     )
                 except asyncio.TimeoutError:
                     continue
@@ -165,7 +166,9 @@ class MessageRoutingCoordinator(BaseCoordinator):
         Args:
             message: Message to route
         """
-        logger.debug(f"Routing message: {message.message_type.value} from {message.sender_agent}")
+        logger.debug(
+            f"Routing message: {message.message_type.value} from {message.sender_agent}"
+        )
 
         # Check if this is a response to a pending request
         if message.correlation_id and message.correlation_id in self.pending_responses:
@@ -177,7 +180,9 @@ class MessageRoutingCoordinator(BaseCoordinator):
         # Route to registered handlers
         handlers = self.message_handlers.get(message.message_type, [])
         if not handlers:
-            logger.warning(f"No handlers registered for message type: {message.message_type.value}")
+            logger.warning(
+                f"No handlers registered for message type: {message.message_type.value}"
+            )
             return
 
         # Call all handlers for this message type
@@ -186,4 +191,3 @@ class MessageRoutingCoordinator(BaseCoordinator):
                 await handler(message)
             except Exception as e:
                 logger.error(f"Handler error for {message.message_type.value}: {e}")
-

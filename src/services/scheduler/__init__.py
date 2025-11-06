@@ -1,7 +1,7 @@
 """Scheduler service with advanced queue management."""
 
-from .task_service import SchedulerTaskService
 from .queue_manager import SequentialQueueManager
+from .task_service import SchedulerTaskService
 
 __all__ = [
     "SchedulerTaskService",

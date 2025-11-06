@@ -6,8 +6,8 @@ Defines agent profiles, roles, and capabilities for agent registration.
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class AgentRole(Enum):
@@ -53,9 +53,11 @@ class AgentProfile:
             "role": self.role.value,
             "capabilities": self.capabilities,
             "status": self.status,
-            "last_heartbeat": self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            "last_heartbeat": (
+                self.last_heartbeat.isoformat() if self.last_heartbeat else None
+            ),
             "performance_metrics": self.performance_metrics,
-            "config": self.config
+            "config": self.config,
         }
 
     @classmethod
@@ -67,7 +69,7 @@ class AgentProfile:
             capabilities=data["capabilities"],
             status=data.get("status", "active"),
             performance_metrics=data.get("performance_metrics"),
-            config=data.get("config")
+            config=data.get("config"),
         )
 
         if data.get("last_heartbeat"):

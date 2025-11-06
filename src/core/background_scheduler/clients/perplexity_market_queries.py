@@ -4,8 +4,8 @@ Market News Query Module for Perplexity API
 Handles market news, earnings announcements, and daily news queries.
 """
 
-from typing import List, Optional, Any
-from loguru import logger
+from typing import Any, List, Optional
+
 
 from .perplexity_prompt_manager import PromptManager
 
@@ -28,9 +28,7 @@ class MarketQueries:
         self.prompt_manager = prompt_manager
 
     async def fetch_market_news(
-        self,
-        symbols: List[str],
-        max_tokens: int = 4000
+        self, symbols: List[str], max_tokens: int = 4000
     ) -> Optional[str]:
         """Fetch recent market-moving news for given stocks.
 
@@ -53,13 +51,11 @@ class MarketQueries:
             search_recency="week",
             max_search_results=20,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
     async def fetch_daily_news(
-        self,
-        symbols: List[str],
-        max_tokens: int = 3000
+        self, symbols: List[str], max_tokens: int = 3000
     ) -> Optional[str]:
         """Fetch daily news updates for market monitoring.
 
@@ -89,5 +85,5 @@ Focus on:
             search_recency="day",
             max_search_results=10,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )

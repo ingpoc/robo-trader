@@ -7,9 +7,9 @@ Extracted from SessionCoordinator for single responsibility.
 
 from typing import Optional
 
-from loguru import logger
 
 from src.config import Config
+
 from ....auth.claude_auth import ClaudeAuthStatus, validate_claude_sdk_auth
 from ..base_coordinator import BaseCoordinator
 
@@ -17,7 +17,7 @@ from ..base_coordinator import BaseCoordinator
 class SessionAuthenticationCoordinator(BaseCoordinator):
     """
     Coordinates Claude SDK authentication.
-    
+
     Responsibilities:
     - Validate Claude SDK authentication
     - Track authentication status
@@ -47,20 +47,23 @@ class SessionAuthenticationCoordinator(BaseCoordinator):
         if not self.claude_sdk_status.is_valid:
             error_msg = f"Claude Agent SDK authentication unavailable: {self.claude_sdk_status.error}"
             self._log_warning(error_msg)
-            self._log_warning("System will continue in paper trading mode without AI features")
+            self._log_warning(
+                "System will continue in paper trading mode without AI features"
+            )
             # DO NOT RAISE - allow system to continue with degraded functionality
         else:
-            auth_method = self.claude_sdk_status.account_info.get('auth_method', 'unknown')
-            self._log_info(f"Claude Agent SDK authenticated successfully via {auth_method}")
+            auth_method = self.claude_sdk_status.account_info.get(
+                "auth_method", "unknown"
+            )
+            self._log_info(
+                f"Claude Agent SDK authenticated successfully via {auth_method}"
+            )
 
         return self.claude_sdk_status
 
     def is_authenticated(self) -> bool:
         """Check if Claude SDK authentication is valid and ready."""
-        return (
-            self.claude_sdk_status is not None
-            and self.claude_sdk_status.is_valid
-        )
+        return self.claude_sdk_status is not None and self.claude_sdk_status.is_valid
 
     def get_auth_status(self) -> Optional[ClaudeAuthStatus]:
         """Get current authentication status."""
@@ -69,4 +72,3 @@ class SessionAuthenticationCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         """Cleanup session authentication coordinator resources."""
         self._log_info("SessionAuthenticationCoordinator cleanup complete")
-

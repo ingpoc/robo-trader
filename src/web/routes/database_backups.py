@@ -8,13 +8,15 @@ Provides endpoints for:
 - Restoring from backups
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from typing import Dict, Any, List
+from typing import Any, Dict
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from loguru import logger
 
 from src.core.di import DependencyContainer
-from ..dependencies import get_container
 from src.core.errors import TradingError
+
+from ..dependencies import get_container
 
 router = APIRouter(prefix="/api/backups", tags=["database-backups"])
 
@@ -28,18 +30,11 @@ async def get_backup_status(
         database = await container.get("database")
 
         if not database or not database.backup_manager:
-            raise HTTPException(
-                status_code=500,
-                detail="Backup manager not available"
-            )
+            raise HTTPException(status_code=500, detail="Backup manager not available")
 
         stats = database.backup_manager.get_backup_stats()
 
-        return {
-            "status": "ok",
-            "backup_manager_available": True,
-            **stats
-        }
+        return {"status": "ok", "backup_manager_available": True, **stats}
 
     except TradingError as e:
         logger.error(f"Backup status error: {e}")
@@ -58,17 +53,13 @@ async def list_backups(
     try:
         if hours < 1 or hours > 8760:  # Max 1 year
             raise HTTPException(
-                status_code=400,
-                detail="Hours must be between 1 and 8760"
+                status_code=400, detail="Hours must be between 1 and 8760"
             )
 
         database = await container.get("database")
 
         if not database or not database.backup_manager:
-            raise HTTPException(
-                status_code=500,
-                detail="Backup manager not available"
-            )
+            raise HTTPException(status_code=500, detail="Backup manager not available")
 
         backups = await database.backup_manager.get_backups(hours=hours)
 
@@ -80,10 +71,10 @@ async def list_backups(
                 {
                     "filename": b.name,
                     "size_mb": round(b.stat().st_size / (1024 * 1024), 2),
-                    "created_at": b.stat().st_mtime
+                    "created_at": b.stat().st_mtime,
                 }
                 for b in backups
-            ]
+            ],
         }
 
     except HTTPException:
@@ -105,25 +96,19 @@ async def create_backup(
     """Create a manual database backup."""
     try:
         if not label or len(label) > 50:
-            raise HTTPException(
-                status_code=400,
-                detail="Label must be 1-50 characters"
-            )
+            raise HTTPException(status_code=400, detail="Label must be 1-50 characters")
 
         # Sanitize label (alphanumeric, dash, underscore only)
-        if not all(c.isalnum() or c in '-_' for c in label):
+        if not all(c.isalnum() or c in "-_" for c in label):
             raise HTTPException(
                 status_code=400,
-                detail="Label can only contain alphanumeric characters, dashes, and underscores"
+                detail="Label can only contain alphanumeric characters, dashes, and underscores",
             )
 
         database = await container.get("database")
 
         if not database or not database.backup_manager:
-            raise HTTPException(
-                status_code=500,
-                detail="Backup manager not available"
-            )
+            raise HTTPException(status_code=500, detail="Backup manager not available")
 
         # Create backup in background to avoid blocking request
         async def create_backup_task():
@@ -132,7 +117,9 @@ async def create_backup(
                 if backup_path:
                     logger.info(f"Manual backup created: {backup_path}")
                 else:
-                    logger.warning(f"Failed to create manual backup with label: {label}")
+                    logger.warning(
+                        f"Failed to create manual backup with label: {label}"
+                    )
             except Exception as e:
                 logger.error(f"Error creating backup in background: {e}")
 
@@ -141,7 +128,7 @@ async def create_backup(
         return {
             "status": "ok",
             "message": "Backup creation started in background",
-            "label": label
+            "label": label,
         }
 
     except HTTPException:
@@ -163,10 +150,7 @@ async def get_latest_backup(
         database = await container.get("database")
 
         if not database or not database.backup_manager:
-            raise HTTPException(
-                status_code=500,
-                detail="Backup manager not available"
-            )
+            raise HTTPException(status_code=500, detail="Backup manager not available")
 
         latest = await database.backup_manager.get_latest_backup()
 
@@ -174,7 +158,7 @@ async def get_latest_backup(
             return {
                 "status": "ok",
                 "latest_backup": None,
-                "message": "No backups found"
+                "message": "No backups found",
             }
 
         return {
@@ -183,8 +167,8 @@ async def get_latest_backup(
                 "filename": latest.name,
                 "path": str(latest),
                 "size_mb": round(latest.stat().st_size / (1024 * 1024), 2),
-                "created_at": latest.stat().st_mtime
-            }
+                "created_at": latest.stat().st_mtime,
+            },
         }
 
     except HTTPException:
@@ -205,41 +189,31 @@ async def restore_backup(
     """Restore database from a backup file."""
     try:
         if not backup_filename.endswith(".db"):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid backup filename"
-            )
+            raise HTTPException(status_code=400, detail="Invalid backup filename")
 
         database = await container.get("database")
 
         if not database or not database.backup_manager:
-            raise HTTPException(
-                status_code=500,
-                detail="Backup manager not available"
-            )
+            raise HTTPException(status_code=500, detail="Backup manager not available")
 
         backup_dir = database.backup_manager.backup_dir
         backup_path = backup_dir / backup_filename
 
         if not backup_path.exists():
             raise HTTPException(
-                status_code=404,
-                detail=f"Backup file not found: {backup_filename}"
+                status_code=404, detail=f"Backup file not found: {backup_filename}"
             )
 
         success = await database.backup_manager.restore_backup(backup_path)
 
         if not success:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to restore backup"
-            )
+            raise HTTPException(status_code=500, detail="Failed to restore backup")
 
         return {
             "status": "ok",
             "message": "Database restored from backup",
             "backup_filename": backup_filename,
-            "warning": "Server requires restart for changes to take effect"
+            "warning": "Server requires restart for changes to take effect",
         }
 
     except HTTPException:

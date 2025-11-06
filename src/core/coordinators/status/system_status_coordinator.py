@@ -5,18 +5,19 @@ Thin orchestrator that delegates to focused status coordinators.
 Extracted from 209-line coordinator into focused coordinators.
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 from src.config import Config
+
 from ..base_coordinator import BaseCoordinator
-from .scheduler_status_coordinator import SchedulerStatusCoordinator
 from .infrastructure_status_coordinator import InfrastructureStatusCoordinator
+from .scheduler_status_coordinator import SchedulerStatusCoordinator
 
 
 class SystemStatusCoordinator(BaseCoordinator):
     """
     Coordinates system component status aggregation.
-    
+
     Responsibilities:
     - Orchestrate status aggregation from focused coordinators
     - Provide unified system status interface
@@ -26,7 +27,7 @@ class SystemStatusCoordinator(BaseCoordinator):
         self,
         config: Config,
         scheduler_status_coordinator: SchedulerStatusCoordinator,
-        infrastructure_status_coordinator: InfrastructureStatusCoordinator
+        infrastructure_status_coordinator: InfrastructureStatusCoordinator,
     ):
         super().__init__(config)
         self.scheduler_status_coordinator = scheduler_status_coordinator
@@ -55,9 +56,10 @@ class SystemStatusCoordinator(BaseCoordinator):
 
     def set_connection_manager(self, connection_manager) -> None:
         """Set the connection manager for infrastructure coordinator."""
-        self.infrastructure_status_coordinator.set_connection_manager(connection_manager)
+        self.infrastructure_status_coordinator.set_connection_manager(
+            connection_manager
+        )
 
     async def cleanup(self) -> None:
         """Cleanup system status coordinator resources."""
         self._log_info("SystemStatusCoordinator cleanup complete")
-

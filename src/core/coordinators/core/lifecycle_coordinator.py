@@ -5,9 +5,9 @@ Manages emergency stop/resume and autonomous operation control.
 Extracted from RoboTraderOrchestrator lines 424-445.
 """
 
-from loguru import logger
 
 from src.config import Config
+
 from ...background_scheduler import BackgroundScheduler
 from ..base_coordinator import BaseCoordinator
 
@@ -22,11 +22,7 @@ class LifecycleCoordinator(BaseCoordinator):
     - Trigger market events
     """
 
-    def __init__(
-        self,
-        config: Config,
-        background_scheduler: BackgroundScheduler
-    ):
+    def __init__(self, config: Config, background_scheduler: BackgroundScheduler):
         super().__init__(config)
         self.background_scheduler = background_scheduler
 

@@ -6,25 +6,26 @@ and provides learnings back to Claude for strategy optimization.
 
 import asyncio
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 import aiofiles
 import aiofiles.os
-import os
-from pathlib import Path
 from loguru import logger
 
 from src.config import Config
-from src.core.event_bus import EventBus, Event, EventType, EventHandler
-from src.core.errors import TradingError, ErrorSeverity
+from src.core.errors import ErrorSeverity, TradingError
+from src.core.event_bus import Event, EventBus, EventHandler, EventType
 from src.models.paper_trading import PaperTrade
-from src.services.paper_trading.performance_calculator import PerformanceCalculator
+from src.services.paper_trading.performance_calculator import \
+    PerformanceCalculator
 
 
 @dataclass
 class StrategyMetrics:
     """Metrics for a specific strategy tag."""
+
     strategy_tag: str
     total_trades: int
     winning_trades: int
@@ -45,6 +46,7 @@ class StrategyMetrics:
 @dataclass
 class StrategyEvolution:
     """Strategy evolution parameters and recommendations."""
+
     strategy_tag: str
     current_metrics: StrategyMetrics
     effectiveness_score: float  # 0-100
@@ -97,14 +99,14 @@ class StrategyEvolutionEngine(EventHandler):
             raise TradingError(
                 f"Failed to initialize strategy evolution engine: {e}",
                 severity=ErrorSeverity.HIGH,
-                recoverable=True
+                recoverable=True,
             )
 
     async def _load_cached_strategies(self) -> None:
         """Load cached strategy metrics from file."""
         try:
             if await aiofiles.os.path.exists(str(self.strategies_file)):
-                async with aiofiles.open(str(self.strategies_file), 'r') as f:
+                async with aiofiles.open(str(self.strategies_file), "r") as f:
                     content = await f.read()
                     data = json.loads(content)
                     for strategy_tag, metrics_dict in data.items():
@@ -122,8 +124,7 @@ class StrategyEvolutionEngine(EventHandler):
             # Calculate trade P&L
             pnl_absolute = (trade.exit_price - trade.entry_price) * trade.quantity
             pnl_percentage = PerformanceCalculator.calculate_pnl_percentage(
-                trade.entry_price,
-                trade.exit_price
+                trade.entry_price, trade.exit_price
             )
 
             # Get or initialize strategy metrics
@@ -143,7 +144,7 @@ class StrategyEvolutionEngine(EventHandler):
                     consecutive_wins=0,
                     consecutive_losses=0,
                     best_trade=pnl_absolute,
-                    worst_trade=pnl_absolute
+                    worst_trade=pnl_absolute,
                 )
 
             metrics = self._strategies[strategy_tag]
@@ -171,12 +172,20 @@ class StrategyEvolutionEngine(EventHandler):
                 metrics.avg_pnl = metrics.total_pnl / metrics.total_trades
 
             # Calculate profit factor
-            wins_total = metrics.best_trade * metrics.winning_trades if metrics.winning_trades > 0 else 0
-            losses_total = abs(metrics.worst_trade) * metrics.losing_trades if metrics.losing_trades > 0 else 0
+            wins_total = (
+                metrics.best_trade * metrics.winning_trades
+                if metrics.winning_trades > 0
+                else 0
+            )
+            losses_total = (
+                abs(metrics.worst_trade) * metrics.losing_trades
+                if metrics.losing_trades > 0
+                else 0
+            )
             if losses_total > 0:
                 metrics.profit_factor = wins_total / losses_total
             elif wins_total > 0:
-                metrics.profit_factor = float('inf')
+                metrics.profit_factor = float("inf")
             else:
                 metrics.profit_factor = 0.0
 
@@ -234,15 +243,19 @@ class StrategyEvolutionEngine(EventHandler):
                 reasoning.append(f"Strong consistency: {metrics.consecutive_wins} wins")
             elif metrics.consecutive_wins >= 2:
                 score += 10
-                reasoning.append(f"Recent winning streak")
+                reasoning.append("Recent winning streak")
             elif metrics.consecutive_losses >= 3:
                 score -= 10
-                reasoning.append(f"Recent losing streak: {metrics.consecutive_losses} losses")
+                reasoning.append(
+                    f"Recent losing streak: {metrics.consecutive_losses} losses"
+                )
 
             # Trade volume component (0-10 points)
             if metrics.total_trades >= 20:
                 score += 10
-                reasoning.append(f"Sufficient sample size: {metrics.total_trades} trades")
+                reasoning.append(
+                    f"Sufficient sample size: {metrics.total_trades} trades"
+                )
             elif metrics.total_trades >= 10:
                 score += 5
                 reasoning.append(f"Growing sample size: {metrics.total_trades} trades")
@@ -254,42 +267,39 @@ class StrategyEvolutionEngine(EventHandler):
             # Determine recommendation
             if score >= 75:
                 recommendation = "increase_use"
-                suggestion = f"This strategy is performing very well. Consider increasing allocation and using it for larger positions."
+                suggestion = "This strategy is performing very well. Consider increasing allocation and using it for larger positions."
             elif score >= 60:
                 recommendation = "maintain_use"
-                suggestion = f"This strategy is solid. Continue using it as part of your portfolio."
+                suggestion = "This strategy is solid. Continue using it as part of your portfolio."
             elif score >= 40:
                 recommendation = "modify_parameters"
-                suggestion = f"This strategy shows promise but needs optimization. Review entry/exit conditions."
+                suggestion = "This strategy shows promise but needs optimization. Review entry/exit conditions."
             elif score >= 20:
                 recommendation = "reduce_use"
-                suggestion = f"Consider reducing reliance on this strategy. Focus on winners instead."
+                suggestion = "Consider reducing reliance on this strategy. Focus on winners instead."
             else:
                 recommendation = "retire"
-                suggestion = f"This strategy is underperforming. Recommend retiring it."
+                suggestion = "This strategy is underperforming. Recommend retiring it."
 
-            adjustments = {
-                "reason": suggestion,
-                "suggested_actions": []
-            }
+            adjustments = {"reason": suggestion, "suggested_actions": []}
 
             if recommendation == "increase_use":
                 adjustments["suggested_actions"] = [
                     "Allocate more capital to this strategy",
                     "Increase position sizing",
-                    "Use more frequently"
+                    "Use more frequently",
                 ]
             elif recommendation == "modify_parameters":
                 adjustments["suggested_actions"] = [
                     "Review entry conditions",
                     "Optimize exit timing",
-                    "Analyze losing trades for patterns"
+                    "Analyze losing trades for patterns",
                 ]
             elif recommendation == "reduce_use":
                 adjustments["suggested_actions"] = [
                     "Reduce allocation",
                     "Use only in strong trending markets",
-                    "Combine with other strategies"
+                    "Combine with other strategies",
                 ]
 
             evolution = StrategyEvolution(
@@ -300,7 +310,7 @@ class StrategyEvolutionEngine(EventHandler):
                 confidence=min(95.0, 50 + (metrics.total_trades / 2)),
                 reasoning=reasoning,
                 suggested_adjustments=adjustments,
-                last_analyzed=datetime.now(timezone.utc).isoformat()
+                last_analyzed=datetime.now(timezone.utc).isoformat(),
             )
 
             self._evolutions[strategy_tag] = evolution
@@ -317,7 +327,7 @@ class StrategyEvolutionEngine(EventHandler):
             sorted_evolutions = sorted(
                 self._evolutions.values(),
                 key=lambda x: x.effectiveness_score,
-                reverse=True
+                reverse=True,
             )
 
             for evolution in sorted_evolutions[:limit]:
@@ -329,7 +339,9 @@ class StrategyEvolutionEngine(EventHandler):
                     "profit_factor": f"{evolution.current_metrics.profit_factor:.2f}",
                     "total_trades": evolution.current_metrics.total_trades,
                     "reasoning": evolution.reasoning,
-                    "actions": evolution.suggested_adjustments.get("suggested_actions", [])
+                    "actions": evolution.suggested_adjustments.get(
+                        "suggested_actions", []
+                    ),
                 }
                 learnings.append(learning)
 
@@ -344,15 +356,17 @@ class StrategyEvolutionEngine(EventHandler):
             total_trades = sum(s.total_trades for s in self._strategies.values())
             total_pnl = sum(s.total_pnl for s in self._strategies.values())
             avg_win_rate = (
-                sum(s.win_rate for s in self._strategies.values()) / len(self._strategies)
-                if self._strategies else 0
+                sum(s.win_rate for s in self._strategies.values())
+                / len(self._strategies)
+                if self._strategies
+                else 0
             )
 
             # Get top performers
             top_performers = sorted(
                 self._strategies.values(),
                 key=lambda x: x.effectiveness_score if x.total_trades >= 3 else -999,
-                reverse=True
+                reverse=True,
             )[:3]
 
             # Get underperformers
@@ -371,7 +385,7 @@ class StrategyEvolutionEngine(EventHandler):
                         "strategy": s.strategy_tag,
                         "win_rate": f"{s.win_rate:.1f}%",
                         "total_pnl": s.total_pnl,
-                        "trades": s.total_trades
+                        "trades": s.total_trades,
                     }
                     for s in top_performers
                 ],
@@ -380,28 +394,29 @@ class StrategyEvolutionEngine(EventHandler):
                         "strategy": s.strategy_tag,
                         "win_rate": f"{s.win_rate:.1f}%",
                         "total_pnl": s.total_pnl,
-                        "trades": s.total_trades
+                        "trades": s.total_trades,
                     }
-                    for s in underperformers if s.total_trades >= 3
+                    for s in underperformers
+                    if s.total_trades >= 3
                 ],
                 "recommendations": [
                     evo.recommendation
                     for evo in self._evolutions.values()
                     if evo.confidence >= 70
-                ]
+                ],
             }
 
     async def _save_strategies(self) -> None:
         """Save strategy metrics to file."""
         try:
-            data = {
-                tag: asdict(metrics)
-                for tag, metrics in self._strategies.items()
-            }
+            data = {tag: asdict(metrics) for tag, metrics in self._strategies.items()}
 
             # Use atomic write
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=str(self.state_dir)) as tmp:
+
+            with tempfile.NamedTemporaryFile(
+                mode="w", delete=False, dir=str(self.state_dir)
+            ) as tmp:
                 json.dump(data, tmp, indent=2)
                 tmp_path = tmp.name
 
@@ -420,12 +435,15 @@ class StrategyEvolutionEngine(EventHandler):
                     "recommendation": evolution.recommendation,
                     "confidence": evolution.confidence,
                     "reasoning": evolution.reasoning,
-                    "last_analyzed": evolution.last_analyzed
+                    "last_analyzed": evolution.last_analyzed,
                 }
 
             # Use atomic write
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=str(self.state_dir)) as tmp:
+
+            with tempfile.NamedTemporaryFile(
+                mode="w", delete=False, dir=str(self.state_dir)
+            ) as tmp:
                 json.dump(data, tmp, indent=2)
                 tmp_path = tmp.name
 

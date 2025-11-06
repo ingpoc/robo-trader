@@ -5,12 +5,11 @@ Fetches live portfolio, holdings, and market data from Zerodha Kite Connect
 instead of CSV files.
 """
 
-from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from src.config import Config
 
 
 async def fetch_live_holdings_from_broker(broker) -> Optional[List[Dict[str, Any]]]:
@@ -72,10 +71,12 @@ async def fetch_margins_from_broker(broker) -> Optional[Dict[str, Any]]:
         return None
 
 
-def normalize_kite_holding(holding: Dict[str, Any], classify_func=None) -> Dict[str, Any]:
+def normalize_kite_holding(
+    holding: Dict[str, Any], classify_func=None
+) -> Dict[str, Any]:
     """
     Normalize Kite holding data to internal format.
-    
+
     Kite format:
     {
         "tradingsymbol": "INFY",
@@ -87,7 +88,7 @@ def normalize_kite_holding(holding: Dict[str, Any], classify_func=None) -> Dict[
         "product": "CNC",
         ...
     }
-    
+
     Internal format:
     {
         "symbol": "INFY",
@@ -106,17 +107,18 @@ def normalize_kite_holding(holding: Dict[str, Any], classify_func=None) -> Dict[
         avg_price = holding.get("average_price", 0.0)
         last_price = holding.get("last_price", 0.0)
         pnl_abs = holding.get("pnl", 0.0)
-        
+
         # Calculate derived values
         invested = qty * avg_price
         current_value = qty * last_price
         pnl_pct = (pnl_abs / invested * 100) if invested > 0 else 0.0
         day_change_pct = holding.get("day_change_percentage", 0.0)
-        
+
         # Classify sector
         from . import analytics
+
         sector = analytics._classify_symbol(symbol)
-        
+
         return {
             "symbol": symbol,
             "qty": qty,
@@ -142,7 +144,7 @@ def normalize_kite_holding(holding: Dict[str, Any], classify_func=None) -> Dict[
 async def get_live_portfolio_data(broker) -> Optional[Dict[str, Any]]:
     """
     Get complete live portfolio data from broker client.
-    
+
     Returns:
         {
             "holdings": [...],
@@ -153,52 +155,49 @@ async def get_live_portfolio_data(broker) -> Optional[Dict[str, Any]]:
     try:
         # Fetch all data in parallel
         import asyncio
-        
+
         holdings_task = fetch_live_holdings_from_broker(broker)
         positions_task = fetch_live_positions_from_broker(broker)
         margins_task = fetch_margins_from_broker(broker)
-        
+
         holdings_raw, positions_raw, margins_raw = await asyncio.gather(
-            holdings_task,
-            positions_task,
-            margins_task,
-            return_exceptions=True
+            holdings_task, positions_task, margins_task, return_exceptions=True
         )
-        
+
         # Handle errors
         if isinstance(holdings_raw, Exception):
             logger.error(f"Holdings fetch failed: {holdings_raw}")
             holdings_raw = None
-        
+
         if isinstance(positions_raw, Exception):
             logger.error(f"Positions fetch failed: {positions_raw}")
             positions_raw = None
-        
+
         if isinstance(margins_raw, Exception):
             logger.error(f"Margins fetch failed: {margins_raw}")
             margins_raw = None
-        
+
         # Normalize holdings
         holdings = []
         if holdings_raw:
             holdings = [normalize_kite_holding(h) for h in holdings_raw if h]
             holdings = [h for h in holdings if h]  # Remove empty dicts
-        
+
         # Extract cash info
         cash = {"free": 0.0, "margin": 0.0}
         if margins_raw and "equity" in margins_raw:
             equity_margins = margins_raw["equity"]
             cash["free"] = equity_margins.get("available", {}).get("live_balance", 0.0)
             cash["margin"] = equity_margins.get("utilised", {}).get("debits", 0.0)
-        
+
         return {
             "holdings": holdings,
             "positions": positions_raw,
             "cash": cash,
             "source": "zerodha_live",
-            "fetched_at": datetime.now(timezone.utc).isoformat()
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
         }
-        
+
     except Exception as e:
         logger.error(f"Error fetching live portfolio data: {e}")
         return None

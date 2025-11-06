@@ -9,7 +9,7 @@ import { newsEarningsAPI } from '@/api/endpoints'
 import { api } from '@/api/client'
 import { useRecommendations } from '@/hooks/useRecommendations'
 import { TrendingUp, TrendingDown, Minus, ExternalLink, Calendar, BarChart3, Target, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-react'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/Accordion'
 
 interface NewsItem {
   symbol: string

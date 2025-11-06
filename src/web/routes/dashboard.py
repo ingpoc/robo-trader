@@ -2,21 +2,21 @@
 
 import logging
 import os
-from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request, Depends
+from typing import Any, Dict
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
 from src.core.errors import TradingError
+
 from ..dependencies import get_container
-from ..utils.error_handlers import (
-    handle_trading_error,
-    handle_validation_error,
-    handle_unexpected_error,
-)
+from ..utils.error_handlers import (handle_trading_error,
+                                    handle_unexpected_error,
+                                    handle_validation_error)
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,7 @@ dashboard_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 @router.get("/dashboard")
 @router.get("/dashboard/")
 async def api_dashboard(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get dashboard data."""
     try:
@@ -44,7 +43,7 @@ async def api_dashboard(
         if not orchestrator or not orchestrator.state_manager:
             return {
                 "error": "System not initialized",
-                "initialization_status": initialization_status
+                "initialization_status": initialization_status,
             }
 
         # Check if initialization is complete
@@ -52,12 +51,18 @@ async def api_dashboard(
             return {
                 "error": "System initialization in progress",
                 "initialization_status": initialization_status,
-                "message": "Please wait for system initialization to complete"
+                "message": "Please wait for system initialization to complete",
             }
 
         portfolio = await orchestrator.state_manager.get_portfolio()
 
-        if not portfolio and orchestrator and config and hasattr(config, 'agents') and config.agents.portfolio_scan.enabled:
+        if (
+            not portfolio
+            and orchestrator
+            and config
+            and hasattr(config, "agents")
+            and config.agents.portfolio_scan.enabled
+        ):
             try:
                 logger.info("Triggering bootstrap portfolio scan")
                 await orchestrator.run_portfolio_scan()
@@ -89,10 +94,10 @@ async def api_dashboard(
             "intents": [intent.to_dict() for intent in intents],
             "config": {
                 "environment": config.environment if config else "unknown",
-                "max_turns": getattr(config, 'max_turns', 50) if config else 50
+                "max_turns": getattr(config, "max_turns", 50) if config else 50,
             },
             "initialization_status": initialization_status,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     except TradingError as e:
@@ -104,8 +109,7 @@ async def api_dashboard(
 @router.get("/portfolio")
 @limiter.limit(dashboard_limit)
 async def get_portfolio(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get portfolio data with lazy bootstrap."""
     try:
@@ -130,10 +134,16 @@ async def get_portfolio(
                 portfolio = await orchestrator.state_manager.get_portfolio()
 
                 if portfolio:
-                    holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
-                    logger.info(f"Portfolio bootstrap completed: {holdings_count} holdings loaded")
+                    holdings_count = (
+                        len(portfolio.holdings) if portfolio.holdings else 0
+                    )
+                    logger.info(
+                        f"Portfolio bootstrap completed: {holdings_count} holdings loaded"
+                    )
                 else:
-                    logger.warning("Portfolio bootstrap completed but still no data available")
+                    logger.warning(
+                        "Portfolio bootstrap completed but still no data available"
+                    )
 
             except TradingError as e:
                 logger.warning(f"Bootstrap failed with trading error: {e}")
@@ -145,7 +155,9 @@ async def get_portfolio(
 
         if not portfolio:
             logger.warning("No portfolio data available after bootstrap")
-            return JSONResponse({"error": "No portfolio data available"}, status_code=404)
+            return JSONResponse(
+                {"error": "No portfolio data available"}, status_code=404
+            )
 
         holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
         logger.info(f"Portfolio data returned successfully: {holdings_count} holdings")
@@ -157,7 +169,9 @@ async def get_portfolio(
         return await handle_validation_error(e)
     except KeyError as e:
         logger.error(f"Orchestrator not found in container: {e}")
-        return JSONResponse({"error": "System not properly initialized"}, status_code=500)
+        return JSONResponse(
+            {"error": "System not properly initialized"}, status_code=500
+        )
     except Exception as e:
         return await handle_unexpected_error(e, "get_portfolio")
 
@@ -172,20 +186,20 @@ async def get_portfolio_summary(request: Request) -> Dict[str, Any]:
                 "balance": 102500,
                 "todayPnL": 500,
                 "monthlyROI": 2.5,
-                "winRate": 65
+                "winRate": 65,
             },
             "options": {
                 "balance": 98500,
                 "todayPnL": -200,
                 "monthlyROI": -1.5,
-                "hedgeCost": 1.2
+                "hedgeCost": 1.2,
             },
             "combined": {
                 "totalBalance": 201000,
                 "totalPnL": 300,
                 "avgROI": 0.5,
-                "activePositions": 8
-            }
+                "activePositions": 8,
+            },
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -204,14 +218,14 @@ async def get_dashboard_alerts(request: Request) -> Dict[str, Any]:
                     "id": "alert_1",
                     "severity": "warning",
                     "message": "Portfolio exposure at 85%",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
                 {
                     "id": "alert_2",
                     "severity": "info",
                     "message": "TCS earnings announced",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             ]
         }
     except TradingError as e:
@@ -222,14 +236,14 @@ async def get_dashboard_alerts(request: Request) -> Dict[str, Any]:
 
 @router.get("/claude-agent/recommendations")
 @limiter.limit(dashboard_limit)
-async def get_claude_recommendations(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_claude_recommendations(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get Claude AI trading recommendations from database."""
     try:
         # TODO: Implement recommendations from database
         # Use the same endpoint as /api/ai/recommendations for consistency
-        return {
-            "recommendations": []
-        }
+        return {"recommendations": []}
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
@@ -238,15 +252,14 @@ async def get_claude_recommendations(request: Request, container: DependencyCont
 
 @router.get("/claude-agent/strategy-metrics")
 @limiter.limit(dashboard_limit)
-async def get_strategy_metrics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_strategy_metrics(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get strategy effectiveness metrics from database."""
     try:
         # TODO: Calculate strategy metrics from paper_trades table
         # Group by strategy_tag, calculate win rate and trade count
-        return {
-            "working": [],
-            "failing": []
-        }
+        return {"working": [], "failing": []}
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
@@ -255,7 +268,9 @@ async def get_strategy_metrics(request: Request, container: DependencyContainer 
 
 @router.get("/claude-agent/status")
 @limiter.limit(dashboard_limit)
-async def get_claude_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_claude_status(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get Claude AI agent status from orchestrator."""
     try:
         orchestrator = await container.get_orchestrator()
@@ -264,8 +279,8 @@ async def get_claude_status(request: Request, container: DependencyContainer = D
 
         # Get token budget from config
         daily_budget = 15000
-        if config and hasattr(config, 'claude_agent'):
-            daily_budget = getattr(config.claude_agent, 'daily_token_budget', 15000)
+        if config and hasattr(config, "claude_agent"):
+            daily_budget = getattr(config.claude_agent, "daily_token_budget", 15000)
 
         # TODO: Get actual token usage from claude_token_usage table
         # TODO: Get trades count from paper_trades table for today
@@ -276,12 +291,18 @@ async def get_claude_status(request: Request, container: DependencyContainer = D
         else:
             # Check if SDK client is actually connected to CLI process
             sdk_connected = claude_auth_status.account_info.get("sdk_connected", False)
-            cli_process_running = claude_auth_status.account_info.get("cli_process_running", False)
+            cli_process_running = claude_auth_status.account_info.get(
+                "cli_process_running", False
+            )
 
             if sdk_connected and cli_process_running:
-                status = "connected/idle"  # SDK client is connected to running CLI process
+                status = (
+                    "connected/idle"  # SDK client is connected to running CLI process
+                )
             else:
-                status = "authenticated"  # CLI is authenticated but no active SDK session
+                status = (
+                    "authenticated"  # CLI is authenticated but no active SDK session
+                )
 
         return {
             "status": status,
@@ -290,7 +311,11 @@ async def get_claude_status(request: Request, container: DependencyContainer = D
             "tradesExecutedToday": 0,
             "nextScheduledTask": None,
             "lastAction": None,
-            "auth_method": claude_auth_status.account_info.get("auth_method") if claude_auth_status else None
+            "auth_method": (
+                claude_auth_status.account_info.get("auth_method")
+                if claude_auth_status
+                else None
+            ),
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -300,7 +325,9 @@ async def get_claude_status(request: Request, container: DependencyContainer = D
 
 @router.get("/system/health")
 @limiter.limit(dashboard_limit)
-async def get_system_health(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_system_health(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get system health status from orchestrator."""
     try:
         orchestrator = await container.get_orchestrator()
@@ -319,19 +346,19 @@ async def get_system_health(request: Request, container: DependencyContainer = D
             scheduler = system_status["scheduler_status"]
             components["scheduler"] = {
                 "status": "healthy" if scheduler.get("running") else "stopped",
-                "lastRun": scheduler.get("last_run_time", "unknown")
+                "lastRun": scheduler.get("last_run_time", "unknown"),
             }
 
         # Database status
         components["database"] = {
             "status": "connected",  # If we got here, DB is connected
-            "connections": 1  # TODO: Get actual connection count
+            "connections": 1,  # TODO: Get actual connection count
         }
 
         # WebSocket status
         components["websocket"] = {
             "status": "connected",
-            "clients": 0  # TODO: Get from connection_manager
+            "clients": 0,  # TODO: Get from connection_manager
         }
 
         # Claude agent status
@@ -339,18 +366,18 @@ async def get_system_health(request: Request, container: DependencyContainer = D
             claude = system_status["claude_status"]
             components["claudeAgent"] = {
                 "status": "active" if claude.get("authenticated") else "inactive",
-                "tasksCompleted": 0  # TODO: Track task completion
+                "tasksCompleted": 0,  # TODO: Track task completion
             }
         else:
             components["claudeAgent"] = {
                 "status": "not_configured",
-                "tasksCompleted": 0
+                "tasksCompleted": 0,
             }
 
         return {
             "status": "healthy",
             "components": components,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -360,7 +387,9 @@ async def get_system_health(request: Request, container: DependencyContainer = D
 
 @router.get("/scheduler/status")
 @limiter.limit(dashboard_limit)
-async def get_scheduler_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_scheduler_status(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get scheduler status from background scheduler."""
     try:
         orchestrator = await container.get_orchestrator()
@@ -375,7 +404,7 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
             "tasksQueued": 0,  # TODO: Get from queue coordinator
             "tasksCompleted": 0,  # TODO: Track completed tasks
             "tasksFailed": 0,  # TODO: Track failed tasks
-            "uptime": None  # TODO: Track scheduler uptime
+            "uptime": None,  # TODO: Track scheduler uptime
         }
     except TradingError as e:
         return await handle_trading_error(e)

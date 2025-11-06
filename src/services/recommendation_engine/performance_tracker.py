@@ -8,11 +8,13 @@ Handles:
 """
 
 import logging
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
+
 from src.core.database_state import DatabaseStateManager
+
 from .models import RecommendationResult
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ class PerformanceTracker:
                 "risk_level": result.risk_level,
                 "time_horizon": result.time_horizon,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "status": "ACTIVE"  # ACTIVE, HIT, MISS
+                "status": "ACTIVE",  # ACTIVE, HIT, MISS
             }
 
             # Store in database (implementation depends on your DB schema)
@@ -49,7 +51,9 @@ class PerformanceTracker:
             if recommendation_id:
                 # Create performance entry
                 await self._create_performance_entry(result, recommendation_id)
-                logger.info(f"Stored recommendation for {result.symbol} with ID: {recommendation_id}")
+                logger.info(
+                    f"Stored recommendation for {result.symbol} with ID: {recommendation_id}"
+                )
                 return recommendation_id
             else:
                 logger.warning(f"Failed to store recommendation for {result.symbol}")
@@ -59,17 +63,18 @@ class PerformanceTracker:
             logger.error(f"Error storing recommendation for {result.symbol}: {e}")
             return None
 
-    async def _store_in_database(self, recommendation_data: Dict[str, Any]) -> Optional[int]:
+    async def _store_in_database(
+        self, recommendation_data: Dict[str, Any]
+    ) -> Optional[int]:
         """Store recommendation in actual database."""
         # This would implement actual database storage
         # For now, return a mock ID
         import random
+
         return random.randint(1000, 9999)
 
     async def _create_performance_entry(
-        self,
-        result: RecommendationResult,
-        recommendation_id: int
+        self, result: RecommendationResult, recommendation_id: int
     ) -> None:
         """Create performance tracking entry."""
         try:
@@ -87,7 +92,7 @@ class PerformanceTracker:
                 "days_held": 0,
                 "status": "PENDING",  # PENDING, ACTIVE, CLOSED
                 "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
 
             # Store performance entry
@@ -102,9 +107,7 @@ class PerformanceTracker:
         pass
 
     async def get_recommendation_history(
-        self,
-        symbol: Optional[str] = None,
-        limit: int = 10
+        self, symbol: Optional[str] = None, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """Get recommendation history for analysis."""
         try:
@@ -117,9 +120,7 @@ class PerformanceTracker:
             return []
 
     async def _query_recommendation_history(
-        self,
-        symbol: Optional[str],
-        limit: int
+        self, symbol: Optional[str], limit: int
     ) -> List[Dict[str, Any]]:
         """Query database for recommendation history."""
         # Implementation depends on your database schema
@@ -127,8 +128,7 @@ class PerformanceTracker:
         return []
 
     async def calculate_performance_metrics(
-        self,
-        days_back: int = 30
+        self, days_back: int = 30
     ) -> Dict[str, Any]:
         """Calculate performance metrics for the recommendation engine."""
         try:
@@ -143,7 +143,7 @@ class PerformanceTracker:
                     "accuracy": 0.0,
                     "avg_return": 0.0,
                     "hit_rate": 0.0,
-                    "recommendations_by_type": {}
+                    "recommendations_by_type": {},
                 }
 
             # Calculate metrics
@@ -169,8 +169,14 @@ class PerformanceTracker:
                     total_return += rec["return_pct"]
 
             # Calculate final metrics
-            hit_rate = (successful_recommendations / total_recommendations) * 100 if total_recommendations > 0 else 0
-            avg_return = total_return / total_recommendations if total_recommendations > 0 else 0
+            hit_rate = (
+                (successful_recommendations / total_recommendations) * 100
+                if total_recommendations > 0
+                else 0
+            )
+            avg_return = (
+                total_return / total_recommendations if total_recommendations > 0 else 0
+            )
 
             return {
                 "total_recommendations": total_recommendations,
@@ -179,7 +185,7 @@ class PerformanceTracker:
                 "avg_return": round(avg_return, 2),
                 "recommendations_by_type": recommendations_by_type,
                 "period_days": days_back,
-                "calculated_at": datetime.now(timezone.utc).isoformat()
+                "calculated_at": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
@@ -190,7 +196,7 @@ class PerformanceTracker:
                 "avg_return": 0.0,
                 "hit_rate": 0.0,
                 "recommendations_by_type": {},
-                "error": str(e)
+                "error": str(e),
             }
 
     def _is_successful_recommendation(self, recommendation: Dict[str, Any]) -> bool:
@@ -199,7 +205,9 @@ class PerformanceTracker:
         # based on actual price movements vs targets
         return recommendation.get("status") == "HIT"
 
-    async def _get_recommendations_since(self, cutoff_date: datetime) -> List[Dict[str, Any]]:
+    async def _get_recommendations_since(
+        self, cutoff_date: datetime
+    ) -> List[Dict[str, Any]]:
         """Get recommendations since cutoff date."""
         # Implementation depends on your database schema
         return []
@@ -218,7 +226,7 @@ class PerformanceTracker:
                 "last_30_days": stats_30d,
                 "last_90_days": stats_90d,
                 "all_time": await self.calculate_performance_metrics(days_back=365),
-                "generated_at": datetime.now(timezone.utc).isoformat()
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
@@ -227,5 +235,5 @@ class PerformanceTracker:
                 "last_30_days": {},
                 "last_90_days": {},
                 "all_time": {},
-                "error": str(e)
+                "error": str(e),
             }

@@ -9,16 +9,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from '@/components/ui/Table'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@/components/ui/Dropdown-menu'
 import { ChevronUp, ChevronDown, Search, MoreHorizontal, TrendingUp, TrendingDown, Edit } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/Tooltip'
 
 interface HoldingsTableProps {
   holdings: Holding[]

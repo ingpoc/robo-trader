@@ -4,15 +4,14 @@ Broker MCP integration for Robo Trader.
 Handles broker connections and portfolio data fetching using Zerodha Kite Connect API.
 """
 
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone
 import asyncio
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 from loguru import logger
-import httpx
 
 from src.config import Config
-from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
 
 
 class BrokerClient:
@@ -41,13 +40,17 @@ class BrokerClient:
                 # Try to get stored token
                 token_data = await self._get_stored_token()
                 if not token_data:
-                    logger.warning("No valid OAuth token found for broker authentication")
+                    logger.warning(
+                        "No valid OAuth token found for broker authentication"
+                    )
                     return False
 
                 # Initialize Kite client with access token
                 await self._initialize_kite_client(token_data["access_token"])
 
-                logger.info(f"Successfully authenticated with Zerodha for user: {token_data.get('user_id')}")
+                logger.info(
+                    f"Successfully authenticated with Zerodha for user: {token_data.get('user_id')}"
+                )
                 return True
 
         except Exception as e:
@@ -62,13 +65,13 @@ class BrokerClient:
             # Import kiteconnect here to avoid import errors if not installed
             from kiteconnect import KiteConnect
 
-            api_key = getattr(self.config.integration, 'zerodha_api_key', None)
+            api_key = getattr(self.config.integration, "zerodha_api_key", None)
             if not api_key:
                 raise TradingError(
                     "Zerodha API key not configured",
                     category=ErrorCategory.CONFIGURATION,
                     severity=ErrorSeverity.HIGH,
-                    recoverable=False
+                    recoverable=False,
                 )
 
             # Initialize Kite Connect client
@@ -82,7 +85,7 @@ class BrokerClient:
                 category=ErrorCategory.CONFIGURATION,
                 severity=ErrorSeverity.HIGH,
                 recoverable=False,
-                details=str(e)
+                details=str(e),
             )
         except Exception as e:
             raise TradingError(
@@ -90,7 +93,7 @@ class BrokerClient:
                 category=ErrorCategory.API,
                 severity=ErrorSeverity.HIGH,
                 recoverable=True,
-                retry_after_seconds=30
+                retry_after_seconds=30,
             )
 
     async def _get_stored_token(self) -> Optional[Dict[str, Any]]:
@@ -98,20 +101,22 @@ class BrokerClient:
         try:
             # First, check ENV variables for token
             from ..core.env_helpers import get_zerodha_token_from_env
+
             env_token = get_zerodha_token_from_env()
             if env_token:
                 logger.info("Using Zerodha OAuth token from ENV variable")
                 return env_token
-            
+
             # Fallback to token file
-            import os
-            import aiofiles
             import json
+            import os
+
+            import aiofiles
 
             if not os.path.exists(self._token_file):
                 return None
 
-            async with aiofiles.open(self._token_file, 'r') as f:
+            async with aiofiles.open(self._token_file, "r") as f:
                 content = await f.read()
                 token_data = json.loads(content)
 
@@ -133,6 +138,7 @@ class BrokerClient:
         """Delete stored token file."""
         try:
             import os
+
             if os.path.exists(self._token_file):
                 os.remove(self._token_file)
                 logger.info("Deleted expired OAuth token file")
@@ -156,7 +162,7 @@ class BrokerClient:
                         category=ErrorCategory.API,
                         severity=ErrorSeverity.HIGH,
                         recoverable=True,
-                        retry_after_seconds=60
+                        retry_after_seconds=60,
                     )
 
             holdings = self.kite.holdings()
@@ -177,7 +183,7 @@ class BrokerClient:
                 category=ErrorCategory.API,
                 severity=ErrorSeverity.HIGH,
                 recoverable=True,
-                retry_after_seconds=30
+                retry_after_seconds=30,
             )
 
     async def positions(self) -> dict:
@@ -190,7 +196,7 @@ class BrokerClient:
                         category=ErrorCategory.API,
                         severity=ErrorSeverity.HIGH,
                         recoverable=True,
-                        retry_after_seconds=60
+                        retry_after_seconds=60,
                     )
 
             positions = self.kite.positions()
@@ -211,7 +217,7 @@ class BrokerClient:
                 category=ErrorCategory.API,
                 severity=ErrorSeverity.HIGH,
                 recoverable=True,
-                retry_after_seconds=30
+                retry_after_seconds=30,
             )
 
     async def margins(self) -> dict:
@@ -224,7 +230,7 @@ class BrokerClient:
                         category=ErrorCategory.API,
                         severity=ErrorSeverity.HIGH,
                         recoverable=True,
-                        retry_after_seconds=60
+                        retry_after_seconds=60,
                     )
 
             margins = self.kite.margins()
@@ -245,7 +251,7 @@ class BrokerClient:
                 category=ErrorCategory.API,
                 severity=ErrorSeverity.HIGH,
                 recoverable=True,
-                retry_after_seconds=30
+                retry_after_seconds=30,
             )
 
     async def quote(self, symbol: str) -> dict:
@@ -258,7 +264,7 @@ class BrokerClient:
                         category=ErrorCategory.API,
                         severity=ErrorSeverity.HIGH,
                         recoverable=True,
-                        retry_after_seconds=60
+                        retry_after_seconds=60,
                     )
 
             quotes = self.kite.quote(symbol)
@@ -279,7 +285,7 @@ class BrokerClient:
                 category=ErrorCategory.API,
                 severity=ErrorSeverity.HIGH,
                 recoverable=True,
-                retry_after_seconds=30
+                retry_after_seconds=30,
             )
 
 

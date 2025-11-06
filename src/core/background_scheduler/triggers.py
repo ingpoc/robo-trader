@@ -4,8 +4,7 @@ Handles periodic and time-based task scheduling (morning, evening routines, etc.
 """
 
 import logging
-from typing import Any, Dict, List
-from datetime import datetime, time, timezone
+from datetime import datetime, time
 
 from ...models.scheduler import QueueName, TaskType
 from ...services.scheduler.task_service import SchedulerTaskService
@@ -22,7 +21,7 @@ class Triggers:
         task_service: SchedulerTaskService,
         monthly_reset_monitor: MonthlyResetMonitor,
         market_open_time: time,
-        market_close_time: time
+        market_close_time: time,
     ):
         """Initialize trigger handlers.
 
@@ -56,7 +55,7 @@ class Triggers:
             queue_name=QueueName.AI_ANALYSIS,
             task_type=TaskType.CLAUDE_MORNING_PREP,
             payload={"symbols": symbols, "scheduled": True},
-            priority=9
+            priority=9,
         )
 
     async def run_evening_routine(self) -> None:
@@ -68,7 +67,7 @@ class Triggers:
             queue_name=QueueName.AI_ANALYSIS,
             task_type=TaskType.CLAUDE_EVENING_REVIEW,
             payload={"scheduled": True},
-            priority=8
+            priority=8,
         )
 
         # Check for monthly reset
@@ -80,13 +79,16 @@ class Triggers:
         Skip running routines during startup to avoid database conflicts.
         Routines will be triggered by scheduled timers or manual triggers.
         """
-        logger.info("Daily routines scheduling initialized (routines will run on schedule)")
+        logger.info(
+            "Daily routines scheduling initialized (routines will run on schedule)"
+        )
 
     async def check_monthly_reset(self) -> None:
         """Check and execute monthly performance reset if needed."""
         try:
             # Get paper trading account manager from container
             from ...core.di import get_container
+
             container = await get_container()
             if not container:
                 logger.warning("Container not available for monthly reset check")
@@ -94,7 +96,9 @@ class Triggers:
 
             account_manager = await container.get("paper_trading_account_manager")
             if not account_manager:
-                logger.warning("Paper trading account manager not available for monthly reset")
+                logger.warning(
+                    "Paper trading account manager not available for monthly reset"
+                )
                 return
 
             # Get current balances and closed trades for both account types
@@ -114,7 +118,11 @@ class Triggers:
 
             # Check options account reset
             options_reset = await self.monthly_reset_monitor.check_and_execute_reset(
-                account_manager, options_balance, initial_balance, options_trades, "options"
+                account_manager,
+                options_balance,
+                initial_balance,
+                options_trades,
+                "options",
             )
 
             if swing_reset or options_reset:
@@ -133,8 +141,10 @@ class Triggers:
         Returns:
             True if within market open hour
         """
-        return self.market_open_time <= current_time <= self.market_open_time.replace(
-            hour=self.market_open_time.hour + 1
+        return (
+            self.market_open_time
+            <= current_time
+            <= self.market_open_time.replace(hour=self.market_open_time.hour + 1)
         )
 
     def is_market_close_time(self, current_time: time) -> bool:
@@ -146,9 +156,11 @@ class Triggers:
         Returns:
             True if within market close hour
         """
-        return self.market_close_time.replace(
-            hour=self.market_close_time.hour - 1
-        ) <= current_time <= self.market_close_time
+        return (
+            self.market_close_time.replace(hour=self.market_close_time.hour - 1)
+            <= current_time
+            <= self.market_close_time
+        )
 
     @staticmethod
     def is_weekday(dt: datetime) -> bool:
@@ -171,19 +183,19 @@ class Triggers:
             queue_name=QueueName.PORTFOLIO_SYNC,
             task_type=TaskType.SYNC_ACCOUNT_BALANCES,
             payload={"scheduled": True},
-            priority=10  # High priority
+            priority=10,  # High priority
         )
 
         await self.task_service.create_task(
             queue_name=QueueName.PORTFOLIO_SYNC,
             task_type=TaskType.UPDATE_POSITIONS,
             payload={"scheduled": True},
-            priority=9
+            priority=9,
         )
 
         await self.task_service.create_task(
             queue_name=QueueName.PORTFOLIO_SYNC,
             task_type=TaskType.VALIDATE_PORTFOLIO_RISKS,
             payload={"scheduled": True},
-            priority=8
+            priority=8,
         )

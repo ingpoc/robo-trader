@@ -6,11 +6,12 @@ Extracted from QueueCoordinator for single responsibility.
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from src.config import Config
-from ...event_bus import EventBus, Event, EventType
 from src.services.event_router_service import EventRouterService
+
+from ...event_bus import Event, EventBus, EventType
 from ..base_coordinator import BaseCoordinator
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class QueueEventCoordinator(BaseCoordinator):
     """
     Coordinates queue event routing and handlers.
-    
+
     Responsibilities:
     - Handle event routing
     - Manage event handlers
@@ -30,7 +31,7 @@ class QueueEventCoordinator(BaseCoordinator):
         self,
         config: Config,
         event_bus: EventBus,
-        event_router_service: Optional[EventRouterService] = None
+        event_router_service: Optional[EventRouterService] = None,
     ):
         super().__init__(config)
         self.event_bus = event_bus
@@ -43,7 +44,9 @@ class QueueEventCoordinator(BaseCoordinator):
         # Subscribe to relevant events
         if self.event_bus:
             self.event_bus.subscribe(EventType.MARKET_NEWS, self._handle_market_event)
-            self.event_bus.subscribe(EventType.MARKET_EARNINGS, self._handle_earnings_event)
+            self.event_bus.subscribe(
+                EventType.MARKET_EARNINGS, self._handle_earnings_event
+            )
 
         # Start event router service
         if self.event_router_service:
@@ -71,7 +74,7 @@ class QueueEventCoordinator(BaseCoordinator):
                 "Event router service not available",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.MEDIUM,
-                recoverable=False
+                recoverable=False,
             )
 
         try:
@@ -83,7 +86,7 @@ class QueueEventCoordinator(BaseCoordinator):
                 f"Event routing failed: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.MEDIUM,
-                recoverable=True
+                recoverable=True,
             )
 
     async def _handle_market_event(self, event: Event) -> None:
@@ -98,7 +101,9 @@ class QueueEventCoordinator(BaseCoordinator):
             if impact_score > 0.7 and self.event_router_service:
                 triggered_actions = await self.event_router_service.handle_event(event)
                 if triggered_actions:
-                    self._log_info(f"Triggered {len(triggered_actions)} actions from market event")
+                    self._log_info(
+                        f"Triggered {len(triggered_actions)} actions from market event"
+                    )
 
         except Exception as e:
             self._log_error(f"Error handling market event: {e}")
@@ -113,7 +118,9 @@ class QueueEventCoordinator(BaseCoordinator):
             if self.event_router_service:
                 triggered_actions = await self.event_router_service.handle_event(event)
                 if triggered_actions:
-                    self._log_info(f"Triggered {len(triggered_actions)} actions from earnings event")
+                    self._log_info(
+                        f"Triggered {len(triggered_actions)} actions from earnings event"
+                    )
 
         except Exception as e:
             self._log_error(f"Error handling earnings event: {e}")
@@ -128,4 +135,3 @@ class QueueEventCoordinator(BaseCoordinator):
             status = self.event_router_service.get_status()
             return "healthy" if status.get("running") else "stopped"
         return "not_available"
-

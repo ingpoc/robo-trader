@@ -8,9 +8,8 @@ These tools allow Claude to:
 4. Track prompt performance over time
 """
 
-from typing import Dict, Any, List
-import json
-import re
+from typing import Any, Dict, List
+
 from loguru import logger
 
 
@@ -32,19 +31,19 @@ class PromptOptimizationTools:
                         "data_type": {
                             "type": "string",
                             "enum": ["earnings", "news", "fundamentals", "metrics"],
-                            "description": "Type of data received"
+                            "description": "Type of data received",
                         },
                         "data": {
                             "type": "string",
-                            "description": "The actual data received from Perplexity"
+                            "description": "The actual data received from Perplexity",
                         },
                         "prompt_used": {
                             "type": "string",
-                            "description": "The prompt that was used to get this data"
-                        }
+                            "description": "The prompt that was used to get this data",
+                        },
                     },
-                    "required": ["data_type", "data", "prompt_used"]
-                }
+                    "required": ["data_type", "data", "prompt_used"],
+                },
             },
             {
                 "name": "improve_prompt",
@@ -55,29 +54,35 @@ class PromptOptimizationTools:
                         "data_type": {
                             "type": "string",
                             "enum": ["earnings", "news", "fundamentals", "metrics"],
-                            "description": "Type of data being fetched"
+                            "description": "Type of data being fetched",
                         },
                         "current_prompt": {
                             "type": "string",
-                            "description": "Current prompt that needs improvement"
+                            "description": "Current prompt that needs improvement",
                         },
                         "missing_elements": {
                             "type": "array",
                             "items": {"type": "object"},
-                            "description": "Elements that are missing from the data"
+                            "description": "Elements that are missing from the data",
                         },
                         "redundant_elements": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Elements that are redundant or unnecessary"
+                            "description": "Elements that are redundant or unnecessary",
                         },
                         "quality_feedback": {
                             "type": "string",
-                            "description": "Claude's feedback on current data quality"
-                        }
+                            "description": "Claude's feedback on current data quality",
+                        },
                     },
-                    "required": ["data_type", "current_prompt", "missing_elements", "redundant_elements", "quality_feedback"]
-                }
+                    "required": [
+                        "data_type",
+                        "current_prompt",
+                        "missing_elements",
+                        "redundant_elements",
+                        "quality_feedback",
+                    ],
+                },
             },
             {
                 "name": "save_optimized_prompt",
@@ -88,29 +93,34 @@ class PromptOptimizationTools:
                         "data_type": {
                             "type": "string",
                             "enum": ["earnings", "news", "fundamentals", "metrics"],
-                            "description": "Type of data this prompt fetches"
+                            "description": "Type of data this prompt fetches",
                         },
                         "original_prompt": {
                             "type": "string",
-                            "description": "Original prompt before optimization"
+                            "description": "Original prompt before optimization",
                         },
                         "optimized_prompt": {
                             "type": "string",
-                            "description": "Claude's optimized version of the prompt"
+                            "description": "Claude's optimized version of the prompt",
                         },
                         "quality_score": {
                             "type": "number",
                             "minimum": 1,
                             "maximum": 10,
-                            "description": "Claude's satisfaction with data quality (1-10)"
+                            "description": "Claude's satisfaction with data quality (1-10)",
                         },
                         "optimization_notes": {
                             "type": "string",
-                            "description": "Claude's notes on why this version is better"
-                        }
+                            "description": "Claude's notes on why this version is better",
+                        },
                     },
-                    "required": ["data_type", "original_prompt", "optimized_prompt", "quality_score"]
-                }
+                    "required": [
+                        "data_type",
+                        "original_prompt",
+                        "optimized_prompt",
+                        "quality_score",
+                    ],
+                },
             },
             {
                 "name": "get_prompt_suggestions",
@@ -121,17 +131,17 @@ class PromptOptimizationTools:
                         "data_type": {
                             "type": "string",
                             "enum": ["earnings", "news", "fundamentals", "metrics"],
-                            "description": "Type of data to fetch"
+                            "description": "Type of data to fetch",
                         },
                         "current_issues": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Current issues with data quality"
-                        }
+                            "description": "Current issues with data quality",
+                        },
                     },
-                    "required": ["data_type"]
-                }
-            }
+                    "required": ["data_type"],
+                },
+            },
         ]
 
     async def analyze_data_quality(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -157,11 +167,13 @@ class PromptOptimizationTools:
                 quality_score += 2.0  # Each criterion worth 2 points (max 10)
                 strengths.append(description)
             else:
-                missing_elements.append({
-                    "criterion": criterion,
-                    "description": description,
-                    "why_important": self._explain_importance(criterion, data_type)
-                })
+                missing_elements.append(
+                    {
+                        "criterion": criterion,
+                        "description": description,
+                        "why_important": self._explain_importance(criterion, data_type),
+                    }
+                )
 
         # Check for redundant content
         redundant_elements = self._find_redundant_content(data, data_type)
@@ -169,7 +181,9 @@ class PromptOptimizationTools:
         # Generate feedback
         feedback = f"Data quality {quality_score}/10 for {data_type}. "
         if missing_elements:
-            feedback += f"Missing: {', '.join([m['criterion'] for m in missing_elements])}. "
+            feedback += (
+                f"Missing: {', '.join([m['criterion'] for m in missing_elements])}. "
+            )
         if redundant_elements:
             feedback += f"Redundant: {', '.join(redundant_elements)}."
         if strengths:
@@ -183,7 +197,9 @@ class PromptOptimizationTools:
             "strengths": strengths,
             "data_type": data_type,
             "analysis_complete": True,
-            "recommendations": self._generate_recommendations(data_type, missing_elements, redundant_elements)
+            "recommendations": self._generate_recommendations(
+                data_type, missing_elements, redundant_elements
+            ),
         }
 
     async def improve_prompt(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -227,7 +243,9 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
             "data_type": data_type,
             "focus_areas": self._get_focus_areas(data_type, missing_elements),
             "expected_improvement": f"Should improve {data_type} data quality from current feedback",
-            "quality_enhancements": self._get_quality_enhancements(data_type, missing_elements)
+            "quality_enhancements": self._get_quality_enhancements(
+                data_type, missing_elements
+            ),
         }
 
     async def save_optimized_prompt(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -241,7 +259,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                 optimized_prompt=args["optimized_prompt"],
                 quality_score=args["quality_score"],
                 session_id="current_session",  # Would get from context
-                optimization_attempts=[]  # Would be populated from context
+                optimization_attempts=[],  # Would be populated from context
             )
 
             return {
@@ -250,7 +268,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                 "data_type": args["data_type"],
                 "quality_score": args["quality_score"],
                 "message": f"Optimized {args['data_type']} prompt saved successfully",
-                "optimization_notes": args.get("optimization_notes", "")
+                "optimization_notes": args.get("optimization_notes", ""),
             }
 
         except Exception as e:
@@ -258,7 +276,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
             return {
                 "status": "error",
                 "error": str(e),
-                "message": "Failed to save optimized prompt"
+                "message": "Failed to save optimized prompt",
             }
 
     async def get_prompt_suggestions(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -276,7 +294,9 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
         common_issues = self._identify_common_issues(history, current_issues)
 
         # Generate specific suggestions
-        suggestions = self._generate_data_type_suggestions(data_type, successful_patterns, common_issues)
+        suggestions = self._generate_data_type_suggestions(
+            data_type, successful_patterns, common_issues
+        )
 
         return {
             "data_type": data_type,
@@ -284,11 +304,15 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
             "successful_patterns": successful_patterns,
             "common_issues": common_issues,
             "historical_performance": {
-                "avg_quality": sum(h["quality_score"] for h in history) / len(history) if history else 0,
+                "avg_quality": (
+                    sum(h["quality_score"] for h in history) / len(history)
+                    if history
+                    else 0
+                ),
                 "total_optimizations": len(history),
-                "recent_trend": self._calculate_recent_trend(trends.get(data_type, []))
+                "recent_trend": self._calculate_recent_trend(trends.get(data_type, [])),
             },
-            "recommended_focus": self._get_recommended_focus(data_type, current_issues)
+            "recommended_focus": self._get_recommended_focus(data_type, current_issues),
         }
 
     def _get_quality_criteria(self, data_type: str) -> Dict[str, str]:
@@ -300,29 +324,29 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                 "revenue_growth": "Revenue growth rates (YoY and QoQ) with specific percentages",
                 "management_guidance": "Management guidance with specific forward-looking statements",
                 "profit_margins": "Gross, operating, and net profit margins with trend analysis",
-                "earnings_surprise": "Detailed earnings surprise analysis and market reaction"
+                "earnings_surprise": "Detailed earnings surprise analysis and market reaction",
             },
             "news": {
                 "sentiment_analysis": "Clear sentiment classification (positive/negative/neutral) with impact levels",
                 "news_categorization": "News categorized by type (earnings, M&A, product, regulatory, etc.)",
                 "market_relevance": "Assessment of direct/indirect impact on stock price",
                 "source_quality": "Reliable sources with publication timestamps",
-                "trading_signals": "Clear indicators of how this news affects trading decisions"
+                "trading_signals": "Clear indicators of how this news affects trading decisions",
             },
             "fundamentals": {
                 "valuation_metrics": "P/E, P/S, P/B ratios with industry comparisons",
                 "profitability_analysis": "ROE, ROA, margins with trend analysis",
                 "financial_health": "Debt ratios, liquidity metrics, cash flow analysis",
                 "growth_sustainability": "Assessment of whether current growth is sustainable",
-                "competitive_advantage": "Company's competitive position and market share"
+                "competitive_advantage": "Company's competitive position and market share",
             },
             "metrics": {
                 "technical_signals": "Specific technical indicators with clear buy/sell signals",
                 "volume_analysis": "Volume patterns confirming price movements",
                 "price_levels": "Key support/resistance levels and breakout points",
                 "momentum_indicators": "Momentum strength and trend analysis",
-                "risk_metrics": "Volatility measures and risk assessment"
-            }
+                "risk_metrics": "Volatility measures and risk assessment",
+            },
         }
 
         return criteria.get(data_type, {})
@@ -332,11 +356,41 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
 
         # Use NLP/keyword matching to check for specific content
         keywords = {
-            "eps_vs_estimated": ["eps", "estimated", "actual", "surprise", "beat", "miss"],
-            "revenue_growth": ["revenue", "growth", "%", "yoy", "qoq", "year-over-year"],
-            "sentiment_analysis": ["sentiment", "positive", "negative", "neutral", "impact", "bullish", "bearish"],
+            "eps_vs_estimated": [
+                "eps",
+                "estimated",
+                "actual",
+                "surprise",
+                "beat",
+                "miss",
+            ],
+            "revenue_growth": [
+                "revenue",
+                "growth",
+                "%",
+                "yoy",
+                "qoq",
+                "year-over-year",
+            ],
+            "sentiment_analysis": [
+                "sentiment",
+                "positive",
+                "negative",
+                "neutral",
+                "impact",
+                "bullish",
+                "bearish",
+            ],
             "valuation_metrics": ["p/e", "p/s", "p/b", "ratio", "industry", "multiple"],
-            "technical_signals": ["rsi", "macd", "signal", "oversold", "overbought", "crossover", "divergence"]
+            "technical_signals": [
+                "rsi",
+                "macd",
+                "signal",
+                "oversold",
+                "overbought",
+                "crossover",
+                "divergence",
+            ],
         }
 
         criterion_keywords = keywords.get(criterion, [criterion])
@@ -344,7 +398,9 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
 
         # Check if enough keywords are present
         matches = sum(1 for keyword in criterion_keywords if keyword in data_lower)
-        return matches >= max(1, len(criterion_keywords) * 0.3)  # At least 30% of keywords present
+        return matches >= max(
+            1, len(criterion_keywords) * 0.3
+        )  # At least 30% of keywords present
 
     def _explain_importance(self, criterion: str, data_type: str) -> str:
         """Explain why a quality criterion is important for trading."""
@@ -354,19 +410,39 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
             "revenue_growth": "Revenue growth indicates business expansion and future profitability potential",
             "sentiment_analysis": "News sentiment drives short-term price action and trading volume",
             "valuation_metrics": "Valuation determines if stock is over/undervalued relative to peers and market",
-            "technical_signals": "Technical indicators provide entry/exit timing signals and trend confirmation"
+            "technical_signals": "Technical indicators provide entry/exit timing signals and trend confirmation",
         }
 
-        return importance_map.get(criterion, f"Important for {data_type} analysis and trading decisions")
+        return importance_map.get(
+            criterion, f"Important for {data_type} analysis and trading decisions"
+        )
 
     def _find_redundant_content(self, data: str, data_type: str) -> List[str]:
         """Find redundant or unnecessary content in data."""
 
         redundant_patterns = {
-            "earnings": ["company overview", "business description", "general information", "about the company"],
-            "news": ["background information", "company history", "general market overview", "disclaimer"],
-            "fundamentals": ["basic company information", "general industry overview", "company profile"],
-            "metrics": ["general market conditions", "basic stock information", "trading disclaimer"]
+            "earnings": [
+                "company overview",
+                "business description",
+                "general information",
+                "about the company",
+            ],
+            "news": [
+                "background information",
+                "company history",
+                "general market overview",
+                "disclaimer",
+            ],
+            "fundamentals": [
+                "basic company information",
+                "general industry overview",
+                "company profile",
+            ],
+            "metrics": [
+                "general market conditions",
+                "basic stock information",
+                "trading disclaimer",
+            ],
         }
 
         redundant = []
@@ -376,26 +452,41 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
 
         return redundant
 
-    def _generate_recommendations(self, data_type: str, missing_elements: List[Dict], redundant_elements: List[str]) -> List[str]:
+    def _generate_recommendations(
+        self,
+        data_type: str,
+        missing_elements: List[Dict],
+        redundant_elements: List[str],
+    ) -> List[str]:
         """Generate specific recommendations for improvement."""
 
         recommendations = []
 
         for element in missing_elements:
-            recommendations.append(f"Add {element['description']} - {element['why_important']}")
+            recommendations.append(
+                f"Add {element['description']} - {element['why_important']}"
+            )
 
         if redundant_elements:
-            recommendations.append(f"Remove redundant content: {', '.join(redundant_elements[:3])}")
+            recommendations.append(
+                f"Remove redundant content: {', '.join(redundant_elements[:3])}"
+            )
 
         # Add data-type specific recommendations
         if data_type == "earnings":
-            recommendations.append("Ensure all financial data includes exact numbers and percentages")
+            recommendations.append(
+                "Ensure all financial data includes exact numbers and percentages"
+            )
         elif data_type == "news":
-            recommendations.append("Categorize news by trading relevance and impact level")
+            recommendations.append(
+                "Categorize news by trading relevance and impact level"
+            )
         elif data_type == "fundamentals":
             recommendations.append("Include industry benchmarks for comparison")
         elif data_type == "metrics":
-            recommendations.append("Provide clear technical signals with specific trigger levels")
+            recommendations.append(
+                "Provide clear technical signals with specific trigger levels"
+            )
 
         return recommendations
 
@@ -434,19 +525,21 @@ FOCUS ON TRADING SIGNALS AND TIMING:
 - Key support/resistance levels with breakout potential
 - Momentum strength with trend continuation probability
 - Risk metrics with volatility assessments and stop-loss levels
-            """
+            """,
         }
 
         return templates.get(data_type, "")
 
-    def _get_focus_areas(self, data_type: str, missing_elements: List[Dict]) -> List[str]:
+    def _get_focus_areas(
+        self, data_type: str, missing_elements: List[Dict]
+    ) -> List[str]:
         """Get focus areas for improvement based on missing elements."""
 
         focus_map = {
             "eps_vs_estimated": "Enhance earnings surprise analysis with exact numbers",
             "sentiment_analysis": "Add sentiment impact assessment for trading",
             "valuation_metrics": "Include industry comparison for context",
-            "technical_signals": "Add specific entry/exit signal levels"
+            "technical_signals": "Add specific entry/exit signal levels",
         }
 
         focus_areas = []
@@ -457,7 +550,9 @@ FOCUS ON TRADING SIGNALS AND TIMING:
 
         return focus_areas
 
-    def _get_quality_enhancements(self, data_type: str, missing_elements: List[Dict]) -> List[str]:
+    def _get_quality_enhancements(
+        self, data_type: str, missing_elements: List[Dict]
+    ) -> List[str]:
         """Get specific quality enhancements for data type."""
 
         enhancements = {
@@ -465,26 +560,26 @@ FOCUS ON TRADING SIGNALS AND TIMING:
                 "Request exact EPS figures with decimal precision",
                 "Ask for revenue growth rates with specific percentages",
                 "Include management confidence levels in guidance",
-                "Request earnings calendar and next reporting date"
+                "Request earnings calendar and next reporting date",
             ],
             "news": [
                 "Categorize news by market impact level",
                 "Request source credibility scores",
                 "Ask for historical price reaction patterns",
-                "Include insider trading activity related to news"
+                "Include insider trading activity related to news",
             ],
             "fundamentals": [
                 "Request industry P/E averages for comparison",
                 "Ask for competitive positioning metrics",
                 "Include sustainability analysis of growth rates",
-                "Request management quality assessment"
+                "Request management quality assessment",
             ],
             "metrics": [
                 "Specify exact technical indicator levels",
                 "Request volume confirmation patterns",
                 "Ask for volatility measurements and ranges",
-                "Include correlation with broader market indices"
-            ]
+                "Include correlation with broader market indices",
+            ],
         }
 
         return enhancements.get(data_type, [])
@@ -518,7 +613,9 @@ FOCUS ON TRADING SIGNALS AND TIMING:
 
         return patterns
 
-    def _identify_common_issues(self, history: List[Dict], current_issues: List[str]) -> List[str]:
+    def _identify_common_issues(
+        self, history: List[Dict], current_issues: List[str]
+    ) -> List[str]:
         """Identify common issues from historical performance."""
 
         if not history:
@@ -540,7 +637,9 @@ FOCUS ON TRADING SIGNALS AND TIMING:
 
         return list(common_issues)
 
-    def _generate_data_type_suggestions(self, data_type: str, successful_patterns: List[str], common_issues: List[str]) -> List[str]:
+    def _generate_data_type_suggestions(
+        self, data_type: str, successful_patterns: List[str], common_issues: List[str]
+    ) -> List[str]:
         """Generate specific suggestions for data type."""
 
         suggestions = []
@@ -555,29 +654,37 @@ FOCUS ON TRADING SIGNALS AND TIMING:
 
         # Add data-type specific suggestions
         if data_type == "earnings":
-            suggestions.extend([
-                "Focus on surprise percentages and market reaction",
-                "Include guidance confidence levels",
-                "Add competitive earnings comparison"
-            ])
+            suggestions.extend(
+                [
+                    "Focus on surprise percentages and market reaction",
+                    "Include guidance confidence levels",
+                    "Add competitive earnings comparison",
+                ]
+            )
         elif data_type == "news":
-            suggestions.extend([
-                "Prioritize news by trading impact",
-                "Include sentiment analysis with confidence",
-                "Add historical price reaction patterns"
-            ])
+            suggestions.extend(
+                [
+                    "Prioritize news by trading impact",
+                    "Include sentiment analysis with confidence",
+                    "Add historical price reaction patterns",
+                ]
+            )
         elif data_type == "fundamentals":
-            suggestions.extend([
-                "Include industry benchmark comparisons",
-                "Focus on sustainable competitive advantages",
-                "Add financial strength metrics"
-            ])
+            suggestions.extend(
+                [
+                    "Include industry benchmark comparisons",
+                    "Focus on sustainable competitive advantages",
+                    "Add financial strength metrics",
+                ]
+            )
         elif data_type == "metrics":
-            suggestions.extend([
-                "Provide clear technical signal levels",
-                "Include volume confirmation analysis",
-                "Add volatility and risk assessments"
-            ])
+            suggestions.extend(
+                [
+                    "Provide clear technical signal levels",
+                    "Include volume confirmation analysis",
+                    "Add volatility and risk assessments",
+                ]
+            )
 
         return suggestions[:8]  # Limit to top 8 suggestions
 
@@ -597,30 +704,32 @@ FOCUS ON TRADING SIGNALS AND TIMING:
         else:
             return "stable"
 
-    def _get_recommended_focus(self, data_type: str, current_issues: List[str]) -> List[str]:
+    def _get_recommended_focus(
+        self, data_type: str, current_issues: List[str]
+    ) -> List[str]:
         """Get recommended focus areas for improvement."""
 
         focus_areas = {
             "earnings": [
                 "Enhance earnings surprise analysis",
                 "Improve revenue growth detail",
-                "Add management guidance quality assessment"
+                "Add management guidance quality assessment",
             ],
             "news": [
                 "Improve sentiment classification accuracy",
                 "Enhance news impact assessment",
-                "Add source credibility evaluation"
+                "Add source credibility evaluation",
             ],
             "fundamentals": [
                 "Improve industry comparison metrics",
                 "Enhance competitive positioning analysis",
-                "Add financial strength assessment"
+                "Add financial strength assessment",
             ],
             "metrics": [
                 "Improve technical signal clarity",
                 "Enhance volume analysis integration",
-                "Add risk metric completeness"
-            ]
+                "Add risk metric completeness",
+            ],
         }
 
         return focus_areas.get(data_type, ["General quality improvement"])

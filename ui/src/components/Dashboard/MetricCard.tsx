@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatCurrency, formatNumber, formatPercent } from '@/utils/format'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/Tooltip'
 import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, PieChart, Users, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 

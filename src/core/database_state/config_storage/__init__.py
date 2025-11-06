@@ -7,14 +7,14 @@ Modularized configuration management with focused stores for:
 - AI prompts configuration
 """
 
-from .background_tasks_store import BackgroundTasksStore
 from .ai_agents_store import AIAgentsStore
+from .background_tasks_store import BackgroundTasksStore
 from .global_settings_store import GlobalSettingsStore
 from .prompts_store import PromptsStore
 
 __all__ = [
-    'BackgroundTasksStore',
-    'AIAgentsStore',
-    'GlobalSettingsStore',
-    'PromptsStore',
+    "BackgroundTasksStore",
+    "AIAgentsStore",
+    "GlobalSettingsStore",
+    "PromptsStore",
 ]

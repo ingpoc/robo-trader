@@ -1,7 +1,8 @@
 """Background tasks configuration store."""
 
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
 from .base_store import BaseConfigStore
@@ -24,7 +25,7 @@ class BackgroundTasksStore(BaseConfigStore):
             try:
                 cursor = await self.db.connection.execute(
                     "SELECT * FROM background_tasks_config WHERE task_name = ?",
-                    (task_name,)
+                    (task_name,),
                 )
                 row = await cursor.fetchone()
 
@@ -63,7 +64,7 @@ class BackgroundTasksStore(BaseConfigStore):
                         "frequency": row[3],
                         "frequencyUnit": row[4],
                         "useClaude": bool(row[5]),
-                        "priority": row[6]
+                        "priority": row[6],
                     }
 
                 return {"background_tasks": background_tasks}
@@ -114,8 +115,8 @@ class BackgroundTasksStore(BaseConfigStore):
                         config_data.get("priority", "medium"),
                         now,
                         task_name,
-                        now
-                    )
+                        now,
+                    ),
                 )
 
                 await self.db.connection.commit()

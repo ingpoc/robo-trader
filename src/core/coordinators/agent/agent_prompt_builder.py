@@ -7,7 +7,7 @@ Extracted from ClaudeAgentCoordinator for reusability.
 
 import json
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 from src.config import Config
 
@@ -15,7 +15,7 @@ from src.config import Config
 class AgentPromptBuilder:
     """
     Builds prompts for Claude agent sessions.
-    
+
     Responsibilities:
     - Build system prompts
     - Build morning prep prompts
@@ -48,10 +48,12 @@ Remember: Your decisions will be logged and analyzed. Trade responsibly."""
 
     def build_morning_prompt(self, account_type: str, context: Dict[str, Any]) -> str:
         """Build token-optimized morning prompt with learning loop."""
-        historical_learnings = context.get('historical_learnings', [])
+        historical_learnings = context.get("historical_learnings", [])
         learnings_text = ""
         if historical_learnings:
-            learnings_text = "\n\nRECENT LEARNINGS FROM PAST SESSIONS:\n" + "\n".join(f"- {learning}" for learning in historical_learnings[:3])
+            learnings_text = "\n\nRECENT LEARNINGS FROM PAST SESSIONS:\n" + "\n".join(
+                f"- {learning}" for learning in historical_learnings[:3]
+            )
 
         return f"""Morning Trading Session - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}
 
@@ -81,12 +83,16 @@ Think strategically, learn from the past, and execute your trades."""
     def build_evening_prompt(self, account_type: str, context: Dict[str, Any]) -> str:
         """Build evening review prompt with strategy analysis."""
         strategy_analysis = ""
-        if context.get('strat'):
-            strat = context['strat']
-            if strat.get('worked'):
-                strategy_analysis += f"\n\nWHAT WORKED WELL:\n" + "\n".join(f"- {item}" for item in strat['worked'][:2])
-            if strat.get('failed'):
-                strategy_analysis += f"\n\nWHAT FAILED:\n" + "\n".join(f"- {item}" for item in strat['failed'][:2])
+        if context.get("strat"):
+            strat = context["strat"]
+            if strat.get("worked"):
+                strategy_analysis += "\n\nWHAT WORKED WELL:\n" + "\n".join(
+                    f"- {item}" for item in strat["worked"][:2]
+                )
+            if strat.get("failed"):
+                strategy_analysis += "\n\nWHAT FAILED:\n" + "\n".join(
+                    f"- {item}" for item in strat["failed"][:2]
+                )
 
         return f"""Evening Strategy Review - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}
 
@@ -108,4 +114,3 @@ REFLECTION TASKS:
 5. How can you apply today's learnings to avoid past mistakes?
 
 Provide detailed, actionable insights for continuous improvement. Focus on specific, measurable changes you can implement."""
-

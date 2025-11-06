@@ -1,9 +1,10 @@
 """Calculate paper trading performance metrics."""
 
-from datetime import datetime, date
-from typing import Dict, List, Any, Optional
-from ...models.paper_trading import PaperTrade, TradeType
 import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from ...models.paper_trading import PaperTrade
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,9 @@ class PerformanceCalculator:
     """Calculate trading performance metrics."""
 
     @staticmethod
-    def calculate_days_held(entry_timestamp: datetime, exit_timestamp: Optional[datetime] = None) -> int:
+    def calculate_days_held(
+        entry_timestamp: datetime, exit_timestamp: Optional[datetime] = None
+    ) -> int:
         """Calculate days held for a trade.
 
         Args:
@@ -45,7 +48,9 @@ class PerformanceCalculator:
         return ((exit_price - entry_price) / entry_price) * 100
 
     @staticmethod
-    def calculate_trade_metrics(trade: PaperTrade, current_price: Optional[float] = None) -> Dict[str, Any]:
+    def calculate_trade_metrics(
+        trade: PaperTrade, current_price: Optional[float] = None
+    ) -> Dict[str, Any]:
         """Calculate all metrics for a single trade.
 
         Args:
@@ -58,7 +63,11 @@ class PerformanceCalculator:
         is_open = trade.exit_price is None or trade.exit_timestamp is None
 
         # Use current price for open trades, exit price for closed
-        effective_price = current_price if is_open and current_price else trade.exit_price or trade.entry_price
+        effective_price = (
+            current_price
+            if is_open and current_price
+            else trade.exit_price or trade.entry_price
+        )
 
         # Total value calculations
         entry_value = trade.entry_price * trade.quantity
@@ -67,8 +76,7 @@ class PerformanceCalculator:
         # P&L calculations
         pnl_absolute = exit_value - entry_value
         pnl_percentage = PerformanceCalculator.calculate_pnl_percentage(
-            trade.entry_price,
-            effective_price
+            trade.entry_price, effective_price
         )
 
         # Days held
@@ -76,8 +84,7 @@ class PerformanceCalculator:
             days_held = PerformanceCalculator.calculate_days_held(trade.entry_timestamp)
         else:
             days_held = PerformanceCalculator.calculate_days_held(
-                trade.entry_timestamp,
-                trade.exit_timestamp
+                trade.entry_timestamp, trade.exit_timestamp
             )
 
         return {
@@ -94,7 +101,9 @@ class PerformanceCalculator:
             "days_held": days_held,
             "is_open": is_open,
             "entry_date": trade.entry_timestamp.isoformat(),
-            "exit_date": trade.exit_timestamp.isoformat() if trade.exit_timestamp else None,
+            "exit_date": (
+                trade.exit_timestamp.isoformat() if trade.exit_timestamp else None
+            ),
         }
 
     @staticmethod
@@ -103,7 +112,7 @@ class PerformanceCalculator:
         current_balance: float,
         closed_trades: List[PaperTrade],
         open_trades: List[PaperTrade],
-        current_prices: Optional[Dict[str, float]] = None
+        current_prices: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         """Calculate overall account performance metrics.
 
@@ -122,7 +131,9 @@ class PerformanceCalculator:
 
         # Overall P&L
         total_pnl = current_balance - initial_balance
-        total_pnl_pct = (total_pnl / initial_balance * 100) if initial_balance > 0 else 0.0
+        total_pnl_pct = (
+            (total_pnl / initial_balance * 100) if initial_balance > 0 else 0.0
+        )
 
         # Trade count
         total_trades = len(closed_trades) + len(open_trades)
@@ -151,7 +162,9 @@ class PerformanceCalculator:
         # Average trade metrics
         if closed_trades:
             avg_hold_days = sum(
-                PerformanceCalculator.calculate_days_held(t.entry_timestamp, t.exit_timestamp)
+                PerformanceCalculator.calculate_days_held(
+                    t.entry_timestamp, t.exit_timestamp
+                )
                 for t in closed_trades
             ) / len(closed_trades)
 
@@ -177,15 +190,25 @@ class PerformanceCalculator:
         # Calculate profit factor (gross profit / gross loss)
         gross_profit = sum(winning_pnls) if winning_pnls else 0.0
         gross_loss = abs(sum(losing_pnls)) if losing_pnls else 0.0
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0.0
+        profit_factor = (
+            gross_profit / gross_loss
+            if gross_loss > 0
+            else float("inf") if gross_profit > 0 else 0.0
+        )
 
         # Largest win/loss
         largest_win = max(winning_pnls) if winning_pnls else 0.0
         largest_loss = min(losing_pnls) if losing_pnls else 0.0
 
         # Monthly ROI (approximate)
-        days_elapsed = (datetime.now() - closed_trades[0].entry_timestamp).days if closed_trades else 1
-        monthly_roi = (total_pnl_pct / max(1, days_elapsed / 30)) if days_elapsed > 0 else 0.0
+        days_elapsed = (
+            (datetime.now() - closed_trades[0].entry_timestamp).days
+            if closed_trades
+            else 1
+        )
+        monthly_roi = (
+            (total_pnl_pct / max(1, days_elapsed / 30)) if days_elapsed > 0 else 0.0
+        )
 
         return {
             "initial_balance": initial_balance,
@@ -212,8 +235,7 @@ class PerformanceCalculator:
 
     @staticmethod
     def calculate_strategy_effectiveness(
-        closed_trades: List[PaperTrade],
-        strategy_tag: str
+        closed_trades: List[PaperTrade], strategy_tag: str
     ) -> Dict[str, Any]:
         """Calculate effectiveness metrics for a specific strategy.
 
@@ -226,8 +248,10 @@ class PerformanceCalculator:
         """
         # Filter trades for this strategy
         strategy_trades = [
-            t for t in closed_trades
-            if hasattr(t, 'strategy_rationale') and strategy_tag in (t.strategy_rationale or '')
+            t
+            for t in closed_trades
+            if hasattr(t, "strategy_rationale")
+            and strategy_tag in (t.strategy_rationale or "")
         ]
 
         if not strategy_trades:
@@ -257,7 +281,9 @@ class PerformanceCalculator:
         }
 
     @staticmethod
-    def calculate_drawdown(closed_trades: List[PaperTrade], initial_balance: float) -> Dict[str, Any]:
+    def calculate_drawdown(
+        closed_trades: List[PaperTrade], initial_balance: float
+    ) -> Dict[str, Any]:
         """Calculate maximum drawdown during trading period.
 
         Args:
@@ -288,7 +314,9 @@ class PerformanceCalculator:
             if drawdown > max_drawdown:
                 max_drawdown = drawdown
 
-        max_drawdown_pct = (max_drawdown / initial_balance * 100) if initial_balance > 0 else 0.0
+        max_drawdown_pct = (
+            (max_drawdown / initial_balance * 100) if initial_balance > 0 else 0.0
+        )
 
         return {
             "max_drawdown": max_drawdown,

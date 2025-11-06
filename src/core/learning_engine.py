@@ -7,21 +7,23 @@ Uses Claude SDK for intelligent analysis and insight generation.
 
 import asyncio
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from statistics import mean, stdev
+from typing import Any, Dict, List, Optional
 
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
 
 
 @dataclass
 class PerformanceMetrics:
     """Performance metrics for trading analysis."""
+
     total_trades: int = 0
     profitable_trades: int = 0
     win_rate: float = 0.0
@@ -42,6 +44,7 @@ class PerformanceMetrics:
 @dataclass
 class StrategyPerformance:
     """Performance data for a specific strategy."""
+
     strategy_name: str
     time_period: str
     metrics: PerformanceMetrics
@@ -50,19 +53,20 @@ class StrategyPerformance:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "StrategyPerformance":
-        if 'metrics' in data:
-            data['metrics'] = PerformanceMetrics.from_dict(data['metrics'])
+        if "metrics" in data:
+            data["metrics"] = PerformanceMetrics.from_dict(data["metrics"])
         return cls(**data)
 
     def to_dict(self) -> Dict:
         data = asdict(self)
-        data['metrics'] = self.metrics.to_dict()
+        data["metrics"] = self.metrics.to_dict()
         return data
 
 
 @dataclass
 class LearningInsight:
     """An actionable insight generated through learning."""
+
     insight_type: str
     confidence: float
     description: str
@@ -83,6 +87,7 @@ class LearningInsight:
 @dataclass
 class DailyReflection:
     """Daily reflection on trading performance and lessons learned."""
+
     date: str
     strategy_type: str
     what_worked_well: List[str] = field(default_factory=list)
@@ -104,6 +109,7 @@ class DailyReflection:
 @dataclass
 class PatternRecognition:
     """Recognized trading pattern with success metrics."""
+
     pattern_type: str
     pattern_name: str
     description: str
@@ -180,7 +186,7 @@ class LearningEngine:
                 return {
                     "status": "insufficient_data",
                     "trades_analyzed": len(intents) if intents else 0,
-                    "message": f"Need at least {self.min_trades_for_analysis} trades for analysis"
+                    "message": f"Need at least {self.min_trades_for_analysis} trades for analysis",
                 }
 
             # Calculate performance metrics
@@ -197,7 +203,7 @@ class LearningEngine:
                 "trades_analyzed": len(intents),
                 "metrics": metrics.to_dict(),
                 "insights": [insight.to_dict() for insight in insights],
-                "analysis_timestamp": datetime.now(timezone.utc).isoformat()
+                "analysis_timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
@@ -208,7 +214,7 @@ class LearningEngine:
         self,
         strategy_type: str,
         performance_data: Dict[str, Any],
-        market_conditions: Dict[str, Any]
+        market_conditions: Dict[str, Any],
     ) -> Optional[DailyReflection]:
         """
         Create a daily reflection on trading performance.
@@ -226,7 +232,9 @@ class LearningEngine:
                 await self._ensure_client()
 
             # Analyze what worked and what didn't
-            analysis = await self._analyze_daily_performance(performance_data, market_conditions)
+            analysis = await self._analyze_daily_performance(
+                performance_data, market_conditions
+            )
 
             reflection = DailyReflection(
                 date=datetime.now(timezone.utc).date().isoformat(),
@@ -237,7 +245,7 @@ class LearningEngine:
                 tomorrow_focus=analysis.get("tomorrow_focus", []),
                 performance_summary=performance_data,
                 learning_insights=analysis.get("learning_insights", []),
-                confidence_level=analysis.get("confidence_level", 0.5)
+                confidence_level=analysis.get("confidence_level", 0.5),
             )
 
             # Store reflection
@@ -249,7 +257,9 @@ class LearningEngine:
             logger.error(f"Daily reflection creation failed: {e}")
             return None
 
-    async def analyze_strategy_effectiveness(self, strategy_name: str) -> Dict[str, Any]:
+    async def analyze_strategy_effectiveness(
+        self, strategy_name: str
+    ) -> Dict[str, Any]:
         """
         Analyze the effectiveness of a specific strategy.
 
@@ -261,12 +271,14 @@ class LearningEngine:
         """
         try:
             # Get strategy-specific data
-            strategy_data = await self.state_manager.get_strategy_performance(strategy_name)
+            strategy_data = await self.state_manager.get_strategy_performance(
+                strategy_name
+            )
 
             if not strategy_data:
                 return {
                     "status": "no_data",
-                    "message": f"No performance data available for strategy: {strategy_name}"
+                    "message": f"No performance data available for strategy: {strategy_name}",
                 }
 
             # Analyze effectiveness
@@ -277,14 +289,16 @@ class LearningEngine:
                 "strategy": strategy_name,
                 "effectiveness_score": effectiveness.get("score", 0.0),
                 "recommendations": effectiveness.get("recommendations", []),
-                "risk_adjusted_return": effectiveness.get("risk_adjusted_return", 0.0)
+                "risk_adjusted_return": effectiveness.get("risk_adjusted_return", 0.0),
             }
 
         except Exception as e:
             logger.error(f"Strategy effectiveness analysis failed: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def adapt_to_market_conditions(self, conditions: Dict[str, Any]) -> Dict[str, Any]:
+    async def adapt_to_market_conditions(
+        self, conditions: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Adapt trading parameters based on current market conditions.
 
@@ -305,14 +319,16 @@ class LearningEngine:
                 "status": "success",
                 "adaptations": adaptations,
                 "confidence": adaptations.get("confidence", 0.5),
-                "recommended_actions": adaptations.get("actions", [])
+                "recommended_actions": adaptations.get("actions", []),
             }
 
         except Exception as e:
             logger.error(f"Market condition adaptation failed: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def recognize_patterns(self, historical_data: List[Dict[str, Any]]) -> List[PatternRecognition]:
+    async def recognize_patterns(
+        self, historical_data: List[Dict[str, Any]]
+    ) -> List[PatternRecognition]:
         """
         Recognize patterns in historical trading data.
 
@@ -356,7 +372,7 @@ class LearningEngine:
                 "insights": insights or [],
                 "patterns": patterns or [],
                 "total_insights": len(insights) if insights else 0,
-                "total_patterns": len(patterns) if patterns else 0
+                "total_patterns": len(patterns) if patterns else 0,
             }
 
         except Exception as e:
@@ -364,8 +380,7 @@ class LearningEngine:
             return {"status": "error", "message": str(e)}
 
     async def optimize_risk_adjusted_planning(
-        self,
-        risk_metrics: Dict[str, float]
+        self, risk_metrics: Dict[str, float]
     ) -> Dict[str, Any]:
         """
         Optimize planning parameters based on risk metrics.
@@ -384,14 +399,14 @@ class LearningEngine:
             algorithms = await self._generate_risk_adjusted_algorithms(
                 risk_metrics.get("sharpe_ratio", 1.0),
                 risk_metrics.get("max_drawdown", 0.1),
-                risk_metrics.get("value_at_risk", 0.05)
+                risk_metrics.get("value_at_risk", 0.05),
             )
 
             return {
                 "status": "success",
                 "algorithms": algorithms,
                 "overall_score": algorithms.get("overall_score", 0.5),
-                "recommended_changes": algorithms.get("changes", [])
+                "recommended_changes": algorithms.get("changes", []),
             }
 
         except Exception as e:
@@ -410,7 +425,10 @@ class LearningEngine:
             planning_data = await self._get_historical_planning_data()
 
             if not planning_data:
-                return {"status": "no_data", "message": "No historical planning data available"}
+                return {
+                    "status": "no_data",
+                    "message": "No historical planning data available",
+                }
 
             # Analyze planning outcomes
             outcomes = await self._analyze_planning_outcomes(planning_data)
@@ -425,14 +443,16 @@ class LearningEngine:
                 "status": "success",
                 "outcomes": outcomes,
                 "insights": insights,
-                "improvement_potential": insights.get("improvement_potential", 0.0)
+                "improvement_potential": insights.get("improvement_potential", 0.0),
             }
 
         except Exception as e:
             logger.error(f"Planning effectiveness learning failed: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def _calculate_performance_metrics(self, intents: List[Any]) -> PerformanceMetrics:
+    async def _calculate_performance_metrics(
+        self, intents: List[Any]
+    ) -> PerformanceMetrics:
         """Calculate comprehensive performance metrics from trading intents."""
         total_trades = len(intents)
         profitable_trades = 0
@@ -440,7 +460,7 @@ class LearningEngine:
         returns = []
 
         for intent in intents:
-            if hasattr(intent, 'pnl_calculated') and intent.pnl_calculated:
+            if hasattr(intent, "pnl_calculated") and intent.pnl_calculated:
                 pnl = intent.pnl_calculated
                 total_return += pnl
                 returns.append(pnl)
@@ -462,13 +482,11 @@ class LearningEngine:
             max_drawdown=abs(max_drawdown),
             sharpe_ratio=sharpe_ratio,
             volatility=volatility,
-            avg_trade_duration=0.0  # Would need actual duration data
+            avg_trade_duration=0.0,  # Would need actual duration data
         )
 
     async def _generate_performance_insights(
-        self,
-        metrics: PerformanceMetrics,
-        time_period: str
+        self, metrics: PerformanceMetrics, time_period: str
     ) -> List[LearningInsight]:
         """Generate actionable insights from performance metrics."""
         async with self.request_semaphore:
@@ -496,9 +514,12 @@ class LearningEngine:
             try:
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
+
                 # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self.client, query, timeout=30.0)
-                
+                response_text = await query_with_timeout(
+                    self.client, query, timeout=30.0
+                )
+
                 # Parse JSON response
                 insights = []
                 try:
@@ -508,22 +529,22 @@ class LearningEngine:
                             insight_type=insight_data.get("type", "general"),
                             confidence=insight_data.get("confidence", 0.5),
                             description=insight_data.get("description", ""),
-                            actionable_recommendations=insight_data.get("recommendations", []),
-                            expected_impact=insight_data.get("impact", "")
+                            actionable_recommendations=insight_data.get(
+                                "recommendations", []
+                            ),
+                            expected_impact=insight_data.get("impact", ""),
                         )
                         insights.append(insight)
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse insights JSON response")
-                
+
                 return insights
             except Exception as e:
                 logger.error(f"Performance insights generation failed: {e}")
                 return []
 
     async def _analyze_daily_performance(
-        self,
-        performance_data: Dict[str, Any],
-        market_conditions: Dict[str, Any]
+        self, performance_data: Dict[str, Any], market_conditions: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Analyze daily performance to identify what worked and what didn't."""
         async with self.request_semaphore:
@@ -553,21 +574,26 @@ class LearningEngine:
             try:
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
+
                 # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self.client, query, timeout=25.0)
-                
+                response_text = await query_with_timeout(
+                    self.client, query, timeout=25.0
+                )
+
                 # Parse JSON response
                 try:
                     return json.loads(response_text)
                 except json.JSONDecodeError:
-                    logger.warning("Failed to parse daily performance analysis JSON response")
+                    logger.warning(
+                        "Failed to parse daily performance analysis JSON response"
+                    )
                     return {
                         "worked_well": [],
                         "did_not_work": [],
                         "market_observations": [],
                         "tomorrow_focus": [],
                         "learning_insights": [],
-                        "confidence_level": 0.5
+                        "confidence_level": 0.5,
                     }
             except Exception as e:
                 logger.error(f"Daily performance analysis failed: {e}")
@@ -577,17 +603,21 @@ class LearningEngine:
                     "market_observations": [],
                     "tomorrow_focus": [],
                     "learning_insights": [],
-                    "confidence_level": 0.5
+                    "confidence_level": 0.5,
                 }
 
-    async def _analyze_strategy_effectiveness(self, strategy_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _analyze_strategy_effectiveness(
+        self, strategy_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Analyze the effectiveness of a specific strategy."""
         # Simplified analysis - would use Claude for more sophisticated analysis
         metrics = strategy_data.get("metrics", {})
         win_rate = metrics.get("win_rate", 0.0)
         total_return = metrics.get("total_return", 0.0)
 
-        score = (win_rate * 0.6) + (min(total_return / 1000, 1.0) * 0.4)  # Simplified scoring
+        score = (win_rate * 0.6) + (
+            min(total_return / 1000, 1.0) * 0.4
+        )  # Simplified scoring
 
         recommendations = []
         if win_rate < 0.5:
@@ -598,10 +628,14 @@ class LearningEngine:
         return {
             "score": score,
             "recommendations": recommendations,
-            "risk_adjusted_return": total_return / (abs(total_return) + 1) if total_return != 0 else 0.0
+            "risk_adjusted_return": (
+                total_return / (abs(total_return) + 1) if total_return != 0 else 0.0
+            ),
         }
 
-    async def _generate_market_adaptations(self, conditions: Dict[str, Any]) -> Dict[str, Any]:
+    async def _generate_market_adaptations(
+        self, conditions: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Generate market condition adaptations."""
         async with self.request_semaphore:
             if not self.client:
@@ -636,9 +670,12 @@ class LearningEngine:
             try:
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
+
                 # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self.client, query, timeout=25.0)
-                
+                response_text = await query_with_timeout(
+                    self.client, query, timeout=25.0
+                )
+
                 # Parse JSON response
                 try:
                     return json.loads(response_text)
@@ -649,7 +686,9 @@ class LearningEngine:
                 logger.error(f"Market adaptation generation failed: {e}")
                 return {"actions": [], "confidence": 0.5}
 
-    async def _analyze_trading_patterns(self, historical_data: List[Dict[str, Any]]) -> List[PatternRecognition]:
+    async def _analyze_trading_patterns(
+        self, historical_data: List[Dict[str, Any]]
+    ) -> List[PatternRecognition]:
         """Analyze historical data for trading patterns."""
         async with self.request_semaphore:
             if not self.client:
@@ -678,9 +717,12 @@ class LearningEngine:
             try:
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
+
                 # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self.client, query, timeout=35.0)
-                
+                response_text = await query_with_timeout(
+                    self.client, query, timeout=35.0
+                )
+
                 # Parse JSON response
                 patterns = []
                 try:
@@ -688,7 +730,9 @@ class LearningEngine:
                     for pattern_data in patterns_data:
                         pattern = PatternRecognition(
                             pattern_type=pattern_data.get("pattern_type", "unknown"),
-                            pattern_name=pattern_data.get("pattern_name", "Unknown Pattern"),
+                            pattern_name=pattern_data.get(
+                                "pattern_name", "Unknown Pattern"
+                            ),
                             description=pattern_data.get("description", ""),
                             confidence=pattern_data.get("confidence", 0.5),
                             frequency=pattern_data.get("frequency", 0),
@@ -696,12 +740,12 @@ class LearningEngine:
                             avg_return=pattern_data.get("avg_return", 0.0),
                             last_observed=datetime.now(timezone.utc).isoformat(),
                             conditions=pattern_data.get("conditions", {}),
-                            recommendations=pattern_data.get("recommendations", [])
+                            recommendations=pattern_data.get("recommendations", []),
                         )
                         patterns.append(pattern)
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse patterns JSON response")
-                
+
                 return patterns
             except Exception as e:
                 logger.error(f"Pattern analysis failed: {e}")
@@ -717,29 +761,37 @@ class LearningEngine:
         # This would retrieve past planning decisions and outcomes
         return []
 
-    async def _analyze_planning_outcomes(self, historical_plans: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _analyze_planning_outcomes(
+        self, historical_plans: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze outcomes of past planning decisions."""
         return {
             "planning_accuracy": 0.75,
             "api_efficiency": 0.82,
-            "outcome_quality": 0.78
+            "outcome_quality": 0.78,
         }
 
-    async def _generate_planning_learning_insights(self, outcomes: Dict[str, Any]) -> Dict[str, Any]:
+    async def _generate_planning_learning_insights(
+        self, outcomes: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Generate insights from planning outcomes."""
         insights = {
             "improvement_potential": 0.0,
             "recommended_changes": [],
-            "key_findings": []
+            "key_findings": [],
         }
 
         # Analyze each outcome metric
         for metric, score in outcomes.items():
             if score < 0.7:
-                insights["improvement_potential"] += (0.7 - score)
-                insights["recommended_changes"].append(f"Improve {metric.replace('_', ' ')}")
+                insights["improvement_potential"] += 0.7 - score
+                insights["recommended_changes"].append(
+                    f"Improve {metric.replace('_', ' ')}"
+                )
             else:
-                insights["key_findings"].append(f"Good performance in {metric.replace('_', ' ')}")
+                insights["key_findings"].append(
+                    f"Good performance in {metric.replace('_', ' ')}"
+                )
 
         insights["improvement_potential"] = min(insights["improvement_potential"], 1.0)
 
@@ -753,10 +805,7 @@ class LearningEngine:
         logger.info(f"Updated planning models with {len(changes)} improvements")
 
     async def _generate_risk_adjusted_algorithms(
-        self,
-        sharpe_ratio: float,
-        max_drawdown: float,
-        value_at_risk: float
+        self, sharpe_ratio: float, max_drawdown: float, value_at_risk: float
     ) -> Dict[str, Any]:
         """Generate risk-adjusted planning algorithms."""
         algorithms = {
@@ -764,7 +813,7 @@ class LearningEngine:
             "portfolio_rebalancing": {},
             "risk_limits": {},
             "overall_score": 0.5,
-            "changes": []
+            "changes": [],
         }
 
         # Position sizing based on risk metrics
@@ -772,20 +821,22 @@ class LearningEngine:
             algorithms["position_sizing_algorithm"] = {
                 "method": "aggressive",
                 "max_position": "8_percent",
-                "scaling_factor": 1.2
+                "scaling_factor": 1.2,
             }
         elif sharpe_ratio < 1.0:
             algorithms["position_sizing_algorithm"] = {
                 "method": "conservative",
                 "max_position": "3_percent",
-                "scaling_factor": 0.7
+                "scaling_factor": 0.7,
             }
-            algorithms["changes"].append("Reduce position sizes due to low Sharpe ratio")
+            algorithms["changes"].append(
+                "Reduce position sizes due to low Sharpe ratio"
+            )
         else:
             algorithms["position_sizing_algorithm"] = {
                 "method": "moderate",
                 "max_position": "5_percent",
-                "scaling_factor": 1.0
+                "scaling_factor": 1.0,
             }
 
         # Risk limits based on drawdown
@@ -793,9 +844,11 @@ class LearningEngine:
             algorithms["risk_limits"] = {
                 "max_drawdown_limit": "10_percent",
                 "daily_loss_limit": "2_percent",
-                "portfolio_var_limit": "3_percent"
+                "portfolio_var_limit": "3_percent",
             }
-            algorithms["changes"].append("Implement stricter risk limits due to high drawdown")
+            algorithms["changes"].append(
+                "Implement stricter risk limits due to high drawdown"
+            )
 
         # Calculate overall score
         risk_score = min(sharpe_ratio / 2.0, 1.0)  # Normalize Sharpe
@@ -810,10 +863,12 @@ class LearningEngine:
             options = ClaudeAgentOptions(
                 allowed_tools=[],
                 system_prompt=self._get_learning_prompt(),
-                max_turns=15
+                max_turns=15,
             )
             # Use client manager instead of direct creation
-            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            from src.core.claude_sdk_client_manager import \
+                ClaudeSDKClientManager
+
             client_manager = await ClaudeSDKClientManager.get_instance()
             self.client = await client_manager.get_client("query", options)
             logger.info("Learning Engine Claude client initialized via manager")

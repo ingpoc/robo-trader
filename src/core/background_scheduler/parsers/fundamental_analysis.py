@@ -4,10 +4,10 @@ Fundamental analysis data parsing and processing.
 Handles fundamental data parsing, analysis, and valuation metrics.
 """
 
-import re
-from datetime import datetime
-from typing import Dict, List, Any, Optional
 import json
+import re
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
 
@@ -41,7 +41,7 @@ def parse_fundamentals(response_text: str) -> Dict[str, Any]:
             return parsed_data
 
         # If text parsing also failed, return analysis_data field with raw response
-        logger.warning(f"Could not parse fundamentals, storing raw response")
+        logger.warning("Could not parse fundamentals, storing raw response")
         return {"analysis_data": response_text[:2000]}
 
     except Exception as e:
@@ -81,7 +81,7 @@ def parse_deep_fundamentals(response_text: str) -> Dict[str, Any]:
 
         # If text parsing also failed, return analysis_data field with raw response
         # This ensures we at least store the API response for reference
-        logger.warning(f"Could not parse deep fundamentals, storing raw response")
+        logger.warning("Could not parse deep fundamentals, storing raw response")
         return {"analysis_data": response_text[:2000]}  # Store first 2000 chars
 
     except Exception as e:
@@ -112,8 +112,12 @@ def _standardize_fundamental_data(data: Dict[str, Any]) -> Dict[str, Any]:
     standardized["roa"] = data.get("roa", data.get("return_on_assets"))
 
     # Growth metrics
-    standardized["revenue_growth"] = data.get("revenue_growth", data.get("revenue_growth_rate"))
-    standardized["earnings_growth"] = data.get("earnings_growth", data.get("eps_growth"))
+    standardized["revenue_growth"] = data.get(
+        "revenue_growth", data.get("revenue_growth_rate")
+    )
+    standardized["earnings_growth"] = data.get(
+        "earnings_growth", data.get("eps_growth")
+    )
 
     # Valuation
     standardized["fair_value"] = data.get("fair_value", data.get("intrinsic_value"))
@@ -175,19 +179,19 @@ def _parse_text_fundamentals(text: str) -> Dict[str, Any]:
         "pb_ratio": r"P/B[:\s]*([\d,]+\.?\d*)",
         "debt_to_equity": r"debt.*equity[:\s]*([\d,]+\.?\d*)",
         "roe": r"ROE[:\s]*([\d,]+\.?\d*)%",
-        "roa": r"ROA[:\s]*([\d,]+\.?\d*)%"
+        "roa": r"ROA[:\s]*([\d,]+\.?\d*)%",
     }
 
     for key, pattern in patterns.items():
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            value_str = match.group(1).replace(',', '')
+            value_str = match.group(1).replace(",", "")
             try:
                 value = float(value_str)
                 # Apply multiplier for millions/billions
                 if key in ["revenue", "net_income"] and len(match.groups()) > 1:
                     unit = match.group(2)
-                    if unit and unit.lower() in ['billion', 'b']:
+                    if unit and unit.lower() in ["billion", "b"]:
                         value *= 1000
                 data[key] = value
             except ValueError:
@@ -196,14 +200,14 @@ def _parse_text_fundamentals(text: str) -> Dict[str, Any]:
     # Extract growth rates
     growth_patterns = {
         "revenue_growth": r"revenue growth[:\s]*([+-]?[\d,]+\.?\d*)%",
-        "earnings_growth": r"earnings growth[:\s]*([+-]?[\d,]+\.?\d*)%"
+        "earnings_growth": r"earnings growth[:\s]*([+-]?[\d,]+\.?\d*)%",
     }
 
     for key, pattern in growth_patterns.items():
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             try:
-                data[key] = float(match.group(1).replace(',', ''))
+                data[key] = float(match.group(1).replace(",", ""))
             except ValueError:
                 pass
 
@@ -226,7 +230,7 @@ def _parse_text_deep_fundamentals(text: str) -> Dict[str, Any]:
         "strengths": r"strengths?:?\s*(.*?)(?:\n\n|\n\w)",
         "weaknesses": r"weaknesses?:?\s*(.*?)(?:\n\n|\n\w)",
         "opportunities": r"opportunities?:?\s*(.*?)(?:\n\n|\n\w)",
-        "threats": r"threats?:?\s*(.*?)(?:\n\n|\n\w)"
+        "threats": r"threats?:?\s*(.*?)(?:\n\n|\n\w)",
     }
 
     for key, pattern in sections.items():
@@ -234,13 +238,13 @@ def _parse_text_deep_fundamentals(text: str) -> Dict[str, Any]:
         if match:
             section_text = match.group(1).strip()
             # Split by bullet points or numbers
-            items = re.split(r'\n\s*(?:\d+\.|\•|-)\s*', section_text)
+            items = re.split(r"\n\s*(?:\d+\.|\•|-)\s*", section_text)
             items = [item.strip() for item in items if item.strip()]
             if items:
                 data[key] = items
 
     # Extract recommendation
-    rec_match = re.search(r'recommendation[:\s]*(.*?)(?:\n|$)', text, re.IGNORECASE)
+    rec_match = re.search(r"recommendation[:\s]*(.*?)(?:\n|$)", text, re.IGNORECASE)
     if rec_match:
         data["recommendation"] = rec_match.group(1).strip()
 
@@ -280,11 +284,7 @@ def assess_investment_quality(fundamentals: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dictionary with quality assessment
     """
-    assessment = {
-        "overall_rating": "neutral",
-        "scores": {},
-        "recommendation": "hold"
-    }
+    assessment = {"overall_rating": "neutral", "scores": {}, "recommendation": "hold"}
 
     # Profitability score
     roe = fundamentals.get("roe")
@@ -320,4 +320,3 @@ def assess_investment_quality(fundamentals: Dict[str, Any]) -> Dict[str, Any]:
         assessment["recommendation"] = "avoid"
 
     return assessment
-

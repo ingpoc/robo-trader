@@ -5,14 +5,13 @@ Subscribes to MARKET_PRICE_UPDATE events and broadcasts position updates
 via WebSocket when prices change, eliminating frontend polling.
 """
 
-import logging
 import asyncio
-from typing import Dict, Set, Optional
+import logging
 from datetime import datetime
+from typing import Dict, Optional, Set
 
-from ...core.event_bus import EventBus, Event, EventType, EventHandler
+from ...core.event_bus import Event, EventBus, EventHandler, EventType
 from ...stores.paper_trading_store import PaperTradingStore
-from .performance_calculator import PerformanceCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ class PaperTradingPriceMonitor(EventHandler):
         self,
         event_bus: EventBus,
         paper_trading_store: PaperTradingStore,
-        broadcast_coordinator=None
+        broadcast_coordinator=None,
     ):
         """Initialize price monitor.
 
@@ -77,7 +76,9 @@ class PaperTradingPriceMonitor(EventHandler):
 
         # Subscribe to price update events
         self.event_bus.subscribe(EventType.MARKET_PRICE_UPDATE, self)
-        logger.info("PaperTradingPriceMonitor initialized - subscribing to MARKET_PRICE_UPDATE events")
+        logger.info(
+            "PaperTradingPriceMonitor initialized - subscribing to MARKET_PRICE_UPDATE events"
+        )
 
     async def initialize(self) -> None:
         """Initialize the monitor and start background tasks."""
@@ -108,13 +109,17 @@ class PaperTradingPriceMonitor(EventHandler):
                                     monitored_symbols[trade.symbol] = set()
                                 monitored_symbols[trade.symbol].add(account_id)
                     except Exception as e:
-                        logger.error(f"Failed to refresh positions for account {account_id}: {e}")
+                        logger.error(
+                            f"Failed to refresh positions for account {account_id}: {e}"
+                        )
 
                 self._monitored_symbols = monitored_symbols
                 self._active_accounts = active_accounts
 
                 if monitored_symbols:
-                    logger.debug(f"Monitoring {len(monitored_symbols)} symbols across {len(active_accounts)} accounts: {list(monitored_symbols.keys())}")
+                    logger.debug(
+                        f"Monitoring {len(monitored_symbols)} symbols across {len(active_accounts)} accounts: {list(monitored_symbols.keys())}"
+                    )
 
             except asyncio.CancelledError:
                 logger.info("Price monitor refresh task cancelled")
@@ -178,7 +183,9 @@ class PaperTradingPriceMonitor(EventHandler):
                 return
 
             self._price_cache[symbol] = new_price
-            logger.info(f"Price update for {symbol}: ₹{new_price} (affects {len(affected_accounts)} accounts)")
+            logger.info(
+                f"Price update for {symbol}: ₹{new_price} (affects {len(affected_accounts)} accounts)"
+            )
 
             # Recalculate and broadcast updates for each affected account
             for account_id in affected_accounts:
@@ -187,7 +194,9 @@ class PaperTradingPriceMonitor(EventHandler):
         except Exception as e:
             logger.error(f"Error handling price update event: {e}", exc_info=True)
 
-    async def _broadcast_position_update(self, account_id: str, symbol: str, new_price: float) -> None:
+    async def _broadcast_position_update(
+        self, account_id: str, symbol: str, new_price: float
+    ) -> None:
         """Recalculate position P&L and broadcast via WebSocket.
 
         Args:
@@ -207,7 +216,11 @@ class PaperTradingPriceMonitor(EventHandler):
             position_updates = []
             for trade in affected_trades:
                 unrealized_pnl = (new_price - trade.entry_price) * trade.quantity
-                unrealized_pnl_pct = (unrealized_pnl / (trade.entry_price * trade.quantity)) * 100 if trade.entry_price > 0 else 0.0
+                unrealized_pnl_pct = (
+                    (unrealized_pnl / (trade.entry_price * trade.quantity)) * 100
+                    if trade.entry_price > 0
+                    else 0.0
+                )
 
                 position_update = {
                     "trade_id": trade.trade_id,
@@ -216,24 +229,31 @@ class PaperTradingPriceMonitor(EventHandler):
                     "unrealized_pnl": unrealized_pnl,
                     "unrealized_pnl_pct": unrealized_pnl_pct,
                     "current_value": new_price * trade.quantity,
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": datetime.now().isoformat(),
                 }
                 position_updates.append(position_update)
 
             # Broadcast to WebSocket clients
             if self.broadcast_coordinator and position_updates:
-                await self.broadcast_coordinator.broadcast_to_ui({
-                    "type": "paper_trading_position_update",
-                    "account_id": account_id,
-                    "symbol": symbol,
-                    "positions": position_updates,
-                    "timestamp": datetime.now().isoformat()
-                })
+                await self.broadcast_coordinator.broadcast_to_ui(
+                    {
+                        "type": "paper_trading_position_update",
+                        "account_id": account_id,
+                        "symbol": symbol,
+                        "positions": position_updates,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
 
-                logger.info(f"Broadcasted real-time update for {symbol} to account {account_id}: {len(position_updates)} positions updated")
+                logger.info(
+                    f"Broadcasted real-time update for {symbol} to account {account_id}: {len(position_updates)} positions updated"
+                )
 
         except Exception as e:
-            logger.error(f"Error broadcasting position update for {account_id}/{symbol}: {e}", exc_info=True)
+            logger.error(
+                f"Error broadcasting position update for {account_id}/{symbol}: {e}",
+                exc_info=True,
+            )
 
     async def close(self) -> None:
         """Cleanup resources."""

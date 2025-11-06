@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@/components/ui/Dropdown-menu'
 import { Home, Newspaper, Users, Settings, X, Wifi, WifiOff, User, LogOut, Bell, Palette, Wallet, Eye, Database } from 'lucide-react'
 
 const menuItems = [

@@ -5,17 +5,18 @@ Thin orchestrator that delegates to focused agent coordinators.
 Refactored from 276-line monolith into focused coordinators.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List
 
 from loguru import logger
 
 from src.config import Config
-from ..base_coordinator import BaseCoordinator
-from ...event_bus import EventBus
+
 from ...database_state.database_state import DatabaseStateManager
-from .agent_profile import AgentProfile, AgentRole
+from ...event_bus import EventBus
+from ..base_coordinator import BaseCoordinator
 from ..message.agent_message import AgentMessage
 from .agent_communication_coordinator import AgentCommunicationCoordinator
+from .agent_profile import AgentProfile, AgentRole
 from .agent_registration_coordinator import AgentRegistrationCoordinator
 
 
@@ -28,14 +29,20 @@ class AgentCoordinator(BaseCoordinator):
     - Provide unified agent management API
     """
 
-    def __init__(self, config: Config, state_manager: DatabaseStateManager, event_bus: EventBus):
+    def __init__(
+        self, config: Config, state_manager: DatabaseStateManager, event_bus: EventBus
+    ):
         super().__init__(config)
         self.state_manager = state_manager
         self.event_bus = event_bus
 
         # Focused coordinators
-        self.registration_coordinator = AgentRegistrationCoordinator(config, state_manager, event_bus)
-        self.communication_coordinator = None  # Will be set after registration coordinator initializes
+        self.registration_coordinator = AgentRegistrationCoordinator(
+            config, state_manager, event_bus
+        )
+        self.communication_coordinator = (
+            None  # Will be set after registration coordinator initializes
+        )
 
     async def initialize(self) -> None:
         """Initialize the agent coordinator."""
@@ -49,9 +56,7 @@ class AgentCoordinator(BaseCoordinator):
 
         # Initialize communication coordinator with registered agents
         self.communication_coordinator = AgentCommunicationCoordinator(
-            self.config,
-            self.event_bus,
-            self.registration_coordinator.registered_agents
+            self.config, self.event_bus, self.registration_coordinator.registered_agents
         )
         await self.communication_coordinator.initialize()
 

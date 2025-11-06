@@ -7,16 +7,16 @@ Maintains core scheduler lifecycle (start, stop) and execution tracking.
 import asyncio
 import logging
 import traceback
-from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, time, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
-from ...core.event_bus import EventBus, Event, EventType
+from ...core.event_bus import Event, EventBus, EventType
 from ...services.scheduler.task_service import SchedulerTaskService
-from .stores.task_store import TaskStore
+from .event_handlers import EventHandlers
+from .monitors.monthly_reset_monitor import MonthlyResetMonitor
 from .stores.stock_state_store import StockStateStore
 from .stores.strategy_log_store import StrategyLogStore
-from .monitors.monthly_reset_monitor import MonthlyResetMonitor
-from .event_handlers import EventHandlers
+from .stores.task_store import TaskStore
 from .triggers import Triggers
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,15 @@ class BackgroundScheduler:
     and trigger logic to specialized modules.
     """
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None, execution_tracker=None, sequential_queue_manager=None):
+    def __init__(
+        self,
+        task_service: SchedulerTaskService,
+        event_bus: EventBus,
+        db_connection,
+        config=None,
+        execution_tracker=None,
+        sequential_queue_manager=None,
+    ):
         """Initialize event-driven background scheduler.
 
         Args:
@@ -79,13 +87,23 @@ class BackgroundScheduler:
             task_service,
             self.monthly_reset_monitor,
             self.market_open_time,
-            self.market_close_time
+            self.market_close_time,
         )
 
         # Register event handlers
         self._setup_event_handlers()
 
-    async def record_execution(self, task_name: str, task_id: str = "", execution_type: str = "scheduled", user: str = "system", symbols: list = None, status: str = "completed", error_message: str = None, execution_time: float = None) -> None:
+    async def record_execution(
+        self,
+        task_name: str,
+        task_id: str = "",
+        execution_type: str = "scheduled",
+        user: str = "system",
+        symbols: list = None,
+        status: str = "completed",
+        error_message: str = None,
+        execution_time: float = None,
+    ) -> None:
         """Record any execution (manual or scheduled) for tracking."""
         if self.execution_tracker:
             await self.execution_tracker.record_execution(
@@ -96,7 +114,7 @@ class BackgroundScheduler:
                 symbols=symbols,
                 status=status,
                 error_message=error_message,
-                execution_time=execution_time
+                execution_time=execution_time,
             )
         else:
             # Fallback to old internal tracking if tracker not available
@@ -111,18 +129,22 @@ class BackgroundScheduler:
                 "symbol_count": len(symbols) if symbols else 0,
                 "status": status,
                 "error_message": error_message,
-                "execution_time_seconds": execution_time
+                "execution_time_seconds": execution_time,
             }
 
-            if not hasattr(self, 'execution_history'):
+            if not hasattr(self, "execution_history"):
                 self.execution_history = []
                 self.max_execution_history = 10
 
             self.execution_history.insert(0, execution_record)
             if len(self.execution_history) > self.max_execution_history:
-                self.execution_history = self.execution_history[:self.max_execution_history]
+                self.execution_history = self.execution_history[
+                    : self.max_execution_history
+                ]
 
-    async def record_manual_execution(self, task_name: str, task_id: str, user: str = "user") -> None:
+    async def record_manual_execution(
+        self, task_name: str, task_id: str, user: str = "user"
+    ) -> None:
         """Record a manual execution for tracking."""
         await self.record_execution(task_name, task_id, "manual", user)
 
@@ -132,7 +154,7 @@ class BackgroundScheduler:
             return await self.execution_tracker.get_execution_history(limit)
         else:
             # Fallback to internal history
-            return getattr(self, 'execution_history', [])[:limit]
+            return getattr(self, "execution_history", [])[:limit]
 
     def _setup_event_handlers(self) -> None:
         """Setup event handlers for reactive scheduling."""
@@ -140,17 +162,23 @@ class BackgroundScheduler:
         self.event_bus.subscribe(
             EventType.PORTFOLIO_POSITION_CHANGE,
             lambda event: self._create_async_handler(
-                self.event_handlers.handle_portfolio_updated, event, self._get_portfolio_symbols
-            )
+                self.event_handlers.handle_portfolio_updated,
+                event,
+                self._get_portfolio_symbols,
+            ),
         )
 
         # Market events trigger re-analysis
         self.event_bus.subscribe(
             EventType.MARKET_NEWS,
-            lambda event: self._create_async_handler(self.event_handlers.handle_market_news, event)
+            lambda event: self._create_async_handler(
+                self.event_handlers.handle_market_news, event
+            ),
         )
 
-    def _log_initialization_step(self, step: str, success: bool = True, error: Optional[Exception] = None) -> None:
+    def _log_initialization_step(
+        self, step: str, success: bool = True, error: Optional[Exception] = None
+    ) -> None:
         """Log initialization step with detailed context."""
         if success:
             msg = f"[INIT] {step}"
@@ -169,7 +197,10 @@ class BackgroundScheduler:
             Tuple of (is_complete, error_message)
         """
         if self._initialization_error:
-            return False, f"{self._initialization_error.__class__.__name__}: {str(self._initialization_error)}"
+            return (
+                False,
+                f"{self._initialization_error.__class__.__name__}: {str(self._initialization_error)}",
+            )
         return self._initialization_complete, None
 
     def is_ready(self) -> bool:
@@ -191,7 +222,7 @@ class BackgroundScheduler:
         # Set running flag
         self._running = True
         self._start_time = datetime.now(timezone.utc)
-        logger.info(f"Starting event-driven background scheduler...")
+        logger.info("Starting event-driven background scheduler...")
 
         try:
             # Initialize stores
@@ -216,10 +247,14 @@ class BackgroundScheduler:
             # Start SequentialQueueManager for task execution
             if self.sequential_queue_manager:
                 self._log_initialization_step("Creating SequentialQueueManager task")
-                self._queue_executor_task = asyncio.create_task(self._run_queue_executor())
+                self._queue_executor_task = asyncio.create_task(
+                    self._run_queue_executor()
+                )
                 self._log_initialization_step("SequentialQueueManager task created")
             else:
-                logger.warning("SequentialQueueManager not available - queue tasks will not be processed")
+                logger.warning(
+                    "SequentialQueueManager not available - queue tasks will not be processed"
+                )
 
             # Schedule daily routines
             self._log_initialization_step("Scheduling daily routines")
@@ -228,14 +263,18 @@ class BackgroundScheduler:
 
             # Mark initialization as complete
             self._initialization_complete = True
-            logger.info("BackgroundScheduler started successfully - queue executor is ready")
+            logger.info(
+                "BackgroundScheduler started successfully - queue executor is ready"
+            )
 
         except Exception as e:
             # Capture error details
             self._running = False
             self._initialization_error = e
             self._initialization_error_traceback = traceback.format_exc()
-            self._log_initialization_step("BackgroundScheduler initialization", success=False, error=e)
+            self._log_initialization_step(
+                "BackgroundScheduler initialization", success=False, error=e
+            )
 
             # Re-raise so orchestrator knows initialization failed
             raise RuntimeError(f"BackgroundScheduler initialization failed: {e}") from e
@@ -295,8 +334,11 @@ class BackgroundScheduler:
 
                 except Exception as e:
                     import traceback
+
                     logger.error(f"Error in queue executor cycle: {e}")
-                    logger.debug(f"Queue executor error details: {traceback.format_exc()}")
+                    logger.debug(
+                        f"Queue executor error details: {traceback.format_exc()}"
+                    )
                     await asyncio.sleep(60)  # Wait longer on error
 
         except asyncio.CancelledError:
@@ -374,7 +416,7 @@ class BackgroundScheduler:
             "running": self._running,
             "event_driven": True,
             "market_open_time": self.market_open_time.isoformat(),
-            "market_close_time": self.market_close_time.isoformat()
+            "market_close_time": self.market_close_time.isoformat(),
         }
 
     async def get_scheduler_status(self) -> Dict[str, Any]:
@@ -382,11 +424,15 @@ class BackgroundScheduler:
         try:
             # Calculate uptime
             uptime_seconds = 0
-            if hasattr(self, '_start_time') and self._start_time:
-                uptime_seconds = int((datetime.now(timezone.utc) - self._start_time).total_seconds())
+            if hasattr(self, "_start_time") and self._start_time:
+                uptime_seconds = int(
+                    (datetime.now(timezone.utc) - self._start_time).total_seconds()
+                )
 
             # Get execution history from tracker (get more to calculate stats)
-            execution_history = await self.get_execution_history(100)  # Get more for accurate stats
+            execution_history = await self.get_execution_history(
+                100
+            )  # Get more for accurate stats
             total_executions = len(execution_history)
 
             # Calculate processed/failed counts from execution history
@@ -407,7 +453,9 @@ class BackgroundScheduler:
             if execution_history and len(execution_history) > 0:
                 first_execution = execution_history[0]
                 if isinstance(first_execution, dict):
-                    last_run_time = first_execution.get("timestamp", datetime.now(timezone.utc).isoformat())
+                    last_run_time = first_execution.get(
+                        "timestamp", datetime.now(timezone.utc).isoformat()
+                    )
                 else:
                     last_run_time = datetime.now(timezone.utc).isoformat()
             else:
@@ -426,12 +474,12 @@ class BackgroundScheduler:
                 "execution_history": recent_executions,
                 "total_executions": total_executions,
                 "market_open_time": self.market_open_time.isoformat(),
-                "market_close_time": self.market_close_time.isoformat()
+                "market_close_time": self.market_close_time.isoformat(),
             }
         except Exception as e:
             logger.error(f"Error getting scheduler status: {e}")
             # Fallback to internal history on error
-            fallback_history = getattr(self, 'execution_history', [])
+            fallback_history = getattr(self, "execution_history", [])
             return {
                 "running": self._running,
                 "event_driven": True,
@@ -441,14 +489,14 @@ class BackgroundScheduler:
                 "tasks_failed": 0,
                 "execution_history": fallback_history,
                 "total_executions": len(fallback_history),
-                "error": str(e)
+                "error": str(e),
             }
 
-    async def trigger_manual_execution(self, event_type: str, event_data: Dict[str, Any]) -> None:
+    async def trigger_manual_execution(
+        self, event_type: str, event_data: Dict[str, Any]
+    ) -> None:
         """Manually trigger event-based execution."""
         event = Event(
-            event_type=EventType(event_type),
-            data=event_data,
-            source="manual_trigger"
+            event_type=EventType(event_type), data=event_data, source="manual_trigger"
         )
         await self.event_bus.publish(event)

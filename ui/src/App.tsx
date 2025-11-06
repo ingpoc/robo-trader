@@ -15,7 +15,7 @@ import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeatur
 import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
 import { PaperTrading } from '@/pages/PaperTrading'
 import { Button } from '@/components/ui/Button'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@/components/ui/Tooltip'
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -4,8 +4,8 @@ Market monitoring service.
 Tracks market hours and status (IST timezone aware).
 """
 
-from datetime import datetime, timezone, timedelta, time
-from typing import Dict, Any, Callable, Optional
+from datetime import datetime, time, timedelta, timezone
+from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
@@ -59,8 +59,8 @@ class MarketMonitor:
 
         was_open = self.market_open
         self.market_open = (
-            ist_time.weekday() < 5 and
-            self.IST_MARKET_OPEN <= current_time <= self.IST_MARKET_CLOSE
+            ist_time.weekday() < 5
+            and self.IST_MARKET_OPEN <= current_time <= self.IST_MARKET_CLOSE
         )
 
         self.last_check = now
@@ -80,7 +80,7 @@ class MarketMonitor:
             "ist_time": ist_time.isoformat(),
             "last_check": now.isoformat(),
             "market_open_time": self.IST_MARKET_OPEN.isoformat(),
-            "market_close_time": self.IST_MARKET_CLOSE.isoformat()
+            "market_close_time": self.IST_MARKET_CLOSE.isoformat(),
         }
 
     def get_next_market_open(self) -> datetime:
@@ -96,7 +96,7 @@ class MarketMonitor:
             hour=self.IST_MARKET_OPEN.hour,
             minute=self.IST_MARKET_OPEN.minute,
             second=0,
-            microsecond=0
+            microsecond=0,
         )
 
         if ist_time.time() >= self.IST_MARKET_OPEN:
@@ -120,7 +120,7 @@ class MarketMonitor:
             hour=self.IST_MARKET_CLOSE.hour,
             minute=self.IST_MARKET_CLOSE.minute,
             second=0,
-            microsecond=0
+            microsecond=0,
         )
 
         if ist_time.time() >= self.IST_MARKET_CLOSE:
@@ -147,7 +147,7 @@ class MarketMonitor:
             hour=self.IST_MARKET_CLOSE.hour,
             minute=self.IST_MARKET_CLOSE.minute,
             second=0,
-            microsecond=0
+            microsecond=0,
         )
 
         diff = (close_time - ist_time).total_seconds() / 60

@@ -1,10 +1,10 @@
 """Paper Trading API routes for account and position management."""
 
 import logging
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -26,11 +26,15 @@ class AccountOverviewResponse(BaseModel):
     """Overview of a paper trading account."""
 
     account_id: str = Field(..., description="Unique account identifier")
-    account_type: str = Field(..., description="Account type: swing_trading, options_trading")
+    account_type: str = Field(
+        ..., description="Account type: swing_trading, options_trading"
+    )
     strategy_type: str = Field(..., description="Strategy type")
     balance: float = Field(..., description="Current account balance (₹)")
     buying_power: float = Field(..., description="Available buying power (₹)")
-    deployed_capital: float = Field(..., description="Deployed capital in open positions (₹)")
+    deployed_capital: float = Field(
+        ..., description="Deployed capital in open positions (₹)"
+    )
     total_pnl: float = Field(..., description="Total realized P&L (₹)")
     total_pnl_pct: float = Field(..., description="Total P&L percentage")
     monthly_pnl: float = Field(..., description="Current month P&L (₹)")
@@ -76,7 +80,9 @@ class ClosedTradeResponse(BaseModel):
     entry_date: str = Field(..., description="Entry date")
     exit_date: str = Field(..., description="Exit date")
     holding_period_days: int = Field(..., description="How long position was held")
-    reason_closed: str = Field(..., description="Reason for closing (target/stoploss/manual)")
+    reason_closed: str = Field(
+        ..., description="Reason for closing (target/stoploss/manual)"
+    )
     strategy_rationale: str = Field(..., description="Original trade rationale")
     ai_suggested: bool = Field(default=False, description="Was this AI suggested?")
 
@@ -116,7 +122,9 @@ class MonthlyResetRequest(BaseModel):
     """Request to reset monthly account."""
 
     confirmation: bool = Field(..., description="User confirmation to reset")
-    preserve_learnings: bool = Field(default=True, description="Preserve learnings from month")
+    preserve_learnings: bool = Field(
+        default=True, description="Preserve learnings from month"
+    )
 
 
 class PerformanceMetricsResponse(BaseModel):
@@ -131,7 +139,9 @@ class PerformanceMetricsResponse(BaseModel):
     profit_factor: float = Field(..., description="Gross profit / Gross loss")
     largest_win: float = Field(..., description="Largest winning trade (₹)")
     largest_loss: float = Field(..., description="Largest losing trade (₹)")
-    sharpe_ratio: Optional[float] = Field(None, description="Sharpe ratio if applicable")
+    sharpe_ratio: Optional[float] = Field(
+        None, description="Sharpe ratio if applicable"
+    )
     period: str = Field(..., description="Period covered (today/week/month/all-time)")
 
 
@@ -143,10 +153,10 @@ class PerformanceMetricsResponse(BaseModel):
 async def _initialize_default_account(container):
     """Initialize default paper trading account if it doesn't exist."""
     try:
-        import aiosqlite
-        from pathlib import Path
-        import uuid
         from datetime import datetime
+        from pathlib import Path
+
+        import aiosqlite
 
         # Get SQLite database path (persistent location for container environments)
         persistent_dir = Path("/app/data")
@@ -155,7 +165,8 @@ async def _initialize_default_account(container):
 
         async with aiosqlite.connect(str(db_path)) as db:
             # Initialize schema first
-            await db.execute("""
+            await db.execute(
+                """
                 CREATE TABLE IF NOT EXISTS paper_trading_accounts (
                     account_id TEXT PRIMARY KEY,
                     account_name TEXT NOT NULL,
@@ -172,8 +183,10 @@ async def _initialize_default_account(container):
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """)
-            await db.execute("""
+            """
+            )
+            await db.execute(
+                """
                 CREATE TABLE IF NOT EXISTS paper_trades (
                     trade_id TEXT PRIMARY KEY,
                     account_id TEXT NOT NULL,
@@ -194,13 +207,14 @@ async def _initialize_default_account(container):
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """)
+            """
+            )
 
             # Check if default account exists
             default_account_id = "paper_swing_main"
             cursor = await db.execute(
                 "SELECT account_id FROM paper_trading_accounts WHERE account_id = ?",
-                (default_account_id,)
+                (default_account_id,),
             )
             existing = await cursor.fetchone()
 
@@ -209,33 +223,40 @@ async def _initialize_default_account(container):
                 now = datetime.utcnow().isoformat()
                 today = datetime.utcnow().strftime("%Y-%m-%d")
 
-                await db.execute("""
+                await db.execute(
+                    """
                     INSERT INTO paper_trading_accounts (
                         account_id, account_name, initial_balance, current_balance, buying_power,
                         strategy_type, risk_level, max_position_size, max_portfolio_risk,
                         is_active, month_start_date, monthly_pnl, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    default_account_id,
-                    "Paper Trading - Swing",
-                    100000.0,  # ₹1L
-                    100000.0,  # ₹1L
-                    100000.0,  # ₹1L
-                    "swing",
-                    "moderate",
-                    5.0,  # 5% max position size
-                    10.0,  # 10% max portfolio risk
-                    1,  # is_active
-                    today,
-                    0.0,  # monthly_pnl
-                    now,
-                    now
-                ))
+                """,
+                    (
+                        default_account_id,
+                        "Paper Trading - Swing",
+                        100000.0,  # ₹1L
+                        100000.0,  # ₹1L
+                        100000.0,  # ₹1L
+                        "swing",
+                        "moderate",
+                        5.0,  # 5% max position size
+                        10.0,  # 10% max portfolio risk
+                        1,  # is_active
+                        today,
+                        0.0,  # monthly_pnl
+                        now,
+                        now,
+                    ),
+                )
 
                 await db.commit()
-                logger.info(f"✓ Created default paper trading account: {default_account_id} with ₹100,000 capital")
+                logger.info(
+                    f"✓ Created default paper trading account: {default_account_id} with ₹100,000 capital"
+                )
             else:
-                logger.debug(f"Paper trading account already exists: {default_account_id}")
+                logger.debug(
+                    f"Paper trading account already exists: {default_account_id}"
+                )
 
     except Exception as e:
         logger.warning(f"Could not initialize default paper trading account: {e}")
@@ -245,7 +266,9 @@ async def _initialize_default_account(container):
 async def get_container(request: Request):
     """Get DI container from request state."""
     if not hasattr(request.app.state, "container"):
-        raise HTTPException(status_code=500, detail="Application not properly initialized")
+        raise HTTPException(
+            status_code=500, detail="Application not properly initialized"
+        )
 
     container = request.app.state.container
 
@@ -281,7 +304,9 @@ async def get_account_overview(
         account = await account_manager.get_account(account_id)
 
         if not account:
-            raise HTTPException(status_code=404, detail=f"Account not found: {account_id}")
+            raise HTTPException(
+                status_code=404, detail=f"Account not found: {account_id}"
+            )
 
         balance_info = await account_manager.get_account_balance(account_id)
 
@@ -307,10 +332,14 @@ async def get_account_overview(
         raise
     except Exception as e:
         logger.error(f"Failed to get account overview: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get account overview: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get account overview: {str(e)}"
+        )
 
 
-@router.get("/accounts/{account_id}/positions", response_model=List[OpenPositionResponse])
+@router.get(
+    "/accounts/{account_id}/positions", response_model=List[OpenPositionResponse]
+)
 @limiter.limit("30/minute")
 async def get_open_positions(
     account_id: str,
@@ -354,7 +383,9 @@ async def get_open_positions(
 
     except Exception as e:
         logger.error(f"Failed to get open positions: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get positions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get positions: {str(e)}"
+        )
 
 
 @router.get("/accounts/{account_id}/trades", response_model=List[ClosedTradeResponse])
@@ -456,7 +487,9 @@ async def execute_buy(
 
     except Exception as e:
         logger.error(f"Failed to execute BUY trade: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to execute trade: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to execute trade: {str(e)}"
+        )
 
 
 @router.post("/accounts/{account_id}/trades/sell", response_model=Dict[str, Any])
@@ -506,7 +539,9 @@ async def execute_sell(
 
     except Exception as e:
         logger.error(f"Failed to execute SELL trade: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to execute trade: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to execute trade: {str(e)}"
+        )
 
 
 @router.post("/trades/{trade_id}/close", response_model=Dict[str, Any])
@@ -549,10 +584,14 @@ async def close_position(
 
     except Exception as e:
         logger.error(f"Failed to close position: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to close position: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to close position: {str(e)}"
+        )
 
 
-@router.get("/accounts/{account_id}/performance", response_model=PerformanceMetricsResponse)
+@router.get(
+    "/accounts/{account_id}/performance", response_model=PerformanceMetricsResponse
+)
 @limiter.limit("20/minute")
 async def get_performance_metrics(
     account_id: str,
@@ -569,7 +608,9 @@ async def get_performance_metrics(
         logger.info(f"Fetching performance metrics: {account_id} ({period})")
 
         account_manager = await container.get("paper_trading_account_manager")
-        metrics = await account_manager.get_performance_metrics(account_id, period=period)
+        metrics = await account_manager.get_performance_metrics(
+            account_id, period=period
+        )
 
         return PerformanceMetricsResponse(
             total_trades=metrics.get("total_trades", 0),
@@ -627,4 +668,6 @@ async def reset_monthly(
         raise
     except Exception as e:
         logger.error(f"Failed to reset account: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to reset account: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to reset account: {str(e)}"
+        )

@@ -3,26 +3,20 @@ Logging configuration for Robo Trader
 """
 
 import sys
-import os
 from pathlib import Path
+
 from loguru import logger
-from io import StringIO
 
 
 def clear_log_files(logs_dir: Path):
     """
     Clear all log files on startup to start fresh.
-    
+
     Args:
         logs_dir: Directory containing log files
     """
-    log_files = [
-        "backend.log",
-        "errors.log",
-        "critical.log",
-        "frontend.log"
-    ]
-    
+    log_files = ["backend.log", "errors.log", "critical.log", "frontend.log"]
+
     for log_file in log_files:
         log_path = logs_dir / log_file
         if log_path.exists():
@@ -73,7 +67,7 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
         compression="zip",
         backtrace=True,
         diagnose=True,
-        enqueue=False  # Synchronous for startup errors to ensure they're written immediately
+        enqueue=False,  # Synchronous for startup errors to ensure they're written immediately
     )
 
     # Add console handler with colorful output (only show logs at configured level)
@@ -83,7 +77,7 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
         level=console_level,  # Only show logs at configured level in console
         colorize=True,
         backtrace=True,
-        diagnose=True
+        diagnose=True,
     )
 
     # Add error-only file handler
@@ -97,7 +91,7 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
         compression="zip",
         backtrace=True,
         diagnose=True,
-        enqueue=False  # Synchronous for startup errors
+        enqueue=False,  # Synchronous for startup errors
     )
 
     # Add critical error handler that catches everything
@@ -111,7 +105,7 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
         compression="zip",
         backtrace=True,
         diagnose=True,
-        enqueue=False  # Synchronous for startup errors
+        enqueue=False,  # Synchronous for startup errors
     )
 
     logger.info(f"Logging configured: level={log_level}, logs_dir={logs_dir}")
@@ -127,7 +121,7 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
 
         logger.critical(
             f"Uncaught exception: {exc_value}",
-            exc_info=(exc_type, exc_value, exc_traceback)
+            exc_info=(exc_type, exc_value, exc_traceback),
         )
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
@@ -136,18 +130,26 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
 
     # Handle asyncio exceptions
     import asyncio
+
     def handle_asyncio_exception(loop, context):
         """Handle asyncio exceptions."""
         logger.error(f"Asyncio exception: {context}")
-        if 'exception' in context:
-            logger.error(f"Exception details: {context['exception']}", exc_info=context['exception'])
+        if "exception" in context:
+            logger.error(
+                f"Exception details: {context['exception']}",
+                exc_info=context["exception"],
+            )
 
     # Store original exception handler and replace it
-    original_handler = asyncio.get_event_loop_policy().get_event_loop().get_exception_handler()
+    original_handler = (
+        asyncio.get_event_loop_policy().get_event_loop().get_exception_handler()
+    )
     asyncio.get_event_loop().set_exception_handler(handle_asyncio_exception)
 
 
-def ensure_logging_setup(logs_dir: Path = None, log_level: str = "INFO", clear_logs: bool = True):
+def ensure_logging_setup(
+    logs_dir: Path = None, log_level: str = "INFO", clear_logs: bool = True
+):
     """
     Ensure logging is set up, using default logs directory if not provided.
 

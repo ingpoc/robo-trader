@@ -5,23 +5,23 @@ Coordinates all state managers and provides unified interface.
 This is a thin facade that delegates to specialized managers.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from src.config import Config
-from src.core.state_models import (
-    PortfolioState, Intent, Signal, FundamentalAnalysis,
-    Recommendation, MarketConditions, AnalysisPerformance
-)
-from src.core.event_bus import EventBus
 from src.core.alerts import AlertManager
+from src.core.event_bus import EventBus
+from src.core.state_models import (AnalysisPerformance, FundamentalAnalysis,
+                                   Intent, MarketConditions, PortfolioState,
+                                   Recommendation, Signal)
 
-from .base import DatabaseConnection
-from .portfolio_state import PortfolioStateManager
-from .intent_state import IntentStateManager
-from .approval_state import ApprovalStateManager
-from .news_earnings_state import NewsEarningsStateManager
 from .analysis_state import AnalysisStateManager
+from .approval_state import ApprovalStateManager
+from .base import DatabaseConnection
+from .intent_state import IntentStateManager
+from .news_earnings_state import NewsEarningsStateManager
+from .portfolio_state import PortfolioStateManager
 
 
 class DatabaseStateManager:
@@ -72,7 +72,9 @@ class DatabaseStateManager:
     def get_stock_state_store(self):
         """Get stock state store for scheduler operations (lazy initialization)."""
         if self._stock_state is None:
-            from src.core.background_scheduler.stores.stock_state_store import StockStateStore
+            from src.core.background_scheduler.stores.stock_state_store import \
+                StockStateStore
+
             self._stock_state = StockStateStore(self.db.connection)
         return self._stock_state
 
@@ -95,10 +97,7 @@ class DatabaseStateManager:
         return await self.intents.get_all_intents()
 
     async def create_intent(
-        self,
-        symbol: str,
-        signal: Optional[Signal] = None,
-        source: str = "system"
+        self, symbol: str, signal: Optional[Signal] = None, source: str = "system"
     ) -> Intent:
         """Create new trading intent."""
         return await self.intents.create_intent(symbol, signal, source)
@@ -117,10 +116,7 @@ class DatabaseStateManager:
         return await self.approvals.get_pending_approvals()
 
     async def update_approval_status(
-        self,
-        recommendation_id: str,
-        status: str,
-        user_feedback: Optional[str] = None
+        self, recommendation_id: str, status: str, user_feedback: Optional[str] = None
     ) -> bool:
         """Update approval status."""
         return await self.approvals.update_approval_status(
@@ -142,11 +138,7 @@ class DatabaseStateManager:
         )
 
     async def save_earnings_report(
-        self,
-        symbol: str,
-        fiscal_period: str,
-        report_date: str,
-        **kwargs
+        self, symbol: str, fiscal_period: str, report_date: str, **kwargs
     ) -> None:
         """Save earnings report."""
         await self.news_earnings.save_earnings_report(
@@ -166,9 +158,7 @@ class DatabaseStateManager:
         return await self.news_earnings.get_upcoming_earnings(days_ahead)
 
     async def update_last_news_fetch(
-        self,
-        symbol: str,
-        fetch_time: Optional[str] = None
+        self, symbol: str, fetch_time: Optional[str] = None
     ) -> None:
         """Update last news fetch time."""
         await self.news_earnings.update_last_news_fetch(symbol, fetch_time)
@@ -183,9 +173,7 @@ class DatabaseStateManager:
         return await self.analysis.save_fundamental_analysis(analysis)
 
     async def get_fundamental_analysis(
-        self,
-        symbol: str,
-        limit: int = 1
+        self, symbol: str, limit: int = 1
     ) -> List[FundamentalAnalysis]:
         """Get fundamental analysis."""
         return await self.analysis.get_fundamental_analysis(symbol, limit)
@@ -195,9 +183,7 @@ class DatabaseStateManager:
         return await self.analysis.save_recommendation(recommendation)
 
     async def get_recommendations(
-        self,
-        symbol: Optional[str] = None,
-        limit: int = 20
+        self, symbol: Optional[str] = None, limit: int = 20
     ) -> List[Recommendation]:
         """Get recommendations."""
         return await self.analysis.get_recommendations(symbol, limit)
@@ -214,11 +200,15 @@ class DatabaseStateManager:
     # These would need to be implemented based on original file
     async def update_screening_results(self, results: Optional[Dict[str, Any]]) -> None:
         """Update screening results - TODO: implement."""
-        logger.warning("update_screening_results not yet implemented in refactored version")
+        logger.warning(
+            "update_screening_results not yet implemented in refactored version"
+        )
 
     async def get_screening_results(self) -> Optional[Dict[str, Any]]:
         """Get screening results - TODO: implement."""
-        logger.warning("get_screening_results not yet implemented in refactored version")
+        logger.warning(
+            "get_screening_results not yet implemented in refactored version"
+        )
         return None
 
     async def save_daily_plan(self, plan: Dict) -> None:

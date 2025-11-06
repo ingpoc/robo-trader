@@ -5,10 +5,9 @@ Prevents buffer overload by throttling, batching, and debouncing broadcasts.
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
-from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
 
@@ -16,6 +15,7 @@ from loguru import logger
 @dataclass
 class ThrottleConfig:
     """Throttle configuration."""
+
     max_messages_per_second: int = 10
     batch_window_ms: int = 100
     debounce_keys: List[str] = field(default_factory=lambda: ["type"])
@@ -35,9 +35,7 @@ class BroadcastThrottler:
     """
 
     def __init__(
-        self,
-        broadcast_callback: Callable,
-        config: Optional[ThrottleConfig] = None
+        self, broadcast_callback: Callable, config: Optional[ThrottleConfig] = None
     ):
         self.broadcast_callback = broadcast_callback
         self.config = config or ThrottleConfig()
@@ -56,7 +54,7 @@ class BroadcastThrottler:
             "messages_sent": 0,
             "messages_dropped": 0,
             "messages_batched": 0,
-            "batches_sent": 0
+            "batches_sent": 0,
         }
 
     async def start(self) -> None:
@@ -90,11 +88,7 @@ class BroadcastThrottler:
         await self._flush_pending_batch()
         logger.info("BroadcastThrottler stopped")
 
-    async def broadcast(
-        self,
-        message: Dict[str, Any],
-        priority: bool = False
-    ) -> None:
+    async def broadcast(self, message: Dict[str, Any], priority: bool = False) -> None:
         """
         Queue a message for broadcast.
 
@@ -152,19 +146,13 @@ class BroadcastThrottler:
             now = datetime.now(timezone.utc)
             cutoff = now - timedelta(seconds=10)
 
-            self._last_sent = {
-                k: v for k, v in self._last_sent.items()
-                if v > cutoff
-            }
+            self._last_sent = {k: v for k, v in self._last_sent.items() if v > cutoff}
 
     async def _process_queue(self) -> None:
         """Process queued messages with throttling."""
         while self._running:
             try:
-                message = await asyncio.wait_for(
-                    self._message_queue.get(),
-                    timeout=0.1
-                )
+                message = await asyncio.wait_for(self._message_queue.get(), timeout=0.1)
 
                 self._pending_batch.append(message)
                 self._stats["messages_batched"] += 1
@@ -221,7 +209,7 @@ class BroadcastThrottler:
                 "type": "batch_update",
                 "messages": messages,
                 "count": len(messages),
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             await self.broadcast_callback(batch_message)
@@ -244,8 +232,8 @@ class BroadcastThrottler:
                 "max_messages_per_second": self.config.max_messages_per_second,
                 "batch_window_ms": self.config.batch_window_ms,
                 "max_batch_size": self.config.max_batch_size,
-                "drop_duplicates": self.config.drop_duplicates
-            }
+                "drop_duplicates": self.config.drop_duplicates,
+            },
         }
 
     def reset_stats(self) -> None:
@@ -255,5 +243,5 @@ class BroadcastThrottler:
             "messages_sent": 0,
             "messages_dropped": 0,
             "messages_batched": 0,
-            "batches_sent": 0
+            "batches_sent": 0,
         }

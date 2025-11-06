@@ -11,20 +11,21 @@ Provides 100% backward compatibility with original RecommendationEngine.
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
 from src.config import Config
 from src.core.database_state import DatabaseStateManager
-from src.core.state_models import FundamentalAnalysis, Recommendation, RiskDecision, AnalysisPerformance
+from src.core.state_models import (FundamentalAnalysis)
 from src.services.fundamental_service import FundamentalService
 from src.services.risk_service import RiskService
 
-from .models import RecommendationResult, RecommendationFactors, RecommendationConfig
-from .factor_calculator import FactorCalculator
-from .decision_maker import DecisionMaker
 from .claude_analyzer import ClaudeAnalyzer
+from .decision_maker import DecisionMaker
+from .factor_calculator import FactorCalculator
+from .models import (RecommendationConfig, RecommendationFactors,
+                     RecommendationResult)
 from .performance_tracker import PerformanceTracker
 from .price_calculator import TargetPriceCalculator
 
@@ -49,7 +50,7 @@ class RecommendationEngine:
         config: Config,
         state_manager: DatabaseStateManager,
         fundamental_service: FundamentalService,
-        risk_service: RiskService
+        risk_service: RiskService,
     ):
         self.config = config
         self.state_manager = state_manager
@@ -57,17 +58,21 @@ class RecommendationEngine:
         self.risk_service = risk_service
 
         # Load recommendation engine configuration
-        reco_config = getattr(config, 'recommendation_engine', {})
+        reco_config = getattr(config, "recommendation_engine", {})
         self.recommendation_config = RecommendationConfig.default()
 
         # Override with provided config if available
         if reco_config:
-            if 'scoring_weights' in reco_config:
-                self.recommendation_config.scoring_weights.update(reco_config['scoring_weights'])
-            if 'thresholds' in reco_config:
-                self.recommendation_config.thresholds.update(reco_config['thresholds'])
-            if 'confidence_levels' in reco_config:
-                self.recommendation_config.confidence_levels.update(reco_config['confidence_levels'])
+            if "scoring_weights" in reco_config:
+                self.recommendation_config.scoring_weights.update(
+                    reco_config["scoring_weights"]
+                )
+            if "thresholds" in reco_config:
+                self.recommendation_config.thresholds.update(reco_config["thresholds"])
+            if "confidence_levels" in reco_config:
+                self.recommendation_config.confidence_levels.update(
+                    reco_config["confidence_levels"]
+                )
 
         # Initialize modules
         self.factor_calculator = FactorCalculator(fundamental_service, risk_service)
@@ -79,9 +84,7 @@ class RecommendationEngine:
         logger.info("Recommendation engine initialized with modular architecture")
 
     async def generate_recommendation(
-        self,
-        symbol: str,
-        force_refresh: bool = False
+        self, symbol: str, force_refresh: bool = False
     ) -> Optional[RecommendationResult]:
         """
         Generate comprehensive recommendation for a symbol using AI-powered analysis.
@@ -103,7 +106,9 @@ class RecommendationEngine:
                 return None
 
             # Step 2: Calculate all factors
-            factors = await self.factor_calculator.calculate_all_factors(symbol, fundamental_data)
+            factors = await self.factor_calculator.calculate_all_factors(
+                symbol, fundamental_data
+            )
 
             # Step 3: Make decision based on factors
             decision = self.decision_maker.make_decision(factors, symbol)
@@ -119,7 +124,9 @@ class RecommendationEngine:
             # Step 6: Store recommendation for performance tracking
             await self.performance_tracker.store_recommendation(result)
 
-            logger.info(f"Generated recommendation for {symbol}: {result.recommendation_type} (confidence: {result.confidence_level})")
+            logger.info(
+                f"Generated recommendation for {symbol}: {result.recommendation_type} (confidence: {result.confidence_level})"
+            )
             return result
 
         except Exception as e:
@@ -127,9 +134,7 @@ class RecommendationEngine:
             return None
 
     async def _get_fundamental_data(
-        self,
-        symbol: str,
-        force_refresh: bool = False
+        self, symbol: str, force_refresh: bool = False
     ) -> Optional[FundamentalAnalysis]:
         """Get fundamental data for symbol."""
         try:
@@ -146,9 +151,7 @@ class RecommendationEngine:
             return None
 
     async def _get_claude_analysis_enhanced(
-        self,
-        symbol: str,
-        factors: RecommendationFactors
+        self, symbol: str, factors: RecommendationFactors
     ) -> Optional[Dict[str, Any]]:
         """Get enhanced Claude analysis with current price."""
         try:
@@ -170,7 +173,7 @@ class RecommendationEngine:
         decision: Dict[str, Any],
         factors: RecommendationFactors,
         claude_analysis: Optional[Dict[str, Any]],
-        fundamental_data: Optional[FundamentalAnalysis]
+        fundamental_data: Optional[FundamentalAnalysis],
     ) -> RecommendationResult:
         """Build complete recommendation result from all analysis components."""
         try:
@@ -182,8 +185,10 @@ class RecommendationEngine:
             time_horizon = decision["time_horizon"]
 
             # Calculate target prices and stop losses
-            target_price, stop_loss = await self.price_calculator.calculate_target_prices(
-                symbol, fundamental_data, recommendation_type, claude_analysis
+            target_price, stop_loss = (
+                await self.price_calculator.calculate_target_prices(
+                    symbol, fundamental_data, recommendation_type, claude_analysis
+                )
             )
 
             # Build reasoning
@@ -202,7 +207,7 @@ class RecommendationEngine:
                 stop_loss=stop_loss,
                 reasoning=reasoning,
                 risk_level=risk_level,
-                time_horizon=time_horizon
+                time_horizon=time_horizon,
             )
 
             return result
@@ -216,21 +221,20 @@ class RecommendationEngine:
                 confidence_level=decision.get("confidence_level", "LOW"),
                 overall_score=decision.get("overall_score", 50.0),
                 factors=factors,
-                reasoning="Error building detailed recommendation"
+                reasoning="Error building detailed recommendation",
             )
 
-  
     async def generate_bulk_recommendations(
-        self,
-        symbols: List[str],
-        force_refresh: bool = False
+        self, symbols: List[str], force_refresh: bool = False
     ) -> Dict[str, RecommendationResult]:
         """Generate recommendations for multiple symbols."""
         recommendations = {}
 
         for symbol in symbols:
             try:
-                recommendation = await self.generate_recommendation(symbol, force_refresh)
+                recommendation = await self.generate_recommendation(
+                    symbol, force_refresh
+                )
                 if recommendation:
                     recommendations[symbol] = recommendation
                 else:
@@ -238,23 +242,27 @@ class RecommendationEngine:
             except Exception as e:
                 logger.error(f"Error generating recommendation for {symbol}: {e}")
 
-        logger.info(f"Generated {len(recommendations)} recommendations out of {len(symbols)} requested")
+        logger.info(
+            f"Generated {len(recommendations)} recommendations out of {len(symbols)} requested"
+        )
         return recommendations
 
     async def _generate_rule_based_recommendation(
-        self,
-        symbol: str,
-        fundamental_data: Optional[FundamentalAnalysis] = None
+        self, symbol: str, fundamental_data: Optional[FundamentalAnalysis] = None
     ) -> Optional[RecommendationResult]:
         """Generate rule-based recommendation without Claude analysis."""
         try:
             if not fundamental_data:
-                fundamental_data = await self.fundamental_service.get_fundamental_analysis(symbol)
+                fundamental_data = (
+                    await self.fundamental_service.get_fundamental_analysis(symbol)
+                )
                 if not fundamental_data:
                     return None
 
             # Calculate factors
-            factors = await self.factor_calculator.calculate_all_factors(symbol, fundamental_data)
+            factors = await self.factor_calculator.calculate_all_factors(
+                symbol, fundamental_data
+            )
 
             # Make decision
             decision = self.decision_maker.make_decision(factors, symbol)
@@ -271,19 +279,19 @@ class RecommendationEngine:
                 factors=factors,
                 reasoning=reasoning,
                 risk_level=decision["risk_level"],
-                time_horizon=decision["time_horizon"]
+                time_horizon=decision["time_horizon"],
             )
 
             return result
 
         except Exception as e:
-            logger.error(f"Error generating rule-based recommendation for {symbol}: {e}")
+            logger.error(
+                f"Error generating rule-based recommendation for {symbol}: {e}"
+            )
             return None
 
     async def get_recommendation_history(
-        self,
-        symbol: Optional[str] = None,
-        limit: int = 10
+        self, symbol: Optional[str] = None, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """Get recommendation history."""
         return await self.performance_tracker.get_recommendation_history(symbol, limit)

@@ -7,14 +7,16 @@ with database persistence and event emission.
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
+
 from loguru import logger
 
-from src.core.event_bus import EventBus, Event, EventType
 from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
-from src.services.feature_management.models import FeatureConfig
+from src.core.event_bus import Event, EventBus, EventType
 from src.services.feature_management.database import FeatureDatabase
-from src.services.feature_management.dependency_resolver import DependencyResolver
+from src.services.feature_management.dependency_resolver import \
+    DependencyResolver
+from src.services.feature_management.models import FeatureConfig
 
 
 class FeatureManagementError(TradingError):
@@ -26,7 +28,7 @@ class FeatureManagementError(TradingError):
             category=ErrorCategory.CONFIGURATION,
             severity=ErrorSeverity.MEDIUM,
             feature_id=feature_id,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -48,7 +50,7 @@ class FeatureCRUD:
         event_bus: EventBus,
         features: Dict[str, FeatureConfig],
         dependency_resolver: DependencyResolver,
-        lock: asyncio.Lock
+        lock: asyncio.Lock,
     ):
         self.database = database
         self.event_bus = event_bus
@@ -67,14 +69,14 @@ class FeatureCRUD:
                 if config.feature_id in self.features:
                     raise FeatureManagementError(
                         f"Feature {config.feature_id} already exists",
-                        feature_id=config.feature_id
+                        feature_id=config.feature_id,
                     )
 
                 # Create in database
                 if not await self.database.create_feature_config(config):
                     raise FeatureManagementError(
-                        f"Failed to create feature in database",
-                        feature_id=config.feature_id
+                        "Failed to create feature in database",
+                        feature_id=config.feature_id,
                     )
 
                 # Update local state
@@ -85,21 +87,23 @@ class FeatureCRUD:
                     config.feature_id,
                     "create",
                     new_state=config.to_dict(),
-                    reason="Feature created"
+                    reason="Feature created",
                 )
 
                 # Emit event
-                await self.event_bus.publish(Event(
-                    id=f"feature_created_{config.feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                    type=EventType.FEATURE_CREATED,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    source="feature_management_service",
-                    data={
-                        "action": "feature_created",
-                        "feature_id": config.feature_id,
-                        "config": config.to_dict()
-                    }
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=f"feature_created_{config.feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                        type=EventType.FEATURE_CREATED,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="feature_management_service",
+                        data={
+                            "action": "feature_created",
+                            "feature_id": config.feature_id,
+                            "config": config.to_dict(),
+                        },
+                    )
+                )
 
                 logger.info(f"Created feature: {config.feature_id}")
                 return True
@@ -127,7 +131,7 @@ class FeatureCRUD:
                 if config.feature_id not in self.features:
                     raise FeatureManagementError(
                         f"Feature {config.feature_id} not found",
-                        feature_id=config.feature_id
+                        feature_id=config.feature_id,
                     )
 
                 old_config = self.features[config.feature_id]
@@ -135,8 +139,8 @@ class FeatureCRUD:
                 # Update in database
                 if not await self.database.update_feature_config(config):
                     raise FeatureManagementError(
-                        f"Failed to update feature in database",
-                        feature_id=config.feature_id
+                        "Failed to update feature in database",
+                        feature_id=config.feature_id,
                     )
 
                 # Update local state
@@ -148,22 +152,24 @@ class FeatureCRUD:
                     "update",
                     old_state=old_config.to_dict(),
                     new_state=config.to_dict(),
-                    reason="Feature updated"
+                    reason="Feature updated",
                 )
 
                 # Emit event
-                await self.event_bus.publish(Event(
-                    id=f"feature_updated_{config.feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                    type=EventType.FEATURE_UPDATED,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    source="feature_management_service",
-                    data={
-                        "action": "feature_updated",
-                        "feature_id": config.feature_id,
-                        "old_config": old_config.to_dict(),
-                        "new_config": config.to_dict()
-                    }
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=f"feature_updated_{config.feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                        type=EventType.FEATURE_UPDATED,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="feature_management_service",
+                        data={
+                            "action": "feature_updated",
+                            "feature_id": config.feature_id,
+                            "old_config": old_config.to_dict(),
+                            "new_config": config.to_dict(),
+                        },
+                    )
+                )
 
                 logger.info(f"Updated feature: {config.feature_id}")
                 return True
@@ -179,8 +185,7 @@ class FeatureCRUD:
                 # Check if feature exists
                 if feature_id not in self.features:
                     raise FeatureManagementError(
-                        f"Feature {feature_id} not found",
-                        feature_id=feature_id
+                        f"Feature {feature_id} not found", feature_id=feature_id
                     )
 
                 # Check if feature has dependents
@@ -188,7 +193,7 @@ class FeatureCRUD:
                 if dependents:
                     raise FeatureManagementError(
                         f"Cannot delete feature {feature_id} - it has dependents: {dependents}",
-                        feature_id=feature_id
+                        feature_id=feature_id,
                     )
 
                 old_config = self.features[feature_id]
@@ -196,8 +201,7 @@ class FeatureCRUD:
                 # Delete from database
                 if not await self.database.delete_feature_config(feature_id):
                     raise FeatureManagementError(
-                        f"Failed to delete feature from database",
-                        feature_id=feature_id
+                        "Failed to delete feature from database", feature_id=feature_id
                     )
 
                 # Update local state
@@ -208,21 +212,23 @@ class FeatureCRUD:
                     feature_id,
                     "delete",
                     old_state=old_config.to_dict(),
-                    reason="Feature deleted"
+                    reason="Feature deleted",
                 )
 
                 # Emit event
-                await self.event_bus.publish(Event(
-                    id=f"feature_deleted_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                    type=EventType.FEATURE_DELETED,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    source="feature_management_service",
-                    data={
-                        "action": "feature_deleted",
-                        "feature_id": feature_id,
-                        "config": old_config.to_dict()
-                    }
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=f"feature_deleted_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                        type=EventType.FEATURE_DELETED,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="feature_management_service",
+                        data={
+                            "action": "feature_deleted",
+                            "feature_id": feature_id,
+                            "config": old_config.to_dict(),
+                        },
+                    )
+                )
 
                 logger.info(f"Deleted feature: {feature_id}")
                 return True
@@ -242,4 +248,6 @@ class FeatureCRUD:
         # Validate dependencies exist
         for dep in config.dependencies:
             if dep.feature_id not in self.features:
-                logger.warning(f"Dependency {dep.feature_id} not found for feature {config.feature_id}")
+                logger.warning(
+                    f"Dependency {dep.feature_id} not found for feature {config.feature_id}"
+                )

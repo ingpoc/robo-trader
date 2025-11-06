@@ -1,10 +1,11 @@
 """Response validation and decision parsing for Claude Agent SDK."""
 
-import logging
 import json
-from typing import Dict, Any, List, Optional, Tuple
+import logging
+from typing import Any, Dict, List, Optional, Tuple
 
-from ...models.claude_agent import TradeDecision, AnalysisRecommendation, StrategyLearning
+from ...models.claude_agent import (AnalysisRecommendation, StrategyLearning,
+                                    TradeDecision)
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class ResponseValidator:
         tool_name: str,
         tool_input: Dict[str, Any],
         account_balance: float,
-        current_positions: int
+        current_positions: int,
     ) -> Tuple[bool, Optional[str]]:
         """
         Validate tool call before execution.
@@ -50,10 +51,18 @@ class ResponseValidator:
         # This would integrate with existing RiskService
         return True, None
 
-    def _validate_schema(self, tool_name: str, tool_input: Dict[str, Any]) -> Optional[str]:
+    def _validate_schema(
+        self, tool_name: str, tool_input: Dict[str, Any]
+    ) -> Optional[str]:
         """Validate input against tool schema."""
         if tool_name == "execute_trade":
-            required = ["symbol", "action", "quantity", "entry_price", "strategy_rationale"]
+            required = [
+                "symbol",
+                "action",
+                "quantity",
+                "entry_price",
+                "strategy_rationale",
+            ]
             missing = [f for f in required if f not in tool_input]
             if missing:
                 return f"Missing fields: {missing}"
@@ -79,10 +88,7 @@ class ResponseValidator:
         return None
 
     def _validate_trade_business_rules(
-        self,
-        tool_input: Dict[str, Any],
-        account_balance: float,
-        current_positions: int
+        self, tool_input: Dict[str, Any], account_balance: float, current_positions: int
     ) -> Optional[str]:
         """Validate trade against business rules."""
         # Check position size limit
@@ -103,7 +109,9 @@ class ResponseValidator:
 
         return None
 
-    async def parse_trade_decision(self, response_text: str) -> Optional[List[TradeDecision]]:
+    async def parse_trade_decision(
+        self, response_text: str
+    ) -> Optional[List[TradeDecision]]:
         """
         Parse trade decisions from Claude response.
 
@@ -126,23 +134,25 @@ class ResponseValidator:
 
         # Look for patterns like "BUY SBIN 100 @ 450"
         import re
+
         pattern = r"(BUY|SELL)\s+([A-Z0-9]+)\s+(\d+)\s+@\s*([\d.]+)"
 
         for match in re.finditer(pattern, text, re.IGNORECASE):
             action, symbol, qty, price = match.groups()
-            trades.append(TradeDecision(
-                symbol=symbol,
-                action=action.lower(),
-                quantity=int(qty),
-                reason="Parsed from Claude response",
-                confidence=0.7
-            ))
+            trades.append(
+                TradeDecision(
+                    symbol=symbol,
+                    action=action.lower(),
+                    quantity=int(qty),
+                    reason="Parsed from Claude response",
+                    confidence=0.7,
+                )
+            )
 
         return trades
 
     async def parse_analysis_recommendation(
-        self,
-        response_text: str
+        self, response_text: str
     ) -> Optional[AnalysisRecommendation]:
         """
         Parse analysis recommendation from Claude response.
@@ -172,7 +182,7 @@ class ResponseValidator:
 
         # Try to extract confidence (0-100% or 0-1)
         confidence = 0.65  # default
-        conf_match = re.search(r'confidence[:\s]+(\d+)\s*%', lower_text)
+        conf_match = re.search(r"confidence[:\s]+(\d+)\s*%", lower_text)
         if conf_match:
             confidence = int(conf_match.group(1)) / 100
 
@@ -180,7 +190,7 @@ class ResponseValidator:
             symbol="UNKNOWN",
             recommendation=recommendation,
             confidence=confidence,
-            rationale="Parsed from Claude response"
+            rationale="Parsed from Claude response",
         )
 
     async def parse_learnings(self, response_text: str) -> Optional[StrategyLearning]:
@@ -192,7 +202,7 @@ class ResponseValidator:
                 what_failed=learning_data.get("what_failed", []),
                 strategy_changes=learning_data.get("strategy_changes", []),
                 research_topics=learning_data.get("research_topics", []),
-                confidence_level=learning_data.get("confidence_level", 0.5)
+                confidence_level=learning_data.get("confidence_level", 0.5),
             )
         except json.JSONDecodeError:
             return self._parse_text_learnings(response_text)
@@ -207,13 +217,17 @@ class ResponseValidator:
 
         # Simple pattern matching
         if "worked" in text.lower():
-            worked_match = re.search(r"what.*?worked[:\s]+([^.]+)", text, re.IGNORECASE | re.DOTALL)
+            worked_match = re.search(
+                r"what.*?worked[:\s]+([^.]+)", text, re.IGNORECASE | re.DOTALL
+            )
             if worked_match:
                 worked_text = worked_match.group(1)
                 worked = [s.strip() for s in worked_text.split(",") if s.strip()]
 
         if "failed" in text.lower():
-            failed_match = re.search(r"what.*?failed[:\s]+([^.]+)", text, re.IGNORECASE | re.DOTALL)
+            failed_match = re.search(
+                r"what.*?failed[:\s]+([^.]+)", text, re.IGNORECASE | re.DOTALL
+            )
             if failed_match:
                 failed_text = failed_match.group(1)
                 failed = [s.strip() for s in failed_text.split(",") if s.strip()]
@@ -223,7 +237,7 @@ class ResponseValidator:
             what_failed=failed[:5],
             strategy_changes=changes,
             research_topics=[],
-            confidence_level=0.6
+            confidence_level=0.6,
         )
 
 
@@ -231,17 +245,21 @@ class DecisionParser:
     """Parse and structure Claude decisions for execution."""
 
     @staticmethod
-    def extract_tool_calls(response_content: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def extract_tool_calls(
+        response_content: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
         """Extract tool calls from Claude response."""
         tool_calls = []
 
         for block in response_content:
             if block.get("type") == "tool_use":
-                tool_calls.append({
-                    "tool_name": block.get("name"),
-                    "input": block.get("input"),
-                    "id": block.get("id")
-                })
+                tool_calls.append(
+                    {
+                        "tool_name": block.get("name"),
+                        "input": block.get("input"),
+                        "id": block.get("id"),
+                    }
+                )
 
         return tool_calls
 

@@ -9,20 +9,21 @@ Handles registration of business logic services:
 """
 
 import logging
+
+from src.services.analytics_service import AnalyticsService
+from src.services.event_router_service import EventRouterService
+from src.services.execution_service import ExecutionService
+from src.services.feature_management.service import FeatureManagementService
+from src.services.learning_service import LearningService
+from src.services.market_data_service import MarketDataService
 from src.services.portfolio_service import PortfolioService
 from src.services.risk_service import RiskService
-from src.services.execution_service import ExecutionService
-from src.services.analytics_service import AnalyticsService
-from src.services.learning_service import LearningService
 from src.services.strategy_evolution_engine import StrategyEvolutionEngine
-from src.services.market_data_service import MarketDataService
-from src.services.feature_management.service import FeatureManagementService
-from src.services.event_router_service import EventRouterService
 
 logger = logging.getLogger(__name__)
 
 
-async def register_domain_services(container: 'DependencyContainer') -> None:
+async def register_domain_services(container: "DependencyContainer") -> None:
     """Register all domain-specific services."""
 
     # Portfolio Service
@@ -64,7 +65,9 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
     # Market Data Service (real-time price tracking)
     async def create_market_data_service():
         event_bus = await container.get("event_bus")
-        market_data_service = MarketDataService(container.config, event_bus, broker=None)
+        market_data_service = MarketDataService(
+            container.config, event_bus, broker=None
+        )
         await market_data_service.initialize()
         return market_data_service
 
@@ -86,7 +89,9 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         await engine.initialize()
         return engine
 
-    container._register_singleton("strategy_evolution_engine", create_strategy_evolution_engine)
+    container._register_singleton(
+        "strategy_evolution_engine", create_strategy_evolution_engine
+    )
 
     # Feature Management Service
     async def create_feature_management_service():
@@ -97,13 +102,18 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         background_scheduler = await container.get("background_scheduler")
         feature_service.set_background_scheduler(background_scheduler)
 
-        if hasattr(container, '_singletons') and "claude_agent_coordinator" in container._singletons:
+        if (
+            hasattr(container, "_singletons")
+            and "claude_agent_coordinator" in container._singletons
+        ):
             agent_coordinator = await container.get("claude_agent_coordinator")
             feature_service.set_agent_coordinator(agent_coordinator)
 
         return feature_service
 
-    container._register_singleton("feature_management_service", create_feature_management_service)
+    container._register_singleton(
+        "feature_management_service", create_feature_management_service
+    )
 
     # Event Router Service
     async def create_event_router_service():
@@ -115,7 +125,9 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
 
     # Portfolio Intelligence Analyzer Service
     async def create_portfolio_intelligence_analyzer():
-        from src.services.portfolio_intelligence import PortfolioIntelligenceAnalyzer
+        from src.services.portfolio_intelligence import \
+            PortfolioIntelligenceAnalyzer
+
         state_manager = await container.get("state_manager")
         config_state = await container.get("configuration_state")
         analysis_logger = await container.get("analysis_logger")
@@ -127,9 +139,11 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
             config_state=config_state,
             analysis_logger=analysis_logger,
             broadcast_coordinator=broadcast_coordinator,
-            status_coordinator=status_coordinator
+            status_coordinator=status_coordinator,
         )
         await analyzer.initialize()
         return analyzer
 
-    container._register_singleton("portfolio_intelligence_analyzer", create_portfolio_intelligence_analyzer)
+    container._register_singleton(
+        "portfolio_intelligence_analyzer", create_portfolio_intelligence_analyzer
+    )

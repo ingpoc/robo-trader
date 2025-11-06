@@ -6,20 +6,18 @@ This is a facade that delegates to focused configuration stores.
 """
 
 import asyncio
-import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from src.core.database_state.base import DatabaseConnection
-from src.core.database_state.config_storage import (
-    BackgroundTasksStore,
-    AIAgentsStore,
-    GlobalSettingsStore,
-    PromptsStore
-)
 from src.core.database_state.config_backup import ConfigBackupManager
+from src.core.database_state.config_storage import (AIAgentsStore,
+                                                    BackgroundTasksStore,
+                                                    GlobalSettingsStore,
+                                                    PromptsStore)
 
 
 class ConfigurationState:
@@ -171,7 +169,9 @@ class ConfigurationState:
         pass
 
     # ===== Background Tasks Configuration =====
-    async def get_background_task_config(self, task_name: str) -> Optional[Dict[str, Any]]:
+    async def get_background_task_config(
+        self, task_name: str
+    ) -> Optional[Dict[str, Any]]:
         """Get background task configuration by name."""
         return await self.background_tasks.get(task_name)
 
@@ -179,7 +179,9 @@ class ConfigurationState:
         """Get all background tasks configuration."""
         return await self.background_tasks.get_all()
 
-    async def update_background_task_config(self, task_name: str, config_data: Dict[str, Any]) -> bool:
+    async def update_background_task_config(
+        self, task_name: str, config_data: Dict[str, Any]
+    ) -> bool:
         """Update background task configuration."""
         result = await self.background_tasks.update(task_name, config_data)
         if result:
@@ -195,7 +197,9 @@ class ConfigurationState:
         """Get all AI agents configuration."""
         return await self.ai_agents.get_all()
 
-    async def update_ai_agent_config(self, agent_name: str, config_data: Dict[str, Any]) -> bool:
+    async def update_ai_agent_config(
+        self, agent_name: str, config_data: Dict[str, Any]
+    ) -> bool:
         """Update AI agent configuration."""
         result = await self.ai_agents.update(agent_name, config_data)
         if result:
@@ -207,7 +211,9 @@ class ConfigurationState:
         """Get all global settings configuration."""
         return await self.global_settings.get_all()
 
-    async def update_global_settings_config(self, settings_data: Dict[str, Any]) -> bool:
+    async def update_global_settings_config(
+        self, settings_data: Dict[str, Any]
+    ) -> bool:
         """Update global settings configuration."""
         result = await self.global_settings.update(settings_data)
         if result:
@@ -223,7 +229,9 @@ class ConfigurationState:
         """Get all prompts configuration."""
         return await self.prompts.get_all()
 
-    async def update_prompt_config(self, prompt_name: str, prompt_content: str, description: str = "") -> bool:
+    async def update_prompt_config(
+        self, prompt_name: str, prompt_content: str, description: str = ""
+    ) -> bool:
         """Update prompt configuration."""
         result = await self.prompts.update(prompt_name, prompt_content, description)
         if result:
@@ -241,11 +249,15 @@ class ConfigurationState:
 
     async def migrate_from_config_json(self, config_path: Path) -> bool:
         """Migrate configuration from JSON file (legacy support)."""
-        logger.warning("migrate_from_config_json is deprecated - configuration is now database-first")
+        logger.warning(
+            "migrate_from_config_json is deprecated - configuration is now database-first"
+        )
         return False
 
     # ===== Analysis & Recommendations (for AI Transparency) =====
-    async def store_analysis_history(self, symbol: str, timestamp: str, analysis: str) -> bool:
+    async def store_analysis_history(
+        self, symbol: str, timestamp: str, analysis: str
+    ) -> bool:
         """
         Safely store analysis history with proper locking.
 
@@ -265,7 +277,7 @@ class ConfigurationState:
                     """INSERT INTO analysis_history
                        (symbol, timestamp, analysis, created_at)
                        VALUES (?, ?, ?, ?)""",
-                    (symbol, timestamp, analysis, current_time)
+                    (symbol, timestamp, analysis, current_time),
                 )
 
                 await self.db.connection.commit()
@@ -275,9 +287,14 @@ class ConfigurationState:
                 logger.error(f"Failed to store analysis history for {symbol}: {e}")
                 return False
 
-    async def store_recommendation(self, symbol: str, recommendation_type: str,
-                                  confidence_score: float, reasoning: str,
-                                  analysis_type: str) -> bool:
+    async def store_recommendation(
+        self,
+        symbol: str,
+        recommendation_type: str,
+        confidence_score: float,
+        reasoning: str,
+        analysis_type: str,
+    ) -> bool:
         """
         Safely store recommendation with proper locking.
 
@@ -299,7 +316,14 @@ class ConfigurationState:
                     """INSERT INTO recommendations
                        (symbol, recommendation_type, confidence_score, reasoning, analysis_type, created_at)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (symbol, recommendation_type, confidence_score, reasoning, analysis_type, current_time)
+                    (
+                        symbol,
+                        recommendation_type,
+                        confidence_score,
+                        reasoning,
+                        analysis_type,
+                        current_time,
+                    ),
                 )
 
                 await self.db.connection.commit()
@@ -327,18 +351,20 @@ class ConfigurationState:
                        WHERE json_extract(analysis, '$.analysis_type') = 'portfolio_intelligence'
                        ORDER BY created_at DESC
                        LIMIT ?""",
-                    (limit,)
+                    (limit,),
                 )
                 rows = await cursor.fetchall()
 
                 analyses = []
                 for row in rows:
-                    analyses.append({
-                        "symbol": row[0],
-                        "timestamp": row[1],
-                        "analysis": row[2],
-                        "created_at": row[3]
-                    })
+                    analyses.append(
+                        {
+                            "symbol": row[0],
+                            "timestamp": row[1],
+                            "analysis": row[2],
+                            "created_at": row[3],
+                        }
+                    )
 
                 return {"analyses": analyses}
 

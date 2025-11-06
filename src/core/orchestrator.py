@@ -5,12 +5,13 @@ The central coordinator for the multi-agent trading system.
 Refactored as a thin facade that delegates to focused coordinators.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import ClaudeAgentOptions
 from loguru import logger
 
 from src.config import Config
+
 from ..auth.claude_auth import ClaudeAuthStatus
 
 
@@ -85,6 +86,7 @@ class RoboTraderOrchestrator:
         allowed_tools.extend(strategy_tools)
 
         from ..core.hooks import create_safety_hooks
+
         hooks = create_safety_hooks(self.config, self.state_manager)
 
         mcp_servers_dict = {}
@@ -101,7 +103,9 @@ class RoboTraderOrchestrator:
             system_prompt=self._get_system_prompt(),
             cwd=self.config.project_dir,
             max_turns=self.config.max_turns,
-            setting_sources=["user"],  # Load ~/.claude/settings.json for global CLI settings
+            setting_sources=[
+                "user"
+            ],  # Load ~/.claude/settings.json for global CLI settings
         )
 
         self.session_coordinator.options = self.options
@@ -115,8 +119,12 @@ class RoboTraderOrchestrator:
             logger.info("BackgroundScheduler found - starting...")
             self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
             self.background_scheduler._run_market_screening = self.run_market_screening
-            self.background_scheduler._ai_planner_create_plan = self.ai_planner.create_daily_plan
-            self.background_scheduler._orchestrator_get_claude_status = self.get_claude_status
+            self.background_scheduler._ai_planner_create_plan = (
+                self.ai_planner.create_daily_plan
+            )
+            self.background_scheduler._orchestrator_get_claude_status = (
+                self.get_claude_status
+            )
 
             logger.info("Calling BackgroundScheduler.start()...")
             try:
@@ -242,7 +250,9 @@ Use the available tools to coordinate between agents. Maintain state and create 
         """Get current AI activity status for UI display."""
         return await self.status_coordinator.get_ai_status()
 
-    async def trigger_market_event(self, event_type: str, event_data: Dict[str, Any]) -> None:
+    async def trigger_market_event(
+        self, event_type: str, event_data: Dict[str, Any]
+    ) -> None:
         """Trigger market event for autonomous response."""
         await self.lifecycle_coordinator.trigger_market_event(event_type, event_data)
 
@@ -265,19 +275,20 @@ Use the available tools to coordinate between agents. Maintain state and create 
 
         # Use client manager instead of direct creation
         from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+
         client_manager = await ClaudeSDKClientManager.get_instance()
         return await client_manager.get_client("trading", self.options)
 
     async def run_portfolio_scan(self) -> Dict[str, Any]:
         """Run a portfolio scan using live portfolio data."""
-        portfolio_coordinator = getattr(self, 'portfolio_coordinator', None)
+        portfolio_coordinator = getattr(self, "portfolio_coordinator", None)
         if portfolio_coordinator:
             return await portfolio_coordinator.run_portfolio_scan()
         return {"error": "Portfolio coordinator not available"}
 
     async def run_market_screening(self) -> Dict[str, Any]:
         """Run market screening using current holdings analytics."""
-        portfolio_coordinator = getattr(self, 'portfolio_coordinator', None)
+        portfolio_coordinator = getattr(self, "portfolio_coordinator", None)
         if portfolio_coordinator:
             return await portfolio_coordinator.run_market_screening()
         return {"error": "Portfolio coordinator not available"}
@@ -286,7 +297,9 @@ Use the available tools to coordinate between agents. Maintain state and create 
         """Run strategy review to derive actionable rebalance suggestions."""
         return await self.task_coordinator.run_strategy_review()
 
-    async def handle_market_alert(self, symbol: str, alert_type: str, data: Dict) -> None:
+    async def handle_market_alert(
+        self, symbol: str, alert_type: str, data: Dict
+    ) -> None:
         """Handle real-time market alerts."""
         await self.query_coordinator.handle_market_alert(symbol, alert_type, data)
 

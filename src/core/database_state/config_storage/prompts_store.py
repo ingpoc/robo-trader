@@ -1,7 +1,8 @@
 """AI prompts configuration store."""
 
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict
+
 from loguru import logger
 
 from .base_store import BaseConfigStore
@@ -24,15 +25,12 @@ class PromptsStore(BaseConfigStore):
             try:
                 cursor = await self.db.connection.execute(
                     "SELECT prompt_content, description FROM ai_prompts_config WHERE prompt_name = ?",
-                    (prompt_name,)
+                    (prompt_name,),
                 )
                 row = await cursor.fetchone()
 
                 if row:
-                    return {
-                        "content": row[0],
-                        "description": row[1] if row[1] else ""
-                    }
+                    return {"content": row[0], "description": row[1] if row[1] else ""}
                 return {"content": "", "description": ""}
             except Exception as e:
                 self._log_error(f"get({prompt_name})", e)
@@ -56,7 +54,9 @@ class PromptsStore(BaseConfigStore):
                 for row in rows:
                     prompts[row[1]] = {  # prompt_name at index 1
                         "content": row[2],  # prompt_content at index 2
-                        "description": row[3] if row[3] else ""  # description at index 3
+                        "description": (
+                            row[3] if row[3] else ""
+                        ),  # description at index 3
                     }
 
                 return {"ai_prompts": prompts}
@@ -64,7 +64,9 @@ class PromptsStore(BaseConfigStore):
                 self._log_error("get_all", e)
                 return {"ai_prompts": {}}
 
-    async def update(self, prompt_name: str, prompt_content: str, description: str = "") -> bool:
+    async def update(
+        self, prompt_name: str, prompt_content: str, description: str = ""
+    ) -> bool:
         """
         Update prompt configuration.
 
@@ -88,7 +90,7 @@ class PromptsStore(BaseConfigStore):
                         (SELECT created_at FROM ai_prompts_config WHERE prompt_name = ?), ?
                     ))
                     """,
-                    (prompt_name, prompt_content, description, now, prompt_name, now)
+                    (prompt_name, prompt_content, description, now, prompt_name, now),
                 )
 
                 await self.db.connection.commit()

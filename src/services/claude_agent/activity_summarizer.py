@@ -6,13 +6,12 @@ clients with clear insights into what Claude accomplished, learned, and
 plans for the next trading day.
 """
 
-import logging
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+import logging
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...stores.claude_strategy_store import ClaudeStrategyStore
 
 logger = logging.getLogger(__name__)
@@ -130,9 +129,7 @@ class ActivitySummarizer:
         self.strategy_store = strategy_store
 
     async def create_daily_summary(
-        self,
-        account_type: str,
-        date: Optional[str] = None
+        self, account_type: str, date: Optional[str] = None
     ) -> DailyActivitySummary:
         """Create a comprehensive daily activity summary."""
 
@@ -150,15 +147,23 @@ class ActivitySummarizer:
 
         # Generate insights and assessments
         key_findings = await self._generate_key_findings(research_data, trading_data)
-        planned_activities = await self._generate_tomorrow_plan(trading_data, learning_data)
-        risk_adjustments = await self._generate_risk_adjustments(trading_data, market_data)
+        planned_activities = await self._generate_tomorrow_plan(
+            trading_data, learning_data
+        )
+        risk_adjustments = await self._generate_risk_adjustments(
+            trading_data, market_data
+        )
 
         # Calculate day rating
         day_rating = self._calculate_day_rating(trading_data, learning_data)
 
         # Identify achievements and improvements
-        key_achievements = await self._identify_achievements(trading_data, learning_data)
-        areas_for_improvement = await self._identify_improvements(trading_data, learning_data)
+        key_achievements = await self._identify_achievements(
+            trading_data, learning_data
+        )
+        areas_for_improvement = await self._identify_improvements(
+            trading_data, learning_data
+        )
 
         # Create summary
         summary = DailyActivitySummary(
@@ -185,20 +190,20 @@ class ActivitySummarizer:
             risk_adjustments=risk_adjustments,
             day_rating=day_rating,
             key_achievements=key_achievements,
-            areas_for_improvement=areas_for_improvement
+            areas_for_improvement=areas_for_improvement,
         )
 
         # Save summary
         await self._save_daily_summary(summary)
 
-        logger.info(f"Daily activity summary created for {account_type}: {day_rating} day")
+        logger.info(
+            f"Daily activity summary created for {account_type}: {day_rating} day"
+        )
 
         return summary
 
     async def create_weekly_summary(
-        self,
-        account_type: str,
-        week_end_date: Optional[str] = None
+        self, account_type: str, week_end_date: Optional[str] = None
     ) -> WeeklyActivitySummary:
         """Create a comprehensive weekly activity summary."""
 
@@ -208,7 +213,9 @@ class ActivitySummarizer:
         week_end = datetime.fromisoformat(week_end_date)
         week_start = week_end - timedelta(days=6)
 
-        logger.info(f"Creating weekly activity summary for {account_type} ({week_start.date()} to {week_end.date()})")
+        logger.info(
+            f"Creating weekly activity summary for {account_type} ({week_start.date()} to {week_end.date()})"
+        )
 
         # Gather weekly data
         weekly_data = await self._gather_weekly_data(account_type, week_start, week_end)
@@ -247,7 +254,7 @@ class ActivitySummarizer:
             market_themes=market_themes,
             sector_rotation=sector_rotation,
             market_outlook=market_outlook,
-            strategy_adjustments=strategy_adjustments
+            strategy_adjustments=strategy_adjustments,
         )
 
         # Save summary
@@ -257,18 +264,18 @@ class ActivitySummarizer:
 
         return summary
 
-    async def _gather_session_data(self, account_type: str, date: str) -> Dict[str, Any]:
+    async def _gather_session_data(
+        self, account_type: str, date: str
+    ) -> Dict[str, Any]:
         """Gather session activity data for the day."""
 
         # This would query the database for session data
         # For now, return simulated data
-        return {
-            "count": 2,  # morning + evening sessions
-            "tokens": 4500,
-            "cost": 0.15
-        }
+        return {"count": 2, "tokens": 4500, "cost": 0.15}  # morning + evening sessions
 
-    async def _gather_trading_data(self, account_type: str, date: str) -> Dict[str, Any]:
+    async def _gather_trading_data(
+        self, account_type: str, date: str
+    ) -> Dict[str, Any]:
         """Gather trading activity data for the day."""
 
         # This would query the database for trading data
@@ -278,10 +285,12 @@ class ActivitySummarizer:
             "successful": 2,
             "pnl": 2450.0,
             "best_strategy": "rsi_momentum",
-            "worst_strategy": "breakout_momentum"
+            "worst_strategy": "breakout_momentum",
         }
 
-    async def _gather_research_data(self, account_type: str, date: str) -> Dict[str, Any]:
+    async def _gather_research_data(
+        self, account_type: str, date: str
+    ) -> Dict[str, Any]:
         """Gather research activity data for the day."""
 
         # This would query the database for research data
@@ -289,19 +298,20 @@ class ActivitySummarizer:
         return {
             "sessions": 1,
             "symbols": 15,
-            "findings": ["Market showing signs of consolidation", "Technology sector outperforming"]
+            "findings": [
+                "Market showing signs of consolidation",
+                "Technology sector outperforming",
+            ],
         }
 
-    async def _gather_learning_data(self, account_type: str, date: str) -> Dict[str, Any]:
+    async def _gather_learning_data(
+        self, account_type: str, date: str
+    ) -> Dict[str, Any]:
         """Gather learning activity data for the day."""
 
         # This would query the database for learning data
         # For now, return simulated data
-        return {
-            "evaluated": 4,
-            "refinements": 2,
-            "confidence": 0.75
-        }
+        return {"evaluated": 4, "refinements": 2, "confidence": 0.75}
 
     async def _gather_market_data(self, date: str) -> Dict[str, Any]:
         """Gather market condition data."""
@@ -312,17 +322,19 @@ class ActivitySummarizer:
             "conditions": {
                 "volatility": "moderate",
                 "trend": "bullish",
-                "volume": "above_average"
+                "volume": "above_average",
             },
             "sectors": {
                 "technology": 2.1,
                 "finance": -0.3,
                 "healthcare": 1.5,
-                "energy": -1.2
-            }
+                "energy": -1.2,
+            },
         }
 
-    async def _generate_key_findings(self, research_data: Dict, trading_data: Dict) -> List[str]:
+    async def _generate_key_findings(
+        self, research_data: Dict, trading_data: Dict
+    ) -> List[str]:
         """Generate key findings from research and trading data."""
 
         findings = []
@@ -337,28 +349,36 @@ class ActivitySummarizer:
             findings.append(f"Challenging day with ₹{trading_data['pnl']:.0f} loss")
 
         findings.append(f"Best performing strategy: {trading_data['best_strategy']}")
-        findings.append(f"Executed {trading_data['executed']} trades with {trading_data['successful']} successful")
+        findings.append(
+            f"Executed {trading_data['executed']} trades with {trading_data['successful']} successful"
+        )
 
         return findings
 
-    async def _generate_tomorrow_plan(self, trading_data: Dict, learning_data: Dict) -> List[str]:
+    async def _generate_tomorrow_plan(
+        self, trading_data: Dict, learning_data: Dict
+    ) -> List[str]:
         """Generate planned activities for tomorrow."""
 
         plan = [
             "Morning market analysis and opportunity identification",
             "Execute planned trades based on today's learnings",
-            "Monitor open positions and risk levels"
+            "Monitor open positions and risk levels",
         ]
 
         if learning_data["refinements"] > 0:
-            plan.append(f"Implement {learning_data['refinements']} strategy refinements")
+            plan.append(
+                f"Implement {learning_data['refinements']} strategy refinements"
+            )
 
         if trading_data["pnl"] < 0:
             plan.append("Focus on risk management and position sizing")
 
         return plan
 
-    async def _generate_risk_adjustments(self, trading_data: Dict, market_data: Dict) -> List[str]:
+    async def _generate_risk_adjustments(
+        self, trading_data: Dict, market_data: Dict
+    ) -> List[str]:
         """Generate risk adjustments for tomorrow."""
 
         adjustments = []
@@ -378,10 +398,16 @@ class ActivitySummarizer:
         """Calculate overall day rating."""
 
         pnl_score = 1.0 if trading_data["pnl"] > 0 else 0.0
-        success_score = trading_data["successful"] / trading_data["executed"] if trading_data["executed"] > 0 else 0.0
+        success_score = (
+            trading_data["successful"] / trading_data["executed"]
+            if trading_data["executed"] > 0
+            else 0.0
+        )
         learning_score = learning_data["confidence"]
 
-        overall_score = (pnl_score * 0.4) + (success_score * 0.3) + (learning_score * 0.3)
+        overall_score = (
+            (pnl_score * 0.4) + (success_score * 0.3) + (learning_score * 0.3)
+        )
 
         if overall_score >= 0.8:
             return "excellent"
@@ -392,7 +418,9 @@ class ActivitySummarizer:
         else:
             return "challenging"
 
-    async def _identify_achievements(self, trading_data: Dict, learning_data: Dict) -> List[str]:
+    async def _identify_achievements(
+        self, trading_data: Dict, learning_data: Dict
+    ) -> List[str]:
         """Identify key achievements of the day."""
 
         achievements = []
@@ -401,17 +429,23 @@ class ActivitySummarizer:
             achievements.append(f"Generated ₹{trading_data['pnl']:.0f} in profits")
 
         if trading_data["successful"] / trading_data["executed"] > 0.6:
-            achievements.append(f"Achieved {trading_data['successful']}/{trading_data['executed']} successful trades")
+            achievements.append(
+                f"Achieved {trading_data['successful']}/{trading_data['executed']} successful trades"
+            )
 
         if learning_data["refinements"] > 0:
-            achievements.append(f"Identified {learning_data['refinements']} strategy improvements")
+            achievements.append(
+                f"Identified {learning_data['refinements']} strategy improvements"
+            )
 
         if not achievements:
             achievements.append("Completed all planned trading activities")
 
         return achievements
 
-    async def _identify_improvements(self, trading_data: Dict, learning_data: Dict) -> List[str]:
+    async def _identify_improvements(
+        self, trading_data: Dict, learning_data: Dict
+    ) -> List[str]:
         """Identify areas for improvement."""
 
         improvements = []
@@ -430,7 +464,9 @@ class ActivitySummarizer:
 
         return improvements
 
-    async def _gather_weekly_data(self, account_type: str, week_start: datetime, week_end: datetime) -> Dict[str, Any]:
+    async def _gather_weekly_data(
+        self, account_type: str, week_start: datetime, week_end: datetime
+    ) -> Dict[str, Any]:
         """Gather weekly activity data."""
 
         # This would query the database for weekly data
@@ -447,7 +483,7 @@ class ActivitySummarizer:
                 "rsi_momentum": {"win_rate": 0.68, "pnl": 3200},
                 "macd_divergence": {"win_rate": 0.72, "pnl": 2800},
                 "bollinger_mean_reversion": {"win_rate": 0.55, "pnl": 1200},
-                "breakout_momentum": {"win_rate": 0.62, "pnl": 1550}
+                "breakout_momentum": {"win_rate": 0.62, "pnl": 1550},
             },
             "strategies_improved": 2,
             "new_strategies": 0,
@@ -455,8 +491,8 @@ class ActivitySummarizer:
                 "technology": "gaining_momentum",
                 "finance": "neutral",
                 "healthcare": "losing_momentum",
-                "energy": "neutral"
-            }
+                "energy": "neutral",
+            },
         }
 
     async def _generate_weekly_learnings(self, weekly_data: Dict) -> List[str]:
@@ -466,7 +502,7 @@ class ActivitySummarizer:
             "RSI momentum strategy showing consistent performance",
             "MACD divergence works well in trending markets",
             "Bollinger Band strategy needs refinement for ranging markets",
-            "Technology sector showing strong momentum"
+            "Technology sector showing strong momentum",
         ]
 
         return learnings
@@ -478,7 +514,7 @@ class ActivitySummarizer:
             "Technology sector leadership continuing",
             "Interest rate sensitivity affecting financial stocks",
             "Defensive sectors showing relative strength",
-            "Market breadth improving with more stocks participating"
+            "Market breadth improving with more stocks participating",
         ]
 
         return themes
@@ -508,7 +544,9 @@ class ActivitySummarizer:
         best_strategy = max(strategy_perf.items(), key=lambda x: x[1]["pnl"])
         worst_strategy = min(strategy_perf.items(), key=lambda x: x[1]["pnl"])
 
-        adjustments.append(f"Increase allocation to {best_strategy[0]} (₹{best_strategy[1]['pnl']} profit)")
+        adjustments.append(
+            f"Increase allocation to {best_strategy[0]} (₹{best_strategy[1]['pnl']} profit)"
+        )
         adjustments.append(f"Review and refine {worst_strategy[0]} strategy")
 
         return adjustments
@@ -534,9 +572,7 @@ class ActivitySummarizer:
         logger.debug(f"Summary data: {json.dumps(summary_data, indent=2)}")
 
     async def get_daily_summaries(
-        self,
-        account_type: Optional[str] = None,
-        limit: int = 30
+        self, account_type: Optional[str] = None, limit: int = 30
     ) -> List[DailyActivitySummary]:
         """Get historical daily summaries."""
 
@@ -545,9 +581,7 @@ class ActivitySummarizer:
         return []
 
     async def get_weekly_summaries(
-        self,
-        account_type: Optional[str] = None,
-        limit: int = 12
+        self, account_type: Optional[str] = None, limit: int = 12
     ) -> List[WeeklyActivitySummary]:
         """Get historical weekly summaries."""
 

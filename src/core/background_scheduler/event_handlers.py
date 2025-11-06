@@ -6,7 +6,7 @@ Handles reactive scheduling based on domain events from the event bus.
 import logging
 from typing import List
 
-from ...core.event_bus import Event, EventType
+from ...core.event_bus import Event
 from ...models.scheduler import QueueName, TaskType
 from ...services.scheduler.task_service import SchedulerTaskService
 from .stores.stock_state_store import StockStateStore
@@ -18,9 +18,7 @@ class EventHandlers:
     """Event handler implementations for background scheduler."""
 
     def __init__(
-        self,
-        task_service: SchedulerTaskService,
-        stock_state_store: StockStateStore
+        self, task_service: SchedulerTaskService, stock_state_store: StockStateStore
     ):
         """Initialize event handlers.
 
@@ -31,14 +29,18 @@ class EventHandlers:
         self.task_service = task_service
         self.stock_state_store = stock_state_store
 
-    async def handle_portfolio_updated(self, event: Event, get_portfolio_symbols) -> None:
+    async def handle_portfolio_updated(
+        self, event: Event, get_portfolio_symbols
+    ) -> None:
         """Handle portfolio update events.
 
         Args:
             event: Portfolio update event
             get_portfolio_symbols: Callable to get portfolio symbols
         """
-        logger.info("Portfolio updated, triggering portfolio sync and data fetch sequence")
+        logger.info(
+            "Portfolio updated, triggering portfolio sync and data fetch sequence"
+        )
 
         # Get all symbols from portfolio
         symbols = await get_portfolio_symbols()
@@ -55,7 +57,7 @@ class EventHandlers:
         Args:
             event: Stock added event
         """
-        symbol = event.data.get('symbol')
+        symbol = event.data.get("symbol")
         if symbol:
             logger.info(f"Stock {symbol} added, triggering initial data fetch")
             await self._trigger_initial_data_fetch([symbol])
@@ -66,7 +68,7 @@ class EventHandlers:
         Args:
             event: Stock removed event
         """
-        symbol = event.data.get('symbol')
+        symbol = event.data.get("symbol")
         if symbol:
             logger.info(f"Stock {symbol} removed, cleaning up state")
             # Clean up stock state if needed
@@ -77,7 +79,7 @@ class EventHandlers:
         Args:
             event: News fetched event
         """
-        symbol = event.data.get('symbol')
+        symbol = event.data.get("symbol")
         if symbol:
             logger.info(f"News fetched for {symbol}, triggering AI analysis")
             await self._trigger_ai_analysis(symbol, "news")
@@ -88,7 +90,7 @@ class EventHandlers:
         Args:
             event: Earnings fetched event
         """
-        symbol = event.data.get('symbol')
+        symbol = event.data.get("symbol")
         if symbol:
             logger.info(f"Earnings fetched for {symbol}, triggering AI analysis")
             await self._trigger_ai_analysis(symbol, "earnings")
@@ -99,7 +101,7 @@ class EventHandlers:
         Args:
             event: Fundamentals updated event
         """
-        symbol = event.data.get('symbol')
+        symbol = event.data.get("symbol")
         if symbol:
             logger.info(f"Fundamentals updated for {symbol}, triggering AI analysis")
             await self._trigger_ai_analysis(symbol, "fundamentals")
@@ -110,8 +112,8 @@ class EventHandlers:
         Args:
             event: Market news event
         """
-        symbol = event.data.get('symbol')
-        impact_score = event.data.get('impact_score', 0)
+        symbol = event.data.get("symbol")
+        impact_score = event.data.get("impact_score", 0)
 
         if symbol and impact_score > 0.7:
             logger.info(f"High-impact news for {symbol}, flagging for recheck")
@@ -126,21 +128,21 @@ class EventHandlers:
             queue_name=QueueName.PORTFOLIO_SYNC,
             task_type=TaskType.SYNC_ACCOUNT_BALANCES,
             payload={"scheduled": True},
-            priority=10  # High priority
+            priority=10,  # High priority
         )
 
         await self.task_service.create_task(
             queue_name=QueueName.PORTFOLIO_SYNC,
             task_type=TaskType.UPDATE_POSITIONS,
             payload={"scheduled": True},
-            priority=9
+            priority=9,
         )
 
         await self.task_service.create_task(
             queue_name=QueueName.PORTFOLIO_SYNC,
             task_type=TaskType.VALIDATE_PORTFOLIO_RISKS,
             payload={"scheduled": True},
-            priority=8
+            priority=8,
         )
 
     async def _trigger_data_fetch_sequence(self, symbols: List[str]) -> None:
@@ -150,9 +152,17 @@ class EventHandlers:
             symbols: List of stock symbols
         """
         # Select the 5 oldest stocks for each scheduler type (oldest last_run date first)
-        news_stocks = await self.stock_state_store.get_oldest_news_stocks(symbols, limit=5)
-        earnings_stocks = await self.stock_state_store.get_oldest_earnings_stocks(symbols, limit=5)
-        fundamentals_stocks = await self.stock_state_store.get_oldest_fundamentals_stocks(symbols, limit=5)
+        news_stocks = await self.stock_state_store.get_oldest_news_stocks(
+            symbols, limit=5
+        )
+        earnings_stocks = await self.stock_state_store.get_oldest_earnings_stocks(
+            symbols, limit=5
+        )
+        fundamentals_stocks = (
+            await self.stock_state_store.get_oldest_fundamentals_stocks(
+                symbols, limit=5
+            )
+        )
 
         # Create tasks for data fetching with prioritized stocks
         if news_stocks:
@@ -160,7 +170,7 @@ class EventHandlers:
                 queue_name=QueueName.DATA_FETCHER,
                 task_type=TaskType.NEWS_MONITORING,
                 payload={"symbols": news_stocks, "scheduled": True},
-                priority=6
+                priority=6,
             )
 
         if earnings_stocks:
@@ -168,7 +178,7 @@ class EventHandlers:
                 queue_name=QueueName.DATA_FETCHER,
                 task_type=TaskType.EARNINGS_SCHEDULER,
                 payload={"symbols": earnings_stocks, "scheduled": True},
-                priority=7
+                priority=7,
             )
 
         if fundamentals_stocks:
@@ -176,7 +186,7 @@ class EventHandlers:
                 queue_name=QueueName.DATA_FETCHER,
                 task_type=TaskType.FUNDAMENTALS_UPDATE,
                 payload={"symbols": fundamentals_stocks, "scheduled": True},
-                priority=7
+                priority=7,
             )
 
     async def _trigger_initial_data_fetch(self, symbols: List[str]) -> None:
@@ -189,7 +199,7 @@ class EventHandlers:
             queue_name=QueueName.DATA_FETCHER,
             task_type=TaskType.EARNINGS_SCHEDULER,
             payload={"symbols": symbols, "initial_fetch": True},
-            priority=9
+            priority=9,
         )
 
     async def _trigger_ai_analysis(self, symbol: str, trigger_type: str) -> None:
@@ -202,7 +212,7 @@ class EventHandlers:
         task_type_map = {
             "news": TaskType.CLAUDE_NEWS_ANALYSIS,
             "earnings": TaskType.CLAUDE_EARNINGS_REVIEW,
-            "fundamentals": TaskType.CLAUDE_FUNDAMENTAL_ANALYSIS
+            "fundamentals": TaskType.CLAUDE_FUNDAMENTAL_ANALYSIS,
         }
 
         task_type = task_type_map.get(trigger_type, TaskType.CLAUDE_NEWS_ANALYSIS)
@@ -211,5 +221,5 @@ class EventHandlers:
             queue_name=QueueName.AI_ANALYSIS,
             task_type=task_type,
             payload={"symbol": symbol, "trigger": trigger_type, "scheduled": True},
-            priority=8
+            priority=8,
         )

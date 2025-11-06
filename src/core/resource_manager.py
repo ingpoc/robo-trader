@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import asyncio
-from typing import Dict, Set, Optional, Any, Callable
-from pathlib import Path
-from loguru import logger
-from contextlib import asynccontextmanager
 import weakref
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, Callable, Dict, Set
+
+from loguru import logger
 
 
 class ResourceManager:
@@ -69,7 +71,7 @@ class ResourceManager:
                 "file_handles": len(self._file_handles),
                 "websockets": active_websockets,
                 "tasks": len(self._tasks),
-                "cleanup_callbacks": len(self._cleanup_callbacks)
+                "cleanup_callbacks": len(self._cleanup_callbacks),
             }
 
     async def cleanup(self) -> None:
@@ -111,7 +113,7 @@ class ResourceManager:
 
             for handle in list(self._file_handles):
                 try:
-                    if hasattr(handle, 'close'):
+                    if hasattr(handle, "close"):
                         if asyncio.iscoroutinefunction(handle.close):
                             await handle.close()
                         else:
@@ -122,9 +124,10 @@ class ResourceManager:
         logger.info("ResourceManager: Cleanup complete")
 
     @asynccontextmanager
-    async def managed_file(self, file_path: Path, mode: str = 'r'):
+    async def managed_file(self, file_path: Path, mode: str = "r"):
         """Context manager for tracked file handles."""
         import aiofiles
+
         async with aiofiles.open(file_path, mode) as f:
             await self.register_file_handle(f, str(file_path))
             try:

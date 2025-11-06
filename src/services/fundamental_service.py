@@ -8,21 +8,17 @@ Provides comprehensive fundamental analysis capabilities with batch processing.
 import asyncio
 import os
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import asdict
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
+
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
+from ..core.perplexity_client import (BatchResponse, EarningsData,
+                                      NewsSentimentData, PerplexityClient,
+                                      QueryType, StockFundamentalData)
 from ..core.state_models import FundamentalAnalysis
-from ..core.perplexity_client import (
-    PerplexityClient,
-    QueryType,
-    StockFundamentalData,
-    EarningsData,
-    NewsSentimentData,
-    BatchResponse
-)
 
 
 class FundamentalService:
@@ -43,32 +39,54 @@ class FundamentalService:
 
         # Initialize Perplexity client with API keys from environment variables ONLY (not from config.json)
         perplexity_keys_str = os.getenv("PERPLEXITY_API_KEYS", "")
-        perplexity_keys = [key.strip() for key in perplexity_keys_str.split(",") if key.strip()] if perplexity_keys_str else []
+        perplexity_keys = (
+            [key.strip() for key in perplexity_keys_str.split(",") if key.strip()]
+            if perplexity_keys_str
+            else []
+        )
 
         if not perplexity_keys:
-            logger.warning("PERPLEXITY_API_KEYS not set in environment - fundamental service will be limited")
+            logger.warning(
+                "PERPLEXITY_API_KEYS not set in environment - fundamental service will be limited"
+            )
 
         client_config = {
-            'model': getattr(config, 'news_monitoring', {}).get('perplexity_model', 'sonar-pro'),
-            'api_timeout_seconds': getattr(config, 'news_monitoring', {}).get('api_timeout_seconds', 45),
-            'max_tokens': getattr(config, 'news_monitoring', {}).get('max_tokens', 4000),
-            'search_recency_filter': getattr(config, 'news_monitoring', {}).get('search_recency_filter', 'week'),
-            'max_search_results': getattr(config, 'news_monitoring', {}).get('max_search_results', 20),
-            'rate_limit': getattr(config, 'news_monitoring', {}).get('rate_limit', {}),
-            'circuit_breaker': getattr(config, 'news_monitoring', {}).get('circuit_breaker', {})
+            "model": getattr(config, "news_monitoring", {}).get(
+                "perplexity_model", "sonar-pro"
+            ),
+            "api_timeout_seconds": getattr(config, "news_monitoring", {}).get(
+                "api_timeout_seconds", 45
+            ),
+            "max_tokens": getattr(config, "news_monitoring", {}).get(
+                "max_tokens", 4000
+            ),
+            "search_recency_filter": getattr(config, "news_monitoring", {}).get(
+                "search_recency_filter", "week"
+            ),
+            "max_search_results": getattr(config, "news_monitoring", {}).get(
+                "max_search_results", 20
+            ),
+            "rate_limit": getattr(config, "news_monitoring", {}).get("rate_limit", {}),
+            "circuit_breaker": getattr(config, "news_monitoring", {}).get(
+                "circuit_breaker", {}
+            ),
         }
 
         self.perplexity_client = PerplexityClient(perplexity_keys, client_config)
 
         # Configuration
-        self.batch_size = getattr(config, 'fundamental_monitoring', {}).get('batch_size', 3)
-        self.max_concurrent_batches = getattr(config, 'fundamental_monitoring', {}).get('max_concurrent_batches', 2)
-        self.update_frequency_days = getattr(config, 'fundamental_monitoring', {}).get('update_frequency_days', 7)
+        self.batch_size = getattr(config, "fundamental_monitoring", {}).get(
+            "batch_size", 3
+        )
+        self.max_concurrent_batches = getattr(config, "fundamental_monitoring", {}).get(
+            "max_concurrent_batches", 2
+        )
+        self.update_frequency_days = getattr(config, "fundamental_monitoring", {}).get(
+            "update_frequency_days", 7
+        )
 
     async def fetch_fundamentals_batch(
-        self,
-        symbols: List[str],
-        force_refresh: bool = False
+        self, symbols: List[str], force_refresh: bool = False
     ) -> Dict[str, FundamentalAnalysis]:
         """
         Fetch fundamental data for multiple symbols using batch processing.
@@ -83,10 +101,14 @@ class FundamentalService:
         if not symbols:
             return {}
 
-        logger.info(f"Fetching fundamental data for {len(symbols)} symbols (batch_size={self.batch_size})")
+        logger.info(
+            f"Fetching fundamental data for {len(symbols)} symbols (batch_size={self.batch_size})"
+        )
 
         # Filter symbols that need updating
-        symbols_to_update = await self._filter_symbols_needing_update(symbols, force_refresh)
+        symbols_to_update = await self._filter_symbols_needing_update(
+            symbols, force_refresh
+        )
 
         if not symbols_to_update:
             logger.info("All symbols have recent fundamental data")
@@ -99,8 +121,10 @@ class FundamentalService:
             return existing_data
 
         # Split into batches for processing
-        batches = [symbols_to_update[i:i + self.batch_size]
-                  for i in range(0, len(symbols_to_update), self.batch_size)]
+        batches = [
+            symbols_to_update[i : i + self.batch_size]
+            for i in range(0, len(symbols_to_update), self.batch_size)
+        ]
 
         # Create semaphore for concurrency control
         semaphore = asyncio.Semaphore(self.max_concurrent_batches)
@@ -108,12 +132,13 @@ class FundamentalService:
         async def process_batch(batch_symbols: List[str]) -> BatchResponse:
             async with semaphore:
                 return await self.perplexity_client.fetch_batch_data(
-                    batch_symbols,
-                    QueryType.FUNDAMENTALS
+                    batch_symbols, QueryType.FUNDAMENTALS
                 )
 
         # Process batches concurrently
-        logger.info(f"Processing {len(batches)} batches with max {self.max_concurrent_batches} concurrent")
+        logger.info(
+            f"Processing {len(batches)} batches with max {self.max_concurrent_batches} concurrent"
+        )
         batch_tasks = [process_batch(batch) for batch in batches]
         batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 
@@ -128,7 +153,9 @@ class FundamentalService:
                 continue
 
             if isinstance(result, BatchResponse):
-                batch_saved = await self._process_fundamental_batch_result(result, batch_symbols)
+                batch_saved = await self._process_fundamental_batch_result(
+                    result, batch_symbols
+                )
                 saved_analyses.update(batch_saved)
 
         # Return combined results (existing + newly fetched)
@@ -142,13 +169,13 @@ class FundamentalService:
                 if analyses:
                     all_results[symbol] = analyses[0]
 
-        logger.info(f"Fundamental data fetch completed: {len(saved_analyses)} updated, {len(all_results)} total")
+        logger.info(
+            f"Fundamental data fetch completed: {len(saved_analyses)} updated, {len(all_results)} total"
+        )
         return all_results
 
     async def fetch_earnings_calendar(
-        self,
-        symbols: List[str],
-        include_historical: bool = False
+        self, symbols: List[str], include_historical: bool = False
     ) -> Dict[str, List[EarningsData]]:
         """
         Fetch earnings calendar data for multiple symbols.
@@ -166,8 +193,10 @@ class FundamentalService:
         logger.info(f"Fetching earnings calendar for {len(symbols)} symbols")
 
         # Split into batches
-        batches = [symbols[i:i + self.batch_size]
-                  for i in range(0, len(symbols), self.batch_size)]
+        batches = [
+            symbols[i : i + self.batch_size]
+            for i in range(0, len(symbols), self.batch_size)
+        ]
 
         # Process batches concurrently
         semaphore = asyncio.Semaphore(self.max_concurrent_batches)
@@ -175,8 +204,7 @@ class FundamentalService:
         async def process_batch(batch_symbols: List[str]) -> BatchResponse:
             async with semaphore:
                 return await self.perplexity_client.fetch_batch_data(
-                    batch_symbols,
-                    QueryType.EARNINGS_CALENDAR
+                    batch_symbols, QueryType.EARNINGS_CALENDAR
                 )
 
         batch_tasks = [process_batch(batch) for batch in batches]
@@ -200,13 +228,13 @@ class FundamentalService:
                     # Save to database
                     await self._save_earnings_data(earnings_item)
 
-        logger.info(f"Earnings calendar fetch completed: {sum(len(v) for v in earnings_data.values())} reports saved")
+        logger.info(
+            f"Earnings calendar fetch completed: {sum(len(v) for v in earnings_data.values())} reports saved"
+        )
         return earnings_data
 
     async def fetch_comprehensive_data(
-        self,
-        symbols: List[str],
-        force_refresh: bool = False
+        self, symbols: List[str], force_refresh: bool = False
     ) -> Dict[str, Dict[str, Any]]:
         """
         Fetch comprehensive data (fundamentals + earnings + news) for symbols.
@@ -224,8 +252,10 @@ class FundamentalService:
         logger.info(f"Fetching comprehensive data for {len(symbols)} symbols")
 
         # Split into batches
-        batches = [symbols[i:i + self.batch_size]
-                  for i in range(0, len(symbols), self.batch_size)]
+        batches = [
+            symbols[i : i + self.batch_size]
+            for i in range(0, len(symbols), self.batch_size)
+        ]
 
         # Process batches concurrently
         semaphore = asyncio.Semaphore(self.max_concurrent_batches)
@@ -233,8 +263,7 @@ class FundamentalService:
         async def process_batch(batch_symbols: List[str]) -> BatchResponse:
             async with semaphore:
                 return await self.perplexity_client.fetch_batch_data(
-                    batch_symbols,
-                    QueryType.COMPREHENSIVE
+                    batch_symbols, QueryType.COMPREHENSIVE
                 )
 
         batch_tasks = [process_batch(batch) for batch in batches]
@@ -249,16 +278,18 @@ class FundamentalService:
                 continue
 
             if isinstance(result, BatchResponse):
-                batch_comprehensive = await self._process_comprehensive_batch_result(result)
+                batch_comprehensive = await self._process_comprehensive_batch_result(
+                    result
+                )
                 comprehensive_data.update(batch_comprehensive)
 
-        logger.info(f"Comprehensive data fetch completed for {len(comprehensive_data)} symbols")
+        logger.info(
+            f"Comprehensive data fetch completed for {len(comprehensive_data)} symbols"
+        )
         return comprehensive_data
 
     async def _filter_symbols_needing_update(
-        self,
-        symbols: List[str],
-        force_refresh: bool = False
+        self, symbols: List[str], force_refresh: bool = False
     ) -> List[str]:
         """Filter symbols that need fundamental data updates."""
         if force_refresh:
@@ -285,9 +316,7 @@ class FundamentalService:
         return symbols_needing_update
 
     async def _process_fundamental_batch_result(
-        self,
-        batch_result: BatchResponse,
-        batch_symbols: List[str]
+        self, batch_result: BatchResponse, batch_symbols: List[str]
     ) -> Dict[str, FundamentalAnalysis]:
         """Process fundamental data batch result and save to database."""
         saved_analyses = {}
@@ -303,17 +332,20 @@ class FundamentalService:
 
             # Save to database
             try:
-                analysis_id = await self.state_manager.save_fundamental_analysis(analysis)
+                analysis_id = await self.state_manager.save_fundamental_analysis(
+                    analysis
+                )
                 saved_analyses[symbol] = analysis
-                logger.debug(f"Saved fundamental analysis for {symbol} (ID: {analysis_id})")
+                logger.debug(
+                    f"Saved fundamental analysis for {symbol} (ID: {analysis_id})"
+                )
             except Exception as e:
                 logger.error(f"Failed to save fundamental analysis for {symbol}: {e}")
 
         return saved_analyses
 
     async def _process_comprehensive_batch_result(
-        self,
-        batch_result: BatchResponse
+        self, batch_result: BatchResponse
     ) -> Dict[str, Dict[str, Any]]:
         """Process comprehensive batch result with all data types."""
         comprehensive_data = {}
@@ -325,7 +357,7 @@ class FundamentalService:
                 comprehensive_data[symbol] = {}
 
             analysis = self._convert_to_fundamental_analysis(fundamental_data)
-            comprehensive_data[symbol]['fundamentals'] = analysis
+            comprehensive_data[symbol]["fundamentals"] = analysis
 
             # Save to database
             try:
@@ -339,10 +371,10 @@ class FundamentalService:
             if symbol not in comprehensive_data:
                 comprehensive_data[symbol] = {}
 
-            if 'earnings' not in comprehensive_data[symbol]:
-                comprehensive_data[symbol]['earnings'] = []
+            if "earnings" not in comprehensive_data[symbol]:
+                comprehensive_data[symbol]["earnings"] = []
 
-            comprehensive_data[symbol]['earnings'].append(earnings_data)
+            comprehensive_data[symbol]["earnings"].append(earnings_data)
 
             # Save to database
             await self._save_earnings_data(earnings_data)
@@ -353,10 +385,10 @@ class FundamentalService:
             if symbol not in comprehensive_data:
                 comprehensive_data[symbol] = {}
 
-            if 'news' not in comprehensive_data[symbol]:
-                comprehensive_data[symbol]['news'] = []
+            if "news" not in comprehensive_data[symbol]:
+                comprehensive_data[symbol]["news"] = []
 
-            comprehensive_data[symbol]['news'].append(news_data)
+            comprehensive_data[symbol]["news"].append(news_data)
 
             # Save to database
             await self._save_news_data(news_data)
@@ -364,8 +396,7 @@ class FundamentalService:
         return comprehensive_data
 
     def _convert_to_fundamental_analysis(
-        self,
-        fundamental_data: StockFundamentalData
+        self, fundamental_data: StockFundamentalData
     ) -> FundamentalAnalysis:
         """Convert StockFundamentalData to FundamentalAnalysis model."""
         # Calculate overall score based on available metrics
@@ -375,14 +406,14 @@ class FundamentalService:
         recommendation = self._generate_recommendation(overall_score, fundamental_data)
 
         analysis_data = {
-            'beta': fundamental_data.beta,
-            'fifty_two_week_high': fundamental_data.fifty_two_week_high,
-            'fifty_two_week_low': fundamental_data.fifty_two_week_low,
-            'avg_volume': fundamental_data.avg_volume,
-            'sector': fundamental_data.sector,
-            'industry': fundamental_data.industry,
-            'revenue_growth': fundamental_data.revenue_growth,
-            'earnings_growth': fundamental_data.earnings_growth
+            "beta": fundamental_data.beta,
+            "fifty_two_week_high": fundamental_data.fifty_two_week_high,
+            "fifty_two_week_low": fundamental_data.fifty_two_week_low,
+            "avg_volume": fundamental_data.avg_volume,
+            "sector": fundamental_data.sector,
+            "industry": fundamental_data.industry,
+            "revenue_growth": fundamental_data.revenue_growth,
+            "earnings_growth": fundamental_data.earnings_growth,
         }
 
         return FundamentalAnalysis(
@@ -397,10 +428,12 @@ class FundamentalService:
             market_cap=fundamental_data.market_cap,
             overall_score=overall_score,
             recommendation=recommendation,
-            analysis_data=analysis_data
+            analysis_data=analysis_data,
         )
 
-    def _calculate_fundamental_score(self, data: StockFundamentalData) -> Optional[float]:
+    def _calculate_fundamental_score(
+        self, data: StockFundamentalData
+    ) -> Optional[float]:
         """Calculate overall fundamental score (0-100)."""
         score_components = []
         weights = []
@@ -436,7 +469,9 @@ class FundamentalService:
             elif data.dividend_yield <= 4:
                 dy_score = 50 + (data.dividend_yield - 2) * 25  # 50-100 for 2-4%
             else:
-                dy_score = max(0, 100 - (data.dividend_yield - 4) * 50)  # Decrease after 4%
+                dy_score = max(
+                    0, 100 - (data.dividend_yield - 4) * 50
+                )  # Decrease after 4%
             score_components.append(dy_score)
             weights.append(0.15)
 
@@ -448,10 +483,14 @@ class FundamentalService:
         if total_weight == 0:
             return None
 
-        weighted_score = sum(s * w for s, w in zip(score_components, weights)) / total_weight
+        weighted_score = (
+            sum(s * w for s, w in zip(score_components, weights)) / total_weight
+        )
         return round(weighted_score, 2)
 
-    def _generate_recommendation(self, score: Optional[float], data: StockFundamentalData) -> Optional[str]:
+    def _generate_recommendation(
+        self, score: Optional[float], data: StockFundamentalData
+    ) -> Optional[str]:
         """Generate investment recommendation based on score."""
         if score is None:
             return None
@@ -479,10 +518,12 @@ class FundamentalService:
                 eps_estimated=earnings_data.eps_estimated,
                 revenue_estimated=earnings_data.revenue_estimated,
                 guidance=earnings_data.guidance,
-                next_earnings_date=earnings_data.next_earnings_date
+                next_earnings_date=earnings_data.next_earnings_date,
             )
         except Exception as e:
-            logger.error(f"Failed to save earnings data for {earnings_data.symbol}: {e}")
+            logger.error(
+                f"Failed to save earnings data for {earnings_data.symbol}: {e}"
+            )
 
     async def _save_news_data(self, news_data: NewsSentimentData) -> None:
         """Save news data to database."""
@@ -495,7 +536,7 @@ class FundamentalService:
                 source=news_data.source,
                 sentiment=news_data.sentiment,
                 published_at=news_data.published_date,
-                citations=None
+                citations=None,
             )
         except Exception as e:
             logger.error(f"Failed to save news data for {news_data.symbol}: {e}")

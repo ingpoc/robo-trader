@@ -4,11 +4,11 @@
  */
 
 import React from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { Button } from '@/components/ui/Button'
 import { Breadcrumb } from '@/components/common/Breadcrumb'
 import { SkeletonCard, SkeletonLoader } from '@/components/common/SkeletonLoader'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/Tooltip'
 import { TrendingUp, PieChart } from 'lucide-react'
 import { useDashboardData } from './hooks/useDashboardData'
 import { MetricsGrid } from './components/MetricsGrid'

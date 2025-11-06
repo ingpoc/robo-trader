@@ -6,21 +6,24 @@ Provides portfolio snapshots, P&L calculations, and exposure tracking.
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
 import aiosqlite
 from loguru import logger
 
 from src.config import Config
+
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
 from ..core.state_models import PortfolioState
-from ..core.event_bus import EventBus, Event, EventType, EventHandler
 
 
 @dataclass
 class PortfolioUpdate:
     """Portfolio update data."""
+
     symbol: str
     quantity_change: float
     price: float
@@ -99,11 +102,13 @@ class PortfolioService(EventHandler):
     async def get_portfolio(self) -> Optional[PortfolioState]:
         """Get current portfolio state."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT as_of, cash, holdings, exposure_total, risk_aggregates
                 FROM portfolio_snapshots
                 ORDER BY created_at DESC LIMIT 1
-            """)
+            """
+            )
             row = await cursor.fetchone()
 
             if row:
@@ -112,7 +117,7 @@ class PortfolioService(EventHandler):
                     cash=json.loads(row[1]),
                     holdings=json.loads(row[2]),
                     exposure_total=row[3],
-                    risk_aggregates=json.loads(row[4])
+                    risk_aggregates=json.loads(row[4]),
                 )
             return None
 
@@ -121,31 +126,36 @@ class PortfolioService(EventHandler):
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
 
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO portfolio_snapshots
                 (as_of, cash, holdings, exposure_total, risk_aggregates, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                portfolio.as_of,
-                json.dumps(portfolio.cash),
-                json.dumps(portfolio.holdings),
-                portfolio.exposure_total,
-                json.dumps(portfolio.risk_aggregates),
-                now
-            ))
+            """,
+                (
+                    portfolio.as_of,
+                    json.dumps(portfolio.cash),
+                    json.dumps(portfolio.holdings),
+                    portfolio.exposure_total,
+                    json.dumps(portfolio.risk_aggregates),
+                    now,
+                ),
+            )
             await self._db_connection.commit()
 
             # Publish portfolio update event
-            await self.event_bus.publish(Event(
-                id=f"portfolio_update_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                type=EventType.PORTFOLIO_PNL_UPDATE,
-                timestamp=now,
-                source="portfolio_service",
-                data={
-                    "portfolio": portfolio.to_dict(),
-                    "exposure_total": portfolio.exposure_total
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"portfolio_update_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                    type=EventType.PORTFOLIO_PNL_UPDATE,
+                    timestamp=now,
+                    source="portfolio_service",
+                    data={
+                        "portfolio": portfolio.to_dict(),
+                        "exposure_total": portfolio.exposure_total,
+                    },
+                )
+            )
 
             logger.info(f"Portfolio updated as of {portfolio.as_of}")
 
@@ -154,28 +164,34 @@ class PortfolioService(EventHandler):
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
 
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO portfolio_transactions
                 (symbol, quantity, price, transaction_type, timestamp, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                update.symbol,
-                update.quantity_change,
-                update.price,
-                update.transaction_type,
-                update.timestamp,
-                now
-            ))
+            """,
+                (
+                    update.symbol,
+                    update.quantity_change,
+                    update.price,
+                    update.transaction_type,
+                    update.timestamp,
+                    now,
+                ),
+            )
             await self._db_connection.commit()
 
-            logger.debug(f"Recorded transaction: {update.symbol} {update.transaction_type} {update.quantity_change}")
+            logger.debug(
+                f"Recorded transaction: {update.symbol} {update.transaction_type} {update.quantity_change}"
+            )
 
     async def calculate_pnl(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Calculate P&L for portfolio or specific symbol."""
         async with self._lock:
             if symbol:
                 # Calculate P&L for specific symbol
-                cursor = await self._db_connection.execute("""
+                cursor = await self._db_connection.execute(
+                    """
                     SELECT
                         SUM(CASE WHEN transaction_type = 'BUY' THEN quantity ELSE 0 END) as buy_qty,
                         SUM(CASE WHEN transaction_type = 'SELL' THEN quantity ELSE 0 END) as sell_qty,
@@ -183,7 +199,9 @@ class PortfolioService(EventHandler):
                         AVG(CASE WHEN transaction_type = 'SELL' THEN price END) as avg_sell_price
                     FROM portfolio_transactions
                     WHERE symbol = ?
-                """, (symbol,))
+                """,
+                    (symbol,),
+                )
 
                 row = await cursor.fetchone()
                 if row:
@@ -195,16 +213,18 @@ class PortfolioService(EventHandler):
                         "net_quantity": net_qty,
                         "avg_buy_price": avg_buy_price,
                         "avg_sell_price": avg_sell_price,
-                        "unrealized_pnl": 0.0  # Would need current price
+                        "unrealized_pnl": 0.0,  # Would need current price
                     }
             else:
                 # Calculate total portfolio P&L
-                cursor = await self._db_connection.execute("""
+                cursor = await self._db_connection.execute(
+                    """
                     SELECT symbol, SUM(quantity) as net_qty
                     FROM portfolio_transactions
                     GROUP BY symbol
                     HAVING net_qty != 0
-                """)
+                """
+                )
 
                 positions = {}
                 async for row in cursor:
@@ -213,7 +233,7 @@ class PortfolioService(EventHandler):
                 return {
                     "total_positions": len(positions),
                     "positions": positions,
-                    "total_pnl": 0.0  # Would need current prices
+                    "total_pnl": 0.0,  # Would need current prices
                 }
 
             return {}
@@ -227,7 +247,7 @@ class PortfolioService(EventHandler):
         return {
             "total_exposure": portfolio.exposure_total,
             "exposure_breakdown": portfolio.risk_aggregates,
-            "as_of": portfolio.as_of
+            "as_of": portfolio.as_of,
         }
 
     async def handle_event(self, event: Event) -> None:
@@ -252,7 +272,7 @@ class PortfolioService(EventHandler):
                 quantity_change=quantity if side == "BUY" else -quantity,
                 price=price,
                 transaction_type=side,
-                timestamp=event.timestamp
+                timestamp=event.timestamp,
             )
             await self.record_transaction(transaction)
 

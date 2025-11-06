@@ -8,15 +8,16 @@ Handles AI-powered analysis using Claude Agent SDK:
 - Alternative suggestions
 """
 
-import logging
-from typing import Dict, Any, Optional
 import json
+import logging
+from typing import Any, Dict, Optional
 
-from loguru import logger
 from claude_agent_sdk import ClaudeAgentOptions
+from loguru import logger
 
 from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
 from src.core.sdk_helpers import query_with_timeout
+
 from .models import RecommendationFactors
 
 logger = logging.getLogger(__name__)
@@ -28,12 +29,12 @@ class ClaudeAnalyzer:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.client_manager = None
-        self.claude_model = config.get('claude_model', 'claude-3-5-sonnet-20241022')
-        self.claude_temperature = config.get('temperature', 0.3)
+        self.claude_model = config.get("claude_model", "claude-3-5-sonnet-20241022")
+        self.claude_temperature = config.get("temperature", 0.3)
         self.claude_options = ClaudeAgentOptions(
             allowed_tools=[],  # No tools needed for analysis
             system_prompt="You are an expert financial analyst providing detailed stock recommendations.",
-            max_turns=10
+            max_turns=10,
         )
         logger.info("Claude Agent SDK integration configured for recommendation engine")
 
@@ -50,7 +51,7 @@ class ClaudeAnalyzer:
         self,
         symbol: str,
         factors: RecommendationFactors,
-        current_price: Optional[float] = None
+        current_price: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Get AI-powered recommendation analysis from Claude.
@@ -67,16 +68,16 @@ class ClaudeAnalyzer:
             if not self.client_manager:
                 await self.initialize()
 
-            client = await self.client_manager.get_client("trading", self.claude_options)
+            client = await self.client_manager.get_client(
+                "trading", self.claude_options
+            )
 
             # Build the analysis prompt
             prompt = self._build_claude_analysis_prompt(symbol, factors, current_price)
 
             # Query Claude with timeout protection
             response_text = await query_with_timeout(
-                client,
-                prompt,
-                timeout=30.0  # 30 second timeout
+                client, prompt, timeout=30.0  # 30 second timeout
             )
 
             # Parse Claude's response
@@ -92,7 +93,7 @@ class ClaudeAnalyzer:
         self,
         symbol: str,
         factors: RecommendationFactors,
-        current_price: Optional[float] = None
+        current_price: Optional[float] = None,
     ) -> str:
         """Build comprehensive analysis prompt for Claude."""
         factors_dict = factors.to_dict()
@@ -153,8 +154,8 @@ Please be thorough but concise. Your analysis will be used to generate final inv
         """Parse Claude's response into structured format."""
         try:
             # Try to extract JSON from response
-            start_idx = response_text.find('{')
-            end_idx = response_text.rfind('}') + 1
+            start_idx = response_text.find("{")
+            end_idx = response_text.rfind("}") + 1
 
             if start_idx >= 0 and end_idx > start_idx:
                 json_text = response_text[start_idx:end_idx]
@@ -170,7 +171,7 @@ Please be thorough but concise. Your analysis will be used to generate final inv
                     "key_risks": [],
                     "catalysts": [],
                     "alternative_scenarios": {},
-                    "time_horizon_analysis": {}
+                    "time_horizon_analysis": {},
                 }
 
         except json.JSONDecodeError as e:
@@ -184,7 +185,7 @@ Please be thorough but concise. Your analysis will be used to generate final inv
                 "key_risks": [],
                 "catalysts": [],
                 "alternative_scenarios": {},
-                "time_horizon_analysis": {}
+                "time_horizon_analysis": {},
             }
 
         except Exception as e:

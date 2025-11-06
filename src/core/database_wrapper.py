@@ -5,9 +5,10 @@ Provides a connect() method interface that works with aiosqlite connections
 for code that expects the older database connection pattern.
 """
 
-import aiosqlite
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+
+import aiosqlite
 
 
 class DatabaseWrapper:

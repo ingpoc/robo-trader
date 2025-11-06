@@ -4,16 +4,17 @@ Feature Dependency Graph
 Graph data structure for managing feature dependencies with cycle detection.
 """
 
-from typing import Dict, List, Set
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import Dict, List, Set
 
-from .models import FeatureDependency, DependencyType
+from .models import DependencyType, FeatureDependency
 
 
 @dataclass
 class DependencyGraph:
     """Represents the dependency graph of all features."""
+
     nodes: Set[str]  # Feature IDs
     edges: Dict[str, List[FeatureDependency]]  # feature_id -> dependencies
     reverse_edges: Dict[str, List[str]]  # feature_id -> dependents
@@ -23,7 +24,9 @@ class DependencyGraph:
         self.edges = defaultdict(list)
         self.reverse_edges = defaultdict(list)
 
-    def add_feature(self, feature_id: str, dependencies: List[FeatureDependency]) -> None:
+    def add_feature(
+        self, feature_id: str, dependencies: List[FeatureDependency]
+    ) -> None:
         """Add a feature and its dependencies to the graph."""
         self.nodes.add(feature_id)
         self.edges[feature_id] = dependencies

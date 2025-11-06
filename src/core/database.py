@@ -1,14 +1,16 @@
 """Database utilities and connection management."""
 
-import asyncpg
 import logging
-from typing import List, Dict, Any, Optional
+
+import asyncpg
+
 from src.config import load_config
 
 logger = logging.getLogger(__name__)
 
 # Global connection pool
 _db_pool = None
+
 
 async def get_db_pool():
     """Get or create database connection pool."""
@@ -23,10 +25,11 @@ async def get_db_pool():
             password=config.database.password,
             database=config.database.name,
             min_size=5,
-            max_size=20
+            max_size=20,
         )
         logger.info("Database connection pool created")
     return _db_pool
+
 
 async def execute_query(pool, query: str, *args, single: bool = False):
     """Execute a SELECT query."""
@@ -36,10 +39,12 @@ async def execute_query(pool, query: str, *args, single: bool = False):
         else:
             return await conn.fetch(query, *args)
 
+
 async def execute_update(pool, query: str, *args):
     """Execute an INSERT/UPDATE/DELETE query."""
     async with pool.acquire() as conn:
         return await conn.execute(query, *args)
+
 
 async def close_db_pool():
     """Close the database connection pool."""

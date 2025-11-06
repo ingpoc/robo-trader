@@ -8,10 +8,12 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Optional
+
 from loguru import logger
 
+from src.core.event_bus import Event, EventBus, EventType
 from src.core.state_models import PortfolioState
-from src.core.event_bus import EventBus, Event, EventType
+
 from .base import DatabaseConnection
 
 
@@ -56,9 +58,11 @@ class PortfolioStateManager:
                         cash=json.loads(row[2]),
                         holdings=json.loads(row[3]),
                         exposure_total=row[4],
-                        risk_aggregates=json.loads(row[5])
+                        risk_aggregates=json.loads(row[5]),
                     )
-                    logger.info(f"Portfolio loaded: {len(self._portfolio.holdings)} holdings")
+                    logger.info(
+                        f"Portfolio loaded: {len(self._portfolio.holdings)} holdings"
+                    )
 
     async def get_portfolio(self) -> Optional[PortfolioState]:
         """
@@ -84,19 +88,22 @@ class PortfolioStateManager:
             self._portfolio = portfolio
 
             # Save to database
-            async with self.db.connection.execute("""
+            async with self.db.connection.execute(
+                """
                 INSERT OR REPLACE INTO portfolio
                 (id, as_of, cash, holdings, exposure_total, risk_aggregates, created_at, updated_at)
                 VALUES (1, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                portfolio.as_of,
-                json.dumps(portfolio.cash),
-                json.dumps(portfolio.holdings),
-                portfolio.exposure_total,
-                json.dumps(portfolio.risk_aggregates),
-                now,
-                now
-            )):
+            """,
+                (
+                    portfolio.as_of,
+                    json.dumps(portfolio.cash),
+                    json.dumps(portfolio.holdings),
+                    portfolio.exposure_total,
+                    json.dumps(portfolio.risk_aggregates),
+                    now,
+                    now,
+                ),
+            ):
                 await self.db.connection.commit()
 
             logger.info(f"Portfolio updated as of {portfolio.as_of}")
@@ -120,8 +127,8 @@ class PortfolioStateManager:
                     "as_of": portfolio.as_of,
                     "exposure_total": portfolio.exposure_total,
                     "holdings_count": len(portfolio.holdings),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             )
             await self.event_bus.publish(event)
             logger.debug("Portfolio updated event emitted")

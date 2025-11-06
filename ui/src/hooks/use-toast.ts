@@ -73,7 +73,7 @@ const addToRemoveQueue = (toastId: string) => {
 
 export const reducer = (state: State, action: Action): State => {
   switch (action.type) {
-    case "ADD_TOAST":
+    case "ADD_TOAST": {
       // Queue management: if we exceed the limit, dismiss the oldest toast
       const newToasts = [action.toast, ...state.toasts]
       if (newToasts.length > TOAST_LIMIT) {
@@ -84,6 +84,7 @@ export const reducer = (state: State, action: Action): State => {
         ...state,
         toasts: newToasts.slice(0, TOAST_LIMIT),
       }
+    }
 
     case "UPDATE_TOAST":
       return {

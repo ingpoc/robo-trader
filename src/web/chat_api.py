@@ -5,20 +5,21 @@ Provides REST endpoints for natural language trading conversations with Claude.
 """
 
 import asyncio
-from typing import Dict, List, Any, Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from loguru import logger
+from pydantic import BaseModel
 
-from ..core.di import get_container
 from ..core.conversation_manager import ConversationManager
-
+from ..core.di import get_container
 
 # Create router for chat endpoints
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # Global conversation manager instance
 conversation_manager: Optional[ConversationManager] = None
+
 
 # Background task manager for intent processing
 class IntentTaskManager:
@@ -70,11 +71,13 @@ class IntentTaskManager:
                 except (asyncio.CancelledError, asyncio.TimeoutError):
                     pass
 
+
 intent_task_manager = IntentTaskManager()
 
 
 class ChatRequest(BaseModel):
     """Request model for chat messages."""
+
     query: str
     session_id: Optional[str] = None
     user_id: Optional[str] = None
@@ -82,6 +85,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     """Response model for chat messages."""
+
     response: str
     session_id: str
     intents: List[str] = []
@@ -90,6 +94,7 @@ class ChatResponse(BaseModel):
 
 class ApprovalRequest(BaseModel):
     """Request model for recommendation approval."""
+
     recommendation_id: str
     action: str  # "approve", "reject", "modify"
     modifications: Optional[Dict[str, Any]] = None
@@ -104,8 +109,7 @@ async def initialize_chat_manager():
             orchestrator = await container.get_orchestrator()
             if orchestrator:
                 conversation_manager = ConversationManager(
-                    orchestrator.config,
-                    orchestrator.state_manager
+                    orchestrator.config, orchestrator.state_manager
                 )
                 await conversation_manager.initialize()
                 logger.info("Chat API conversation manager initialized")
@@ -142,14 +146,14 @@ async def chat_query(request: ChatRequest, background_tasks: BackgroundTasks):
                 process_detected_intents,
                 session_id,
                 result.get("intents", []),
-                result.get("actions", [])
+                result.get("actions", []),
             )
 
         return ChatResponse(
             response=result["response"],
             session_id=session_id,
             intents=result.get("intents", []),
-            actions=result.get("actions", [])
+            actions=result.get("actions", []),
         )
 
     except Exception as e:
@@ -178,7 +182,9 @@ async def get_chat_history(session_id: str, limit: int = 50):
 
     except Exception as e:
         logger.error(f"Chat history error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve chat history: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve chat history: {str(e)}"
+        )
 
 
 @router.post("/approve-recommendation")
@@ -201,9 +207,7 @@ async def approve_recommendation(request: ApprovalRequest):
     try:
         # Update approval status in state manager
         success = await orchestrator.state_manager.update_approval_status(
-            request.recommendation_id,
-            request.action,
-            request.modifications
+            request.recommendation_id, request.action, request.modifications
         )
 
         if not success:
@@ -215,24 +219,28 @@ async def approve_recommendation(request: ApprovalRequest):
             pending_approvals = await orchestrator.state_manager.get_pending_approvals()
             recommendation = next(
                 (r for r in pending_approvals if r["id"] == request.recommendation_id),
-                None
+                None,
             )
 
             if recommendation and "recommendation" in recommendation:
                 # Execute the approved recommendation
-                await execute_recommendation(orchestrator, recommendation["recommendation"])
+                await execute_recommendation(
+                    orchestrator, recommendation["recommendation"]
+                )
 
         return {
             "status": "success",
             "action": request.action,
-            "recommendation_id": request.recommendation_id
+            "recommendation_id": request.recommendation_id,
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Recommendation approval error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process approval: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process approval: {str(e)}"
+        )
 
 
 @router.get("/sessions")
@@ -302,10 +310,14 @@ async def cleanup_expired_sessions():
 
     except Exception as e:
         logger.error(f"Cleanup error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to cleanup sessions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to cleanup sessions: {str(e)}"
+        )
 
 
-async def process_detected_intents(session_id: str, intents: List[str], actions: List[str]):
+async def process_detected_intents(
+    session_id: str, intents: List[str], actions: List[str]
+):
     """
     Process intents and actions detected in chat messages.
 
@@ -326,23 +338,17 @@ async def process_detected_intents(session_id: str, intents: List[str], actions:
 
                 if intent == "portfolio_analysis":
                     await intent_task_manager.run_with_timeout(
-                        task_name,
-                        orchestrator.run_portfolio_scan(),
-                        timeout=300
+                        task_name, orchestrator.run_portfolio_scan(), timeout=300
                     )
 
                 elif intent == "market_screening":
                     await intent_task_manager.run_with_timeout(
-                        task_name,
-                        orchestrator.run_market_screening(),
-                        timeout=300
+                        task_name, orchestrator.run_market_screening(), timeout=300
                     )
 
                 elif intent == "strategy_review":
                     await intent_task_manager.run_with_timeout(
-                        task_name,
-                        orchestrator.run_strategy_review(),
-                        timeout=300
+                        task_name, orchestrator.run_strategy_review(), timeout=300
                     )
 
             except Exception as e:
@@ -387,7 +393,7 @@ async def execute_recommendation(orchestrator, recommendation: Dict[str, Any]):
                 symbol=symbol,
                 timeframe="chat_recommendation",
                 confidence=recommendation.get("confidence", 0.5),
-                rationale=recommendation.get("reasoning", "Chat-based recommendation")
+                rationale=recommendation.get("reasoning", "Chat-based recommendation"),
             )
             intent.signal = signal
 
@@ -397,21 +403,27 @@ async def execute_recommendation(orchestrator, recommendation: Dict[str, Any]):
                 side=action,
                 symbol=symbol,
                 qty=quantity or 1,  # Default to 1 if not specified
-                order_type="MARKET"
+                order_type="MARKET",
             )
             intent.order_commands = [order_cmd]
 
             # Run risk assessment
             from ..agents.risk_manager import risk_assessment_tool
+
             await risk_assessment_tool({"intent_id": intent.id})
 
             # If risk approved, execute
             if intent.risk_decision and intent.risk_decision.decision == "approve":
                 from ..agents.execution_agent import execute_trade_tool
+
                 await execute_trade_tool({"intent_id": intent.id})
-                logger.info(f"Executed chat recommendation: {action} {quantity} {symbol}")
+                logger.info(
+                    f"Executed chat recommendation: {action} {quantity} {symbol}"
+                )
             else:
-                logger.warning(f"Chat recommendation rejected by risk manager: {action} {symbol}")
+                logger.warning(
+                    f"Chat recommendation rejected by risk manager: {action} {symbol}"
+                )
 
         else:
             logger.info(f"Non-trading recommendation: {action} for {symbol}")

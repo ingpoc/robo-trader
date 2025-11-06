@@ -6,20 +6,22 @@ Helps users understand strategy performance and make informed decisions.
 """
 
 import json
-from typing import Dict, List, Any
-from datetime import datetime, timezone, timedelta
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List
 
 from claude_agent_sdk import tool
 from loguru import logger
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
 
 
 @dataclass
 class Strategy:
     """Trading strategy definition."""
+
     id: str
     name: str
     description: str
@@ -37,6 +39,7 @@ class Strategy:
 @dataclass
 class BacktestResult:
     """Backtesting results."""
+
     strategy_id: str
     period_start: str
     period_end: str
@@ -58,7 +61,7 @@ class BacktestResult:
 
 def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -> List:
     """Create strategy tools with dependencies via closure."""
-    
+
     @tool("list_strategies", "List available trading strategies", {})
     async def list_strategies_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """List all available trading strategies for comparison."""
@@ -67,23 +70,31 @@ def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Available strategies: {len(strategies)}"},
-                    {"type": "text", "text": json.dumps([asdict(s) for s in strategies], indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Available strategies: {len(strategies)}",
+                    },
+                    {
+                        "type": "text",
+                        "text": json.dumps([asdict(s) for s in strategies], indent=2),
+                    },
                 ]
             }
 
         except Exception as e:
             logger.error(f"Failed to list strategies: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error listing strategies: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error listing strategies: {str(e)}"}
+                ],
+                "is_error": True,
             }
 
-    @tool("compare_strategies", "Compare multiple trading strategies", {
-        "strategy_ids": List[str],
-        "timeframe_days": int,
-        "initial_capital": float
-    })
+    @tool(
+        "compare_strategies",
+        "Compare multiple trading strategies",
+        {"strategy_ids": List[str], "timeframe_days": int, "initial_capital": float},
+    )
     async def compare_strategies_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Compare performance of multiple strategies over a specified timeframe."""
         try:
@@ -94,13 +105,17 @@ def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -
             if not strategy_ids:
                 # Get all available strategies
                 strategies = await _get_available_strategies()
-                strategy_ids = [s.id for s in strategies[:3]]  # Compare first 3 strategies
+                strategy_ids = [
+                    s.id for s in strategies[:3]
+                ]  # Compare first 3 strategies
 
             comparison_results = []
 
             for strategy_id in strategy_ids:
                 # Run backtest for each strategy
-                result = await _run_strategy_backtest(strategy_id, timeframe_days, initial_capital)
+                result = await _run_strategy_backtest(
+                    strategy_id, timeframe_days, initial_capital
+                )
                 comparison_results.append(asdict(result))
 
             # Generate comparison analysis
@@ -108,29 +123,40 @@ def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Strategy comparison completed for {len(comparison_results)} strategies"},
-                    {"type": "text", "text": json.dumps({
-                        "strategies_compared": len(comparison_results),
-                        "timeframe_days": timeframe_days,
-                        "initial_capital": initial_capital,
-                        "results": comparison_results,
-                        "analysis": analysis
-                    }, indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Strategy comparison completed for {len(comparison_results)} strategies",
+                    },
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "strategies_compared": len(comparison_results),
+                                "timeframe_days": timeframe_days,
+                                "initial_capital": initial_capital,
+                                "results": comparison_results,
+                                "analysis": analysis,
+                            },
+                            indent=2,
+                        ),
+                    },
                 ]
             }
 
         except Exception as e:
             logger.error(f"Strategy comparison failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error comparing strategies: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error comparing strategies: {str(e)}"}
+                ],
+                "is_error": True,
             }
 
-    @tool("backtest_strategy", "Backtest a specific strategy", {
-        "strategy_id": str,
-        "timeframe_days": int,
-        "initial_capital": float
-    })
+    @tool(
+        "backtest_strategy",
+        "Backtest a specific strategy",
+        {"strategy_id": str, "timeframe_days": int, "initial_capital": float},
+    )
     async def backtest_strategy_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Run backtest for a specific trading strategy."""
         try:
@@ -138,30 +164,41 @@ def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -
             timeframe_days = args.get("timeframe_days", 90)
             initial_capital = args.get("initial_capital", 100000)
 
-            result = await _run_strategy_backtest(strategy_id, timeframe_days, initial_capital)
+            result = await _run_strategy_backtest(
+                strategy_id, timeframe_days, initial_capital
+            )
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Backtest completed for strategy: {result.strategy_id}"},
-                    {"type": "text", "text": json.dumps(asdict(result), indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Backtest completed for strategy: {result.strategy_id}",
+                    },
+                    {"type": "text", "text": json.dumps(asdict(result), indent=2)},
                 ]
             }
 
         except Exception as e:
             logger.error(f"Strategy backtest failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error running backtest: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error running backtest: {str(e)}"}
+                ],
+                "is_error": True,
             }
 
-    @tool("create_custom_strategy", "Create a custom trading strategy", {
-        "name": str,
-        "description": str,
-        "indicators": List[str],
-        "entry_conditions": Dict[str, Any],
-        "exit_conditions": Dict[str, Any],
-        "risk_management": Dict[str, Any]
-    })
+    @tool(
+        "create_custom_strategy",
+        "Create a custom trading strategy",
+        {
+            "name": str,
+            "description": str,
+            "indicators": List[str],
+            "entry_conditions": Dict[str, Any],
+            "exit_conditions": Dict[str, Any],
+            "risk_management": Dict[str, Any],
+        },
+    )
     async def create_custom_strategy_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Create a custom trading strategy for backtesting and comparison."""
         try:
@@ -172,29 +209,35 @@ def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -
                 indicators=args["indicators"],
                 entry_conditions=args["entry_conditions"],
                 exit_conditions=args["exit_conditions"],
-                risk_management=args["risk_management"]
+                risk_management=args["risk_management"],
             )
 
             await _save_custom_strategy(strategy)
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Custom strategy '{strategy.name}' created successfully"},
-                    {"type": "text", "text": json.dumps(asdict(strategy), indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Custom strategy '{strategy.name}' created successfully",
+                    },
+                    {"type": "text", "text": json.dumps(asdict(strategy), indent=2)},
                 ]
             }
 
         except Exception as e:
             logger.error(f"Custom strategy creation failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error creating strategy: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error creating strategy: {str(e)}"}
+                ],
+                "is_error": True,
             }
 
-    @tool("get_strategy_education", "Get educational information about a strategy", {
-        "strategy_id": str,
-        "topic": str
-    })
+    @tool(
+        "get_strategy_education",
+        "Get educational information about a strategy",
+        {"strategy_id": str, "topic": str},
+    )
     async def get_strategy_education_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Provide educational information about trading strategies and concepts."""
         try:
@@ -203,25 +246,26 @@ def create_strategy_tools(config: Config, state_manager: DatabaseStateManager) -
 
             education_content = await _generate_strategy_education(strategy_id, topic)
 
-            return {
-                "content": [
-                    {"type": "text", "text": education_content}
-                ]
-            }
+            return {"content": [{"type": "text", "text": education_content}]}
 
         except Exception as e:
             logger.error(f"Strategy education failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error getting strategy education: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Error getting strategy education: {str(e)}",
+                    }
+                ],
+                "is_error": True,
             }
-    
+
     return [
         list_strategies_tool,
         compare_strategies_tool,
         backtest_strategy_tool,
         create_custom_strategy_tool,
-        get_strategy_education_tool
+        get_strategy_education_tool,
     ]
 
 
@@ -238,17 +282,14 @@ async def _get_available_strategies() -> List[Strategy]:
             entry_conditions={
                 "rsi_oversold": 30,
                 "rsi_overbought": 70,
-                "confirmation_periods": 2
+                "confirmation_periods": 2,
             },
             exit_conditions={
                 "stop_loss_pct": 3,
                 "take_profit_pct": 6,
-                "rsi_exit_threshold": 50
+                "rsi_exit_threshold": 50,
             },
-            risk_management={
-                "max_position_size_pct": 5,
-                "portfolio_heat": 0.8
-            }
+            risk_management={"max_position_size_pct": 5, "portfolio_heat": 0.8},
         ),
         Strategy(
             id="macd_divergence",
@@ -258,17 +299,14 @@ async def _get_available_strategies() -> List[Strategy]:
             entry_conditions={
                 "macd_divergence_threshold": 0.5,
                 "volume_confirmation": True,
-                "trend_alignment": True
+                "trend_alignment": True,
             },
             exit_conditions={
                 "stop_loss_pct": 4,
                 "take_profit_pct": 8,
-                "macd_signal_exit": True
+                "macd_signal_exit": True,
             },
-            risk_management={
-                "max_position_size_pct": 4,
-                "portfolio_heat": 0.7
-            }
+            risk_management={"max_position_size_pct": 4, "portfolio_heat": 0.7},
         ),
         Strategy(
             id="bollinger_mean_reversion",
@@ -278,17 +316,14 @@ async def _get_available_strategies() -> List[Strategy]:
             entry_conditions={
                 "bb_touch_threshold": 2.0,
                 "rsi_confirmation": 30,
-                "volume_surge_pct": 20
+                "volume_surge_pct": 20,
             },
             exit_conditions={
                 "stop_loss_pct": 2,
                 "take_profit_pct": 4,
-                "bb_middle_exit": True
+                "bb_middle_exit": True,
             },
-            risk_management={
-                "max_position_size_pct": 3,
-                "portfolio_heat": 0.6
-            }
+            risk_management={"max_position_size_pct": 3, "portfolio_heat": 0.6},
         ),
         Strategy(
             id="breakout_momentum",
@@ -298,24 +333,23 @@ async def _get_available_strategies() -> List[Strategy]:
             entry_conditions={
                 "breakout_threshold_pct": 1.5,
                 "volume_confirmation_multiplier": 1.5,
-                "atr_filter": True
+                "atr_filter": True,
             },
             exit_conditions={
                 "stop_loss_pct": 3,
                 "take_profit_pct": 6,
-                "trailing_stop_pct": 2
+                "trailing_stop_pct": 2,
             },
-            risk_management={
-                "max_position_size_pct": 6,
-                "portfolio_heat": 0.9
-            }
-        )
+            risk_management={"max_position_size_pct": 6, "portfolio_heat": 0.9},
+        ),
     ]
 
     return strategies
 
 
-async def _run_strategy_backtest(strategy_id: str, timeframe_days: int, initial_capital: float) -> BacktestResult:
+async def _run_strategy_backtest(
+    strategy_id: str, timeframe_days: int, initial_capital: float
+) -> BacktestResult:
     """Run backtest for a specific strategy."""
 
     # Calculate period
@@ -347,11 +381,13 @@ async def _run_strategy_backtest(strategy_id: str, timeframe_days: int, initial_
         sharpe_ratio=sharpe_ratio,
         win_rate_pct=win_rate * 100,
         total_trades=total_trades,
-        avg_trade_pct=(total_return / total_trades) * 100
+        avg_trade_pct=(total_return / total_trades) * 100,
     )
 
 
-async def _generate_comparison_analysis(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+async def _generate_comparison_analysis(
+    results: List[Dict[str, Any]],
+) -> Dict[str, Any]:
     """Generate analysis comparing multiple strategy results."""
 
     if not results:
@@ -367,32 +403,40 @@ async def _generate_comparison_analysis(results: List[Dict[str, Any]]) -> Dict[s
         "best_performers": {
             "highest_return": {
                 "strategy": best_return["strategy_id"],
-                "return": f"{best_return['total_return_pct']:.2f}%"
+                "return": f"{best_return['total_return_pct']:.2f}%",
             },
             "best_risk_adjusted": {
                 "strategy": best_sharpe["strategy_id"],
-                "sharpe": f"{best_sharpe['sharpe_ratio']:.2f}"
+                "sharpe": f"{best_sharpe['sharpe_ratio']:.2f}",
             },
             "lowest_drawdown": {
                 "strategy": best_drawdown["strategy_id"],
-                "drawdown": f"{best_drawdown['max_drawdown_pct']:.2f}%"
-            }
+                "drawdown": f"{best_drawdown['max_drawdown_pct']:.2f}%",
+            },
         },
-        "recommendations": []
+        "recommendations": [],
     }
 
     # Generate recommendations
     if best_return["total_return_pct"] > 15:
-        analysis["recommendations"].append("Consider allocating more capital to high-performing momentum strategies")
+        analysis["recommendations"].append(
+            "Consider allocating more capital to high-performing momentum strategies"
+        )
 
     if best_drawdown["max_drawdown_pct"] < 5:
-        analysis["recommendations"].append("Low-drawdown strategies are suitable for conservative investors")
+        analysis["recommendations"].append(
+            "Low-drawdown strategies are suitable for conservative investors"
+        )
 
     if best_sharpe["sharpe_ratio"] > 1.5:
-        analysis["recommendations"].append("High Sharpe ratio indicates good risk-adjusted returns")
+        analysis["recommendations"].append(
+            "High Sharpe ratio indicates good risk-adjusted returns"
+        )
 
     if not analysis["recommendations"]:
-        analysis["recommendations"].append("All strategies show reasonable performance - consider your risk tolerance when choosing")
+        analysis["recommendations"].append(
+            "All strategies show reasonable performance - consider your risk tolerance when choosing"
+        )
 
     return analysis
 
@@ -418,7 +462,6 @@ async def _generate_strategy_education(strategy_id: str, topic: str) -> str:
 
 ### Educational Insights:
 RSI works best in ranging markets and can give false signals in strong trends. Always use it in conjunction with other indicators and price action analysis.""",
-
             "risk_management": """## Risk Management for RSI Strategy
 
 ### Position Sizing:
@@ -434,9 +477,8 @@ RSI works best in ranging markets and can give false signals in strong trends. A
 ### Portfolio Considerations:
 - RSI strategies work best as part of a diversified approach
 - Combine with trend-following strategies for better results
-- Monitor correlation with other holdings"""
+- Monitor correlation with other holdings""",
         },
-
         "macd_divergence": {
             "overview": """## MACD Divergence Strategy
 
@@ -454,11 +496,13 @@ RSI works best in ranging markets and can give false signals in strong trends. A
 
 ### Educational Value:
 MACD divergence often signals major trend reversals before they occur in price. This makes it valuable for identifying turning points in the market."""
-        }
+        },
     }
 
     strategy_content = strategy_education.get(strategy_id, {})
-    content = strategy_content.get(topic, f"""## Strategy Education: {strategy_id.title()}
+    content = strategy_content.get(
+        topic,
+        f"""## Strategy Education: {strategy_id.title()}
 
 **Topic:** {topic.title()}
 
@@ -474,6 +518,7 @@ This strategy combines multiple technical indicators to generate trading signals
 3. **Diversification across strategies can improve results**
 4. **Backtesting helps understand historical performance**
 
-Choose strategies that match your risk tolerance and investment goals.""")
+Choose strategies that match your risk tolerance and investment goals.""",
+    )
 
     return content

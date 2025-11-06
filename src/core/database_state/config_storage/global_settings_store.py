@@ -1,7 +1,8 @@
 """Global settings configuration store."""
 
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict
+
 from loguru import logger
 
 from .base_store import BaseConfigStore
@@ -82,19 +83,13 @@ class GlobalSettingsStore(BaseConfigStore):
                             (SELECT created_at FROM global_settings_config WHERE setting_key = ?), ?
                         ))
                         """,
-                        (
-                            key,
-                            setting_value,
-                            setting_type,
-                            "general",
-                            now,
-                            key,
-                            now
-                        )
+                        (key, setting_value, setting_type, "general", now, key, now),
                     )
 
                 await self.db.connection.commit()
-                logger.info(f"Updated global settings configuration ({len(settings_data)} settings)")
+                logger.info(
+                    f"Updated global settings configuration ({len(settings_data)} settings)"
+                )
                 return True
 
             except Exception as e:

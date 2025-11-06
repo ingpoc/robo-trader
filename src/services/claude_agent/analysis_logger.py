@@ -5,15 +5,14 @@ Logs all AI analysis activities, reasoning processes, and decision-making
 transparently for client visibility into Claude's trading thought process.
 """
 
-import logging
 import json
+import logging
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+from typing import Any, Dict, List, Optional
 
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ...stores.claude_strategy_store import ClaudeStrategyStore
 from ...core.database_state.configuration_state import ConfigurationState
+from ...stores.claude_strategy_store import ClaudeStrategyStore
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +75,15 @@ class TradeDecisionLog:
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        data['analysis_steps'] = [step.to_dict() for step in self.analysis_steps]
+        data["analysis_steps"] = [step.to_dict() for step in self.analysis_steps]
         return data
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> 'TradeDecisionLog':
-        if 'analysis_steps' in data:
-            data['analysis_steps'] = [AnalysisStep(**step) for step in data['analysis_steps']]
+    def from_dict(data: Dict[str, Any]) -> "TradeDecisionLog":
+        if "analysis_steps" in data:
+            data["analysis_steps"] = [
+                AnalysisStep(**step) for step in data["analysis_steps"]
+            ]
         return TradeDecisionLog(**data)
 
 
@@ -123,27 +124,28 @@ class AnalysisLogger:
     - Performance analysis
     """
 
-    def __init__(self, strategy_store: ClaudeStrategyStore, config_state: ConfigurationState):
+    def __init__(
+        self, strategy_store: ClaudeStrategyStore, config_state: ConfigurationState
+    ):
         self.strategy_store = strategy_store
         self.config_state = config_state
         self.active_decisions: Dict[str, TradeDecisionLog] = {}
 
     async def start_trade_analysis(
-        self,
-        session_id: str,
-        symbol: str,
-        decision_id: Optional[str] = None
+        self, session_id: str, symbol: str, decision_id: Optional[str] = None
     ) -> TradeDecisionLog:
         """Start logging a trade analysis and decision process."""
 
         if not decision_id:
-            decision_id = f"decision_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
+            decision_id = (
+                f"decision_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
+            )
 
         decision_log = TradeDecisionLog(
             decision_id=decision_id,
             session_id=session_id,
             symbol=symbol,
-            action="HOLD"  # Default, will be updated
+            action="HOLD",  # Default, will be updated
         )
 
         self.active_decisions[decision_id] = decision_log
@@ -159,7 +161,7 @@ class AnalysisLogger:
         input_data: Dict[str, Any],
         reasoning: str,
         confidence_score: float = 0.0,
-        duration_ms: int = 0
+        duration_ms: int = 0,
     ) -> None:
         """Log a single step in the analysis process."""
 
@@ -174,11 +176,13 @@ class AnalysisLogger:
             input_data=input_data,
             reasoning=reasoning,
             confidence_score=confidence_score,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
         )
 
         self.active_decisions[decision_id].analysis_steps.append(step)
-        logger.debug(f"Logged analysis step: {step.step_type} for decision {decision_id}")
+        logger.debug(
+            f"Logged analysis step: {step.step_type} for decision {decision_id}"
+        )
 
     async def update_decision_details(
         self,
@@ -187,7 +191,7 @@ class AnalysisLogger:
         quantity: Optional[int] = None,
         entry_price: Optional[float] = None,
         strategy_rationale: str = "",
-        confidence_score: float = 0.0
+        confidence_score: float = 0.0,
     ) -> None:
         """Update the final decision details."""
 
@@ -205,9 +209,7 @@ class AnalysisLogger:
         logger.info(f"Updated decision details: {decision_id} -> {action}")
 
     async def log_risk_assessment(
-        self,
-        decision_id: str,
-        risk_assessment: Dict[str, Any]
+        self, decision_id: str, risk_assessment: Dict[str, Any]
     ) -> None:
         """Log risk assessment details."""
 
@@ -219,9 +221,7 @@ class AnalysisLogger:
         logger.debug(f"Logged risk assessment for decision {decision_id}")
 
     async def log_market_context(
-        self,
-        decision_id: str,
-        market_context: Dict[str, Any]
+        self, decision_id: str, market_context: Dict[str, Any]
     ) -> None:
         """Log market context used in analysis."""
 
@@ -236,7 +236,7 @@ class AnalysisLogger:
         self,
         decision_id: str,
         technical_signals: List[str] = None,
-        fundamental_factors: List[str] = None
+        fundamental_factors: List[str] = None,
     ) -> None:
         """Log technical signals and fundamental factors."""
 
@@ -256,7 +256,7 @@ class AnalysisLogger:
         self,
         decision_id: str,
         executed: bool = False,
-        execution_result: Optional[Dict[str, Any]] = None
+        execution_result: Optional[Dict[str, Any]] = None,
     ) -> Optional[TradeDecisionLog]:
         """Complete a trade decision and save to storage."""
 
@@ -274,7 +274,9 @@ class AnalysisLogger:
         # Remove from active decisions
         del self.active_decisions[decision_id]
 
-        logger.info(f"Completed trade decision: {decision_id} ({decision.action}, executed: {executed})")
+        logger.info(
+            f"Completed trade decision: {decision_id} ({decision.action}, executed: {executed})"
+        )
 
         return decision
 
@@ -288,7 +290,7 @@ class AnalysisLogger:
         strengths: List[str],
         weaknesses: List[str],
         recommendations: List[str],
-        confidence_score: float = 0.0
+        confidence_score: float = 0.0,
     ) -> StrategyEvaluation:
         """Log a strategy evaluation."""
 
@@ -302,13 +304,15 @@ class AnalysisLogger:
             strengths=strengths,
             weaknesses=weaknesses,
             recommendations=recommendations,
-            confidence_score=confidence_score
+            confidence_score=confidence_score,
         )
 
         # Save to database
         await self._save_strategy_evaluation(evaluation)
 
-        logger.info(f"Logged strategy evaluation: {strategy_name} ({evaluation_period})")
+        logger.info(
+            f"Logged strategy evaluation: {strategy_name} ({evaluation_period})"
+        )
 
         return evaluation
 
@@ -316,7 +320,7 @@ class AnalysisLogger:
         self,
         session_id: Optional[str] = None,
         symbol: Optional[str] = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> List[TradeDecisionLog]:
         """Get historical trade decisions."""
 
@@ -334,7 +338,7 @@ class AnalysisLogger:
         self,
         strategy_name: Optional[str] = None,
         evaluation_period: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
     ) -> List[StrategyEvaluation]:
         """Get historical strategy evaluations."""
 
@@ -342,10 +346,7 @@ class AnalysisLogger:
         # For now, return empty list as example
         return []
 
-    async def get_analysis_effectiveness(
-        self,
-        days: int = 7
-    ) -> Dict[str, Any]:
+    async def get_analysis_effectiveness(self, days: int = 7) -> Dict[str, Any]:
         """Analyze the effectiveness of AI analysis over time."""
 
         # Get recent decisions
@@ -354,7 +355,8 @@ class AnalysisLogger:
         # Filter by time period
         cutoff_time = datetime.now(timezone.utc).timestamp() - (days * 24 * 60 * 60)
         recent_decisions = [
-            d for d in decisions
+            d
+            for d in decisions
             if datetime.fromisoformat(d.decision_timestamp).timestamp() > cutoff_time
         ]
 
@@ -367,14 +369,18 @@ class AnalysisLogger:
                 "execution_rate": 0.0,
                 "avg_confidence_score": 0.0,
                 "avg_analysis_steps": 0.0,
-                "action_breakdown": {}
+                "action_breakdown": {},
             }
 
         # Calculate effectiveness metrics
         total_decisions = len(recent_decisions)
         executed_decisions = len([d for d in recent_decisions if d.executed])
-        avg_confidence = sum(d.confidence_score for d in recent_decisions) / total_decisions
-        avg_analysis_steps = sum(len(d.analysis_steps) for d in recent_decisions) / total_decisions
+        avg_confidence = (
+            sum(d.confidence_score for d in recent_decisions) / total_decisions
+        )
+        avg_analysis_steps = (
+            sum(len(d.analysis_steps) for d in recent_decisions) / total_decisions
+        )
 
         # Group by action type
         actions = {}
@@ -387,54 +393,67 @@ class AnalysisLogger:
         for action, action_decisions in actions.items():
             action_stats[action] = {
                 "count": len(action_decisions),
-                "avg_confidence": sum(d.confidence_score for d in action_decisions) / len(action_decisions),
-                "executed": len([d for d in action_decisions if d.executed])
+                "avg_confidence": sum(d.confidence_score for d in action_decisions)
+                / len(action_decisions),
+                "executed": len([d for d in action_decisions if d.executed]),
             }
 
         return {
             "period_days": days,
             "total_decisions": total_decisions,
             "executed_decisions": executed_decisions,
-            "execution_rate": executed_decisions / total_decisions if total_decisions > 0 else 0,
+            "execution_rate": (
+                executed_decisions / total_decisions if total_decisions > 0 else 0
+            ),
             "avg_confidence_score": avg_confidence,
             "avg_analysis_steps": avg_analysis_steps,
-            "action_breakdown": action_stats
+            "action_breakdown": action_stats,
         }
 
     async def _save_trade_decision(self, decision: TradeDecisionLog) -> None:
         """Save trade decision to database using ConfigurationState's locked method."""
         try:
             # Save to analysis_history table for AI Transparency using locked method
-            analysis_json = json.dumps({
-                "decision_id": decision.decision_id,
-                "session_id": decision.session_id,
-                "action": decision.action,
-                "quantity": decision.quantity,
-                "entry_price": decision.entry_price,
-                "strategy_rationale": decision.strategy_rationale,
-                "confidence_score": decision.confidence_score,
-                "technical_signals": decision.technical_signals,
-                "fundamental_factors": decision.fundamental_factors,
-                "risk_assessment": decision.risk_assessment,
-                "market_context": decision.market_context,
-                "analysis_steps": [step.to_dict() for step in decision.analysis_steps],
-                "executed": decision.executed,
-                "execution_result": decision.execution_result,
-                "analysis_type": "trade_decision"  # Add type for filtering
-            })
+            analysis_json = json.dumps(
+                {
+                    "decision_id": decision.decision_id,
+                    "session_id": decision.session_id,
+                    "action": decision.action,
+                    "quantity": decision.quantity,
+                    "entry_price": decision.entry_price,
+                    "strategy_rationale": decision.strategy_rationale,
+                    "confidence_score": decision.confidence_score,
+                    "technical_signals": decision.technical_signals,
+                    "fundamental_factors": decision.fundamental_factors,
+                    "risk_assessment": decision.risk_assessment,
+                    "market_context": decision.market_context,
+                    "analysis_steps": [
+                        step.to_dict() for step in decision.analysis_steps
+                    ],
+                    "executed": decision.executed,
+                    "execution_result": decision.execution_result,
+                    "analysis_type": "trade_decision",  # Add type for filtering
+                }
+            )
 
             # Use ConfigurationState's locked method to prevent database contention
             success = await self.config_state.store_analysis_history(
                 symbol=decision.symbol,
                 timestamp=decision.decision_timestamp,
-                analysis=analysis_json
+                analysis=analysis_json,
             )
 
             if success:
-                logger.info(f"Trade decision saved to database: {decision.decision_id} for {decision.symbol}")
-                logger.debug(f"Decision data saved with {len(decision.analysis_steps)} analysis steps")
+                logger.info(
+                    f"Trade decision saved to database: {decision.decision_id} for {decision.symbol}"
+                )
+                logger.debug(
+                    f"Decision data saved with {len(decision.analysis_steps)} analysis steps"
+                )
             else:
-                logger.error(f"Failed to save trade decision to database for {decision.decision_id}")
+                logger.error(
+                    f"Failed to save trade decision to database for {decision.decision_id}"
+                )
                 # Fallback: log the decision data
                 decision_data = decision.to_dict()
                 logger.info(f"Trade decision logged (fallback): {decision.decision_id}")
@@ -460,11 +479,16 @@ class AnalysisLogger:
     async def cleanup_old_logs(self, days_to_keep: int = 30) -> int:
         """Clean up old analysis logs from memory."""
 
-        cutoff_time = datetime.now(timezone.utc).timestamp() - (days_to_keep * 24 * 60 * 60)
+        cutoff_time = datetime.now(timezone.utc).timestamp() - (
+            days_to_keep * 24 * 60 * 60
+        )
         old_decisions = []
 
         for decision_id, decision in self.active_decisions.items():
-            if datetime.fromisoformat(decision.decision_timestamp).timestamp() < cutoff_time:
+            if (
+                datetime.fromisoformat(decision.decision_timestamp).timestamp()
+                < cutoff_time
+            ):
                 old_decisions.append(decision_id)
 
         for decision_id in old_decisions:

@@ -10,21 +10,19 @@ Handles registration of fundamental infrastructure services:
 - Task Processing
 """
 
-import asyncio
 import logging
-from typing import Callable
 
-from src.config import Config
-from .event_bus import initialize_event_bus
-from .safety_layer import SafetyLayer
-from .database_state import DatabaseStateManager
+
 from .background_scheduler import BackgroundScheduler
+from .database_state import DatabaseStateManager
+from .event_bus import initialize_event_bus
 from .resource_manager import ResourceManager
+from .safety_layer import SafetyLayer
 
 logger = logging.getLogger(__name__)
 
 
-async def register_core_services(container: 'DependencyContainer') -> None:
+async def register_core_services(container: "DependencyContainer") -> None:
     """Register all core infrastructure services."""
 
     # Config - singleton (access to configuration)
@@ -56,7 +54,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     # State Manager - singleton (Database-backed only)
     async def create_state_manager():
-        from .database_state import DatabaseStateManager
+
         logger.info("Creating DatabaseStateManager instance...")
         manager = DatabaseStateManager(container.config)
         logger.info("DatabaseStateManager instance created, starting initialization...")
@@ -69,6 +67,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # Database Connection - singleton (database connection wrapper for legacy code)
     async def create_database():
         from .database_wrapper import DatabaseWrapper
+
         state_manager = await container.get("state_manager")
         return DatabaseWrapper(state_manager.db)
 
@@ -77,6 +76,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # Configuration State - singleton (Database-backed configuration)
     async def create_configuration_state():
         from .database_state.configuration_state import ConfigurationState
+
         state_manager = await container.get("state_manager")
         config_state = ConfigurationState(state_manager.db)
         await config_state.initialize()
@@ -87,6 +87,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # AI Planner
     async def create_ai_planner():
         from .ai_planner import AIPlanner
+
         state_manager = await container.get("state_manager")
         return AIPlanner(container.config, state_manager)
 
@@ -94,9 +95,9 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     # Task Service
     async def create_task_service():
-        from ..stores.scheduler_task_store import SchedulerTaskStore
-        from ..services.scheduler.task_service import SchedulerTaskService
         from ..models.scheduler import TaskType
+        from ..services.scheduler.task_service import SchedulerTaskService
+        from ..stores.scheduler_task_store import SchedulerTaskStore
 
         state_manager = await container.get("state_manager")
         task_store = SchedulerTaskStore(state_manager.db.connection)
@@ -115,14 +116,16 @@ async def register_core_services(container: 'DependencyContainer') -> None:
             # If no specific symbols provided, select 2-3 stocks with oldest analysis
             if symbols_to_analyze is None:
                 # Get stocks with oldest analysis (priority: no analysis > oldest analysis)
-                from ..services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+
                 symbols_to_analyze = await analyzer._get_stocks_with_updates()
 
                 # Select only 2-3 stocks with oldest/first analysis
                 # This prevents processing all 81 stocks at once
                 symbols_to_analyze = symbols_to_analyze[:3]
 
-                logger.info(f"Selected {len(symbols_to_analyze)} stocks for analysis: {symbols_to_analyze}")
+                logger.info(
+                    f"Selected {len(symbols_to_analyze)} stocks for analysis: {symbols_to_analyze}"
+                )
 
             # Process specific symbols (should be 2-3 max per task)
             return await analyzer.analyze_portfolio_intelligence(
@@ -130,11 +133,13 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                 symbols=symbols_to_analyze,
                 batch_info={
                     "batch_id": task.payload.get("batch_id"),
-                    "total_batches": task.payload.get("total_batches")
-                }
+                    "total_batches": task.payload.get("total_batches"),
+                },
             )
 
-        task_service.register_handler(TaskType.RECOMMENDATION_GENERATION, handle_recommendation_generation)
+        task_service.register_handler(
+            TaskType.RECOMMENDATION_GENERATION, handle_recommendation_generation
+        )
         logger.info("Registered RECOMMENDATION_GENERATION task handler")
 
         # Register FUNDAMENTALS_UPDATE handler
@@ -146,20 +151,24 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                 if not symbols:
                     return {"status": "skipped", "reason": "no_symbols"}
 
-                logger.info(f"Processing fundamentals update for {len(symbols)} symbols")
+                logger.info(
+                    f"Processing fundamentals update for {len(symbols)} symbols"
+                )
 
                 # Placeholder for actual fundamentals update logic
                 # This would typically call a fundamental data service
                 return {
                     "status": "completed",
                     "symbols_processed": len(symbols),
-                    "symbols": symbols
+                    "symbols": symbols,
                 }
             except Exception as e:
                 logger.error(f"Error in fundamentals update handler: {e}")
                 raise
 
-        task_service.register_handler(TaskType.FUNDAMENTALS_UPDATE, handle_fundamentals_update)
+        task_service.register_handler(
+            TaskType.FUNDAMENTALS_UPDATE, handle_fundamentals_update
+        )
         logger.info("Registered FUNDAMENTALS_UPDATE task handler")
 
         # Register SYNC_ACCOUNT_BALANCES handler
@@ -175,15 +184,14 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                 result = await portfolio_service.sync_account_balances()
 
                 logger.info(f"Account balance sync completed: {result}")
-                return {
-                    "status": "completed",
-                    "result": result
-                }
+                return {"status": "completed", "result": result}
             except Exception as e:
                 logger.error(f"Error in account balance sync handler: {e}")
                 raise
 
-        task_service.register_handler(TaskType.SYNC_ACCOUNT_BALANCES, handle_sync_account_balances)
+        task_service.register_handler(
+            TaskType.SYNC_ACCOUNT_BALANCES, handle_sync_account_balances
+        )
         logger.info("Registered SYNC_ACCOUNT_BALANCES task handler")
 
         # Register CLAUDE_MORNING_PREP handler
@@ -206,31 +214,38 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                 results = []
 
                 for i in range(0, len(symbols), batch_size):
-                    batch_symbols = symbols[i:i + batch_size]
-                    logger.info(f"Morning prep batch {i//batch_size + 1}: analyzing {len(batch_symbols)} symbols")
+                    batch_symbols = symbols[i : i + batch_size]
+                    logger.info(
+                        f"Morning prep batch {i//batch_size + 1}: analyzing {len(batch_symbols)} symbols"
+                    )
 
                     result = await analyzer.analyze_portfolio_intelligence(
                         agent_name="morning_prep",
                         symbols=batch_symbols,
                         batch_info={
                             "batch_id": i // batch_size,
-                            "total_batches": (len(symbols) + batch_size - 1) // batch_size,
-                            "routine": "morning_prep"
-                        }
+                            "total_batches": (len(symbols) + batch_size - 1)
+                            // batch_size,
+                            "routine": "morning_prep",
+                        },
                     )
                     results.append(result)
 
-                logger.info(f"Morning prep completed: processed {len(symbols)} symbols in {len(results)} batches")
+                logger.info(
+                    f"Morning prep completed: processed {len(symbols)} symbols in {len(results)} batches"
+                )
                 return {
                     "status": "completed",
                     "symbols_processed": len(symbols),
-                    "batches": len(results)
+                    "batches": len(results),
                 }
             except Exception as e:
                 logger.error(f"Error in morning prep handler: {e}")
                 raise
 
-        task_service.register_handler(TaskType.CLAUDE_MORNING_PREP, handle_claude_morning_prep)
+        task_service.register_handler(
+            TaskType.CLAUDE_MORNING_PREP, handle_claude_morning_prep
+        )
         logger.info("Registered CLAUDE_MORNING_PREP task handler")
 
         # Register CLAUDE_EVENING_REVIEW handler
@@ -246,19 +261,18 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                 result = await analyzer.analyze_portfolio_intelligence(
                     agent_name="evening_review",
                     symbols=None,  # Will analyze all positions
-                    batch_info={"routine": "evening_review"}
+                    batch_info={"routine": "evening_review"},
                 )
 
-                logger.info(f"Evening review completed")
-                return {
-                    "status": "completed",
-                    "analysis": result
-                }
+                logger.info("Evening review completed")
+                return {"status": "completed", "analysis": result}
             except Exception as e:
                 logger.error(f"Error in evening review handler: {e}")
                 raise
 
-        task_service.register_handler(TaskType.CLAUDE_EVENING_REVIEW, handle_claude_evening_review)
+        task_service.register_handler(
+            TaskType.CLAUDE_EVENING_REVIEW, handle_claude_evening_review
+        )
         logger.info("Registered CLAUDE_EVENING_REVIEW task handler")
 
         # Register CLAUDE_NEWS_ANALYSIS handler
@@ -280,21 +294,21 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                     symbols=[symbol],
                     batch_info={
                         "trigger": "news",
-                        "trigger_type": task.payload.get("trigger")
-                    }
+                        "trigger_type": task.payload.get("trigger"),
+                    },
                 )
 
                 logger.info(f"News analysis completed for {symbol}")
-                return {
-                    "status": "completed",
-                    "symbol": symbol,
-                    "analysis": result
-                }
+                return {"status": "completed", "symbol": symbol, "analysis": result}
             except Exception as e:
-                logger.error(f"Error in news analysis handler for {task.payload.get('symbol')}: {e}")
+                logger.error(
+                    f"Error in news analysis handler for {task.payload.get('symbol')}: {e}"
+                )
                 raise
 
-        task_service.register_handler(TaskType.CLAUDE_NEWS_ANALYSIS, handle_claude_news_analysis)
+        task_service.register_handler(
+            TaskType.CLAUDE_NEWS_ANALYSIS, handle_claude_news_analysis
+        )
         logger.info("Registered CLAUDE_NEWS_ANALYSIS task handler")
 
         # Register CLAUDE_EARNINGS_REVIEW handler
@@ -316,21 +330,21 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                     symbols=[symbol],
                     batch_info={
                         "trigger": "earnings",
-                        "trigger_type": task.payload.get("trigger")
-                    }
+                        "trigger_type": task.payload.get("trigger"),
+                    },
                 )
 
                 logger.info(f"Earnings review completed for {symbol}")
-                return {
-                    "status": "completed",
-                    "symbol": symbol,
-                    "analysis": result
-                }
+                return {"status": "completed", "symbol": symbol, "analysis": result}
             except Exception as e:
-                logger.error(f"Error in earnings review handler for {task.payload.get('symbol')}: {e}")
+                logger.error(
+                    f"Error in earnings review handler for {task.payload.get('symbol')}: {e}"
+                )
                 raise
 
-        task_service.register_handler(TaskType.CLAUDE_EARNINGS_REVIEW, handle_claude_earnings_review)
+        task_service.register_handler(
+            TaskType.CLAUDE_EARNINGS_REVIEW, handle_claude_earnings_review
+        )
         logger.info("Registered CLAUDE_EARNINGS_REVIEW task handler")
 
         # Register CLAUDE_FUNDAMENTAL_ANALYSIS handler
@@ -352,21 +366,21 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                     symbols=[symbol],
                     batch_info={
                         "trigger": "fundamentals",
-                        "trigger_type": task.payload.get("trigger")
-                    }
+                        "trigger_type": task.payload.get("trigger"),
+                    },
                 )
 
                 logger.info(f"Fundamental analysis completed for {symbol}")
-                return {
-                    "status": "completed",
-                    "symbol": symbol,
-                    "analysis": result
-                }
+                return {"status": "completed", "symbol": symbol, "analysis": result}
             except Exception as e:
-                logger.error(f"Error in fundamental analysis handler for {task.payload.get('symbol')}: {e}")
+                logger.error(
+                    f"Error in fundamental analysis handler for {task.payload.get('symbol')}: {e}"
+                )
                 raise
 
-        task_service.register_handler(TaskType.CLAUDE_FUNDAMENTAL_ANALYSIS, handle_claude_fundamental_analysis)
+        task_service.register_handler(
+            TaskType.CLAUDE_FUNDAMENTAL_ANALYSIS, handle_claude_fundamental_analysis
+        )
         logger.info("Registered CLAUDE_FUNDAMENTAL_ANALYSIS task handler")
 
         # Register VALIDATE_PORTFOLIO_RISKS handler
@@ -382,15 +396,14 @@ async def register_core_services(container: 'DependencyContainer') -> None:
                 risk_assessment = await portfolio_service.validate_portfolio_risks()
 
                 logger.info(f"Portfolio risk validation completed: {risk_assessment}")
-                return {
-                    "status": "completed",
-                    "risk_assessment": risk_assessment
-                }
+                return {"status": "completed", "risk_assessment": risk_assessment}
             except Exception as e:
                 logger.error(f"Error in portfolio risk validation handler: {e}")
                 raise
 
-        task_service.register_handler(TaskType.VALIDATE_PORTFOLIO_RISKS, handle_validate_portfolio_risks)
+        task_service.register_handler(
+            TaskType.VALIDATE_PORTFOLIO_RISKS, handle_validate_portfolio_risks
+        )
         logger.info("Registered VALIDATE_PORTFOLIO_RISKS task handler")
 
         return task_service
@@ -398,6 +411,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # Execution Tracker Service
     async def create_execution_tracker():
         from src.core.execution_tracker import ExecutionTracker
+
         state_manager = await container.get("state_manager")
         execution_tracker = ExecutionTracker(state_manager.db.connection)
         await execution_tracker.initialize()
@@ -420,7 +434,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
             state_manager.db._connection_pool,
             container.config,
             execution_tracker,
-            sequential_queue_manager
+            sequential_queue_manager,
         )
 
     container._register_singleton("background_scheduler", create_background_scheduler)
@@ -428,16 +442,22 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # Sequential Queue Manager - singleton for task execution
     async def create_sequential_queue_manager():
         from ..services.scheduler.queue_manager import SequentialQueueManager
+
         task_service = await container.get("task_service")
         return SequentialQueueManager(task_service)
 
-    container._register_singleton("sequential_queue_manager", create_sequential_queue_manager)
+    container._register_singleton(
+        "sequential_queue_manager", create_sequential_queue_manager
+    )
 
     # Fundamental Executor
     async def create_fundamental_executor():
-        from src.core.background_scheduler.clients.perplexity_client import PerplexityClient
-        from src.core.background_scheduler.executors.fundamental_executor import FundamentalExecutor
-        from src.core.background_scheduler.stores.fundamental_store import FundamentalStore
+        from src.core.background_scheduler.clients.perplexity_client import \
+            PerplexityClient
+        from src.core.background_scheduler.executors.fundamental_executor import \
+            FundamentalExecutor
+        from src.core.background_scheduler.stores.fundamental_store import \
+            FundamentalStore
 
         configuration_state = await container.get("configuration_state")
         execution_tracker = await container.get("execution_tracker")
@@ -447,10 +467,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         event_bus = await container.get("event_bus")
 
         return FundamentalExecutor(
-            perplexity_client,
-            state_manager.db.connection,
-            event_bus,
-            execution_tracker
+            perplexity_client, state_manager.db.connection, event_bus, execution_tracker
         )
 
     container._register_singleton("fundamental_executor", create_fundamental_executor)
@@ -458,6 +475,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # Conversation Manager
     async def create_conversation_manager():
         from .conversation_manager import ConversationManager
+
         state_manager = await container.get("state_manager")
         return ConversationManager(container.config, state_manager, container)
 
@@ -466,6 +484,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # Learning Engine
     async def create_learning_engine():
         from .learning_engine import LearningEngine
+
         state_manager = await container.get("state_manager")
         return LearningEngine(container.config, state_manager)
 
@@ -473,8 +492,12 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     # Prompt Optimization Service
     async def create_prompt_optimization_service():
-        from ..services.prompt_optimization_service import PromptOptimizationService
+        from ..services.prompt_optimization_service import \
+            PromptOptimizationService
+
         database = await container.get("database")
         return PromptOptimizationService(database, container)
 
-    container._register_singleton("prompt_optimization_service", create_prompt_optimization_service)
+    container._register_singleton(
+        "prompt_optimization_service", create_prompt_optimization_service
+    )

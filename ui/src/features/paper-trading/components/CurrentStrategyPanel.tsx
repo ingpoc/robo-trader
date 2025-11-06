@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { Progress } from '@/components/ui/progress'
+import { Progress } from '@/components/ui/Progress'
 import { Brain, Target, Database, TrendingUp, AlertTriangle, Eye, RefreshCw, CheckCircle } from 'lucide-react'
 
 interface DataQualityMetrics {

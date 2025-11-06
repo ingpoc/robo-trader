@@ -1,19 +1,20 @@
 """Data models for paper trading accounts and trades."""
 
-from dataclasses import dataclass, asdict
-from datetime import datetime
-from typing import Optional, Dict, Any
+from dataclasses import asdict, dataclass
 from enum import Enum
+from typing import Any, Dict, Optional
 
 
 class TradeType(str, Enum):
     """Trade execution types."""
+
     BUY = "buy"
     SELL = "sell"
 
 
 class TradeStatus(str, Enum):
     """Trade status states."""
+
     OPEN = "open"
     CLOSED = "closed"
     STOPPED_OUT = "stopped_out"
@@ -21,6 +22,7 @@ class TradeStatus(str, Enum):
 
 class AccountType(str, Enum):
     """Paper trading account types."""
+
     SWING = "swing"
     OPTIONS = "options"
     HYBRID = "hybrid"
@@ -28,6 +30,7 @@ class AccountType(str, Enum):
 
 class RiskLevel(str, Enum):
     """Risk profile levels."""
+
     CONSERVATIVE = "conservative"
     MODERATE = "moderate"
     AGGRESSIVE = "aggressive"
@@ -36,6 +39,7 @@ class RiskLevel(str, Enum):
 @dataclass
 class PaperTradingAccount:
     """Paper trading account state."""
+
     account_id: str
     account_name: str
     initial_balance: float
@@ -61,22 +65,23 @@ class PaperTradingAccount:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         d = asdict(self)
-        d['strategy_type'] = self.strategy_type.value
-        d['risk_level'] = self.risk_level.value
+        d["strategy_type"] = self.strategy_type.value
+        d["risk_level"] = self.risk_level.value
         return d
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> 'PaperTradingAccount':
+    def from_dict(data: Dict[str, Any]) -> "PaperTradingAccount":
         """Create from dictionary."""
         data = data.copy()
-        data['strategy_type'] = AccountType(data['strategy_type'])
-        data['risk_level'] = RiskLevel(data['risk_level'])
+        data["strategy_type"] = AccountType(data["strategy_type"])
+        data["risk_level"] = RiskLevel(data["risk_level"])
         return PaperTradingAccount(**data)
 
 
 @dataclass
 class PaperTrade:
     """Individual paper trade record."""
+
     trade_id: str
     account_id: str
     symbol: str
@@ -99,16 +104,16 @@ class PaperTrade:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         d = asdict(self)
-        d['trade_type'] = self.trade_type.value
-        d['status'] = self.status.value
+        d["trade_type"] = self.trade_type.value
+        d["status"] = self.status.value
         return d
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> 'PaperTrade':
+    def from_dict(data: Dict[str, Any]) -> "PaperTrade":
         """Create from dictionary."""
         data = data.copy()
-        data['trade_type'] = TradeType(data['trade_type'])
-        data['status'] = TradeStatus(data['status'])
+        data["trade_type"] = TradeType(data["trade_type"])
+        data["status"] = TradeStatus(data["status"])
         return PaperTrade(**data)
 
     def calculate_pnl(self, current_price: float) -> tuple[float, float]:
@@ -126,7 +131,11 @@ class PaperTrade:
         else:  # SELL
             pnl = (self.entry_price - current_price) * self.quantity
 
-        pnl_pct = (pnl / (self.entry_price * self.quantity)) * 100 if self.entry_price > 0 else 0.0
+        pnl_pct = (
+            (pnl / (self.entry_price * self.quantity)) * 100
+            if self.entry_price > 0
+            else 0.0
+        )
         return pnl, pnl_pct
 
     def is_stop_loss_triggered(self, current_price: float) -> bool:
@@ -153,6 +162,7 @@ class PaperTrade:
 @dataclass
 class PaperPortfolioSnapshot:
     """Current portfolio snapshot."""
+
     account_id: str
     total_value: float
     cash: float
@@ -163,7 +173,9 @@ class PaperPortfolioSnapshot:
     closed_today: int
     daily_pnl: float
     timestamp: str
-    holdings: Dict[str, Dict[str, Any]]  # symbol -> {qty, entry_price, current_price, pnl}
+    holdings: Dict[
+        str, Dict[str, Any]
+    ]  # symbol -> {qty, entry_price, current_price, pnl}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""

@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from ...models.scheduler import QueueName, SchedulerTask, TaskStatus
 from .task_service import SchedulerTaskService
@@ -14,16 +14,16 @@ logger = logging.getLogger(__name__)
 class SequentialQueueManager:
     """
     Manage queue execution with parallel queues and sequential tasks.
-    
+
     Architecture Pattern:
     - 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
     - Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time per queue)
-    
+
     This prevents:
     - Turn limit exhaustion (AI_ANALYSIS tasks run sequentially)
     - Database contention (PORTFOLIO_SYNC tasks run sequentially)
     - Resource conflicts (each queue manages its own sequential execution)
-    
+
     While allowing:
     - Parallel processing across different queue types
     - Better resource utilization
@@ -41,11 +41,11 @@ class SequentialQueueManager:
     async def execute_queues(self) -> None:
         """
         Execute all queues in parallel.
-        
+
         Architecture Pattern:
         - 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
         - Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time)
-        
+
         This allows:
         - Portfolio sync, data fetching, and AI analysis to run simultaneously
         - Tasks within each queue execute in order (prevents turn limit exhaustion for AI)
@@ -55,22 +55,30 @@ class SequentialQueueManager:
             return
 
         self._running = True
-        logger.info("Starting parallel queue execution (queues in parallel, tasks within queues sequential)")
+        logger.info(
+            "Starting parallel queue execution (queues in parallel, tasks within queues sequential)"
+        )
 
         try:
             # Reload completed tasks from today
-            self._completed_task_ids = await self.task_service.store.get_completed_task_ids_today()
+            self._completed_task_ids = (
+                await self.task_service.store.get_completed_task_ids_today()
+            )
 
             # Execute all queues in PARALLEL (not sequentially!)
             # Each queue processes its tasks sequentially internally
-            queue_names = [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]
-            
+            queue_names = [
+                QueueName.PORTFOLIO_SYNC,
+                QueueName.DATA_FETCHER,
+                QueueName.AI_ANALYSIS,
+            ]
+
             # Create tasks for parallel execution
             tasks = [self._execute_queue(queue_name) for queue_name in queue_names]
-            
+
             # Execute all queues concurrently
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             # Log results
             for i, queue_name in enumerate(queue_names):
                 result = results[i]
@@ -96,11 +104,12 @@ class SequentialQueueManager:
 
             # Get next pending task
             pending_tasks = await self.task_service.get_pending_tasks(
-                queue_name=queue_name,
-                completed_task_ids=self._completed_task_ids
+                queue_name=queue_name, completed_task_ids=self._completed_task_ids
             )
 
-            logger.debug(f"{queue_name.value}: Found {len(pending_tasks)} pending tasks")
+            logger.debug(
+                f"{queue_name.value}: Found {len(pending_tasks)} pending tasks"
+            )
             if not pending_tasks:
                 logger.info(f"No more pending tasks in {queue_name.value}")
                 break
@@ -108,9 +117,13 @@ class SequentialQueueManager:
             # Execute first task (highest priority)
             task = pending_tasks[0]
             logger.debug(f"{queue_name.value}: About to execute task {task.task_id}")
-            logger.debug(f"{queue_name.value}: Task type={task.task_type.value}, payload keys={list(task.payload.keys())}")
+            logger.debug(
+                f"{queue_name.value}: Task type={task.task_type.value}, payload keys={list(task.payload.keys())}"
+            )
             await self._execute_single_task(task)
-            logger.debug(f"{queue_name.value}: Task execution completed for {task.task_id}")
+            logger.debug(
+                f"{queue_name.value}: Task execution completed for {task.task_id}"
+            )
 
             # Add to completed list
             if task.status == TaskStatus.COMPLETED:
@@ -125,12 +138,13 @@ class SequentialQueueManager:
         logger.info(f"Executing task: {task.task_id} ({task.task_type.value})")
 
         try:
-            logger.debug(f"About to call task_service.execute_task() for {task.task_id}")
+            logger.debug(
+                f"About to call task_service.execute_task() for {task.task_id}"
+            )
             # Set timeout for task execution (max 15 minutes for AI analysis)
             # AI analysis on large portfolios can take 5-10+ minutes
             result = await asyncio.wait_for(
-                self.task_service.execute_task(task),
-                timeout=900.0  # 15 minutes
+                self.task_service.execute_task(task), timeout=900.0  # 15 minutes
             )
             logger.debug(f"task_service.execute_task() COMPLETED for {task.task_id}")
 
@@ -138,37 +152,45 @@ class SequentialQueueManager:
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
             # Record in history
-            self._execution_history.append({
-                "task_id": task.task_id,
-                "task_type": task.task_type.value,
-                "status": "completed",
-                "duration_ms": duration_ms,
-                "timestamp": end_time.isoformat()
-            })
+            self._execution_history.append(
+                {
+                    "task_id": task.task_id,
+                    "task_type": task.task_type.value,
+                    "status": "completed",
+                    "duration_ms": duration_ms,
+                    "timestamp": end_time.isoformat(),
+                }
+            )
 
             logger.info(f"Task completed: {task.task_id} ({duration_ms}ms)")
 
         except asyncio.TimeoutError:
             logger.error(f"Task timeout: {task.task_id}")
-            await self.task_service.mark_failed(task.task_id, "Task execution timeout (>900s)")
-            self._execution_history.append({
-                "task_id": task.task_id,
-                "task_type": task.task_type.value,
-                "status": "timeout",
-                "duration_ms": 300000,
-                "timestamp": datetime.utcnow().isoformat()
-            })
+            await self.task_service.mark_failed(
+                task.task_id, "Task execution timeout (>900s)"
+            )
+            self._execution_history.append(
+                {
+                    "task_id": task.task_id,
+                    "task_type": task.task_type.value,
+                    "status": "timeout",
+                    "duration_ms": 300000,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
         except Exception as e:
             logger.error(f"Task execution error: {task.task_id} - {e}")
             await self.task_service.mark_failed(task.task_id, str(e))
-            self._execution_history.append({
-                "task_id": task.task_id,
-                "task_type": task.task_type.value,
-                "status": "error",
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
-            })
+            self._execution_history.append(
+                {
+                    "task_id": task.task_id,
+                    "task_type": task.task_type.value,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
         finally:
             self._current_task = None
@@ -194,5 +216,5 @@ class SequentialQueueManager:
             "current_task": self._current_task.task_id if self._current_task else None,
             "completed_tasks_today": len(self._completed_task_ids),
             "queue_statistics": {k: v.to_dict() for k, v in stats.items()},
-            "recent_history": self.get_execution_history(limit=10)
+            "recent_history": self.get_execution_history(limit=10),
         }

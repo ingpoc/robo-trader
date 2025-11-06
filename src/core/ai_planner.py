@@ -7,20 +7,22 @@ Provides multi-day planning, market condition assessment, and adaptive strategie
 
 import asyncio
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
 
 
 @dataclass
 class MultiDayPlan:
     """Multi-day trading plan with risk-adjusted allocations."""
+
     planning_horizon_days: int
     risk_adjusted_allocations: Dict[str, float]  # day_1: 0.8, day_2: 0.7, etc.
     market_condition_forecasts: Dict[str, str]  # day_1: "bullish_moderate_volatility"
@@ -44,6 +46,7 @@ class MultiDayPlan:
 @dataclass
 class MarketAdaptation:
     """Market condition adaptation recommendations."""
+
     volatility_adaptation: Dict[str, Any]
     trend_adaptation: Dict[str, Any]
     risk_adaptation: Dict[str, Any]
@@ -61,6 +64,7 @@ class MarketAdaptation:
 @dataclass
 class RiskAlgorithm:
     """Risk-adjusted planning algorithm."""
+
     position_sizing_algorithm: Dict[str, Any]
     portfolio_rebalancing: Dict[str, Any]
     risk_limits: Dict[str, Any]
@@ -82,6 +86,7 @@ class RiskAlgorithm:
 @dataclass
 class PlanningHeuristics:
     """Planning heuristics and parameters."""
+
     risk_algorithms: Dict[str, Any]
     last_updated: str
     performance_score: float
@@ -145,7 +150,7 @@ class AIPlanner:
         horizon_days: int = 5,
         market_conditions: Optional[Dict[str, Any]] = None,
         portfolio_state: Optional[Any] = None,
-        learning_insights: Optional[List[Dict]] = None
+        learning_insights: Optional[List[Dict]] = None,
     ) -> Optional[MultiDayPlan]:
         """
         Generate a strategic multi-day trading plan.
@@ -209,7 +214,9 @@ class AIPlanner:
             risk_level = conditions.get("risk_level", "medium")
 
             # Generate adaptations
-            adaptations = await self._generate_market_adaptations(volatility, trend, risk_level)
+            adaptations = await self._generate_market_adaptations(
+                volatility, trend, risk_level
+            )
 
             # Update planning parameters
             await self._update_planning_parameters(adaptations)
@@ -222,10 +229,7 @@ class AIPlanner:
             return None
 
     async def optimize_risk_algorithms(
-        self,
-        sharpe_ratio: float,
-        max_drawdown: float,
-        value_at_risk: float
+        self, sharpe_ratio: float, max_drawdown: float, value_at_risk: float
     ) -> Optional[RiskAlgorithm]:
         """
         Generate risk-adjusted planning algorithms.
@@ -265,7 +269,10 @@ class AIPlanner:
             planning_data = await self._get_historical_planning_data()
 
             if not planning_data:
-                return {"status": "no_data", "message": "No historical planning data available"}
+                return {
+                    "status": "no_data",
+                    "message": "No historical planning data available",
+                }
 
             # Analyze planning outcomes
             outcomes = await self._analyze_planning_outcomes(planning_data)
@@ -280,7 +287,7 @@ class AIPlanner:
                 "status": "success",
                 "outcomes": outcomes,
                 "insights": insights,
-                "improvement_potential": insights.get("improvement_potential", 0.0)
+                "improvement_potential": insights.get("improvement_potential", 0.0),
             }
 
         except Exception as e:
@@ -299,7 +306,7 @@ class AIPlanner:
             "api_budget_remaining": self.daily_api_limit - self.reserve_budget,
             "market_conditions": self.market_conditions,
             "last_plan_generated": None,
-            "planning_heuristics_score": None
+            "planning_heuristics_score": None,
         }
 
         if self.current_plan:
@@ -307,7 +314,9 @@ class AIPlanner:
             status["planning_horizon"] = self.current_plan.planning_horizon_days
 
         if self.planning_heuristics:
-            status["planning_heuristics_score"] = self.planning_heuristics.performance_score
+            status["planning_heuristics_score"] = (
+                self.planning_heuristics.performance_score
+            )
 
         return status
 
@@ -337,23 +346,25 @@ class AIPlanner:
                 "description": "No active AI tasks",
                 "progress": 0,
                 "estimated_completion": None,
-                "current_activity": "Monitoring market conditions"
+                "current_activity": "Monitoring market conditions",
             }
 
             # If we have an active plan, show planning activity
             if planning_status.get("has_active_plan"):
-                current_task.update({
-                    "status": "planning",
-                    "description": f"Executing {planning_status.get('planning_horizon', 5)}-day trading plan",
-                    "progress": 0.3,  # Mock progress
-                    "current_activity": "Analyzing market conditions and generating recommendations"
-                })
+                current_task.update(
+                    {
+                        "status": "planning",
+                        "description": f"Executing {planning_status.get('planning_horizon', 5)}-day trading plan",
+                        "progress": 0.3,  # Mock progress
+                        "current_activity": "Analyzing market conditions and generating recommendations",
+                    }
+                )
 
             # Combine planning status with task status
             status = {
                 **planning_status,
                 "current_task": current_task,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             return status
@@ -367,9 +378,9 @@ class AIPlanner:
                     "status": "error",
                     "description": "Unable to retrieve task status",
                     "progress": 0,
-                    "current_activity": "Error state"
+                    "current_activity": "Error state",
                 },
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
     async def _generate_multi_day_plan_data(
@@ -377,7 +388,7 @@ class AIPlanner:
         horizon_days: int,
         market_conditions: Dict[str, Any],
         portfolio_state: Any,
-        learning_insights: List[Dict]
+        learning_insights: List[Dict],
     ) -> Optional[Dict[str, Any]]:
         """Generate multi-day planning data using Claude."""
         async with self.request_semaphore:
@@ -447,9 +458,12 @@ class AIPlanner:
             try:
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
+
                 # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self.client, query, timeout=45.0)
-                
+                response_text = await query_with_timeout(
+                    self.client, query, timeout=45.0
+                )
+
                 # Parse JSON response
                 try:
                     return json.loads(response_text)
@@ -474,20 +488,17 @@ class AIPlanner:
             "sector_performance": {
                 "technology": "strong",
                 "financials": "moderate",
-                "energy": "weak"
+                "energy": "weak",
             },
             "economic_indicators": {
                 "interest_rates": "stable",
                 "inflation": "moderate",
-                "gdp_growth": "positive"
-            }
+                "gdp_growth": "positive",
+            },
         }
 
     async def _generate_market_adaptations(
-        self,
-        volatility: str,
-        trend: str,
-        risk_level: str
+        self, volatility: str, trend: str, risk_level: str
     ) -> MarketAdaptation:
         """Generate market condition adaptations."""
         adaptations = {
@@ -495,7 +506,7 @@ class AIPlanner:
             "trend_adaptation": {},
             "risk_adaptation": {},
             "confidence": 0.8,
-            "recommended_actions": []
+            "recommended_actions": [],
         }
 
         # Volatility adaptations
@@ -504,65 +515,77 @@ class AIPlanner:
                 "position_sizing": "reduce_by_30_percent",
                 "sector_focus": "defensive_sectors",
                 "stop_loss_tightening": "15_percent_tighter",
-                "options_strategy": "buy_puts_for_hedging"
+                "options_strategy": "buy_puts_for_hedging",
             }
-            adaptations["recommended_actions"].extend([
-                "Reduce position sizes by 30%",
-                "Increase allocation to defensive sectors",
-                "Tighten stop losses by 15%"
-            ])
+            adaptations["recommended_actions"].extend(
+                [
+                    "Reduce position sizes by 30%",
+                    "Increase allocation to defensive sectors",
+                    "Tighten stop losses by 15%",
+                ]
+            )
         elif volatility == "low":
             adaptations["volatility_adaptation"] = {
                 "position_sizing": "increase_by_20_percent",
                 "sector_focus": "cyclical_sectors",
-                "leverage_usage": "moderate_increase"
+                "leverage_usage": "moderate_increase",
             }
-            adaptations["recommended_actions"].extend([
-                "Increase position sizes by 20%",
-                "Focus on cyclical sectors",
-                "Consider moderate leverage increase"
-            ])
+            adaptations["recommended_actions"].extend(
+                [
+                    "Increase position sizes by 20%",
+                    "Focus on cyclical sectors",
+                    "Consider moderate leverage increase",
+                ]
+            )
 
         # Trend adaptations
         if trend == "bullish":
             adaptations["trend_adaptation"] = {
                 "momentum_bias": "increase",
                 "sector_rotation": "growth_sectors",
-                "risk_tolerance": "moderate_increase"
+                "risk_tolerance": "moderate_increase",
             }
-            adaptations["recommended_actions"].extend([
-                "Increase momentum bias in strategy",
-                "Rotate towards growth sectors",
-                "Moderate increase in risk tolerance"
-            ])
+            adaptations["recommended_actions"].extend(
+                [
+                    "Increase momentum bias in strategy",
+                    "Rotate towards growth sectors",
+                    "Moderate increase in risk tolerance",
+                ]
+            )
         elif trend == "bearish":
             adaptations["trend_adaptation"] = {
                 "defensive_positioning": "increase",
                 "cash_allocation": "increase_to_30_percent",
-                "short_strategies": "consider"
+                "short_strategies": "consider",
             }
-            adaptations["recommended_actions"].extend([
-                "Increase defensive positioning",
-                "Raise cash allocation to 30%",
-                "Consider short strategies"
-            ])
+            adaptations["recommended_actions"].extend(
+                [
+                    "Increase defensive positioning",
+                    "Raise cash allocation to 30%",
+                    "Consider short strategies",
+                ]
+            )
 
         # Risk adaptations
         if risk_level == "high":
             adaptations["risk_adaptation"] = {
                 "max_position_size": "reduce_to_5_percent",
                 "diversification_requirement": "increase",
-                "correlation_limits": "stricter"
+                "correlation_limits": "stricter",
             }
-            adaptations["recommended_actions"].extend([
-                "Limit maximum position size to 5%",
-                "Increase diversification requirements",
-                "Implement stricter correlation limits"
-            ])
+            adaptations["recommended_actions"].extend(
+                [
+                    "Limit maximum position size to 5%",
+                    "Increase diversification requirements",
+                    "Implement stricter correlation limits",
+                ]
+            )
 
         return MarketAdaptation.from_dict(adaptations)
 
-    async def _update_planning_parameters(self, adaptations: MarketAdaptation) -> Dict[str, Any]:
+    async def _update_planning_parameters(
+        self, adaptations: MarketAdaptation
+    ) -> Dict[str, Any]:
         """Update planning parameters based on adaptations."""
         # Update API budget based on volatility
         volatility_adapt = adaptations.volatility_adaptation
@@ -573,16 +596,15 @@ class AIPlanner:
         updated_params = {
             "api_budget_reserve": self.reserve_budget,
             "risk_multiplier": 0.8 if adaptations.confidence < 0.7 else 1.0,
-            "sector_focus_adjusted": bool(adaptations.trend_adaptation.get("sector_rotation"))
+            "sector_focus_adjusted": bool(
+                adaptations.trend_adaptation.get("sector_rotation")
+            ),
         }
 
         return updated_params
 
     async def _generate_risk_adjusted_algorithms(
-        self,
-        sharpe_ratio: float,
-        max_drawdown: float,
-        value_at_risk: float
+        self, sharpe_ratio: float, max_drawdown: float, value_at_risk: float
     ) -> RiskAlgorithm:
         """Generate risk-adjusted planning algorithms."""
         algorithms = {
@@ -590,7 +612,7 @@ class AIPlanner:
             "portfolio_rebalancing": {},
             "risk_limits": {},
             "overall_score": 0.5,
-            "changes": []
+            "changes": [],
         }
 
         # Position sizing based on risk metrics
@@ -598,20 +620,22 @@ class AIPlanner:
             algorithms["position_sizing_algorithm"] = {
                 "method": "aggressive",
                 "max_position": "8_percent",
-                "scaling_factor": 1.2
+                "scaling_factor": 1.2,
             }
         elif sharpe_ratio < 1.0:
             algorithms["position_sizing_algorithm"] = {
                 "method": "conservative",
                 "max_position": "3_percent",
-                "scaling_factor": 0.7
+                "scaling_factor": 0.7,
             }
-            algorithms["changes"].append("Reduce position sizes due to low Sharpe ratio")
+            algorithms["changes"].append(
+                "Reduce position sizes due to low Sharpe ratio"
+            )
         else:
             algorithms["position_sizing_algorithm"] = {
                 "method": "moderate",
                 "max_position": "5_percent",
-                "scaling_factor": 1.0
+                "scaling_factor": 1.0,
             }
 
         # Risk limits based on drawdown
@@ -619,9 +643,11 @@ class AIPlanner:
             algorithms["risk_limits"] = {
                 "max_drawdown_limit": "10_percent",
                 "daily_loss_limit": "2_percent",
-                "portfolio_var_limit": "3_percent"
+                "portfolio_var_limit": "3_percent",
             }
-            algorithms["changes"].append("Implement stricter risk limits due to high drawdown")
+            algorithms["changes"].append(
+                "Implement stricter risk limits due to high drawdown"
+            )
 
         # Calculate overall score
         risk_score = min(sharpe_ratio / 2.0, 1.0)  # Normalize Sharpe
@@ -636,7 +662,7 @@ class AIPlanner:
         heuristics_update = PlanningHeuristics(
             risk_algorithms=risk_algorithms.to_dict(),
             last_updated=datetime.now(timezone.utc).isoformat(),
-            performance_score=risk_algorithms.overall_score
+            performance_score=risk_algorithms.overall_score,
         )
 
         self.planning_heuristics = heuristics_update
@@ -647,29 +673,37 @@ class AIPlanner:
         # This would retrieve past planning decisions and outcomes
         return []
 
-    async def _analyze_planning_outcomes(self, historical_plans: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _analyze_planning_outcomes(
+        self, historical_plans: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze outcomes of past planning decisions."""
         return {
             "planning_accuracy": 0.75,
             "api_efficiency": 0.82,
-            "outcome_quality": 0.78
+            "outcome_quality": 0.78,
         }
 
-    async def _generate_planning_learning_insights(self, outcomes: Dict[str, Any]) -> Dict[str, Any]:
+    async def _generate_planning_learning_insights(
+        self, outcomes: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Generate insights from planning outcomes."""
         insights = {
             "improvement_potential": 0.0,
             "recommended_changes": [],
-            "key_findings": []
+            "key_findings": [],
         }
 
         # Analyze each outcome metric
         for metric, score in outcomes.items():
             if score < 0.7:
-                insights["improvement_potential"] += (0.7 - score)
-                insights["recommended_changes"].append(f"Improve {metric.replace('_', ' ')}")
+                insights["improvement_potential"] += 0.7 - score
+                insights["recommended_changes"].append(
+                    f"Improve {metric.replace('_', ' ')}"
+                )
             else:
-                insights["key_findings"].append(f"Good performance in {metric.replace('_', ' ')}")
+                insights["key_findings"].append(
+                    f"Good performance in {metric.replace('_', ' ')}"
+                )
 
         insights["improvement_potential"] = min(insights["improvement_potential"], 1.0)
 
@@ -681,7 +715,9 @@ class AIPlanner:
         changes = insights.get("recommended_changes", [])
 
         if "Improve planning accuracy" in changes:
-            self.daily_api_limit = max(self.daily_api_limit - 2, 15)  # Reduce budget slightly
+            self.daily_api_limit = max(
+                self.daily_api_limit - 2, 15
+            )  # Reduce budget slightly
 
         if "Improve api efficiency" in changes:
             self.reserve_budget = min(self.reserve_budget + 1, 8)  # Increase reserve
@@ -718,24 +754,36 @@ class AIPlanner:
                     # Log sector rotation decisions
                     decision = {
                         "trade_id": f"plan_{plan.created_at}_{adjustment.get('day', 1)}",
-                        "symbol": adjustment.get("description", "").split()[-1],  # Extract symbol from description
-                        "action": "BUY" if "Increase" in adjustment.get("description", "") else "HOLD",
+                        "symbol": adjustment.get("description", "").split()[
+                            -1
+                        ],  # Extract symbol from description
+                        "action": (
+                            "BUY"
+                            if "Increase" in adjustment.get("description", "")
+                            else "HOLD"
+                        ),
                         "confidence": 0.75,  # Default confidence for planning decisions
                         "rationale": adjustment.get("rationale", ""),
                         "strategy": "multi_day_plan",
                         "timeframe": f"day_{adjustment.get('day', 1)}",
                         "risk_assessment": {
                             "risk_reward_ratio": 2.0,
-                            "position_size_pct": 0.05
+                            "position_size_pct": 0.05,
                         },
-                        "market_conditions": plan.market_condition_forecasts.get(f"day_{adjustment.get('day', 1)}", ""),
+                        "market_conditions": plan.market_condition_forecasts.get(
+                            f"day_{adjustment.get('day', 1)}", ""
+                        ),
                         "planning_context": {
                             "plan_horizon": plan.planning_horizon_days,
-                            "risk_allocation": plan.risk_adjusted_allocations.get(f"day_{adjustment.get('day', 1)}", 0.8)
-                        }
+                            "risk_allocation": plan.risk_adjusted_allocations.get(
+                                f"day_{adjustment.get('day', 1)}", 0.8
+                            ),
+                        },
                     }
                     await trade_decision_logger.log_decision(decision)
-                    logger.info(f"Logged trade decision from plan: {decision['trade_id']}")
+                    logger.info(
+                        f"Logged trade decision from plan: {decision['trade_id']}"
+                    )
 
         except Exception as e:
             logger.error(f"Failed to log plan trade decisions: {e}")
@@ -762,10 +810,14 @@ class AIPlanner:
                 # No need to manually specify model - SDK uses optimal defaults
             )
             # Use client manager instead of direct creation
-            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            from src.core.claude_sdk_client_manager import \
+                ClaudeSDKClientManager
+
             client_manager = await ClaudeSDKClientManager.get_instance()
             self.client = await client_manager.get_client("query", options)
-            logger.info("AI Planner Claude client initialized via manager with SDK best practices")
+            logger.info(
+                "AI Planner Claude client initialized via manager with SDK best practices"
+            )
 
     def _get_planning_prompt(self) -> str:
         """Get the system prompt for AI planning."""

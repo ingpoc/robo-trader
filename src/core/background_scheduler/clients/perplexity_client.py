@@ -6,17 +6,17 @@ Includes API key rotation, rate limit handling, and automatic retry logic.
 """
 
 import os
-from typing import List, Optional, Any
+from typing import Any, List, Optional
 
-from openai import OpenAI, AuthenticationError
 from loguru import logger
+from openai import AuthenticationError, OpenAI
 
 from .api_key_rotator import APIKeyRotator
-from .retry_handler import RetryConfig, retry_on_rate_limit
-from .perplexity_prompt_manager import PromptManager
+from .perplexity_analysis_queries import AnalysisQueries
 from .perplexity_earnings_queries import EarningsQueries
 from .perplexity_market_queries import MarketQueries
-from .perplexity_analysis_queries import AnalysisQueries
+from .perplexity_prompt_manager import PromptManager
+from .retry_handler import retry_on_rate_limit
 
 
 class PerplexityClient:
@@ -27,7 +27,7 @@ class PerplexityClient:
         api_key_rotator: Optional[APIKeyRotator] = None,
         model: str = "sonar-pro",
         timeout_seconds: int = 45,
-        configuration_state: Optional[Any] = None
+        configuration_state: Optional[Any] = None,
     ):
         """Initialize Perplexity client with modular query handlers.
 
@@ -62,19 +62,19 @@ class PerplexityClient:
         Returns:
             List of non-empty API keys
         """
-        keys_str = os.getenv('PERPLEXITY_API_KEYS', '')
+        keys_str = os.getenv("PERPLEXITY_API_KEYS", "")
         logger.info(f"Checking PERPLEXITY_API_KEYS: {repr(keys_str)}")
         if keys_str:
-            keys = [key.strip() for key in keys_str.split(',') if key.strip()]
+            keys = [key.strip() for key in keys_str.split(",") if key.strip()]
             logger.info(f"Parsed {len(keys)} keys from PERPLEXITY_API_KEYS")
             if keys:
                 return keys
 
         # Fall back to individual key variables
         keys = [
-            os.getenv('PERPLEXITY_API_KEY_1'),
-            os.getenv('PERPLEXITY_API_KEY_2'),
-            os.getenv('PERPLEXITY_API_KEY_3')
+            os.getenv("PERPLEXITY_API_KEY_1"),
+            os.getenv("PERPLEXITY_API_KEY_2"),
+            os.getenv("PERPLEXITY_API_KEY_3"),
         ]
         filtered_keys = [key for key in keys if key]
         logger.info(f"Found {len(filtered_keys)} keys from individual variables")
@@ -86,7 +86,7 @@ class PerplexityClient:
         search_recency: str = "day",
         max_search_results: int = 10,
         max_tokens: int = 2000,
-        response_format: str = "text"
+        response_format: str = "text",
     ) -> Optional[str]:
         """Make a call to Perplexity API with exponential backoff retry.
 
@@ -103,6 +103,7 @@ class PerplexityClient:
         Returns:
             API response content, or None on failure
         """
+
         async def _make_request() -> str:
             """Inner function for retry wrapper."""
             api_key = self.key_rotator.get_next_key()
@@ -111,22 +112,23 @@ class PerplexityClient:
                 raise RuntimeError("No API keys available")
 
             try:
-                client = OpenAI(
-                    api_key=api_key,
-                    base_url="https://api.perplexity.ai"
-                )
+                client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
 
-                response_format_config = self._get_response_format_config(response_format)
+                response_format_config = self._get_response_format_config(
+                    response_format
+                )
 
                 completion = client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": query}],
                     max_tokens=max_tokens,
-                    response_format=response_format_config if response_format == "json" else None,
+                    response_format=(
+                        response_format_config if response_format == "json" else None
+                    ),
                     web_search_options={
                         "search_recency_filter": search_recency,
-                        "max_search_results": max_search_results
-                    }
+                        "max_search_results": max_search_results,
+                    },
                 )
 
                 response_content = completion.choices[0].message.content
@@ -175,9 +177,15 @@ class PerplexityClient:
                                                 "latest_quarter": {"type": "object"},
                                                 "growth_rates": {"type": "object"},
                                                 "margins": {"type": "object"},
-                                                "next_earnings_date": {"type": "string"}
+                                                "next_earnings_date": {
+                                                    "type": "string"
+                                                },
                                             },
-                                            "required": ["latest_quarter", "growth_rates", "margins"]
+                                            "required": [
+                                                "latest_quarter",
+                                                "growth_rates",
+                                                "margins",
+                                            ],
                                         },
                                         "fundamentals": {
                                             "type": "object",
@@ -185,8 +193,8 @@ class PerplexityClient:
                                                 "valuation": {"type": "object"},
                                                 "profitability": {"type": "object"},
                                                 "financial_health": {"type": "object"},
-                                                "growth": {"type": "object"}
-                                            }
+                                                "growth": {"type": "object"},
+                                            },
                                         },
                                         "analysis": {
                                             "type": "object",
@@ -195,16 +203,20 @@ class PerplexityClient:
                                                 "confidence_score": {"type": "number"},
                                                 "risk_level": {"type": "string"},
                                                 "key_drivers": {"type": "array"},
-                                                "risk_factors": {"type": "array"}
-                                            }
-                                        }
+                                                "risk_factors": {"type": "array"},
+                                            },
+                                        },
                                     },
-                                    "required": ["earnings", "fundamentals", "analysis"]
+                                    "required": [
+                                        "earnings",
+                                        "fundamentals",
+                                        "analysis",
+                                    ],
                                 }
-                            }
+                            },
                         }
                     },
-                    "required": ["stocks"]
+                    "required": ["stocks"],
                 }
-            }
+            },
         }

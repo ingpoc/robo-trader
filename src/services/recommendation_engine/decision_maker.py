@@ -10,10 +10,11 @@ Handles recommendation logic:
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 from loguru import logger
-from .models import RecommendationFactors, RecommendationConfig
+
+from .models import RecommendationConfig, RecommendationFactors
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,9 @@ class DecisionMaker:
 
             # Fundamental score (35% weight)
             if factors.fundamental_score is not None:
-                score += factors.fundamental_score * weights.get("fundamental_score", 0.35)
+                score += factors.fundamental_score * weights.get(
+                    "fundamental_score", 0.35
+                )
                 total_weight += weights.get("fundamental_score", 0.35)
 
             # Valuation score (25% weight)
@@ -54,7 +57,9 @@ class DecisionMaker:
 
             # Qualitative score (5% weight)
             if factors.qualitative_score is not None:
-                score += factors.qualitative_score * weights.get("qualitative_score", 0.05)
+                score += factors.qualitative_score * weights.get(
+                    "qualitative_score", 0.05
+                )
                 total_weight += weights.get("qualitative_score", 0.05)
 
             # Normalize to 100 if we don't have all factors
@@ -68,25 +73,29 @@ class DecisionMaker:
             return 50.0
 
     def determine_recommendation_type(
-        self,
-        overall_score: float,
-        factors: RecommendationFactors
+        self, overall_score: float, factors: RecommendationFactors
     ) -> str:
         """Determine recommendation type based on thresholds."""
         try:
             thresholds = self.config.thresholds
 
             # Check BUY conditions
-            if (overall_score >= thresholds["buy"]["min_overall"] and
-                (factors.fundamental_score or 0) >= thresholds["buy"]["min_fundamental"] and
-                (factors.risk_score or 50) >= (100 - thresholds["buy"]["max_risk"]) and
-                (factors.growth_score or 50) >= thresholds["buy"]["min_growth"]):
+            if (
+                overall_score >= thresholds["buy"]["min_overall"]
+                and (factors.fundamental_score or 0)
+                >= thresholds["buy"]["min_fundamental"]
+                and (factors.risk_score or 50) >= (100 - thresholds["buy"]["max_risk"])
+                and (factors.growth_score or 50) >= thresholds["buy"]["min_growth"]
+            ):
                 return "BUY"
 
             # Check SELL conditions
-            if (overall_score <= thresholds["sell"]["max_overall"] and
-                (factors.fundamental_score or 0) <= thresholds["sell"]["max_fundamental"] and
-                (factors.risk_score or 50) <= (100 - thresholds["sell"]["min_risk"])):
+            if (
+                overall_score <= thresholds["sell"]["max_overall"]
+                and (factors.fundamental_score or 0)
+                <= thresholds["sell"]["max_fundamental"]
+                and (factors.risk_score or 50) <= (100 - thresholds["sell"]["min_risk"])
+            ):
                 return "SELL"
 
             # Default to HOLD
@@ -131,9 +140,7 @@ class DecisionMaker:
             return "MEDIUM"
 
     def determine_time_horizon(
-        self,
-        factors: RecommendationFactors,
-        recommendation_type: str
+        self, factors: RecommendationFactors, recommendation_type: str
     ) -> str:
         """Determine recommended time horizon."""
         try:
@@ -165,11 +172,20 @@ class DecisionMaker:
             confidence_levels = self.config.confidence_levels
 
             if confidence_level.upper() == "HIGH":
-                return (confidence_levels["high"]["min_score"] + confidence_levels["high"]["max_score"]) / 2
+                return (
+                    confidence_levels["high"]["min_score"]
+                    + confidence_levels["high"]["max_score"]
+                ) / 2
             elif confidence_level.upper() == "MEDIUM":
-                return (confidence_levels["medium"]["min_score"] + confidence_levels["medium"]["max_score"]) / 2
+                return (
+                    confidence_levels["medium"]["min_score"]
+                    + confidence_levels["medium"]["max_score"]
+                ) / 2
             elif confidence_level.upper() == "LOW":
-                return (confidence_levels["low"]["min_score"] + confidence_levels["low"]["max_score"]) / 2
+                return (
+                    confidence_levels["low"]["min_score"]
+                    + confidence_levels["low"]["max_score"]
+                ) / 2
             else:
                 return 60.0  # Default medium confidence
 
@@ -178,9 +194,7 @@ class DecisionMaker:
             return 60.0
 
     def make_decision(
-        self,
-        factors: RecommendationFactors,
-        symbol: str
+        self, factors: RecommendationFactors, symbol: str
     ) -> Dict[str, Any]:
         """Make complete recommendation decision based on factors."""
         try:
@@ -188,7 +202,9 @@ class DecisionMaker:
             overall_score = self.calculate_weighted_score(factors)
 
             # Determine recommendation type and confidence
-            recommendation_type = self.determine_recommendation_type(overall_score, factors)
+            recommendation_type = self.determine_recommendation_type(
+                overall_score, factors
+            )
             confidence_level = self.calculate_confidence_level(overall_score)
 
             # Assess risk and time horizon
@@ -201,7 +217,7 @@ class DecisionMaker:
                 "overall_score": overall_score,
                 "risk_level": risk_level,
                 "time_horizon": time_horizon,
-                "symbol": symbol
+                "symbol": symbol,
             }
 
         except Exception as e:
@@ -213,5 +229,5 @@ class DecisionMaker:
                 "overall_score": 50.0,
                 "risk_level": "MEDIUM",
                 "time_horizon": "MEDIUM_TERM",
-                "symbol": symbol
+                "symbol": symbol,
             }

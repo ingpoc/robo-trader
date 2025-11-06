@@ -8,9 +8,11 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
 from loguru import logger
 
-from src.core.event_bus import EventBus, Event, EventType
+from src.core.event_bus import Event, EventBus, EventType
+
 from .base import DatabaseConnection
 
 
@@ -55,7 +57,7 @@ class ApprovalStateManager:
                         "status": row[2],
                         "created_at": row[3],
                         "updated_at": row[4],
-                        "user_feedback": row[5]
+                        "user_feedback": row[5],
                     }
                     self._approval_queue.append(item)
 
@@ -78,10 +80,14 @@ class ApprovalStateManager:
             # Check for duplicates
             for existing in self._approval_queue:
                 existing_rec = existing.get("recommendation", {})
-                if (existing.get("status") == "pending" and
-                    existing_rec.get("symbol") == symbol and
-                    existing_rec.get("action") == action):
-                    logger.debug(f"Skipping duplicate recommendation for {symbol} {action}")
+                if (
+                    existing.get("status") == "pending"
+                    and existing_rec.get("symbol") == symbol
+                    and existing_rec.get("action") == action
+                ):
+                    logger.debug(
+                        f"Skipping duplicate recommendation for {symbol} {action}"
+                    )
                     return
 
             # Add new recommendation
@@ -91,15 +97,18 @@ class ApprovalStateManager:
                 "recommendation": recommendation,
                 "status": "pending",
                 "created_at": now,
-                "updated_at": now
+                "updated_at": now,
             }
             self._approval_queue.append(new_item)
 
             # Save to database
-            async with self.db.connection.execute("""
+            async with self.db.connection.execute(
+                """
                 INSERT INTO approval_queue (id, recommendation, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?)
-            """, (rec_id, json.dumps(recommendation), "pending", now, now)):
+            """,
+                (rec_id, json.dumps(recommendation), "pending", now, now),
+            ):
                 await self.db.connection.commit()
 
             logger.info(f"Added recommendation {rec_id} to approval queue")
@@ -116,13 +125,12 @@ class ApprovalStateManager:
             List of pending approval items
         """
         async with self._lock:
-            return [item for item in self._approval_queue if item["status"] == "pending"]
+            return [
+                item for item in self._approval_queue if item["status"] == "pending"
+            ]
 
     async def update_approval_status(
-        self,
-        recommendation_id: str,
-        status: str,
-        user_feedback: Optional[str] = None
+        self, recommendation_id: str, status: str, user_feedback: Optional[str] = None
     ) -> bool:
         """
         Update approval status for a recommendation.
@@ -146,11 +154,14 @@ class ApprovalStateManager:
                         item["user_feedback"] = user_feedback
 
                     # Update database
-                    async with self.db.connection.execute("""
+                    async with self.db.connection.execute(
+                        """
                         UPDATE approval_queue
                         SET status = ?, updated_at = ?, user_feedback = ?
                         WHERE id = ?
-                    """, (status, now, user_feedback, recommendation_id)):
+                    """,
+                        (status, now, user_feedback, recommendation_id),
+                    ):
                         await self.db.connection.commit()
 
                     logger.info(f"Updated approval {recommendation_id} to {status}")
@@ -174,8 +185,8 @@ class ApprovalStateManager:
                     "symbol": recommendation.get("symbol"),
                     "action": recommendation.get("action"),
                     "status": "pending_approval",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             )
             await self.event_bus.publish(event)
         except Exception as e:
@@ -184,7 +195,11 @@ class ApprovalStateManager:
     async def _emit_approval_decision(self, item: Dict, status: str) -> None:
         """Emit event when approval decision is made."""
         try:
-            event_type = EventType.TRADE_APPROVED if status == "approved" else EventType.TRADE_REJECTED
+            event_type = (
+                EventType.TRADE_APPROVED
+                if status == "approved"
+                else EventType.TRADE_REJECTED
+            )
             recommendation = item.get("recommendation", {})
 
             event = Event(
@@ -196,8 +211,8 @@ class ApprovalStateManager:
                     "action": recommendation.get("action"),
                     "status": status,
                     "user_feedback": item.get("user_feedback"),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             )
             await self.event_bus.publish(event)
         except Exception as e:

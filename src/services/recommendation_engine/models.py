@@ -4,14 +4,14 @@ Recommendation Engine Data Models
 Contains dataclasses and type definitions for recommendation engine.
 """
 
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, Optional
 
 
 @dataclass
 class RecommendationFactors:
     """Individual scoring factors for recommendation calculation."""
+
     fundamental_score: Optional[float] = None
     valuation_score: Optional[float] = None
     growth_score: Optional[float] = None
@@ -25,6 +25,7 @@ class RecommendationFactors:
 @dataclass
 class RecommendationResult:
     """Complete recommendation result with all factors and metadata."""
+
     symbol: str
     recommendation_type: str  # BUY, HOLD, SELL
     confidence_level: str  # HIGH, MEDIUM, LOW
@@ -38,19 +39,20 @@ class RecommendationResult:
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        data['factors'] = self.factors.to_dict()
+        data["factors"] = self.factors.to_dict()
         return data
 
 
 @dataclass
 class RecommendationConfig:
     """Configuration for recommendation engine."""
+
     scoring_weights: Dict[str, float]
     thresholds: Dict[str, Dict[str, Any]]
     confidence_levels: Dict[str, Dict[str, Any]]
 
     @classmethod
-    def default(cls) -> 'RecommendationConfig':
+    def default(cls) -> "RecommendationConfig":
         """Create default configuration."""
         return cls(
             scoring_weights={
@@ -58,16 +60,21 @@ class RecommendationConfig:
                 "valuation_score": 0.25,
                 "growth_score": 0.20,
                 "risk_score": 0.15,
-                "qualitative_score": 0.05
+                "qualitative_score": 0.05,
             },
             thresholds={
-                "buy": {"min_overall": 75, "min_fundamental": 70, "max_risk": 30, "min_growth": 65},
+                "buy": {
+                    "min_overall": 75,
+                    "min_fundamental": 70,
+                    "max_risk": 30,
+                    "min_growth": 65,
+                },
                 "hold": {"min_overall": 45, "max_overall": 74},
-                "sell": {"max_overall": 44, "max_fundamental": 40, "min_risk": 70}
+                "sell": {"max_overall": 44, "max_fundamental": 40, "min_risk": 70},
             },
             confidence_levels={
                 "high": {"min_score": 80, "max_score": 100},
                 "medium": {"min_score": 60, "max_score": 79},
-                "low": {"min_score": 40, "max_score": 59}
-            }
+                "low": {"min_score": 40, "max_score": 59},
+            },
         )

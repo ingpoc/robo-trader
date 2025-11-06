@@ -125,10 +125,11 @@ Remember: Your decisions will be analyzed tonight. Trade with conviction."""
         positions: str,
         market_context: str,
         earnings: str = "None scheduled",
-        max_trades: int = 10
+        max_trades: int = 10,
     ) -> str:
         """Build morning prompt with context."""
         from datetime import datetime
+
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         position_count = len([p for p in positions.split("\n") if p.strip()])
 
@@ -141,7 +142,7 @@ Remember: Your decisions will be analyzed tonight. Trade with conviction."""
             positions_formatted=positions,
             market_context=market_context,
             earnings_today=earnings,
-            max_daily_trades=max_trades
+            max_daily_trades=max_trades,
         )
 
 
@@ -202,10 +203,11 @@ Remember: This reflection helps you evolve your strategy. Be honest about what w
         daily_pnl: float,
         win_rate: float,
         trades_summary: str,
-        avg_hold_hours: float = 0.0
+        avg_hold_hours: float = 0.0,
     ) -> str:
         """Build evening prompt with context."""
         from datetime import datetime
+
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
         return EveningPrompts.EVENING_TEMPLATE.format(
@@ -214,7 +216,7 @@ Remember: This reflection helps you evolve your strategy. Be honest about what w
             daily_pnl=daily_pnl,
             win_rate=win_rate,
             avg_hold_hours=avg_hold_hours,
-            trades_summary=trades_summary
+            trades_summary=trades_summary,
         )
 
 
@@ -254,17 +256,14 @@ RESPONSE (JSON):
 
     @staticmethod
     def build_analysis_prompt(
-        symbol: str,
-        news_summary: str,
-        earnings_info: str,
-        fundamentals: str
+        symbol: str, news_summary: str, earnings_info: str, fundamentals: str
     ) -> str:
         """Build analysis prompt."""
         return AnalysisPrompts.ANALYSIS_TEMPLATE.format(
             symbol=symbol,
             news_summary=news_summary,
             earnings_info=earnings_info,
-            fundamentals=fundamentals
+            fundamentals=fundamentals,
         )
 
 
@@ -290,11 +289,17 @@ class PromptBuilder:
         positions: str,
         market_context: str,
         earnings: str = "None scheduled",
-        max_trades: int = 10
+        max_trades: int = 10,
     ) -> str:
         """Build morning prompt."""
         return MorningPrompts.build_morning_prompt(
-            account_type, balance, buying_power, positions, market_context, earnings, max_trades
+            account_type,
+            balance,
+            buying_power,
+            positions,
+            market_context,
+            earnings,
+            max_trades,
         )
 
     def build_evening_prompt(
@@ -304,19 +309,20 @@ class PromptBuilder:
         daily_pnl: float,
         win_rate: float,
         trades_summary: str,
-        avg_hold_hours: float = 0.0
+        avg_hold_hours: float = 0.0,
     ) -> str:
         """Build evening prompt."""
         return EveningPrompts.build_evening_prompt(
-            account_type, trade_count, daily_pnl, win_rate, trades_summary, avg_hold_hours
+            account_type,
+            trade_count,
+            daily_pnl,
+            win_rate,
+            trades_summary,
+            avg_hold_hours,
         )
 
     def build_analysis_prompt(
-        self,
-        symbol: str,
-        news_summary: str,
-        earnings_info: str,
-        fundamentals: str
+        self, symbol: str, news_summary: str, earnings_info: str, fundamentals: str
     ) -> str:
         """Build analysis prompt."""
         return AnalysisPrompts.build_analysis_prompt(

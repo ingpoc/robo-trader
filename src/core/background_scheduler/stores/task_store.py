@@ -8,11 +8,10 @@ Migrated from file-based storage to database storage.
 import json
 from datetime import datetime
 from typing import Dict
-from pathlib import Path
 
 from loguru import logger
 
-from ..models import BackgroundTask, TaskType, TaskPriority
+from ..models import BackgroundTask, TaskPriority, TaskType
 
 
 class TaskStore:
@@ -73,7 +72,7 @@ class TaskStore:
                     last_executed=TaskStore._to_datetime(row[7]) if row[7] else None,
                     next_execution=TaskStore._to_datetime(row[8]) if row[8] else None,
                     is_active=row[9],
-                    metadata=row[10] or {}
+                    metadata=row[10] or {},
                 )
                 tasks[task.task_id] = task
 
@@ -111,16 +110,30 @@ class TaskStore:
                         task.task_id,
                         task.task_type.value,
                         task.priority.value,
-                        task.execute_at.isoformat() if hasattr(task.execute_at, 'isoformat') else task.execute_at,
+                        (
+                            task.execute_at.isoformat()
+                            if hasattr(task.execute_at, "isoformat")
+                            else task.execute_at
+                        ),
                         task.interval_seconds,
                         task.max_retries,
                         task.retry_count,
-                        task.last_executed.isoformat() if task.last_executed and hasattr(task.last_executed, 'isoformat') else task.last_executed,
-                        task.next_execution.isoformat() if task.next_execution and hasattr(task.next_execution, 'isoformat') else task.next_execution,
+                        (
+                            task.last_executed.isoformat()
+                            if task.last_executed
+                            and hasattr(task.last_executed, "isoformat")
+                            else task.last_executed
+                        ),
+                        (
+                            task.next_execution.isoformat()
+                            if task.next_execution
+                            and hasattr(task.next_execution, "isoformat")
+                            else task.next_execution
+                        ),
                         task.is_active,
                         json.dumps(task.metadata),
                         datetime.now().isoformat(),
-                        datetime.now().isoformat()
+                        datetime.now().isoformat(),
                     ),
                 )
 
@@ -144,7 +157,9 @@ class TaskStore:
         await TaskStore.save_all_tasks(db_connection, tasks)
 
     @staticmethod
-    async def delete_task(db_connection, tasks: Dict[str, BackgroundTask], task_id: str) -> None:
+    async def delete_task(
+        db_connection, tasks: Dict[str, BackgroundTask], task_id: str
+    ) -> None:
         """Delete a task from database storage.
 
         Args:

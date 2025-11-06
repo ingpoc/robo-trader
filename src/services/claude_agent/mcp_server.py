@@ -5,13 +5,13 @@ Implements MCP server pattern for tool execution instead of custom implementatio
 Provides standardized tool execution interface with proper SDK patterns.
 """
 
-import logging
 import json
-from typing import Dict, Any, Optional, List
+import logging
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...core.di import DependencyContainer
+from ...core.errors import ErrorCategory, ErrorSeverity, TradingError
 from .tool_executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class ClaudeAgentMCPServer:
                 f"MCP server initialization failed: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.CRITICAL,
-                recoverable=False
+                recoverable=False,
             )
 
     async def _register_tools(self) -> None:
@@ -76,18 +76,54 @@ class ClaudeAgentMCPServer:
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "symbol": {"type": "string", "description": "Stock symbol (e.g., SBIN)"},
-                        "action": {"type": "string", "enum": ["buy", "sell"], "description": "Buy or sell"},
-                        "quantity": {"type": "integer", "minimum": 1, "description": "Number of shares"},
-                        "entry_price": {"type": "number", "minimum": 0, "description": "Entry/exit price"},
-                        "strategy_rationale": {"type": "string", "description": "Why this trade?"},
-                        "stop_loss": {"type": "number", "description": "Optional stop loss price"},
-                        "target_price": {"type": "number", "description": "Optional target price"},
-                        "account_id": {"type": "string", "description": "Account ID (optional)"},
-                        "claude_session_id": {"type": "string", "description": "Session ID (optional)"}
+                        "symbol": {
+                            "type": "string",
+                            "description": "Stock symbol (e.g., SBIN)",
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["buy", "sell"],
+                            "description": "Buy or sell",
+                        },
+                        "quantity": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Number of shares",
+                        },
+                        "entry_price": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "Entry/exit price",
+                        },
+                        "strategy_rationale": {
+                            "type": "string",
+                            "description": "Why this trade?",
+                        },
+                        "stop_loss": {
+                            "type": "number",
+                            "description": "Optional stop loss price",
+                        },
+                        "target_price": {
+                            "type": "number",
+                            "description": "Optional target price",
+                        },
+                        "account_id": {
+                            "type": "string",
+                            "description": "Account ID (optional)",
+                        },
+                        "claude_session_id": {
+                            "type": "string",
+                            "description": "Session ID (optional)",
+                        },
                     },
-                    "required": ["symbol", "action", "quantity", "entry_price", "strategy_rationale"]
-                }
+                    "required": [
+                        "symbol",
+                        "action",
+                        "quantity",
+                        "entry_price",
+                        "strategy_rationale",
+                    ],
+                },
             },
             "close_position": {
                 "name": "close_position",
@@ -95,12 +131,22 @@ class ClaudeAgentMCPServer:
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "trade_id": {"type": "string", "description": "Trade ID to close"},
-                        "exit_price": {"type": "number", "minimum": 0, "description": "Exit price"},
-                        "reason": {"type": "string", "description": "Reason for closing"}
+                        "trade_id": {
+                            "type": "string",
+                            "description": "Trade ID to close",
+                        },
+                        "exit_price": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "Exit price",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Reason for closing",
+                        },
                     },
-                    "required": ["trade_id", "exit_price", "reason"]
-                }
+                    "required": ["trade_id", "exit_price", "reason"],
+                },
             },
             "check_balance": {
                 "name": "check_balance",
@@ -108,10 +154,13 @@ class ClaudeAgentMCPServer:
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "account_id": {"type": "string", "description": "Account ID (optional)"}
+                        "account_id": {
+                            "type": "string",
+                            "description": "Account ID (optional)",
+                        }
                     },
-                    "required": []
-                }
+                    "required": [],
+                },
             },
             "get_strategy_learnings": {
                 "name": "get_strategy_learnings",
@@ -119,10 +168,14 @@ class ClaudeAgentMCPServer:
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "limit": {"type": "integer", "description": "Number of top strategies to return (default: 5)", "default": 5}
+                        "limit": {
+                            "type": "integer",
+                            "description": "Number of top strategies to return (default: 5)",
+                            "default": 5,
+                        }
                     },
-                    "required": []
-                }
+                    "required": [],
+                },
             },
             "get_monthly_performance": {
                 "name": "get_monthly_performance",
@@ -130,10 +183,14 @@ class ClaudeAgentMCPServer:
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "account_type": {"type": "string", "enum": ["swing", "options"], "description": "Account type"}
+                        "account_type": {
+                            "type": "string",
+                            "enum": ["swing", "options"],
+                            "description": "Account type",
+                        }
                     },
-                    "required": ["account_type"]
-                }
+                    "required": ["account_type"],
+                },
             },
             "analyze_position": {
                 "name": "analyze_position",
@@ -142,11 +199,14 @@ class ClaudeAgentMCPServer:
                     "type": "object",
                     "properties": {
                         "symbol": {"type": "string", "description": "Stock symbol"},
-                        "trade_id": {"type": "string", "description": "Trade ID for position analysis"}
+                        "trade_id": {
+                            "type": "string",
+                            "description": "Trade ID for position analysis",
+                        },
                     },
-                    "required": ["symbol"]
-                }
-            }
+                    "required": ["symbol"],
+                },
+            },
         }
 
         self._log_info(f"Registered {len(self._tools)} MCP tools")
@@ -158,32 +218,32 @@ class ClaudeAgentMCPServer:
                 "uri": "claude://portfolio/status",
                 "name": "Portfolio Status",
                 "description": "Current portfolio status and positions",
-                "mime_type": "application/json"
+                "mime_type": "application/json",
             },
             "trading_history": {
                 "uri": "claude://trading/history",
                 "name": "Trading History",
                 "description": "Recent trading history and performance",
-                "mime_type": "application/json"
+                "mime_type": "application/json",
             },
             "market_context": {
                 "uri": "claude://market/context",
                 "name": "Market Context",
                 "description": "Current market conditions and context",
-                "mime_type": "application/json"
+                "mime_type": "application/json",
             },
             "strategy_learnings": {
                 "uri": "claude://strategy/learnings",
                 "name": "Strategy Learnings",
                 "description": "Strategy performance data and effectiveness metrics for optimization",
-                "mime_type": "application/json"
+                "mime_type": "application/json",
             },
             "monthly_performance": {
                 "uri": "claude://performance/monthly",
                 "name": "Monthly Performance",
                 "description": "Monthly trading performance summary and metrics",
-                "mime_type": "application/json"
-            }
+                "mime_type": "application/json",
+            },
         }
 
         self._log_info(f"Registered {len(self._resources)} MCP resources")
@@ -197,14 +257,16 @@ class ClaudeAgentMCPServer:
 
         return list(self._tools.values())
 
-    async def call_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_tool(
+        self, tool_name: str, tool_input: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Execute a tool call (MCP method)."""
         if not self._initialized or not self.tool_executor:
             raise TradingError(
                 "MCP server not initialized",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.CRITICAL,
-                recoverable=False
+                recoverable=False,
             )
 
         if tool_name not in self._tools:
@@ -212,7 +274,7 @@ class ClaudeAgentMCPServer:
                 f"Tool not found: {tool_name}",
                 category=ErrorCategory.VALIDATION,
                 severity=ErrorSeverity.MEDIUM,
-                recoverable=True
+                recoverable=True,
             )
 
         try:
@@ -225,7 +287,7 @@ class ClaudeAgentMCPServer:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps(result.get("output", {}), indent=2)
+                            "text": json.dumps(result.get("output", {}), indent=2),
                         }
                     ]
                 }
@@ -234,10 +296,10 @@ class ClaudeAgentMCPServer:
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Tool execution failed: {result.get('error', 'Unknown error')}"
+                            "text": f"Tool execution failed: {result.get('error', 'Unknown error')}",
                         }
                     ],
-                    "isError": True
+                    "isError": True,
                 }
 
         except Exception as e:
@@ -246,10 +308,10 @@ class ClaudeAgentMCPServer:
                 "content": [
                     {
                         "type": "text",
-                        "text": f"Unexpected error executing {tool_name}: {str(e)}"
+                        "text": f"Unexpected error executing {tool_name}: {str(e)}",
                     }
                 ],
-                "isError": True
+                "isError": True,
             }
 
     # MCP Resource Methods
@@ -264,7 +326,7 @@ class ClaudeAgentMCPServer:
                 "uri": resource["uri"],
                 "name": resource["name"],
                 "description": resource["description"],
-                "mimeType": resource["mime_type"]
+                "mimeType": resource["mime_type"],
             }
             for resource in self._resources.values()
         ]
@@ -279,7 +341,7 @@ class ClaudeAgentMCPServer:
                 f"Resource not found: {uri}",
                 category=ErrorCategory.VALIDATION,
                 severity=ErrorSeverity.MEDIUM,
-                recoverable=True
+                recoverable=True,
             )
 
         try:
@@ -298,7 +360,7 @@ class ClaudeAgentMCPServer:
                     {
                         "uri": uri,
                         "mimeType": "application/json",
-                        "text": json.dumps(data, indent=2, default=str)
+                        "text": json.dumps(data, indent=2, default=str),
                     }
                 ]
             }
@@ -309,7 +371,7 @@ class ClaudeAgentMCPServer:
                 f"Failed to read resource {uri}: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.MEDIUM,
-                recoverable=True
+                recoverable=True,
             )
 
     # Resource Data Methods
@@ -328,7 +390,7 @@ class ClaudeAgentMCPServer:
             return {
                 "account_id": account.account_id,
                 "balance": balance,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
         except Exception as e:
@@ -344,7 +406,7 @@ class ClaudeAgentMCPServer:
             return {
                 "recent_trades": [],
                 "total_trades": 0,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
         except Exception as e:
@@ -359,7 +421,7 @@ class ClaudeAgentMCPServer:
                 "market_status": "open",
                 "volatility": "moderate",
                 "key_indices": {},
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
         except Exception as e:

@@ -1,6 +1,6 @@
 import type { AIStatus } from '@/types/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Progress } from '@/components/ui/progress'
+import { Progress } from '@/components/ui/Progress'
 import { Brain, Activity, Zap, Clock, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 

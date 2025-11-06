@@ -2,20 +2,19 @@
 
 import logging
 import os
-from typing import Dict, Any
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request, Depends
-from fastapi.responses import JSONResponse
+from typing import Any, Dict
+
+from fastapi import APIRouter, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
-from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
+
 from ..dependencies import get_container
-from ..utils.error_handlers import (
-    handle_trading_error,
-    handle_unexpected_error,
-)
+from ..utils.error_handlers import (handle_trading_error,
+                                    handle_unexpected_error)
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +27,7 @@ agents_limit = os.getenv("RATE_LIMIT_AGENTS", "20/minute")
 @router.get("/agents/status")
 @limiter.limit(agents_limit)
 async def get_agents_status(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get all agents' status."""
     try:
@@ -44,7 +42,9 @@ async def get_agents_status(
 
 @router.get("/agents")
 @limiter.limit(agents_limit)
-async def get_agents(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_agents(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get all agents from orchestrator."""
     try:
         # Use the real orchestrator to get agents status
@@ -55,13 +55,15 @@ async def get_agents(request: Request, container: DependencyContainer = Depends(
         agents_list = []
         if agents_data and isinstance(agents_data, dict):
             for agent_name, agent_info in agents_data.items():
-                agents_list.append({
-                    "name": agent_name,
-                    "status": agent_info.get("status", "idle"),
-                    "lastAction": agent_info.get("last_activity", "unknown"),
-                    "tasksCompleted": 0,  # TODO: Track in database
-                    "currentTask": None  # TODO: Track current task
-                })
+                agents_list.append(
+                    {
+                        "name": agent_name,
+                        "status": agent_info.get("status", "idle"),
+                        "lastAction": agent_info.get("last_activity", "unknown"),
+                        "tasksCompleted": 0,  # TODO: Track in database
+                        "currentTask": None,  # TODO: Track current task
+                    }
+                )
 
         return {"agents": agents_list}
     except TradingError as e:
@@ -72,7 +74,11 @@ async def get_agents(request: Request, container: DependencyContainer = Depends(
 
 @router.get("/agents/{agent_name}/tools")
 @limiter.limit(agents_limit)
-async def get_agent_tools(request: Request, agent_name: str, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_agent_tools(
+    request: Request,
+    agent_name: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
     """Get tools available to an agent."""
     try:
         # Get agent info from orchestrator
@@ -85,10 +91,7 @@ async def get_agent_tools(request: Request, agent_name: str, container: Dependen
             tools_list = agents_data[agent_name].get("tools", [])
             tools = [{"name": t, "description": f"{t} tool"} for t in tools_list]
 
-        return {
-            "agent": agent_name,
-            "tools": tools
-        }
+        return {"agent": agent_name, "tools": tools}
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
@@ -97,23 +100,27 @@ async def get_agent_tools(request: Request, agent_name: str, container: Dependen
 
 @router.get("/agents/{agent_name}/config")
 @limiter.limit(agents_limit)
-async def get_agent_config(request: Request, agent_name: str, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_agent_config(
+    request: Request,
+    agent_name: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
     """Get agent configuration from config."""
     try:
         config = await container.get("config")
 
         # Get agent config from config.json
         agent_config = None
-        if config and hasattr(config, 'agents'):
+        if config and hasattr(config, "agents"):
             agent_config = getattr(config.agents, agent_name, None)
 
         if agent_config:
             return {
                 "agent": agent_name,
-                "enabled": getattr(agent_config, 'enabled', False),
-                "use_claude": getattr(agent_config, 'use_claude', True),
-                "frequency_seconds": getattr(agent_config, 'frequency_seconds', 300),
-                "priority": getattr(agent_config, 'priority', "medium")
+                "enabled": getattr(agent_config, "enabled", False),
+                "use_claude": getattr(agent_config, "use_claude", True),
+                "frequency_seconds": getattr(agent_config, "frequency_seconds", 300),
+                "priority": getattr(agent_config, "priority", "medium"),
             }
 
         return {
@@ -121,7 +128,7 @@ async def get_agent_config(request: Request, agent_name: str, container: Depende
             "enabled": False,
             "use_claude": True,
             "frequency_seconds": 300,
-            "priority": "medium"
+            "priority": "medium",
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -135,7 +142,7 @@ async def update_agent_config(
     request: Request,
     agent_name: str,
     config_data: Dict[str, Any],
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, str]:
     """Update agent configuration."""
     try:
@@ -149,8 +156,8 @@ async def update_agent_config(
                     "enabled": config_data.get("enabled", True),
                     "use_claude": config_data.get("use_claude", True),
                     "frequency_seconds": config_data.get("frequency_seconds", 300),
-                    "priority": config_data.get("priority", "medium")
-                }
+                    "priority": config_data.get("priority", "medium"),
+                },
             )
 
         logger.info(f"Updated config for agent {agent_name}")
@@ -163,37 +170,47 @@ async def update_agent_config(
 
 @router.get("/agents/features")
 @limiter.limit(agents_limit)
-async def get_agent_features(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_agent_features(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get all agent features from config."""
     try:
         config = await container.get("config")
 
         features = {}
-        if config and hasattr(config, 'agents'):
+        if config and hasattr(config, "agents"):
             # Get all agent configs from config.json
             agents_config = config.agents
-            if hasattr(agents_config, '__dict__'):
+            if hasattr(agents_config, "__dict__"):
                 for agent_name, agent_cfg in agents_config.__dict__.items():
-                    if hasattr(agent_cfg, 'enabled'):
+                    if hasattr(agent_cfg, "enabled"):
                         features[agent_name] = {
-                            "enabled": getattr(agent_cfg, 'enabled', False),
-                            "use_claude": getattr(agent_cfg, 'use_claude', True)
+                            "enabled": getattr(agent_cfg, "enabled", False),
+                            "use_claude": getattr(agent_cfg, "use_claude", True),
                         }
 
         return {"agents": features}
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
 @router.get("/agents/features/{feature_name}")
 @limiter.limit(agents_limit)
-async def get_agent_feature(request: Request, feature_name: str, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_agent_feature(
+    request: Request,
+    feature_name: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
     """Get specific agent feature."""
 
     try:
         config = await container.get("config")
 
-        if not config or not hasattr(config, 'agents'):
+        if not config or not hasattr(config, "agents"):
             return {"feature": feature_name, "found": False}
 
         feature = getattr(config.agents, feature_name, None)
@@ -202,12 +219,21 @@ async def get_agent_feature(request: Request, feature_name: str, container: Depe
 
         return {"feature": feature_name, "found": False}
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
 @router.put("/agents/features/{feature_name}")
 @limiter.limit(agents_limit)
-async def update_agent_feature(request: Request, feature_name: str, feature_data: Dict[str, Any], container: DependencyContainer = Depends(get_container)) -> Dict[str, str]:
+async def update_agent_feature(
+    request: Request,
+    feature_name: str,
+    feature_data: Dict[str, Any],
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, str]:
     """Update agent feature configuration."""
 
     try:
@@ -217,36 +243,60 @@ async def update_agent_feature(request: Request, feature_name: str, feature_data
             try:
                 # Try to update via feature management system first
                 if feature_data.get("enabled", False):
-                    await feature_management.enable_feature(feature_name, reason="user_request", requested_by="ui")
+                    await feature_management.enable_feature(
+                        feature_name, reason="user_request", requested_by="ui"
+                    )
                 else:
-                    await feature_management.disable_feature(feature_name, reason="user_request", requested_by="ui")
+                    await feature_management.disable_feature(
+                        feature_name, reason="user_request", requested_by="ui"
+                    )
 
-                logger.info(f"Updated feature {feature_name} via feature management system")
-                return {"status": "Feature updated", "feature": feature_name, "enabled": feature_data.get("enabled", False)}
+                logger.info(
+                    f"Updated feature {feature_name} via feature management system"
+                )
+                return {
+                    "status": "Feature updated",
+                    "feature": feature_name,
+                    "enabled": feature_data.get("enabled", False),
+                }
 
             except TradingError as e:
                 # If feature not found in feature management system, fall back to config.json
                 if "not found" in str(e) and "Feature" in str(e):
-                    logger.info(f"Feature {feature_name} not found in feature management, falling back to config.json")
-                    return await _update_agent_config_fallback(feature_name, feature_data, container)
+                    logger.info(
+                        f"Feature {feature_name} not found in feature management, falling back to config.json"
+                    )
+                    return await _update_agent_config_fallback(
+                        feature_name, feature_data, container
+                    )
                 else:
                     # Re-raise other feature management errors
                     raise
         else:
             # No feature management service, fall back to config.json
-            logger.info(f"Feature management service not available, falling back to config.json for {feature_name}")
-            return await _update_agent_config_fallback(feature_name, feature_data, container)
+            logger.info(
+                f"Feature management service not available, falling back to config.json for {feature_name}"
+            )
+            return await _update_agent_config_fallback(
+                feature_name, feature_data, container
+            )
 
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
-async def _update_agent_config_fallback(feature_name: str, feature_data: Dict[str, Any], container: DependencyContainer) -> Dict[str, str]:
+async def _update_agent_config_fallback(
+    feature_name: str, feature_data: Dict[str, Any], container: DependencyContainer
+) -> Dict[str, str]:
     """Fallback method to update agent configuration directly in config.json."""
     try:
         import json
-        import tempfile
         import os
+        import tempfile
         from pathlib import Path
 
         config = await container.get("config")
@@ -256,11 +306,11 @@ async def _update_agent_config_fallback(feature_name: str, feature_data: Dict[st
             raise TradingError(
                 "Configuration file not found",
                 category=ErrorCategory.CONFIGURATION,
-                severity=ErrorSeverity.HIGH
+                severity=ErrorSeverity.HIGH,
             )
 
         # Read current config
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config_data = json.load(f)
 
         # Update agent configuration
@@ -273,12 +323,14 @@ async def _update_agent_config_fallback(feature_name: str, feature_data: Dict[st
                 "enabled": feature_data.get("enabled", False),
                 "use_claude": feature_data.get("use_claude", True),
                 "frequency_seconds": feature_data.get("frequency_seconds", 300),
-                "priority": feature_data.get("priority", "medium")
+                "priority": feature_data.get("priority", "medium"),
             }
         else:
             # Update existing agent configuration
             agent_config = config_data["agents"][feature_name]
-            agent_config["enabled"] = feature_data.get("enabled", agent_config.get("enabled", False))
+            agent_config["enabled"] = feature_data.get(
+                "enabled", agent_config.get("enabled", False)
+            )
 
             if "use_claude" in feature_data:
                 agent_config["use_claude"] = feature_data["use_claude"]
@@ -288,7 +340,9 @@ async def _update_agent_config_fallback(feature_name: str, feature_data: Dict[st
                 agent_config["priority"] = feature_data["priority"]
 
         # Write updated config atomically
-        with tempfile.NamedTemporaryFile(mode='w', dir=config_path.parent, delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=config_path.parent, delete=False
+        ) as tmp_file:
             json.dump(config_data, tmp_file, indent=2)
             tmp_file.flush()
             temp_path = tmp_file.name
@@ -296,29 +350,37 @@ async def _update_agent_config_fallback(feature_name: str, feature_data: Dict[st
         # Atomic replace
         os.replace(temp_path, config_path)
 
-        logger.info(f"Updated agent {feature_name} configuration via config.json fallback")
-        return {"status": "Configuration updated", "feature": feature_name, "enabled": feature_data.get("enabled", False)}
+        logger.info(
+            f"Updated agent {feature_name} configuration via config.json fallback"
+        )
+        return {
+            "status": "Configuration updated",
+            "feature": feature_name,
+            "enabled": feature_data.get("enabled", False),
+        }
 
     except Exception as e:
         raise TradingError(
             f"Failed to update agent configuration: {str(e)}",
             category=ErrorCategory.CONFIGURATION,
             severity=ErrorSeverity.MEDIUM,
-            feature_id=feature_name
+            feature_id=feature_name,
         )
 
 
 @router.get("/claude-agent/token-budget")
 @limiter.limit(agents_limit)
-async def get_token_budget(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_token_budget(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get Claude AI token budget information from database."""
     try:
         # TODO: Implement token tracking from claude_token_usage table
         # For now, return empty/default structure
         config = await container.get("config")
         daily_budget = 15000
-        if config and hasattr(config, 'claude_agent'):
-            daily_budget = getattr(config.claude_agent, 'daily_token_budget', 15000)
+        if config and hasattr(config, "claude_agent"):
+            daily_budget = getattr(config.claude_agent, "daily_token_budget", 15000)
 
         return {
             "dailyBudget": daily_budget,
@@ -328,15 +390,21 @@ async def get_token_budget(request: Request, container: DependencyContainer = De
             "usage": {},
             "warningLevel": 70,
             "criticalLevel": 90,
-            "status": "normal"
+            "status": "normal",
         }
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
 @router.get("/scheduler/queue-status")
 @limiter.limit(agents_limit)
-async def get_queue_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_queue_status(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get scheduler queue status from queue coordinator."""
     try:
         # TODO: Implement real queue status from QueueCoordinator
@@ -346,22 +414,28 @@ async def get_queue_status(request: Request, container: DependencyContainer = De
                 "inProgress": None,
                 "queued": [],
                 "avgTaskTime": "0 seconds",
-                "successRate": "0%"
+                "successRate": "0%",
             },
             "aiAnalysisQueue": {
                 "inProgress": None,
                 "queued": [],
                 "avgTaskTime": "0 seconds",
-                "successRate": "0%"
-            }
+                "successRate": "0%",
+            },
         }
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
 @router.get("/queues/status")
 @limiter.limit(agents_limit)
-async def get_queues_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_queues_status(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get queues status from queue coordinator."""
     try:
         # TODO: Implement real queue status from QueueCoordinator
@@ -372,23 +446,29 @@ async def get_queues_status(request: Request, container: DependencyContainer = D
                     "inProgress": None,
                     "queued": [],
                     "avgTaskTime": "0 seconds",
-                    "successRate": "0%"
+                    "successRate": "0%",
                 },
                 "aiAnalysisQueue": {
                     "inProgress": None,
                     "queued": [],
                     "avgTaskTime": "0 seconds",
-                    "successRate": "0%"
-                }
+                    "successRate": "0%",
+                },
             }
         }
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
 @router.get("/claude-agent/plans")
 @limiter.limit(agents_limit)
-async def get_claude_plans(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_claude_plans(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get Claude's daily and weekly plans from database."""
     try:
         # TODO: Implement plans storage in database table: claude_plans
@@ -398,44 +478,56 @@ async def get_claude_plans(request: Request, container: DependencyContainer = De
                 "date": datetime.now(timezone.utc).date().isoformat(),
                 "time": datetime.now(timezone.utc).time().isoformat(),
                 "focus": [],
-                "tasks": []
+                "tasks": [],
             },
             "weeklyPlan": {
                 "week": f"Week of {datetime.now(timezone.utc).date().isoformat()}",
                 "day": datetime.now(timezone.utc).strftime("%A"),
                 "time": datetime.now(timezone.utc).time().isoformat(),
                 "focus": [],
-                "tasks": []
-            }
+                "tasks": [],
+            },
         }
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
 @router.get("/claude-agent/trade-logs")
 @limiter.limit(agents_limit)
-async def get_trade_logs(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_trade_logs(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get Claude's trade decision logs from database."""
     try:
         # TODO: Implement trade logs from database table: claude_trade_logs
         # For now, return empty logs
-        return {
-            "tradeLogs": []
-        }
+        return {"tradeLogs": []}
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )
 
 
 @router.get("/claude-agent/strategy-reflections")
 @limiter.limit(agents_limit)
-async def get_strategy_reflections(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_strategy_reflections(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get Claude's strategy reflections from database."""
     try:
         # TODO: Implement strategy reflections from claude_strategy_logs table
         # This table already exists, need to query it properly
         # For now, return empty reflections
-        return {
-            "reflections": []
-        }
+        return {"reflections": []}
     except Exception as e:
-        return await handle_trading_error(e) if isinstance(e, TradingError) else await handle_unexpected_error(e, "endpoint")
+        return (
+            await handle_trading_error(e)
+            if isinstance(e, TradingError)
+            else await handle_unexpected_error(e, "endpoint")
+        )

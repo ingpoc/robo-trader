@@ -7,11 +7,11 @@ Extracted from AgentCoordinator for single responsibility.
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Optional, Any
+from typing import Dict
 
 from loguru import logger
 
-from ...event_bus import EventBus, Event, EventType
+from ...event_bus import Event, EventBus, EventType
 from ..base_coordinator import BaseCoordinator
 from ..message.agent_message import AgentMessage, MessageType
 from .agent_profile import AgentProfile
@@ -20,7 +20,7 @@ from .agent_profile import AgentProfile
 class AgentCommunicationCoordinator(BaseCoordinator):
     """
     Coordinates agent communication and message processing.
-    
+
     Responsibilities:
     - Process agent messages
     - Handle status updates
@@ -28,7 +28,9 @@ class AgentCommunicationCoordinator(BaseCoordinator):
     - Update agent activity tracking
     """
 
-    def __init__(self, config, event_bus: EventBus, registered_agents: Dict[str, AgentProfile]):
+    def __init__(
+        self, config, event_bus: EventBus, registered_agents: Dict[str, AgentProfile]
+    ):
         super().__init__(config, "agent_communication_coordinator")
         self.event_bus = event_bus
         self.registered_agents = registered_agents
@@ -38,11 +40,11 @@ class AgentCommunicationCoordinator(BaseCoordinator):
     async def initialize(self) -> None:
         """Initialize agent communication coordinator."""
         logger.info("Initializing Agent Communication Coordinator")
-        
+
         # Start message processing
         self._running = True
         self._processing_task = asyncio.create_task(self._process_agent_messages())
-        
+
         logger.info("Agent Communication Coordinator initialized successfully")
 
     async def cleanup(self) -> None:
@@ -66,15 +68,17 @@ class AgentCommunicationCoordinator(BaseCoordinator):
         await self.agent_message_queue.put(message)
 
         # Emit event for monitoring
-        await self.event_bus.publish(Event(
-            event_type=EventType.TASK_COMPLETED,
-            data={
-                "event_type": "agent_message",
-                "message": message.to_dict(),
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            },
-            source="agent_communication_coordinator"
-        ))
+        await self.event_bus.publish(
+            Event(
+                event_type=EventType.TASK_COMPLETED,
+                data={
+                    "event_type": "agent_message",
+                    "message": message.to_dict(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                source="agent_communication_coordinator",
+            )
+        )
 
     async def _process_agent_messages(self) -> None:
         """Process agent messages."""
@@ -85,8 +89,7 @@ class AgentCommunicationCoordinator(BaseCoordinator):
                 # Process messages with timeout
                 try:
                     message = await asyncio.wait_for(
-                        self.agent_message_queue.get(),
-                        timeout=1.0
+                        self.agent_message_queue.get(), timeout=1.0
                     )
                     await self._handle_agent_message(message)
                     self.agent_message_queue.task_done()
@@ -106,11 +109,15 @@ class AgentCommunicationCoordinator(BaseCoordinator):
         Args:
             message: Message to handle
         """
-        logger.debug(f"Processing agent message: {message.message_type.value} from {message.sender_agent}")
+        logger.debug(
+            f"Processing agent message: {message.message_type.value} from {message.sender_agent}"
+        )
 
         # Update agent last active time
         if message.sender_agent in self.registered_agents:
-            self.registered_agents[message.sender_agent].last_active = datetime.now(timezone.utc).isoformat()
+            self.registered_agents[message.sender_agent].last_active = datetime.now(
+                timezone.utc
+            ).isoformat()
 
         # Route based on message type
         if message.message_type == MessageType.STATUS_UPDATE:
@@ -126,7 +133,9 @@ class AgentCommunicationCoordinator(BaseCoordinator):
         if agent_id in self.registered_agents:
             # Update agent performance if provided
             if "performance_score" in status_info:
-                self.registered_agents[agent_id].performance_score = status_info["performance_score"]
+                self.registered_agents[agent_id].performance_score = status_info[
+                    "performance_score"
+                ]
 
             logger.debug(f"Status update for agent {agent_id}: {status_info}")
 
@@ -143,4 +152,3 @@ class AgentCommunicationCoordinator(BaseCoordinator):
         """Cleanup agent communication coordinator resources."""
         self._running = False
         logger.info("AgentCommunicationCoordinator cleanup complete")
-

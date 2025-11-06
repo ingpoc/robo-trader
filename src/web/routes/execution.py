@@ -2,20 +2,19 @@
 
 import logging
 import os
-from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, BackgroundTasks, Depends
-from fastapi.responses import JSONResponse
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, Field, validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
 from src.core.errors import TradingError
+
 from ..dependencies import get_container
-from ..utils.error_handlers import (
-    handle_trading_error,
-    handle_unexpected_error,
-)
+from ..utils.error_handlers import (handle_trading_error,
+                                    handle_unexpected_error)
 
 logger = logging.getLogger(__name__)
 
@@ -27,26 +26,31 @@ trade_limit = os.getenv("RATE_LIMIT_TRADES", "10/minute")
 
 class TradeRequest(BaseModel):
     """Manual trade request with validation."""
+
     symbol: str = Field(..., min_length=1, max_length=20)
     side: str = Field(..., pattern="^(BUY|SELL)$")
     quantity: int = Field(..., gt=0, le=10000)
     order_type: str = Field(default="MARKET", pattern="^(MARKET|LIMIT)$")
     price: Optional[float] = Field(None, gt=0)
 
-    @validator('symbol')
+    @validator("symbol")
     def validate_symbol(cls, v):
         """Validate symbol format."""
         if not v.isupper():
-            raise ValueError('Symbol must be uppercase')
+            raise ValueError("Symbol must be uppercase")
         return v
 
 
 @router.post("/portfolio-scan")
 @limiter.limit(trade_limit)
-async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def portfolio_scan(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
     """
     Trigger portfolio scan with automatic OAuth flow if needed.
-    
+
     Priority:
     1. Check for OAuth token in ENV variable
     2. If not found, check for API key/secret in ENV
@@ -64,18 +68,23 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
         token_data = await oauth_service.get_stored_token()
 
         if token_data:
-            logger.info(f"Valid OAuth token found for user: {token_data.get('user_id')}, expires at: {token_data.get('expires_at')}")
+            logger.info(
+                f"Valid OAuth token found for user: {token_data.get('user_id')}, expires at: {token_data.get('expires_at')}"
+            )
             logger.info("Proceeding with broker connection using stored token")
         else:
             logger.debug("No valid OAuth token found in storage")
 
             # Check if API credentials are present for OAuth flow
             from src.config import load_config
+
             config = load_config()
             api_key = config.integration.zerodha_api_key
             api_secret = config.integration.zerodha_api_secret
 
-            logger.debug(f"API credentials check - Key present: {bool(api_key)}, Secret present: {bool(api_secret)}")
+            logger.debug(
+                f"API credentials check - Key present: {bool(api_key)}, Secret present: {bool(api_secret)}"
+            )
 
             if api_key and api_secret:
                 if oauth_service:
@@ -91,12 +100,14 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
                         "auth_url": auth_url,
                         "state": auth_data["state"],
                         "redirect_url": auth_data["redirect_url"],
-                        "instructions": "After approving in Zerodha, click 'Scan Portfolio' again to fetch holdings"
+                        "instructions": "After approving in Zerodha, click 'Scan Portfolio' again to fetch holdings",
                     }
                 else:
                     logger.error("OAuth service is None")
             else:
-                logger.debug("No API credentials found, will fallback to CSV or database")
+                logger.debug(
+                    "No API credentials found, will fallback to CSV or database"
+                )
 
         # If we get here and no OAuth was triggered, proceed with normal scan
         # (either we have a token or we're falling back to CSV)
@@ -108,6 +119,7 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
         if token_data:
             try:
                 from src.config import load_config
+
                 config = load_config()
                 broker = await get_broker(config)
             except Exception as e:
@@ -127,13 +139,15 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
 
         if portfolio and portfolio.holdings:
             holdings_count = len(portfolio.holdings)
-            logger.info(f"Portfolio scan completed successfully: {holdings_count} holdings loaded")
+            logger.info(
+                f"Portfolio scan completed successfully: {holdings_count} holdings loaded"
+            )
             return {
                 "status": "Portfolio scan completed",
                 "message": f"Successfully loaded {holdings_count} holdings",
                 "source": result.get("source", "unknown"),
                 "holdings_count": holdings_count,
-                "portfolio": portfolio.to_dict()
+                "portfolio": portfolio.to_dict(),
             }
         else:
             logger.warning("Portfolio scan completed but no holdings found")
@@ -142,7 +156,7 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
                 "message": "No holdings found",
                 "source": result.get("source", "unknown"),
                 "holdings_count": 0,
-                "portfolio": None
+                "portfolio": None,
             }
 
     except TradingError as e:
@@ -153,7 +167,11 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
 
 @router.post("/market-screening")
 @limiter.limit(trade_limit)
-async def market_screening(request: Request, background_tasks: BackgroundTasks, container: DependencyContainer = Depends(get_container)) -> Dict[str, str]:
+async def market_screening(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, str]:
     """Trigger market screening."""
 
     try:
@@ -168,7 +186,11 @@ async def market_screening(request: Request, background_tasks: BackgroundTasks, 
 
 @router.post("/manual-trade")
 @limiter.limit(trade_limit)
-async def manual_trade(request: Request, trade: TradeRequest, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def manual_trade(
+    request: Request,
+    trade: TradeRequest,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
     """Execute manual trade."""
     import uuid
 
@@ -178,7 +200,9 @@ async def manual_trade(request: Request, trade: TradeRequest, container: Depende
         # Generate mock intent ID and execute trade
         intent_id = str(uuid.uuid4())[:8]
 
-        logger.info(f"Manual trade initiated: {trade.symbol} {trade.side} {trade.quantity} @ {trade.order_type}")
+        logger.info(
+            f"Manual trade initiated: {trade.symbol} {trade.side} {trade.quantity} @ {trade.order_type}"
+        )
 
         return {
             "status": "Trade executed",
@@ -187,7 +211,7 @@ async def manual_trade(request: Request, trade: TradeRequest, container: Depende
             "side": trade.side,
             "quantity": trade.quantity,
             "order_type": trade.order_type,
-            "risk_decision": "approved"
+            "risk_decision": "approved",
         }
 
     except TradingError as e:

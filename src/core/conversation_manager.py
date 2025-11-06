@@ -6,22 +6,19 @@ handling multi-turn conversations, and providing natural language
 trading partnership capabilities.
 """
 
-import asyncio
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
-from ..core.sdk_helpers import (
-    query_with_timeout,
-    receive_response_with_timeout,
-    validate_system_prompt_size
-)
+from ..core.sdk_helpers import (query_with_timeout,
+                                receive_response_with_timeout,
+                                validate_system_prompt_size)
 
 # Type hint for forward reference
 if False:
@@ -37,18 +34,12 @@ class ConversationMessage:
         self.timestamp = timestamp or datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "role": self.role,
-            "content": self.content,
-            "timestamp": self.timestamp
-        }
+        return {"role": self.role, "content": self.content, "timestamp": self.timestamp}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ConversationMessage":
         return cls(
-            role=data["role"],
-            content=data["content"],
-            timestamp=data.get("timestamp")
+            role=data["role"], content=data["content"], timestamp=data.get("timestamp")
         )
 
 
@@ -95,13 +86,15 @@ class ConversationSession:
             "context": self.context,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ConversationSession":
         session = cls(data["session_id"], data.get("user_id"))
-        session.messages = [ConversationMessage.from_dict(msg) for msg in data.get("messages", [])]
+        session.messages = [
+            ConversationMessage.from_dict(msg) for msg in data.get("messages", [])
+        ]
         session.context = data.get("context", {})
         session.created_at = data.get("created_at", session.created_at)
         session.last_activity = data.get("last_activity", session.last_activity)
@@ -125,7 +118,7 @@ class ConversationManager:
         self,
         config: Config,
         state_manager: DatabaseStateManager,
-        container: Optional["DependencyContainer"] = None
+        container: Optional["DependencyContainer"] = None,
     ):
         self.config = config
         self.state_manager = state_manager
@@ -146,7 +139,9 @@ class ConversationManager:
         # Load existing sessions
         await self._load_active_sessions()
 
-        logger.info("Conversation Manager initialized successfully (Claude client will initialize on demand)")
+        logger.info(
+            "Conversation Manager initialized successfully (Claude client will initialize on demand)"
+        )
 
     async def _ensure_client(self) -> None:
         """Lazy initialization of Claude SDK client using client manager."""
@@ -154,36 +149,48 @@ class ConversationManager:
             # Use client manager if available (singleton pattern)
             if self.container:
                 try:
-                    from ..core.claude_sdk_client_manager import ClaudeSDKClientManager
-                    client_manager = await self.container.get("claude_sdk_client_manager")
-                    
+                    from ..core.claude_sdk_client_manager import \
+                        ClaudeSDKClientManager
+
+                    client_manager = await self.container.get(
+                        "claude_sdk_client_manager"
+                    )
+
                     system_prompt = self._get_conversation_prompt()
                     # Validate prompt size
                     is_valid, token_count = validate_system_prompt_size(system_prompt)
                     if not is_valid:
-                        logger.warning(f"System prompt is {token_count} tokens, may cause issues")
-                    
+                        logger.warning(
+                            f"System prompt is {token_count} tokens, may cause issues"
+                        )
+
                     options = ClaudeAgentOptions(
-                        allowed_tools=[],
-                        system_prompt=system_prompt,
-                        max_turns=50
+                        allowed_tools=[], system_prompt=system_prompt, max_turns=50
                     )
-                    
-                    self.client = await client_manager.get_client("conversation", options)
+
+                    self.client = await client_manager.get_client(
+                        "conversation", options
+                    )
                     self._client_initialized = True
-                    logger.info("Conversation Manager Claude client initialized via client manager")
+                    logger.info(
+                        "Conversation Manager Claude client initialized via client manager"
+                    )
                     return
                 except Exception as e:
-                    logger.warning(f"Failed to get client from manager, falling back to direct init: {e}")
-            
+                    logger.warning(
+                        f"Failed to get client from manager, falling back to direct init: {e}"
+                    )
+
             # Fallback to direct initialization
             options = ClaudeAgentOptions(
                 allowed_tools=[],
                 system_prompt=self._get_conversation_prompt(),
-                max_turns=50
+                max_turns=50,
             )
             # Use client manager instead of direct creation
-            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            from src.core.claude_sdk_client_manager import \
+                ClaudeSDKClientManager
+
             client_manager = await ClaudeSDKClientManager.get_instance()
             self.client = await client_manager.get_client("conversation", options)
             self._client_initialized = True
@@ -200,9 +207,11 @@ class ConversationManager:
                     await self.client.__aexit__(None, None, None)
                     logger.info("Conversation Manager client cleaned up")
                 except Exception as e:
-                    logger.warning(f"Error cleaning up Conversation Manager client: {e}")
-            
-            # Always cleanup client reference
+                    logger.warning(
+                        f"Error cleaning up Conversation Manager client: {e}"
+                    )
+
+                # Always cleanup client reference
                 self.client = None
                 self._client_initialized = False
 
@@ -250,10 +259,12 @@ class ConversationManager:
                 # Use timeout wrapper with comprehensive error handling
                 await query_with_timeout(self.client, conversation_prompt, timeout=60.0)
 
-                async for response_msg in receive_response_with_timeout(self.client, timeout=120.0):
-                    if hasattr(response_msg, 'content'):
+                async for response_msg in receive_response_with_timeout(
+                    self.client, timeout=120.0
+                ):
+                    if hasattr(response_msg, "content"):
                         for block in response_msg.content:
-                            if hasattr(block, 'text'):
+                            if hasattr(block, "text"):
                                 response_content += block.text
 
                                 # Try to extract structured data from response
@@ -293,10 +304,12 @@ class ConversationManager:
             "response": response_content,
             "intents": detected_intents,
             "actions": suggested_actions,
-            "session_id": session_id
+            "session_id": session_id,
         }
 
-    async def get_conversation_history(self, session_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_conversation_history(
+        self, session_id: str, limit: int = 50
+    ) -> List[Dict[str, Any]]:
         """Get conversation history for a session."""
         if session_id not in self.active_sessions:
             return []
@@ -317,13 +330,15 @@ class ConversationManager:
         """Get information about active conversation sessions."""
         sessions_info = []
         for session in self.active_sessions.values():
-            sessions_info.append({
-                "session_id": session.session_id,
-                "user_id": session.user_id,
-                "message_count": len(session.messages),
-                "last_activity": session.last_activity,
-                "created_at": session.created_at
-            })
+            sessions_info.append(
+                {
+                    "session_id": session.session_id,
+                    "user_id": session.user_id,
+                    "message_count": len(session.messages),
+                    "last_activity": session.last_activity,
+                    "created_at": session.created_at,
+                }
+            )
         return sessions_info
 
     def _get_conversation_prompt(self) -> str:
@@ -353,7 +368,9 @@ INTENTS: {"intents": ["portfolio_analysis", "trade_recommendation"]}
 ACTIONS: {"actions": ["analyze_portfolio", "check_risk"]}
 """
 
-    def _build_conversation_prompt(self, session: ConversationSession, current_message: str) -> str:
+    def _build_conversation_prompt(
+        self, session: ConversationSession, current_message: str
+    ) -> str:
         """Build a conversation prompt with context."""
 
         # Get recent conversation history
@@ -402,7 +419,9 @@ Please respond naturally and helpfully. Remember to be conservative with trading
 
             # Get recent recommendations
             pending_recommendations = await self.state_manager.get_pending_approvals()
-            session.update_context("pending_recommendations", len(pending_recommendations))
+            session.update_context(
+                "pending_recommendations", len(pending_recommendations)
+            )
 
         except Exception as e:
             logger.error(f"Failed to initialize session context: {e}")
@@ -413,13 +432,17 @@ Please respond naturally and helpfully. Remember to be conservative with trading
         last_update = session.context.get("last_updated")
         if last_update:
             last_update_time = datetime.fromisoformat(last_update)
-            if datetime.now(timezone.utc) - last_update_time < timedelta(seconds=self.context_refresh_interval):
+            if datetime.now(timezone.utc) - last_update_time < timedelta(
+                seconds=self.context_refresh_interval
+            ):
                 return  # Context is still fresh
 
         # Refresh context
         await self._initialize_session_context(session)
 
-    def _generate_fallback_response(self, message: str, session: ConversationSession) -> str:
+    def _generate_fallback_response(
+        self, message: str, session: ConversationSession
+    ) -> str:
         """Generate fallback response when Claude is unavailable."""
         message_lower = message.lower()
 
@@ -460,11 +483,15 @@ Please respond naturally and helpfully. Remember to be conservative with trading
 
         for session_id, session in self.active_sessions.items():
             last_activity = datetime.fromisoformat(session.last_activity)
-            if current_time - last_activity > timedelta(hours=self.session_timeout_hours):
+            if current_time - last_activity > timedelta(
+                hours=self.session_timeout_hours
+            ):
                 expired_sessions.append(session_id)
 
         for session_id in expired_sessions:
             await self.end_conversation(session_id)
 
         if expired_sessions:
-            logger.info(f"Cleaned up {len(expired_sessions)} expired conversation sessions")
+            logger.info(
+                f"Cleaned up {len(expired_sessions)} expired conversation sessions"
+            )
