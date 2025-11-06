@@ -2,7 +2,8 @@
 
 import json
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
 from .base_store import BaseConfigStore
@@ -24,8 +25,7 @@ class AIAgentsStore(BaseConfigStore):
         async with self._lock:
             try:
                 cursor = await self.db.connection.execute(
-                    "SELECT * FROM ai_agents_config WHERE agent_name = ?",
-                    (agent_name,)
+                    "SELECT * FROM ai_agents_config WHERE agent_name = ?", (agent_name,)
                 )
                 row = await cursor.fetchone()
 
@@ -39,7 +39,7 @@ class AIAgentsStore(BaseConfigStore):
                         "response_frequency": row["response_frequency"],
                         "response_frequency_unit": row["response_frequency_unit"],
                         "scope": row["scope"],
-                        "max_tokens_per_request": row["max_tokens_per_request"]
+                        "max_tokens_per_request": row["max_tokens_per_request"],
                     }
                 return None
             except Exception as e:
@@ -70,7 +70,7 @@ class AIAgentsStore(BaseConfigStore):
                         "responseFrequency": row[5],
                         "responseFrequencyUnit": row[6],
                         "scope": row[7],
-                        "maxTokensPerRequest": row[8]
+                        "maxTokensPerRequest": row[8],
                     }
 
                 return {"ai_agents": agents}
@@ -114,8 +114,8 @@ class AIAgentsStore(BaseConfigStore):
                         config_data.get("max_tokens_per_request", 2000),
                         now,
                         agent_name,
-                        now
-                    )
+                        now,
+                    ),
                 )
 
                 await self.db.connection.commit()

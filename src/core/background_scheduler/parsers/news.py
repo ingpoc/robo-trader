@@ -4,10 +4,10 @@ News data parsing and processing.
 Handles news data fetching, parsing (3 strategies), and categorization.
 """
 
-import re
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
 import json
+import re
+from typing import Any, Dict, List
+
 from loguru import logger
 
 
@@ -79,7 +79,9 @@ def _standardize_news_article(article: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "symbol": article.get("symbol", article.get("ticker", "")),
         "headline": article.get("headline", article.get("title", "")),
-        "content": article.get("content", article.get("summary", article.get("description", ""))),
+        "content": article.get(
+            "content", article.get("summary", article.get("description", ""))
+        ),
         "source": article.get("source", article.get("publisher", "Unknown")),
         "article_type": article.get("article_type", article.get("type", "news")),
         "category": article.get("category", "general"),
@@ -88,7 +90,7 @@ def _standardize_news_article(article: Dict[str, Any]) -> Dict[str, Any]:
         "relevance_score": article.get("relevance_score", 0.5),
         "key_points": article.get("key_points", article.get("points", [])),
         "url": article.get("url", article.get("link", "")),
-        "published_at": article.get("published_at", article.get("date", ""))
+        "published_at": article.get("published_at", article.get("date", "")),
     }
 
 
@@ -102,7 +104,7 @@ def _parse_string_article(article_text: str) -> Dict[str, Any]:
         Standardized article dictionary
     """
     # Try to extract headline and content
-    lines = article_text.strip().split('\n', 1)
+    lines = article_text.strip().split("\n", 1)
     headline = lines[0].strip() if lines else ""
     content = lines[1].strip() if len(lines) > 1 else headline
 
@@ -118,7 +120,7 @@ def _parse_string_article(article_text: str) -> Dict[str, Any]:
         "relevance_score": 0.5,
         "key_points": [],
         "url": "",
-        "published_at": ""
+        "published_at": "",
     }
 
 
@@ -134,7 +136,7 @@ def _parse_text_news(text: str) -> Dict[str, Any]:
     articles = []
 
     # Split by common delimiters
-    sections = re.split(r'\n\s*(?=\d+\.|•|-)', text)
+    sections = re.split(r"\n\s*(?=\d+\.|•|-)", text)
 
     for section in sections:
         section = section.strip()
@@ -142,30 +144,34 @@ def _parse_text_news(text: str) -> Dict[str, Any]:
             continue
 
         # Try to extract headline and content
-        lines = section.split('\n', 1)
+        lines = section.split("\n", 1)
         headline = lines[0].strip() if lines else ""
         content = lines[1].strip() if len(lines) > 1 else ""
 
         if headline:
-            articles.append({
-                "symbol": "",
-                "headline": headline,
-                "content": content,
-                "source": "Perplexity",
-                "article_type": "news",
-                "category": "general",
-                "sentiment": "neutral",
-                "impact_score": 0.5,
-                "relevance_score": 0.5,
-                "key_points": [],
-                "url": "",
-                "published_at": ""
-            })
+            articles.append(
+                {
+                    "symbol": "",
+                    "headline": headline,
+                    "content": content,
+                    "source": "Perplexity",
+                    "article_type": "news",
+                    "category": "general",
+                    "sentiment": "neutral",
+                    "impact_score": 0.5,
+                    "relevance_score": 0.5,
+                    "key_points": [],
+                    "url": "",
+                    "published_at": "",
+                }
+            )
 
     return {"articles": articles}
 
 
-def categorize_news_by_impact(articles: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def categorize_news_by_impact(
+    articles: List[Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
     """Categorize news articles by impact level.
 
     Args:
@@ -174,11 +180,7 @@ def categorize_news_by_impact(articles: List[Dict[str, Any]]) -> Dict[str, List[
     Returns:
         Dictionary with high, medium, low impact articles
     """
-    categorized = {
-        "high_impact": [],
-        "medium_impact": [],
-        "low_impact": []
-    }
+    categorized = {"high_impact": [], "medium_impact": [], "low_impact": []}
 
     for article in articles:
         impact_score = article.get("impact_score", 0.5)
@@ -193,7 +195,9 @@ def categorize_news_by_impact(articles: List[Dict[str, Any]]) -> Dict[str, List[
     return categorized
 
 
-def filter_news_by_sentiment(articles: List[Dict[str, Any]], sentiment_filter: str) -> List[Dict[str, Any]]:
+def filter_news_by_sentiment(
+    articles: List[Dict[str, Any]], sentiment_filter: str
+) -> List[Dict[str, Any]]:
     """Filter news articles by sentiment.
 
     Args:
@@ -204,7 +208,7 @@ def filter_news_by_sentiment(articles: List[Dict[str, Any]], sentiment_filter: s
         Filtered list of articles
     """
     return [
-        article for article in articles
+        article
+        for article in articles
         if article.get("sentiment", "neutral").lower() == sentiment_filter.lower()
     ]
-

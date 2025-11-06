@@ -6,11 +6,11 @@ Extracted from TaskCoordinator for single responsibility.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from ...event_bus import EventBus, Event, EventType
+from ...event_bus import Event, EventBus, EventType
 from ..base_coordinator import BaseCoordinator
 from ..message.agent_message import AgentMessage, MessageType
 from .collaboration_task import CollaborationTask
@@ -19,7 +19,7 @@ from .collaboration_task import CollaborationTask
 class TaskExecutionCoordinator(BaseCoordinator):
     """
     Coordinates task execution and status management.
-    
+
     Responsibilities:
     - Start task execution
     - Update task status
@@ -50,7 +50,9 @@ class TaskExecutionCoordinator(BaseCoordinator):
             task: Task to start
         """
         if task.status != "assigned":
-            logger.warning(f"Cannot start task {task.task_id} with status: {task.status}")
+            logger.warning(
+                f"Cannot start task {task.task_id} with status: {task.status}"
+            )
             return
 
         task.status = "in_progress"
@@ -61,7 +63,9 @@ class TaskExecutionCoordinator(BaseCoordinator):
 
         logger.info(f"Started task: {task.task_id}")
 
-    async def update_task_status(self, task_id: str, status: str, result: Optional[Dict[str, Any]] = None) -> None:
+    async def update_task_status(
+        self, task_id: str, status: str, result: Optional[Dict[str, Any]] = None
+    ) -> None:
         """
         Update task status.
 
@@ -88,20 +92,22 @@ class TaskExecutionCoordinator(BaseCoordinator):
             del self.active_tasks[task_id]
 
         # Emit status change event
-        await self.event_bus.publish(Event(
-            id=f"task_status_{task_id}_{status}",
-            type=EventType.AI_ANALYSIS_COMPLETE,  # Using existing event type
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            source="task_execution_coordinator",
-            data={
-                "event_type": "task_status_changed",
-                "task_id": task_id,
-                "old_status": old_status,
-                "new_status": status,
-                "has_result": result is not None,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        ))
+        await self.event_bus.publish(
+            Event(
+                id=f"task_status_{task_id}_{status}",
+                type=EventType.AI_ANALYSIS_COMPLETE,  # Using existing event type
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                source="task_execution_coordinator",
+                data={
+                    "event_type": "task_status_changed",
+                    "task_id": task_id,
+                    "old_status": old_status,
+                    "new_status": status,
+                    "has_result": result is not None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        )
 
         logger.info(f"Task {task_id} status changed: {old_status} -> {status}")
 
@@ -151,24 +157,26 @@ class TaskExecutionCoordinator(BaseCoordinator):
                 content={
                     "task": task.to_dict(),
                     "action": "start_task",
-                    "priority": task.priority
+                    "priority": task.priority,
                 },
                 correlation_id=task.task_id,
-                priority=task.priority
+                priority=task.priority,
             )
 
             # Emit message event (would be handled by agent coordinator)
-            await self.event_bus.publish(Event(
-                id=f"agent_message_{message.message_id}",
-                type=EventType.AI_ANALYSIS_COMPLETE,  # Using existing event type
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                source="task_execution_coordinator",
-                data={
-                    "event_type": "agent_message",
-                    "message": message.to_dict(),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"agent_message_{message.message_id}",
+                    type=EventType.AI_ANALYSIS_COMPLETE,  # Using existing event type
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    source="task_execution_coordinator",
+                    data={
+                        "event_type": "agent_message",
+                        "message": message.to_dict(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+            )
 
     async def cleanup(self) -> None:
         """Cleanup task execution coordinator resources."""
@@ -181,4 +189,3 @@ class TaskExecutionCoordinator(BaseCoordinator):
                 logger.info(f"Cancelled active task: {task.task_id}")
 
         logger.info("TaskExecutionCoordinator cleanup complete")
-

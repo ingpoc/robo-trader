@@ -12,14 +12,12 @@ Features:
 
 import asyncio
 import json
-import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple, Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import Enum
-import os
-import httpx
+from typing import Any, Dict, List, Optional, Tuple
 
+import httpx
 from loguru import logger
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -27,6 +25,7 @@ from pydantic import BaseModel, Field
 
 class QueryType(Enum):
     """Types of queries supported by the client."""
+
     NEWS_SENTIMENT = "news_sentiment"
     FUNDAMENTALS = "fundamentals"
     EARNINGS_CALENDAR = "earnings_calendar"
@@ -35,14 +34,16 @@ class QueryType(Enum):
 
 class CircuitBreakerState(Enum):
     """Circuit breaker states."""
+
     CLOSED = "closed"  # Normal operation
-    OPEN = "open"      # Failing, reject requests
+    OPEN = "open"  # Failing, reject requests
     HALF_OPEN = "half_open"  # Testing if service recovered
 
 
 @dataclass
 class CircuitBreakerConfig:
     """Configuration for circuit breaker pattern."""
+
     failure_threshold: int = 5  # Failures before opening circuit
     recovery_timeout: int = 60  # Seconds to wait before trying again
     expected_exception: Tuple = (Exception,)  # Exception types to count as failures
@@ -51,6 +52,7 @@ class CircuitBreakerConfig:
 @dataclass
 class RateLimitConfig:
     """Configuration for rate limiting."""
+
     requests_per_minute: int = 50  # Perplexity API limit
     burst_limit: int = 10  # Allow bursts up to this many requests
     cooldown_seconds: int = 60  # Cooldown period when limit exceeded
@@ -59,6 +61,7 @@ class RateLimitConfig:
 @dataclass
 class APIKeyMetrics:
     """Metrics for API key performance tracking."""
+
     key_index: int
     total_requests: int = 0
     successful_requests: int = 0
@@ -70,6 +73,7 @@ class APIKeyMetrics:
 
 class StockFundamentalData(BaseModel):
     """Structured fundamental data for a stock."""
+
     symbol: str
     market_cap: Optional[float] = None
     pe_ratio: Optional[float] = None
@@ -90,6 +94,7 @@ class StockFundamentalData(BaseModel):
 
 class EarningsData(BaseModel):
     """Structured earnings data."""
+
     symbol: str
     fiscal_period: str
     report_date: str
@@ -104,6 +109,7 @@ class EarningsData(BaseModel):
 
 class NewsSentimentData(BaseModel):
     """Structured news and sentiment data."""
+
     symbol: str
     title: str
     content: str
@@ -115,6 +121,7 @@ class NewsSentimentData(BaseModel):
 
 class BatchResponse(BaseModel):
     """Response structure for batch queries."""
+
     fundamentals: List[StockFundamentalData] = Field(default_factory=list)
     earnings: List[EarningsData] = Field(default_factory=list)
     news: List[NewsSentimentData] = Field(default_factory=list)
@@ -142,18 +149,18 @@ class PerplexityClient:
 
         # Configuration
         self.config = config or {}
-        self.model = self.config.get('model', 'sonar-pro')
-        self.api_timeout = self.config.get('api_timeout_seconds', 45)
-        self.max_tokens = self.config.get('max_tokens', 4000)
-        self.search_recency = self.config.get('search_recency_filter', 'week')
-        self.max_search_results = self.config.get('max_search_results', 20)
+        self.model = self.config.get("model", "sonar-pro")
+        self.api_timeout = self.config.get("api_timeout_seconds", 45)
+        self.max_tokens = self.config.get("max_tokens", 4000)
+        self.search_recency = self.config.get("search_recency_filter", "week")
+        self.max_search_results = self.config.get("max_search_results", 20)
 
         # Rate limiting
-        rate_config = self.config.get('rate_limit', {})
+        rate_config = self.config.get("rate_limit", {})
         self.rate_limiter = RateLimitConfig(**rate_config)
 
         # Circuit breaker
-        circuit_config = self.config.get('circuit_breaker', {})
+        circuit_config = self.config.get("circuit_breaker", {})
         self.circuit_breaker = CircuitBreakerConfig(**circuit_config)
         self.circuit_state = CircuitBreakerState.CLOSED
         self.last_failure_time = None
@@ -181,7 +188,6 @@ Focus on:
 
 Return structured data for each stock with news summary, sentiment, and key highlights.
 """,
-
             QueryType.FUNDAMENTALS: """
 For each of these stocks ({symbols}), provide comprehensive fundamental analysis data.
 
@@ -202,7 +208,6 @@ Extract and calculate:
 
 Use the most recent available data and provide numerical values where possible.
 """,
-
             QueryType.EARNINGS_CALENDAR: """
 For each of these stocks ({symbols}), provide earnings calendar and recent results.
 
@@ -217,7 +222,6 @@ Include:
 
 Focus on the most recent quarter and upcoming earnings dates.
 """,
-
             QueryType.COMPREHENSIVE: """
 For each of these stocks ({symbols}), provide comprehensive analysis including fundamentals, earnings, and news.
 
@@ -228,7 +232,7 @@ Include:
 4. Overall investment outlook
 
 Provide structured data with all available information for each stock.
-"""
+""",
         }
 
     async def fetch_batch_data(
@@ -236,7 +240,7 @@ Provide structured data with all available information for each stock.
         symbols: List[str],
         query_type: QueryType = QueryType.COMPREHENSIVE,
         batch_size: int = 5,
-        max_concurrent: int = 2
+        max_concurrent: int = 2,
     ) -> BatchResponse:
         """
         Fetch comprehensive data for multiple symbols using batch processing.
@@ -259,7 +263,9 @@ Provide structured data with all available information for each stock.
             return BatchResponse()
 
         # Split symbols into batches
-        batches = [symbols[i:i + batch_size] for i in range(0, len(symbols), batch_size)]
+        batches = [
+            symbols[i : i + batch_size] for i in range(0, len(symbols), batch_size)
+        ]
 
         # Create semaphore for concurrency control
         semaphore = asyncio.Semaphore(max_concurrent)
@@ -287,7 +293,9 @@ Provide structured data with all available information for each stock.
 
         return combined_response
 
-    async def _fetch_single_batch(self, symbols: List[str], query_type: QueryType) -> BatchResponse:
+    async def _fetch_single_batch(
+        self, symbols: List[str], query_type: QueryType
+    ) -> BatchResponse:
         """Fetch data for a single batch of symbols."""
         try:
             # Get API key with rotation
@@ -308,7 +316,7 @@ Provide structured data with all available information for each stock.
             client = OpenAI(
                 api_key=api_key,
                 base_url="https://api.perplexity.ai",
-                http_client=httpx.Client(timeout=self.api_timeout)
+                http_client=httpx.Client(timeout=self.api_timeout),
             )
 
             # Define response schema based on query type
@@ -320,14 +328,12 @@ Provide structured data with all available information for each stock.
                 max_tokens=self.max_tokens,
                 response_format={
                     "type": "json_schema",
-                    "json_schema": {
-                        "schema": schema.model_json_schema()
-                    }
+                    "json_schema": {"schema": schema.model_json_schema()},
                 },
                 web_search_options={
                     "search_recency_filter": self.search_recency,
-                    "max_search_results": self.max_search_results
-                }
+                    "max_search_results": self.max_search_results,
+                },
             )
 
             response_content = completion.choices[0].message.content
@@ -369,30 +375,41 @@ Provide structured data with all available information for each stock.
     def _get_response_schema(self, query_type: QueryType) -> BaseModel:
         """Get the appropriate response schema for the query type."""
         if query_type == QueryType.FUNDAMENTALS:
+
             class FundamentalsResponse(BaseModel):
                 fundamentals: List[StockFundamentalData]
+
             return FundamentalsResponse
 
         elif query_type == QueryType.EARNINGS_CALENDAR:
+
             class EarningsResponse(BaseModel):
                 earnings: List[EarningsData]
+
             return EarningsResponse
 
         elif query_type == QueryType.NEWS_SENTIMENT:
+
             class NewsResponse(BaseModel):
                 news: List[NewsSentimentData]
+
             return NewsResponse
 
         else:  # COMPREHENSIVE
             return BatchResponse
 
-    def _parse_response(self, content: str, query_type: QueryType, symbols: List[str]) -> BatchResponse:
+    def _parse_response(
+        self, content: str, query_type: QueryType, symbols: List[str]
+    ) -> BatchResponse:
         """Parse API response into structured data."""
         try:
             data = json.loads(content)
 
             if query_type == QueryType.FUNDAMENTALS:
-                fundamentals = [StockFundamentalData(**item) for item in data.get("fundamentals", [])]
+                fundamentals = [
+                    StockFundamentalData(**item)
+                    for item in data.get("fundamentals", [])
+                ]
                 return BatchResponse(fundamentals=fundamentals)
 
             elif query_type == QueryType.EARNINGS_CALENDAR:
@@ -404,10 +421,15 @@ Provide structured data with all available information for each stock.
                 return BatchResponse(news=news)
 
             else:  # COMPREHENSIVE
-                fundamentals = [StockFundamentalData(**item) for item in data.get("fundamentals", [])]
+                fundamentals = [
+                    StockFundamentalData(**item)
+                    for item in data.get("fundamentals", [])
+                ]
                 earnings = [EarningsData(**item) for item in data.get("earnings", [])]
                 news = [NewsSentimentData(**item) for item in data.get("news", [])]
-                return BatchResponse(fundamentals=fundamentals, earnings=earnings, news=news)
+                return BatchResponse(
+                    fundamentals=fundamentals, earnings=earnings, news=news
+                )
 
         except Exception as e:
             logger.error(f"Failed to parse response: {e}")
@@ -420,7 +442,7 @@ Provide structured data with all available information for each stock.
 
         # Find the healthiest key (lowest consecutive failures, recent success)
         best_key_index = None
-        best_score = float('inf')
+        best_score = float("inf")
 
         for i, metrics in self.key_metrics.items():
             # Skip keys with too many consecutive failures
@@ -430,7 +452,9 @@ Provide structured data with all available information for each stock.
             # Score based on consecutive failures and recency
             score = metrics.consecutive_failures * 10
             if metrics.last_used:
-                hours_since_used = (datetime.now() - metrics.last_used).total_seconds() / 3600
+                hours_since_used = (
+                    datetime.now() - metrics.last_used
+                ).total_seconds() / 3600
                 score += hours_since_used  # Prefer recently used keys
 
             if score < best_score:
@@ -501,26 +525,33 @@ Provide structured data with all available information for each stock.
         if self.failure_count >= self.circuit_breaker.failure_threshold:
             if self.circuit_state == CircuitBreakerState.CLOSED:
                 self.circuit_state = CircuitBreakerState.OPEN
-                logger.warning(f"Circuit breaker opened after {self.failure_count} failures")
+                logger.warning(
+                    f"Circuit breaker opened after {self.failure_count} failures"
+                )
 
     def get_health_status(self) -> Dict[str, Any]:
         """Get client health status and metrics."""
         return {
             "circuit_breaker_state": self.circuit_state.value,
             "failure_count": self.failure_count,
-            "last_failure_time": self.last_failure_time.isoformat() if self.last_failure_time else None,
+            "last_failure_time": (
+                self.last_failure_time.isoformat() if self.last_failure_time else None
+            ),
             "api_keys_status": {
                 f"key_{i}": {
                     "total_requests": metrics.total_requests,
-                    "success_rate": metrics.successful_requests / max(metrics.total_requests, 1),
+                    "success_rate": metrics.successful_requests
+                    / max(metrics.total_requests, 1),
                     "consecutive_failures": metrics.consecutive_failures,
                     "rate_limit_hits": metrics.rate_limit_hits,
-                    "last_used": metrics.last_used.isoformat() if metrics.last_used else None
+                    "last_used": (
+                        metrics.last_used.isoformat() if metrics.last_used else None
+                    ),
                 }
                 for i, metrics in self.key_metrics.items()
             },
             "rate_limiting": {
                 "requests_in_last_minute": len(self.request_times),
-                "limit_per_minute": self.rate_limiter.requests_per_minute
-            }
+                "limit_per_minute": self.rate_limiter.requests_per_minute,
+            },
         }

@@ -5,19 +5,20 @@ Translates approved risk decisions into broker orders.
 """
 
 import json
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from claude_agent_sdk import tool
 from loguru import logger
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
-from ..core.state_models import OrderCommand, ExecutionReport, Intent
+from ..core.state_models import ExecutionReport, Intent, OrderCommand
 
 
 def create_execution_agent_tool(config: Config, state_manager: DatabaseStateManager):
     """Create execution agent tool with dependencies via closure."""
-    
+
     @tool("execute_trade", "Execute approved trading intent", {"intent_id": str})
     async def execute_trade_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a trading intent."""
@@ -27,14 +28,21 @@ def create_execution_agent_tool(config: Config, state_manager: DatabaseStateMana
 
             if not intent or not intent.risk_decision:
                 return {
-                    "content": [{"type": "text", "text": f"Intent {intent_id} not ready for execution"}],
-                    "is_error": True
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Intent {intent_id} not ready for execution",
+                        }
+                    ],
+                    "is_error": True,
                 }
 
             if intent.risk_decision.decision != "approve":
                 return {
-                    "content": [{"type": "text", "text": f"Intent {intent_id} not approved"}],
-                    "is_error": True
+                    "content": [
+                        {"type": "text", "text": f"Intent {intent_id} not approved"}
+                    ],
+                    "is_error": True,
                 }
 
             # Create order commands
@@ -51,11 +59,22 @@ def create_execution_agent_tool(config: Config, state_manager: DatabaseStateMana
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Execution completed for intent {intent_id}"},
-                    {"type": "text", "text": json.dumps({
-                        "orders": [cmd.to_dict() for cmd in order_commands],
-                        "executions": [rep.to_dict() for rep in execution_reports]
-                    }, indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Execution completed for intent {intent_id}",
+                    },
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "orders": [cmd.to_dict() for cmd in order_commands],
+                                "executions": [
+                                    rep.to_dict() for rep in execution_reports
+                                ],
+                            },
+                            indent=2,
+                        ),
+                    },
                 ]
             }
 
@@ -63,9 +82,9 @@ def create_execution_agent_tool(config: Config, state_manager: DatabaseStateMana
             logger.error(f"Trade execution failed: {e}")
             return {
                 "content": [{"type": "text", "text": f"Error: {str(e)}"}],
-                "is_error": True
+                "is_error": True,
             }
-    
+
     return execute_trade_tool
 
 
@@ -90,13 +109,15 @@ def _create_order_commands(intent: Intent, config: Config) -> List[OrderCommand]
         product=config.execution.default_product,
         variety=config.execution.default_variety,
         tif=config.execution.time_in_force,
-        client_tag=intent.id
+        client_tag=intent.id,
     )
 
     return [command]
 
 
-async def _simulate_execution(order_commands: List[OrderCommand]) -> List[ExecutionReport]:
+async def _simulate_execution(
+    order_commands: List[OrderCommand],
+) -> List[ExecutionReport]:
     """Simulate order execution."""
     reports = []
     for cmd in order_commands:
@@ -108,12 +129,9 @@ async def _simulate_execution(order_commands: List[OrderCommand]) -> List[Execut
         report = ExecutionReport(
             broker_order_id=f"sim_{cmd.client_tag}",
             status="COMPLETE",
-            fills=[{
-                "qty": filled_qty,
-                "price": avg_price
-            }],
+            fills=[{"qty": filled_qty, "price": avg_price}],
             avg_price=avg_price,
-            slippage_bps=slippage * 10000
+            slippage_bps=slippage * 10000,
         )
         reports.append(report)
 

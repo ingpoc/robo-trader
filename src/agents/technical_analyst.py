@@ -5,21 +5,26 @@ Computes technical indicators and generates trading signals.
 """
 
 import json
-from typing import Dict, List, Any
 import random
+from typing import Any, Dict, List
 
 from claude_agent_sdk import tool
 from loguru import logger
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
 from ..core.state_models import Signal
 
 
 def create_technical_analyst_tool(config: Config, state_manager: DatabaseStateManager):
     """Create technical analyst tool with dependencies via closure."""
-    
-    @tool("technical_analysis", "Perform technical analysis on symbols", {"symbols": List[str], "timeframe": str})
+
+    @tool(
+        "technical_analysis",
+        "Perform technical analysis on symbols",
+        {"symbols": List[str], "timeframe": str},
+    )
     async def technical_analysis_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Perform technical analysis on given symbols."""
         try:
@@ -35,8 +40,11 @@ def create_technical_analyst_tool(config: Config, state_manager: DatabaseStateMa
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Technical analysis completed for {len(symbols)} symbols"},
-                    {"type": "text", "text": json.dumps(signals, indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Technical analysis completed for {len(symbols)} symbols",
+                    },
+                    {"type": "text", "text": json.dumps(signals, indent=2)},
                 ]
             }
 
@@ -44,9 +52,9 @@ def create_technical_analyst_tool(config: Config, state_manager: DatabaseStateMa
             logger.error(f"Technical analysis failed: {e}")
             return {
                 "content": [{"type": "text", "text": f"Error: {str(e)}"}],
-                "is_error": True
+                "is_error": True,
             }
-    
+
     return technical_analysis_tool
 
 
@@ -60,11 +68,13 @@ def _calculate_indicators(symbol: str, timeframe: str) -> Dict[str, float]:
         "bollinger_lower": random.uniform(1400, 1500),
         "ema_9": random.uniform(1480, 1520),
         "ema_21": random.uniform(1470, 1510),
-        "atr": random.uniform(10, 50)
+        "atr": random.uniform(10, 50),
     }
 
 
-def _generate_signal(symbol: str, timeframe: str, indicators: Dict[str, float], config: Config) -> Signal:
+def _generate_signal(
+    symbol: str, timeframe: str, indicators: Dict[str, float], config: Config
+) -> Signal:
     """Generate trading signal based on indicators."""
     rsi = indicators["rsi"]
     macd = indicators["macd"]
@@ -100,5 +110,5 @@ def _generate_signal(symbol: str, timeframe: str, indicators: Dict[str, float], 
         stop={"type": "hard", "price": round(stop_price, 2)},
         targets=[{"price": round(target, 2)} for target in targets],
         confidence=round(confidence, 2),
-        rationale=rationale
+        rationale=rationale,
     )

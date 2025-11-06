@@ -7,17 +7,18 @@ Implements circuit breakers, backpressure handling, and automatic recovery mecha
 
 import asyncio
 import time
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, Callable, List
-from dataclasses import dataclass, field
-from enum import Enum
 from collections import deque
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
 
 
 class BroadcastErrorSeverity(Enum):
     """Severity levels for broadcast errors."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -27,6 +28,7 @@ class BroadcastErrorSeverity(Enum):
 @dataclass
 class BroadcastError:
     """Structured broadcast error information."""
+
     error: Exception
     severity: BroadcastErrorSeverity
     timestamp: datetime
@@ -38,6 +40,7 @@ class BroadcastError:
 @dataclass
 class HealthMetrics:
     """Broadcast system health metrics."""
+
     total_broadcasts: int = 0
     successful_broadcasts: int = 0
     failed_broadcasts: int = 0
@@ -48,7 +51,7 @@ class HealthMetrics:
     # Timing metrics
     average_broadcast_time: float = 0.0
     max_broadcast_time: float = 0.0
-    min_broadcast_time: float = float('inf')
+    min_broadcast_time: float = float("inf")
 
     # Recent activity (last 100 broadcasts)
     recent_broadcast_times: deque = field(default_factory=lambda: deque(maxlen=100))
@@ -64,22 +67,27 @@ class HealthMetrics:
     def update_success_rate(self) -> None:
         """Update recent success rate based on last 100 broadcasts."""
         if self.total_broadcasts > 0:
-            self.recent_success_rate = (self.successful_broadcasts / self.total_broadcasts) * 100
+            self.recent_success_rate = (
+                self.successful_broadcasts / self.total_broadcasts
+            ) * 100
         else:
             self.recent_success_rate = 0.0
 
     def update_error_rate(self) -> None:
         """Update recent error rate based on last 50 errors."""
         now = datetime.now(timezone.utc)
-        recent_errors = [e for e in self.recent_errors
-                        if (now - e.timestamp).total_seconds() < 300]  # Last 5 minutes
+        recent_errors = [
+            e for e in self.recent_errors if (now - e.timestamp).total_seconds() < 300
+        ]  # Last 5 minutes
         self.recent_errors = deque(recent_errors, maxlen=50)
         self.error_rate = len(recent_errors) / 50.0 * 100 if recent_errors else 0.0
 
     def add_broadcast_time(self, duration: float) -> None:
         """Add a new broadcast time measurement."""
         self.recent_broadcast_times.append(duration)
-        self.average_broadcast_time = sum(self.recent_broadcast_times) / len(self.recent_broadcast_times)
+        self.average_broadcast_time = sum(self.recent_broadcast_times) / len(
+            self.recent_broadcast_times
+        )
         self.max_broadcast_time = max(self.max_broadcast_time, duration)
         self.min_broadcast_time = min(self.min_broadcast_time, duration)
         self.last_broadcast_time = datetime.now(timezone.utc)
@@ -98,9 +106,7 @@ class BroadcastHealthMonitor:
     """
 
     def __init__(
-        self,
-        broadcast_callback: Callable,
-        config: Optional[Dict[str, Any]] = None
+        self, broadcast_callback: Callable, config: Optional[Dict[str, Any]] = None
     ):
         self.broadcast_callback = broadcast_callback
         self.config = config or {}
@@ -120,11 +126,13 @@ class BroadcastHealthMonitor:
         self._metrics = HealthMetrics()
 
         # Configuration
-        self._failure_threshold = self.config.get('failure_threshold', 5)
-        self._recovery_timeout = self.config.get('recovery_timeout', 60)
-        self._success_threshold = self.config.get('success_threshold', 3)
-        self._backpressure_threshold = self.config.get('backpressure_threshold', 2.0)  # seconds
-        self._health_check_interval = self.config.get('health_check_interval', 30)
+        self._failure_threshold = self.config.get("failure_threshold", 5)
+        self._recovery_timeout = self.config.get("recovery_timeout", 60)
+        self._success_threshold = self.config.get("success_threshold", 3)
+        self._backpressure_threshold = self.config.get(
+            "backpressure_threshold", 2.0
+        )  # seconds
+        self._health_check_interval = self.config.get("health_check_interval", 30)
 
         # Background tasks
         self._health_check_task: Optional[asyncio.Task] = None
@@ -135,7 +143,7 @@ class BroadcastHealthMonitor:
         self._recovery_strategies: List[Callable] = [
             self._attempt_basic_recovery,
             self._attempt_connection_recovery,
-            self._attempt_full_reset
+            self._attempt_full_reset,
         ]
 
         # Event handlers
@@ -153,7 +161,9 @@ class BroadcastHealthMonitor:
 
         # Start background monitoring tasks
         self._health_check_task = asyncio.create_task(self._health_check_loop())
-        self._backpressure_monitor_task = asyncio.create_task(self._backpressure_monitor_loop())
+        self._backpressure_monitor_task = asyncio.create_task(
+            self._backpressure_monitor_loop()
+        )
 
         logger.info("BroadcastHealthMonitor started")
 
@@ -162,7 +172,11 @@ class BroadcastHealthMonitor:
         self._running = False
 
         # Cancel background tasks
-        for task in [self._health_check_task, self._backpressure_monitor_task, self._recovery_task]:
+        for task in [
+            self._health_check_task,
+            self._backpressure_monitor_task,
+            self._recovery_task,
+        ]:
             if task and not task.done():
                 task.cancel()
                 try:
@@ -221,9 +235,13 @@ class BroadcastHealthMonitor:
 
         # Check if recovery timeout has passed
         if self._circuit_breaker_open_time:
-            time_since_open = (datetime.now(timezone.utc) - self._circuit_breaker_open_time).total_seconds()
+            time_since_open = (
+                datetime.now(timezone.utc) - self._circuit_breaker_open_time
+            ).total_seconds()
             if time_since_open > self._recovery_timeout:
-                logger.info("Circuit breaker recovery timeout reached - attempting reset")
+                logger.info(
+                    "Circuit breaker recovery timeout reached - attempting reset"
+                )
                 self._reset_circuit_breaker()
                 return False
 
@@ -242,7 +260,9 @@ class BroadcastHealthMonitor:
         self._circuit_breaker_open = True
         self._circuit_breaker_open_time = datetime.now(timezone.utc)
         self._metrics.circuit_breaker_trips += 1
-        logger.error(f"Circuit breaker opened after {self._consecutive_failures} consecutive failures")
+        logger.error(
+            f"Circuit breaker opened after {self._consecutive_failures} consecutive failures"
+        )
 
         # Start recovery task
         if not self._recovery_task or self._recovery_task.done():
@@ -256,7 +276,10 @@ class BroadcastHealthMonitor:
         self._consecutive_failures = 0
 
         # Close circuit breaker if we've had enough successes
-        if self._circuit_breaker_open and self._consecutive_successes >= self._success_threshold:
+        if (
+            self._circuit_breaker_open
+            and self._consecutive_successes >= self._success_threshold
+        ):
             self._reset_circuit_breaker()
 
         # Check for slow broadcast (potential backpressure)
@@ -278,7 +301,7 @@ class BroadcastHealthMonitor:
             error=error,
             severity=severity,
             timestamp=datetime.now(timezone.utc),
-            context=context
+            context=context,
         )
 
         self._metrics.recent_errors.append(broadcast_error)
@@ -299,15 +322,17 @@ class BroadcastHealthMonitor:
         error_str = str(error).lower()
 
         # Network-related errors
-        if any(keyword in error_str for keyword in ['connection', 'network', 'timeout']):
+        if any(
+            keyword in error_str for keyword in ["connection", "network", "timeout"]
+        ):
             return BroadcastErrorSeverity.HIGH
 
         # Client-related errors
-        if any(keyword in error_str for keyword in ['client', 'websocket', 'closed']):
+        if any(keyword in error_str for keyword in ["client", "websocket", "closed"]):
             return BroadcastErrorSeverity.MEDIUM
 
         # System errors
-        if any(keyword in error_str for keyword in ['memory', 'disk', 'system']):
+        if any(keyword in error_str for keyword in ["memory", "disk", "system"]):
             return BroadcastErrorSeverity.CRITICAL
 
         # Default to medium
@@ -317,7 +342,9 @@ class BroadcastHealthMonitor:
         """Handle slow broadcast detection."""
         self._backpressure_detected = True
         self._metrics.backpressure_events += 1
-        logger.warning(f"Slow broadcast detected: {duration:.3f}s (threshold: {self._backpressure_threshold}s)")
+        logger.warning(
+            f"Slow broadcast detected: {duration:.3f}s (threshold: {self._backpressure_threshold}s)"
+        )
 
     async def _handle_backpressure(self, message: Dict[str, Any]) -> None:
         """Handle backpressure situation."""
@@ -357,8 +384,10 @@ class BroadcastHealthMonitor:
         current_time = datetime.now(timezone.utc)
 
         # Check if we haven't had successful broadcasts recently
-        if (self._metrics.last_broadcast_time and
-            (current_time - self._metrics.last_broadcast_time).total_seconds() > 120):
+        if (
+            self._metrics.last_broadcast_time
+            and (current_time - self._metrics.last_broadcast_time).total_seconds() > 120
+        ):
             logger.warning("No successful broadcasts in last 2 minutes")
 
         # Update metrics
@@ -366,9 +395,11 @@ class BroadcastHealthMonitor:
         self._metrics.update_error_rate()
 
         # Log health status
-        logger.debug(f"Broadcast health: {self._metrics.successful_broadcasts} successful, "
-                    f"{self._metrics.failed_broadcasts} failed, "
-                    f"success rate: {self._metrics.recent_success_rate:.1f}%")
+        logger.debug(
+            f"Broadcast health: {self._metrics.successful_broadcasts} successful, "
+            f"{self._metrics.failed_broadcasts} failed, "
+            f"success rate: {self._metrics.recent_success_rate:.1f}%"
+        )
 
     async def _monitor_backpressure(self) -> None:
         """Monitor backpressure and attempt resolution."""
@@ -394,7 +425,7 @@ class BroadcastHealthMonitor:
                 test_message = {
                     "type": "health_check",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "test": True
+                    "test": True,
                 }
 
                 if await self.broadcast(test_message):
@@ -461,14 +492,26 @@ class BroadcastHealthMonitor:
             "error_rate": self._metrics.error_rate,
             "average_broadcast_time": self._metrics.average_broadcast_time,
             "max_broadcast_time": self._metrics.max_broadcast_time,
-            "min_broadcast_time": self._metrics.min_broadcast_time if self._metrics.min_broadcast_time != float('inf') else 0,
+            "min_broadcast_time": (
+                self._metrics.min_broadcast_time
+                if self._metrics.min_broadcast_time != float("inf")
+                else 0
+            ),
             "circuit_breaker_trips": self._metrics.circuit_breaker_trips,
             "backpressure_events": self._metrics.backpressure_events,
             "recovery_events": self._metrics.recovery_events,
             "circuit_breaker_open": self._circuit_breaker_open,
             "backpressure_detected": self._backpressure_detected,
-            "last_broadcast_time": self._metrics.last_broadcast_time.isoformat() if self._metrics.last_broadcast_time else None,
-            "last_error_time": self._metrics.last_error_time.isoformat() if self._metrics.last_error_time else None,
+            "last_broadcast_time": (
+                self._metrics.last_broadcast_time.isoformat()
+                if self._metrics.last_broadcast_time
+                else None
+            ),
+            "last_error_time": (
+                self._metrics.last_error_time.isoformat()
+                if self._metrics.last_error_time
+                else None
+            ),
             "queue_size": self._broadcast_queue.qsize(),
-            "recent_errors": len(self._metrics.recent_errors)
+            "recent_errors": len(self._metrics.recent_errors),
         }

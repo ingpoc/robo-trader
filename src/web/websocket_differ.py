@@ -1,6 +1,6 @@
-from typing import Dict, Any, Optional, List
 import json
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 
 class WebSocketDiffer:
@@ -12,7 +12,9 @@ class WebSocketDiffer:
     """
 
     @staticmethod
-    def compute_diff(previous: Optional[Dict[str, Any]], current: Dict[str, Any]) -> Dict[str, Any]:
+    def compute_diff(
+        previous: Optional[Dict[str, Any]], current: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Compute differential update between previous and current state.
 
@@ -22,7 +24,11 @@ class WebSocketDiffer:
             - Otherwise: only changed fields
         """
         if previous is None:
-            return {"type": "full_update", "data": current, "timestamp": datetime.now(timezone.utc).isoformat()}
+            return {
+                "type": "full_update",
+                "data": current,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
 
         diff = {}
         changed = False
@@ -54,7 +60,7 @@ class WebSocketDiffer:
         return {
             "type": "partial_update",
             "changes": diff,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     @staticmethod
@@ -90,7 +96,9 @@ class WebSocketDiffer:
     def _lists_equal(list1: List, list2: List) -> bool:
         """Compare two lists for equality with proper serialization."""
         try:
-            return json.dumps(list1, sort_keys=True, default=str) == json.dumps(list2, sort_keys=True, default=str)
+            return json.dumps(list1, sort_keys=True, default=str) == json.dumps(
+                list2, sort_keys=True, default=str
+            )
         except (TypeError, ValueError):
             return list1 == list2
 

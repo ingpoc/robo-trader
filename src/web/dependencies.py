@@ -5,7 +5,9 @@ Provides dependency injection for routes following the DI pattern from CLAUDE.md
 """
 
 from typing import Optional
-from fastapi import Request, HTTPException
+
+from fastapi import HTTPException, Request
+
 from src.core.di import DependencyContainer
 
 
@@ -37,8 +39,7 @@ async def get_container(request: Request) -> DependencyContainer:
 
     if container is None:
         raise HTTPException(
-            status_code=503,
-            detail="System not initialized. Container not available."
+            status_code=503, detail="System not initialized. Container not available."
         )
 
     return container

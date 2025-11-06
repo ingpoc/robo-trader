@@ -5,18 +5,26 @@ Configuration management for Robo Trader
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
 
 class RiskConfig(BaseModel):
     """Risk management configuration."""
-    max_position_size_percent: float = Field(default=5.0, description="Max position size as % of portfolio")
-    max_portfolio_risk_percent: float = Field(default=10.0, description="Max portfolio risk %")
-    max_single_symbol_exposure_percent: float = Field(default=15.0, description="Max exposure to single symbol %")
+
+    max_position_size_percent: float = Field(
+        default=5.0, description="Max position size as % of portfolio"
+    )
+    max_portfolio_risk_percent: float = Field(
+        default=10.0, description="Max portfolio risk %"
+    )
+    max_single_symbol_exposure_percent: float = Field(
+        default=15.0, description="Max exposure to single symbol %"
+    )
     stop_loss_percent: float = Field(default=2.0, description="Default stop loss %")
     take_profit_percent: float = Field(default=5.0, description="Default take profit %")
     max_daily_trades: int = Field(default=10, description="Maximum trades per day")
@@ -25,61 +33,97 @@ class RiskConfig(BaseModel):
 
 class TechnicalConfig(BaseModel):
     """Technical analysis configuration."""
-    indicators: List[str] = Field(default=["rsi", "macd", "bollinger", "ema"], description="Enabled indicators")
-    timeframes: List[str] = Field(default=["5m", "15m", "1h"], description="Analysis timeframes")
+
+    indicators: List[str] = Field(
+        default=["rsi", "macd", "bollinger", "ema"], description="Enabled indicators"
+    )
+    timeframes: List[str] = Field(
+        default=["5m", "15m", "1h"], description="Analysis timeframes"
+    )
     rsi_period: int = Field(default=14, description="RSI period")
     macd_fast: int = Field(default=12, description="MACD fast period")
     macd_slow: int = Field(default=26, description="MACD slow period")
     macd_signal: int = Field(default=9, description="MACD signal period")
     bollinger_period: int = Field(default=20, description="Bollinger Bands period")
-    bollinger_std: float = Field(default=2.0, description="Bollinger Bands standard deviation")
+    bollinger_std: float = Field(
+        default=2.0, description="Bollinger Bands standard deviation"
+    )
     ema_periods: List[int] = Field(default=[9, 21, 50], description="EMA periods")
 
 
 class ScreeningConfig(BaseModel):
     """Fundamental screening configuration."""
-    min_market_cap: int = Field(default=1000000000, description="Minimum market cap (INR)")
+
+    min_market_cap: int = Field(
+        default=1000000000, description="Minimum market cap (INR)"
+    )
     max_pe_ratio: float = Field(default=25.0, description="Maximum P/E ratio")
     min_roe_percent: float = Field(default=10.0, description="Minimum ROE %")
-    max_debt_equity: float = Field(default=0.5, description="Maximum debt-to-equity ratio")
-    sectors_allowed: List[str] = Field(default=[], description="Allowed sectors (empty = all)")
+    max_debt_equity: float = Field(
+        default=0.5, description="Maximum debt-to-equity ratio"
+    )
+    sectors_allowed: List[str] = Field(
+        default=[], description="Allowed sectors (empty = all)"
+    )
     symbols_blacklist: List[str] = Field(default=[], description="Blacklisted symbols")
 
 
 class ExecutionConfig(BaseModel):
     """Trade execution configuration."""
+
     default_order_type: str = Field(default="MARKET", description="Default order type")
     default_product: str = Field(default="CNC", description="Default product type")
     default_variety: str = Field(default="REGULAR", description="Default variety")
     slippage_percent: float = Field(default=0.5, description="Allowed slippage %")
     time_in_force: str = Field(default="DAY", description="Time in force")
-    auto_approve_paper: bool = Field(default=True, description="Auto-approve in paper mode")
-    require_manual_approval_live: bool = Field(default=True, description="Require manual approval in live mode")
+    auto_approve_paper: bool = Field(
+        default=True, description="Auto-approve in paper mode"
+    )
+    require_manual_approval_live: bool = Field(
+        default=True, description="Require manual approval in live mode"
+    )
 
 
 class IntegrationConfig(BaseModel):
     """External integration configuration."""
+
     zerodha_api_key: Optional[str] = Field(default=None, description="Zerodha API key")
-    zerodha_api_secret: Optional[str] = Field(default=None, description="Zerodha API secret")
-    zerodha_access_token: Optional[str] = Field(default=None, description="Zerodha access token")
-    zerodha_request_token: Optional[str] = Field(default=None, description="Zerodha request token")
-    anthropic_api_key: Optional[str] = Field(default=None, description="Anthropic API key")
-    perplexity_api_keys: List[str] = Field(default_factory=list, description="Perplexity API keys (with automatic failover)")
+    zerodha_api_secret: Optional[str] = Field(
+        default=None, description="Zerodha API secret"
+    )
+    zerodha_access_token: Optional[str] = Field(
+        default=None, description="Zerodha access token"
+    )
+    zerodha_request_token: Optional[str] = Field(
+        default=None, description="Zerodha request token"
+    )
+    anthropic_api_key: Optional[str] = Field(
+        default=None, description="Anthropic API key"
+    )
+    perplexity_api_keys: List[str] = Field(
+        default_factory=list,
+        description="Perplexity API keys (with automatic failover)",
+    )
 
 
 class AgentFeatureConfig(BaseModel):
     """Configuration for a specific agent feature."""
+
     enabled: bool = Field(default=True, description="Enable/disable this feature")
     use_claude: bool = Field(default=True, description="Use Claude AI for this feature")
-    frequency_seconds: int = Field(default=60, description="Frequency in seconds (for scheduled tasks)")
-    priority: str = Field(default="medium", description="Priority: critical, high, medium, low")
+    frequency_seconds: int = Field(
+        default=60, description="Frequency in seconds (for scheduled tasks)"
+    )
+    priority: str = Field(
+        default="medium", description="Priority: critical, high, medium, low"
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "enabled": self.enabled,
             "use_claude": self.use_claude,
             "frequency_seconds": self.frequency_seconds,
-            "priority": self.priority
+            "priority": self.priority,
         }
 
 
@@ -88,102 +132,72 @@ class AgentsConfig(BaseModel):
 
     chat_interface: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=0,
-            priority="high"
+            enabled=True, use_claude=True, frequency_seconds=0, priority="high"
         ),
-        description="Chat interface with AI assistant"
+        description="Chat interface with AI assistant",
     )
 
     portfolio_scan: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=3600,
-            priority="medium"
+            enabled=True, use_claude=True, frequency_seconds=3600, priority="medium"
         ),
-        description="Portfolio analysis and scanning"
+        description="Portfolio analysis and scanning",
     )
 
     market_screening: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=14400,
-            priority="medium"
+            enabled=True, use_claude=True, frequency_seconds=14400, priority="medium"
         ),
-        description="Market screening for opportunities"
+        description="Market screening for opportunities",
     )
 
     market_monitoring: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=30,
-            priority="medium"
+            enabled=True, use_claude=True, frequency_seconds=30, priority="medium"
         ),
-        description="Real-time market monitoring"
+        description="Real-time market monitoring",
     )
 
     stop_loss_monitor: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=False,
-            frequency_seconds=15,
-            priority="high"
+            enabled=True, use_claude=False, frequency_seconds=15, priority="high"
         ),
-        description="Stop loss monitoring and alerts"
+        description="Stop loss monitoring and alerts",
     )
 
     earnings_check: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=900,
-            priority="medium"
+            enabled=True, use_claude=True, frequency_seconds=900, priority="medium"
         ),
-        description="Earnings announcement tracking"
+        description="Earnings announcement tracking",
     )
 
     news_monitoring: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=300,
-            priority="medium"
+            enabled=True, use_claude=True, frequency_seconds=300, priority="medium"
         ),
-        description="News monitoring and analysis"
+        description="News monitoring and analysis",
     )
 
     ai_daily_planning: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=86400,
-            priority="high"
+            enabled=True, use_claude=True, frequency_seconds=86400, priority="high"
         ),
-        description="Daily AI planning (runs at 8:30 AM IST)"
+        description="Daily AI planning (runs at 8:30 AM IST)",
     )
 
     health_check: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=False,
-            frequency_seconds=300,
-            priority="low"
+            enabled=True, use_claude=False, frequency_seconds=300, priority="low"
         ),
-        description="System health checks"
+        description="System health checks",
     )
 
     trade_execution: AgentFeatureConfig = Field(
         default_factory=lambda: AgentFeatureConfig(
-            enabled=True,
-            use_claude=True,
-            frequency_seconds=0,
-            priority="high"
+            enabled=True, use_claude=True, frequency_seconds=0, priority="high"
         ),
-        description="Trade execution with AI risk assessment"
+        description="Trade execution with AI risk assessment",
     )
 
     fundamental_monitoring: AgentFeatureConfig = Field(
@@ -191,9 +205,9 @@ class AgentsConfig(BaseModel):
             enabled=True,
             use_claude=False,  # Uses Perplexity AI instead
             frequency_seconds=86400,  # Daily
-            priority="medium"
+            priority="medium",
         ),
-        description="Fundamental analysis data monitoring"
+        description="Fundamental analysis data monitoring",
     )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -208,32 +222,57 @@ class AgentsConfig(BaseModel):
             "fundamental_monitoring": self.fundamental_monitoring.to_dict(),
             "ai_daily_planning": self.ai_daily_planning.to_dict(),
             "health_check": self.health_check.to_dict(),
-            "trade_execution": self.trade_execution.to_dict()
+            "trade_execution": self.trade_execution.to_dict(),
         }
 
 
 class DatabaseConfig(BaseModel):
     """Database configuration."""
-    enabled: bool = Field(default=False, description="Enable database-backed state management")
-    path: Optional[str] = Field(default=None, description="Database file path (relative to state_dir)")
-    backup_enabled: bool = Field(default=True, description="Enable automatic database backups")
-    backup_interval_hours: int = Field(default=24, description="Backup interval in hours")
-    max_backup_files: int = Field(default=7, description="Maximum number of backup files to keep")
+
+    enabled: bool = Field(
+        default=False, description="Enable database-backed state management"
+    )
+    path: Optional[str] = Field(
+        default=None, description="Database file path (relative to state_dir)"
+    )
+    backup_enabled: bool = Field(
+        default=True, description="Enable automatic database backups"
+    )
+    backup_interval_hours: int = Field(
+        default=24, description="Backup interval in hours"
+    )
+    max_backup_files: int = Field(
+        default=7, description="Maximum number of backup files to keep"
+    )
 
 
 class SchedulingConfig(BaseModel):
     """Scheduling configuration."""
-    portfolio_scan_interval_minutes: int = Field(default=60, description="Portfolio scan interval")
-    market_screening_interval_minutes: int = Field(default=240, description="Market screening interval")
-    market_hours_start: str = Field(default="09:15", description="Market open time (IST)")
-    market_hours_end: str = Field(default="15:30", description="Market close time (IST)")
+
+    portfolio_scan_interval_minutes: int = Field(
+        default=60, description="Portfolio scan interval"
+    )
+    market_screening_interval_minutes: int = Field(
+        default=240, description="Market screening interval"
+    )
+    market_hours_start: str = Field(
+        default="09:15", description="Market open time (IST)"
+    )
+    market_hours_end: str = Field(
+        default="15:30", description="Market close time (IST)"
+    )
 
 
 class Config(BaseModel):
     """Main configuration class."""
-    environment: str = Field(default="dry-run", description="Environment: dry-run, paper, live")
+
+    environment: str = Field(
+        default="dry-run", description="Environment: dry-run, paper, live"
+    )
     project_dir: Path = Field(default=Path.cwd(), description="Project directory")
-    state_dir: Path = Field(default=Path.cwd() / "state", description="State storage directory")
+    state_dir: Path = Field(
+        default=Path.cwd() / "state", description="State storage directory"
+    )
     logs_dir: Path = Field(default=Path.cwd() / "logs", description="Logs directory")
     max_turns: int = Field(default=100, description="Maximum conversation turns")
 
@@ -266,15 +305,15 @@ class Config(BaseModel):
             config.save(config_path)
             return config
 
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             data = json.load(f)
 
-        if 'project_dir' in data:
-            data['project_dir'] = Path(data['project_dir'])
-        if 'state_dir' in data:
-            data['state_dir'] = Path(data['state_dir'])
-        if 'logs_dir' in data:
-            data['logs_dir'] = Path(data['logs_dir'])
+        if "project_dir" in data:
+            data["project_dir"] = Path(data["project_dir"])
+        if "state_dir" in data:
+            data["state_dir"] = Path(data["state_dir"])
+        if "logs_dir" in data:
+            data["logs_dir"] = Path(data["logs_dir"])
 
         return cls(**data)
 
@@ -282,25 +321,35 @@ class Config(BaseModel):
         """Save configuration to JSON file."""
         data = self.model_dump()
 
-        data['project_dir'] = str(data['project_dir'])
-        data['state_dir'] = str(data['state_dir'])
-        data['logs_dir'] = str(data['logs_dir'])
+        data["project_dir"] = str(data["project_dir"])
+        data["state_dir"] = str(data["state_dir"])
+        data["logs_dir"] = str(data["logs_dir"])
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(data, f, indent=2)
 
     def load_env_vars(self) -> None:
         """Load sensitive config from environment variables."""
-        self.integration.zerodha_api_key = os.getenv('ZERODHA_API_KEY', self.integration.zerodha_api_key)
-        self.integration.zerodha_api_secret = os.getenv('ZERODHA_API_SECRET', self.integration.zerodha_api_secret)
-        self.integration.zerodha_access_token = os.getenv('ZERODHA_ACCESS_TOKEN', self.integration.zerodha_access_token)
-        self.integration.zerodha_request_token = os.getenv('ZERODHA_REQUEST_TOKEN', self.integration.zerodha_request_token)
-        self.integration.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY', self.integration.anthropic_api_key)
+        self.integration.zerodha_api_key = os.getenv(
+            "ZERODHA_API_KEY", self.integration.zerodha_api_key
+        )
+        self.integration.zerodha_api_secret = os.getenv(
+            "ZERODHA_API_SECRET", self.integration.zerodha_api_secret
+        )
+        self.integration.zerodha_access_token = os.getenv(
+            "ZERODHA_ACCESS_TOKEN", self.integration.zerodha_access_token
+        )
+        self.integration.zerodha_request_token = os.getenv(
+            "ZERODHA_REQUEST_TOKEN", self.integration.zerodha_request_token
+        )
+        self.integration.anthropic_api_key = os.getenv(
+            "ANTHROPIC_API_KEY", self.integration.anthropic_api_key
+        )
 
         perplexity_keys = []
         for i in range(1, 10):
-            key = os.getenv(f'PERPLEXITY_API_KEY_{i}')
+            key = os.getenv(f"PERPLEXITY_API_KEY_{i}")
             if key:
                 perplexity_keys.append(key)
         if perplexity_keys:
@@ -311,7 +360,7 @@ class Config(BaseModel):
         from loguru import logger
 
         # Validate Zerodha API keys based on environment requirements
-        if self.environment == 'live':
+        if self.environment == "live":
             # Live trading requires real API credentials
             if not self.integration.zerodha_api_key:
                 raise ValueError(
@@ -325,15 +374,24 @@ class Config(BaseModel):
                 )
             logger.info("✓ Live trading credentials configured")
 
-        elif self.environment in ['paper', 'dry-run']:
+        elif self.environment in ["paper", "dry-run"]:
             # Paper and dry-run modes allow missing credentials for demo purposes
-            if not self.integration.zerodha_api_key or not self.integration.zerodha_api_secret:
-                logger.info(f"✓ {self.environment.title()} mode - using mock/demo data (no real API credentials needed)")
+            if (
+                not self.integration.zerodha_api_key
+                or not self.integration.zerodha_api_secret
+            ):
+                logger.info(
+                    f"✓ {self.environment.title()} mode - using mock/demo data (no real API credentials needed)"
+                )
             else:
-                logger.info(f"✓ {self.environment.title()} mode with API credentials configured")
+                logger.info(
+                    f"✓ {self.environment.title()} mode with API credentials configured"
+                )
 
         else:
-            raise ValueError(f"Unknown environment: {self.environment}. Must be 'live', 'paper', or 'dry-run'")
+            raise ValueError(
+                f"Unknown environment: {self.environment}. Must be 'live', 'paper', or 'dry-run'"
+            )
 
         # Claude Agent SDK handles authentication through Claude Code CLI
         # No API key configuration needed - SDK uses authenticated CLI session

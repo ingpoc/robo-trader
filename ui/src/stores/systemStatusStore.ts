@@ -188,7 +188,7 @@ export const useSystemStatusStore = create<SystemStatusState>()(
 
       // Prevent duplicate initialization
       if (store._webSocketInitialized) {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           console.log('WebSocket already initialized in system status store')
         }
         return store._webSocketCleanup || (() => {})
@@ -196,7 +196,7 @@ export const useSystemStatusStore = create<SystemStatusState>()(
 
       // Force cleanup any existing connection before initializing
       if (store._webSocketCleanup) {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           console.log('Cleaning up existing WebSocket before re-initialization')
         }
         store._webSocketCleanup()
@@ -211,7 +211,7 @@ export const useSystemStatusStore = create<SystemStatusState>()(
       const handleMessage = (message: any) => {
         try {
           // Only log in development or for important messages
-          if (process.env.NODE_ENV === 'development' ||
+          if (import.meta.env.DEV ||
               ['connection_established', 'shutdown'].includes(message.type)) {
             console.log('System status store received message:', message.type)
           }
@@ -268,9 +268,9 @@ export const useSystemStatusStore = create<SystemStatusState>()(
               })
               break
 
-            case 'portfolio_analysis_update':
+            case 'portfolio_analysis_update': {
               // Handle portfolio analysis status updates
-              if (process.env.NODE_ENV === 'development') {
+              if (import.meta.env.DEV) {
                 console.log('Portfolio analysis update received:', message)
               }
 
@@ -295,9 +295,10 @@ export const useSystemStatusStore = create<SystemStatusState>()(
                 })
               }
               break
+            }
 
             case 'connection_established':
-              if (process.env.NODE_ENV === 'development') {
+              if (import.meta.env.DEV) {
                 console.log('WebSocket connection established:', message.client_id)
               }
               store.setConnected(true)
@@ -319,7 +320,7 @@ export const useSystemStatusStore = create<SystemStatusState>()(
 
       // Connection handlers
       const handleConnect = () => {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           console.log('WebSocket connected in system status store')
         }
         store.setConnected(true)
@@ -350,7 +351,7 @@ export const useSystemStatusStore = create<SystemStatusState>()(
 
       // Create cleanup function
       const cleanup = () => {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           console.log('Cleaning up WebSocket connection in system status store')
         }
 

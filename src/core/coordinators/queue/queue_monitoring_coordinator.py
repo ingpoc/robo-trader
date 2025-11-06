@@ -6,10 +6,11 @@ Extracted from QueueCoordinator for single responsibility.
 """
 
 import logging
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict
 
 from src.config import Config
+
 from ..base_coordinator import BaseCoordinator
 
 logger = logging.getLogger(__name__)
@@ -18,18 +19,14 @@ logger = logging.getLogger(__name__)
 class QueueMonitoringCoordinator(BaseCoordinator):
     """
     Coordinates queue monitoring and status.
-    
+
     Responsibilities:
     - Get queue status
     - Perform health checks
     - Monitor queue metrics
     """
 
-    def __init__(
-        self,
-        config: Config,
-        sequential_queue_manager = None
-    ):
+    def __init__(self, config: Config, sequential_queue_manager=None):
         super().__init__(config)
         self._sequential_queue_manager = sequential_queue_manager
         self._queues_running = False
@@ -54,7 +51,7 @@ class QueueMonitoringCoordinator(BaseCoordinator):
             status_data = {
                 "coordinator_running": self._initialized,
                 "queues_running": self._queues_running,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
             queues = {}
@@ -65,7 +62,7 @@ class QueueMonitoringCoordinator(BaseCoordinator):
             queues["coordinator"] = {
                 "running": self._queues_running,
                 "status": "healthy" if self._initialized else "not_initialized",
-                "type": "coordinator"
+                "type": "coordinator",
             }
             total_queues += 1
             if self._queues_running:
@@ -80,18 +77,20 @@ class QueueMonitoringCoordinator(BaseCoordinator):
                         "running": is_running,
                         "status": "healthy" if is_running else "stopped",
                         "type": "sequential_queue_manager",
-                        "details": queue_status
+                        "details": queue_status,
                     }
                     total_queues += 1
                     if is_running:
                         running_queues += 1
                 except Exception as e:
-                    self._log_warning(f"Could not get SequentialQueueManager status: {e}")
+                    self._log_warning(
+                        f"Could not get SequentialQueueManager status: {e}"
+                    )
 
             stats = {
                 "total_queues": total_queues,
                 "running_queues": running_queues,
-                "timestamp": status_data["timestamp"]
+                "timestamp": status_data["timestamp"],
             }
 
             status_data["queues"] = queues
@@ -109,7 +108,7 @@ class QueueMonitoringCoordinator(BaseCoordinator):
             health_status = {
                 "coordinator": "healthy" if self._initialized else "not_initialized",
                 "queues": "running" if self._queues_running else "stopped",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
             return health_status
@@ -119,10 +118,9 @@ class QueueMonitoringCoordinator(BaseCoordinator):
             return {
                 "coordinator": "unhealthy",
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
     async def cleanup(self) -> None:
         """Cleanup queue monitoring coordinator resources."""
         self._log_info("QueueMonitoringCoordinator cleanup complete")
-

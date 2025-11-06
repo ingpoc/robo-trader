@@ -7,10 +7,11 @@ event schemas, persistence, and distributed processing capabilities.
 
 import asyncio
 import json
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Callable, Set
-from dataclasses import dataclass, asdict
 from enum import Enum
+from typing import Any, Dict, List, Optional, Set
+
 import aiosqlite
 from loguru import logger
 
@@ -19,6 +20,7 @@ from src.config import Config
 
 class EventType(Enum):
     """Event types for the trading system."""
+
     # Market events
     MARKET_PRICE_UPDATE = "market.price_update"
     MARKET_VOLUME_SPIKE = "market.volume_spike"
@@ -76,6 +78,7 @@ class EventType(Enum):
 @dataclass
 class Event:
     """Event data structure."""
+
     id: str
     type: EventType
     timestamp: str
@@ -86,20 +89,24 @@ class Event:
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        data['type'] = self.type.value
+        data["type"] = self.type.value
         return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Event":
         data_copy = data.copy()
-        data_copy['type'] = EventType(data['type'])
+        data_copy["type"] = EventType(data["type"])
         return cls(**data_copy)
+
+
 class EventHandler:
     """Base class for event handlers."""
 
     async def handle_event(self, event: Event) -> None:
         """Handle an event. Override in subclasses."""
         raise NotImplementedError
+
+
 class EventBus:
     """
     Event Bus for service communication.
@@ -183,18 +190,21 @@ class EventBus:
     async def _persist_event(self, event: Event) -> None:
         """Persist event to database."""
         event_dict = event.to_dict()
-        await self._db_connection.execute("""
+        await self._db_connection.execute(
+            """
             INSERT INTO events (id, type, timestamp, source, data, correlation_id, version, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-        """, (
-            event_dict['id'],
-            event_dict['type'],
-            event_dict['timestamp'],
-            event_dict['source'],
-            json.dumps(event_dict['data']),
-            event_dict.get('correlation_id'),
-            event_dict['version']
-        ))
+        """,
+            (
+                event_dict["id"],
+                event_dict["type"],
+                event_dict["timestamp"],
+                event_dict["source"],
+                json.dumps(event_dict["data"]),
+                event_dict.get("correlation_id"),
+                event_dict["version"],
+            ),
+        )
         await self._db_connection.commit()
 
     async def _notify_subscribers(self, event: Event) -> None:
@@ -214,24 +224,32 @@ class EventBus:
             await handler.handle_event(event)
             await self._mark_event_processed(event.id)
         except Exception as e:
-            logger.error(f"Event handler {type(handler).__name__} failed for event {event.id}: {e}")
+            logger.error(
+                f"Event handler {type(handler).__name__} failed for event {event.id}: {e}"
+            )
             await self._handle_failed_event(event, str(e))
 
     async def _mark_event_processed(self, event_id: str) -> None:
         """Mark an event as processed."""
-        await self._db_connection.execute("""
+        await self._db_connection.execute(
+            """
             UPDATE events SET status = 'processed', processed_at = ?
             WHERE id = ?
-        """, (datetime.now(timezone.utc).isoformat(), event_id))
+        """,
+            (datetime.now(timezone.utc).isoformat(), event_id),
+        )
         await self._db_connection.commit()
 
     async def _handle_failed_event(self, event: Event, error_message: str) -> None:
         """Handle a failed event by moving to dead letter queue."""
         # Increment retry count
-        await self._db_connection.execute("""
+        await self._db_connection.execute(
+            """
             UPDATE events SET retry_count = retry_count + 1
             WHERE id = ?
-        """, (event.id,))
+        """,
+            (event.id,),
+        )
 
         # Move to dead letter queue if max retries exceeded
         cursor = await self._db_connection.execute(
@@ -240,17 +258,22 @@ class EventBus:
         row = await cursor.fetchone()
 
         if row and row[0] >= 3:  # Max 3 retries
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO dead_letter_queue (id, event_id, error_message, failed_at, retry_count)
                 VALUES (?, ?, ?, ?, ?)
-            """, (
-                f"dlq_{event.id}_{row[0]}",
-                event.id,
-                error_message,
-                datetime.now(timezone.utc).isoformat(),
-                row[0]
-            ))
-            logger.warning(f"Event {event.id} moved to dead letter queue after {row[0]} retries")
+            """,
+                (
+                    f"dlq_{event.id}_{row[0]}",
+                    event.id,
+                    error_message,
+                    datetime.now(timezone.utc).isoformat(),
+                    row[0],
+                ),
+            )
+            logger.warning(
+                f"Event {event.id} moved to dead letter queue after {row[0]} retries"
+            )
 
         await self._db_connection.commit()
 
@@ -259,7 +282,9 @@ class EventBus:
         if event_type not in self._subscriptions:
             self._subscriptions[event_type] = set()
         self._subscriptions[event_type].add(handler)
-        logger.debug(f"Handler {type(handler).__name__} subscribed to {event_type.value}")
+        logger.debug(
+            f"Handler {type(handler).__name__} subscribed to {event_type.value}"
+        )
 
     def unsubscribe(self, event_type: EventType, handler: EventHandler) -> None:
         """Unsubscribe from an event type."""
@@ -268,7 +293,9 @@ class EventBus:
             if not self._subscriptions[event_type]:
                 del self._subscriptions[event_type]
 
-    async def get_pending_events(self, event_type: Optional[EventType] = None, limit: int = 100) -> List[Event]:
+    async def get_pending_events(
+        self, event_type: Optional[EventType] = None, limit: int = 100
+    ) -> List[Event]:
         """Get pending events for processing."""
         query = "SELECT * FROM events WHERE status = 'pending'"
         params = []
@@ -286,19 +313,21 @@ class EventBus:
         events = []
         for row in rows:
             event_dict = {
-                'id': row[0],
-                'type': row[1],
-                'timestamp': row[2],
-                'source': row[3],
-                'data': json.loads(row[4]),
-                'correlation_id': row[5],
-                'version': row[6]
+                "id": row[0],
+                "type": row[1],
+                "timestamp": row[2],
+                "source": row[3],
+                "data": json.loads(row[4]),
+                "correlation_id": row[5],
+                "version": row[6],
             }
             events.append(Event.from_dict(event_dict))
 
         return events
 
-    async def replay_events(self, from_timestamp: str, to_timestamp: Optional[str] = None) -> List[Event]:
+    async def replay_events(
+        self, from_timestamp: str, to_timestamp: Optional[str] = None
+    ) -> List[Event]:
         """Replay events within a time range."""
         query = "SELECT * FROM events WHERE timestamp >= ?"
         params = [from_timestamp]
@@ -315,13 +344,13 @@ class EventBus:
         events = []
         for row in rows:
             event_dict = {
-                'id': row[0],
-                'type': row[1],
-                'timestamp': row[2],
-                'source': row[3],
-                'data': json.loads(row[4]),
-                'correlation_id': row[5],
-                'version': row[6]
+                "id": row[0],
+                "type": row[1],
+                "timestamp": row[2],
+                "source": row[3],
+                "data": json.loads(row[4]),
+                "correlation_id": row[5],
+                "version": row[6],
             }
             events.append(Event.from_dict(event_dict))
 
@@ -332,13 +361,21 @@ class EventBus:
         if self._db_connection:
             await self._db_connection.close()
             self._db_connection = None
+
+
 # Global event bus instance
 _event_bus_instance: Optional[EventBus] = None
+
+
 async def get_event_bus() -> EventBus:
     """Get the global event bus instance."""
     if _event_bus_instance is None:
-        raise RuntimeError("Event bus not initialized. Call initialize_event_bus() first.")
+        raise RuntimeError(
+            "Event bus not initialized. Call initialize_event_bus() first."
+        )
     return _event_bus_instance
+
+
 async def initialize_event_bus(config: Config) -> EventBus:
     """Initialize the global event bus."""
     global _event_bus_instance

@@ -5,7 +5,8 @@ Handles database-backed prompt fetching with fallback to hardcoded prompts.
 Includes caching to avoid repeated database calls.
 """
 
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
 
@@ -37,13 +38,17 @@ class PromptManager:
         # Try to fetch from database
         if self.configuration_state:
             try:
-                prompt_data = await self.configuration_state.get_prompt_config(prompt_name)
-                if prompt_data and prompt_data.get('content'):
-                    self._prompt_cache[prompt_name] = prompt_data['content']
+                prompt_data = await self.configuration_state.get_prompt_config(
+                    prompt_name
+                )
+                if prompt_data and prompt_data.get("content"):
+                    self._prompt_cache[prompt_name] = prompt_data["content"]
                     logger.info(f"Using database prompt for {prompt_name}")
-                    return prompt_data['content']
+                    return prompt_data["content"]
             except Exception as e:
-                logger.warning(f"Failed to fetch prompt {prompt_name} from database: {e}")
+                logger.warning(
+                    f"Failed to fetch prompt {prompt_name} from database: {e}"
+                )
 
         # Fallback to hardcoded prompts
         logger.info(f"Using hardcoded fallback prompt for {prompt_name}")
@@ -83,7 +88,6 @@ FUNDAMENTAL METRICS (required):
 - Return on Equity (ROE %)
 - Profit margins: Gross %, Operating %, Net %
 - Return on Assets (ROA %)""",
-
             "news_processor": """For each stock, provide recent market-moving news in JSON format.
 
 NEWS DATA (required for each item):
@@ -108,7 +112,6 @@ SPECIFIC FOCUS (priority order):
 7. Major contract wins or losses
 8. Industry trends affecting multiple companies in sector
 9. Market analyst commentary and price targets""",
-
             "fundamental_analyzer": """Analyze fundamental data and provide comprehensive financial analysis in JSON format.
 
 ANALYSIS REQUIREMENTS:

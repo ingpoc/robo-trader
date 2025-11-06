@@ -6,9 +6,10 @@ the TradingError hierarchy pattern from CLAUDE.md.
 """
 
 import logging
-from typing import Dict, Any
+
 from fastapi.responses import JSONResponse
-from src.core.errors import TradingError, ErrorSeverity, ErrorCategory
+
+from src.core.errors import ErrorSeverity, TradingError
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +45,7 @@ async def handle_trading_error(error: TradingError) -> JSONResponse:
     # Log with appropriate level
     _log_trading_error(error)
 
-    return JSONResponse(
-        status_code=status_code,
-        content=response_data
-    )
+    return JSONResponse(status_code=status_code, content=response_data)
 
 
 async def handle_validation_error(error: ValueError) -> JSONResponse:
@@ -64,11 +62,7 @@ async def handle_validation_error(error: ValueError) -> JSONResponse:
 
     return JSONResponse(
         status_code=400,
-        content={
-            "error": str(error),
-            "category": "validation",
-            "recoverable": True
-        }
+        content={"error": str(error), "category": "validation", "recoverable": True},
     )
 
 
@@ -89,8 +83,8 @@ async def handle_not_found_error(error: KeyError) -> JSONResponse:
         content={
             "error": f"Resource not found: {error}",
             "category": "not_found",
-            "recoverable": False
-        }
+            "recoverable": False,
+        },
     )
 
 
@@ -115,8 +109,8 @@ async def handle_unexpected_error(error: Exception, context: str = "") -> JSONRe
             "error": "Internal server error",
             "category": "system",
             "recoverable": False,
-            "message": "An unexpected error occurred. Please try again or contact support."
-        }
+            "message": "An unexpected error occurred. Please try again or contact support.",
+        },
     )
 
 
@@ -157,7 +151,7 @@ def create_error_response(
     status_code: int = 400,
     category: str = "error",
     recoverable: bool = False,
-    **kwargs
+    **kwargs,
 ) -> JSONResponse:
     """
     Create a standardized error response.
@@ -176,10 +170,7 @@ def create_error_response(
         "error": message,
         "category": category,
         "recoverable": recoverable,
-        **kwargs
+        **kwargs,
     }
 
-    return JSONResponse(
-        status_code=status_code,
-        content=response_data
-    )
+    return JSONResponse(status_code=status_code, content=response_data)

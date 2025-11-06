@@ -11,20 +11,23 @@ Provides multi-layer safety for the trading system including:
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Callable
-from dataclasses import dataclass, field
-from enum import Enum
 import json
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional
+
 import aiosqlite
 from loguru import logger
 
 from src.config import Config
-from ..core.event_bus import EventBus, Event, EventType, EventHandler
+
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
 
 
 class SafetyLevel(Enum):
     """Safety levels for operations."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -33,6 +36,7 @@ class SafetyLevel(Enum):
 
 class ApprovalStatus(Enum):
     """Approval workflow status."""
+
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -42,6 +46,7 @@ class ApprovalStatus(Enum):
 @dataclass
 class SafetyRule:
     """Safety rule definition."""
+
     name: str
     description: str
     level: SafetyLevel
@@ -53,6 +58,7 @@ class SafetyRule:
 @dataclass
 class ApprovalWorkflow:
     """Multi-stage approval workflow."""
+
     workflow_id: str
     name: str
     stages: List[Dict[str, Any]] = field(default_factory=list)
@@ -70,6 +76,7 @@ class ApprovalWorkflow:
 @dataclass
 class AuditLogEntry:
     """Immutable audit log entry."""
+
     event_type: str
     actor: str
     resource: str
@@ -83,7 +90,9 @@ class AuditLogEntry:
 class CircuitBreaker:
     """Circuit breaker for external service failures."""
 
-    def __init__(self, service_name: str, failure_threshold: int = 5, recovery_timeout: int = 300):
+    def __init__(
+        self, service_name: str, failure_threshold: int = 5, recovery_timeout: int = 300
+    ):
         self.service_name = service_name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
@@ -111,8 +120,11 @@ class CircuitBreaker:
             return True
         elif self.state == "open":
             # Check if recovery timeout has passed
-            if self.last_failure_time and \
-               (asyncio.get_event_loop().time() - self.last_failure_time) > self.recovery_timeout:
+            if (
+                self.last_failure_time
+                and (asyncio.get_event_loop().time() - self.last_failure_time)
+                > self.recovery_timeout
+            ):
                 self.state = "half-open"
                 return True
             return False
@@ -222,13 +234,15 @@ class SafetyLayer(EventHandler):
     async def _initialize_circuit_breakers(self) -> None:
         """Initialize circuit breakers for external services."""
         # Load from database or create defaults
-        cursor = await self._db_connection.execute("SELECT * FROM circuit_breaker_state")
+        cursor = await self._db_connection.execute(
+            "SELECT * FROM circuit_breaker_state"
+        )
         existing = {}
         async for row in cursor:
             existing[row[0]] = {
                 "failure_count": row[1],
                 "last_failure_time": row[2],
-                "state": row[3]
+                "state": row[3],
             }
 
         # Initialize standard circuit breakers
@@ -251,47 +265,53 @@ class SafetyLayer(EventHandler):
                 name="max_order_value_check",
                 description="Check maximum order value limits",
                 level=SafetyLevel.HIGH,
-                condition=lambda data: data.get("order_value", 0) > 50000,  # ₹50,000 limit
-                action=self._reject_high_value_order
+                condition=lambda data: data.get("order_value", 0)
+                > 50000,  # ₹50,000 limit
+                action=self._reject_high_value_order,
             ),
             SafetyRule(
                 name="market_hours_check",
                 description="Ensure trading only during market hours",
                 level=SafetyLevel.MEDIUM,
                 condition=self._is_outside_market_hours,
-                action=self._reject_outside_hours
+                action=self._reject_outside_hours,
             ),
             SafetyRule(
                 name="circuit_breaker_check",
                 description="Check if external services are available",
                 level=SafetyLevel.CRITICAL,
                 condition=self._are_critical_services_down,
-                action=self._trigger_emergency_stop
+                action=self._trigger_emergency_stop,
             ),
             SafetyRule(
                 name="duplicate_order_check",
                 description="Prevent duplicate orders within short time",
                 level=SafetyLevel.MEDIUM,
                 condition=self._is_duplicate_order,
-                action=self._reject_duplicate_order
-            )
+                action=self._reject_duplicate_order,
+            ),
         ]
 
-    async def validate_operation(self, operation: str, data: Dict[str, Any], actor: str = "system") -> Dict[str, Any]:
+    async def validate_operation(
+        self, operation: str, data: Dict[str, Any], actor: str = "system"
+    ) -> Dict[str, Any]:
         """Validate an operation against safety rules."""
         async with self._lock:
             if self._kill_switch_active:
                 return {
                     "approved": False,
                     "reason": "Kill switch is active",
-                    "safety_level": SafetyLevel.CRITICAL.value
+                    "safety_level": SafetyLevel.CRITICAL.value,
                 }
 
             # Log the validation attempt
-            await self._audit_log("operation_validation", actor, operation, "validate", {
-                "operation": operation,
-                "data": data
-            })
+            await self._audit_log(
+                "operation_validation",
+                actor,
+                operation,
+                "validate",
+                {"operation": operation, "data": data},
+            )
 
             # Check safety rules
             for rule in self._safety_rules:
@@ -301,29 +321,37 @@ class SafetyLayer(EventHandler):
                         "approved": False,
                         "reason": f"Safety rule violation: {rule.description}",
                         "safety_level": rule.level.value,
-                        "rule": rule.name
+                        "rule": rule.name,
                     }
 
             # Check circuit breakers
             if operation in ["place_order", "get_market_data"]:
-                service = "zerodha_api" if operation == "place_order" else "market_data_feed"
+                service = (
+                    "zerodha_api" if operation == "place_order" else "market_data_feed"
+                )
                 if not self._circuit_breakers[service].can_execute():
                     return {
                         "approved": False,
                         "reason": f"Circuit breaker open for {service}",
-                        "safety_level": SafetyLevel.CRITICAL.value
+                        "safety_level": SafetyLevel.CRITICAL.value,
                     }
 
             return {
                 "approved": True,
                 "reason": "Validation passed",
-                "safety_level": SafetyLevel.LOW.value
+                "safety_level": SafetyLevel.LOW.value,
             }
 
-    async def _audit_log(self, event_type: str, actor: str, resource: str,
-                        action: str, details: Dict[str, Any],
-                        ip_address: Optional[str] = None,
-                        user_agent: Optional[str] = None) -> None:
+    async def _audit_log(
+        self,
+        event_type: str,
+        actor: str,
+        resource: str,
+        action: str,
+        details: Dict[str, Any],
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
         """Create an immutable audit log entry."""
         entry = AuditLogEntry(
             event_type=event_type,
@@ -333,57 +361,84 @@ class SafetyLayer(EventHandler):
             details=details,
             timestamp=datetime.now(timezone.utc).isoformat(),
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent,
         )
 
-        await self._db_connection.execute("""
+        await self._db_connection.execute(
+            """
             INSERT INTO audit_log
             (event_type, actor, resource, action, details, timestamp, ip_address, user_agent)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            entry.event_type, entry.actor, entry.resource, entry.action,
-            json.dumps(entry.details), entry.timestamp,
-            entry.ip_address, entry.user_agent
-        ))
+        """,
+            (
+                entry.event_type,
+                entry.actor,
+                entry.resource,
+                entry.action,
+                json.dumps(entry.details),
+                entry.timestamp,
+                entry.ip_address,
+                entry.user_agent,
+            ),
+        )
         await self._db_connection.commit()
 
-    async def create_approval_workflow(self, name: str, stages: List[Dict[str, Any]]) -> str:
+    async def create_approval_workflow(
+        self, name: str, stages: List[Dict[str, Any]]
+    ) -> str:
         """Create a multi-stage approval workflow."""
         async with self._lock:
-            workflow_id = f"workflow_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
+            workflow_id = (
+                f"workflow_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
+            )
 
             workflow = ApprovalWorkflow(
                 workflow_id=workflow_id,
                 name=name,
                 stages=stages,
-                status=ApprovalStatus.PENDING
+                status=ApprovalStatus.PENDING,
             )
 
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO approval_workflows
                 (id, name, stages, current_stage, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                workflow.workflow_id, workflow.name, json.dumps(workflow.stages),
-                workflow.current_stage, workflow.status.value,
-                workflow.created_at, workflow.updated_at
-            ))
+            """,
+                (
+                    workflow.workflow_id,
+                    workflow.name,
+                    json.dumps(workflow.stages),
+                    workflow.current_stage,
+                    workflow.status.value,
+                    workflow.created_at,
+                    workflow.updated_at,
+                ),
+            )
             await self._db_connection.commit()
 
-            await self._audit_log("workflow_created", "system", workflow_id, "create", {
-                "name": name,
-                "stages": len(stages)
-            })
+            await self._audit_log(
+                "workflow_created",
+                "system",
+                workflow_id,
+                "create",
+                {"name": name, "stages": len(stages)},
+            )
 
             return workflow_id
 
-    async def approve_workflow_stage(self, workflow_id: str, approver: str, approved: bool, comments: str = "") -> bool:
+    async def approve_workflow_stage(
+        self, workflow_id: str, approver: str, approved: bool, comments: str = ""
+    ) -> bool:
         """Approve or reject a workflow stage."""
         async with self._lock:
             # Get current workflow
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT stages, current_stage, status FROM approval_workflows WHERE id = ?
-            """, (workflow_id,))
+            """,
+                (workflow_id,),
+            )
 
             row = await cursor.fetchone()
             if not row:
@@ -400,10 +455,14 @@ class SafetyLayer(EventHandler):
             if current_stage < len(stages):
                 stages[current_stage]["approved"] = approved
                 stages[current_stage]["approved_by"] = approver
-                stages[current_stage]["approved_at"] = datetime.now(timezone.utc).isoformat()
+                stages[current_stage]["approved_at"] = datetime.now(
+                    timezone.utc
+                ).isoformat()
                 stages[current_stage]["comments"] = comments
 
-                new_status = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
+                new_status = (
+                    ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
+                )
 
                 if approved and current_stage + 1 < len(stages):
                     # Move to next stage
@@ -414,21 +473,33 @@ class SafetyLayer(EventHandler):
                     new_current_stage = current_stage
 
                 # Update database
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     UPDATE approval_workflows
                     SET stages = ?, current_stage = ?, status = ?, updated_at = ?
                     WHERE id = ?
-                """, (
-                    json.dumps(stages), new_current_stage, new_status.value,
-                    datetime.now(timezone.utc).isoformat(), workflow_id
-                ))
+                """,
+                    (
+                        json.dumps(stages),
+                        new_current_stage,
+                        new_status.value,
+                        datetime.now(timezone.utc).isoformat(),
+                        workflow_id,
+                    ),
+                )
                 await self._db_connection.commit()
 
-                await self._audit_log("workflow_stage_approved", approver, workflow_id, "approve" if approved else "reject", {
-                    "stage": current_stage,
-                    "approved": approved,
-                    "comments": comments
-                })
+                await self._audit_log(
+                    "workflow_stage_approved",
+                    approver,
+                    workflow_id,
+                    "approve" if approved else "reject",
+                    {
+                        "stage": current_stage,
+                        "approved": approved,
+                        "comments": comments,
+                    },
+                )
 
                 return True
 
@@ -439,42 +510,54 @@ class SafetyLayer(EventHandler):
         async with self._lock:
             self._kill_switch_active = True
 
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO kill_switch (active, activated_by, reason, activated_at)
                 VALUES (?, ?, ?, ?)
-            """, (1, activated_by, reason, datetime.now(timezone.utc).isoformat()))
+            """,
+                (1, activated_by, reason, datetime.now(timezone.utc).isoformat()),
+            )
             await self._db_connection.commit()
 
             # Publish emergency stop event
-            await self.event_bus.publish(Event(
-                id=f"kill_switch_activated_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                type=EventType.SYSTEM_ERROR,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                source="safety_layer",
-                data={
-                    "kill_switch": True,
-                    "activated_by": activated_by,
-                    "reason": reason
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"kill_switch_activated_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                    type=EventType.SYSTEM_ERROR,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    source="safety_layer",
+                    data={
+                        "kill_switch": True,
+                        "activated_by": activated_by,
+                        "reason": reason,
+                    },
+                )
+            )
 
-            await self._audit_log("kill_switch", activated_by, "system", "activate", {
-                "reason": reason
-            })
+            await self._audit_log(
+                "kill_switch", activated_by, "system", "activate", {"reason": reason}
+            )
 
-            logger.critical(f"EMERGENCY KILL SWITCH ACTIVATED by {activated_by}: {reason}")
+            logger.critical(
+                f"EMERGENCY KILL SWITCH ACTIVATED by {activated_by}: {reason}"
+            )
 
     async def deactivate_kill_switch(self, deactivated_by: str) -> None:
         """Deactivate emergency kill switch."""
         async with self._lock:
             self._kill_switch_active = False
 
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 UPDATE kill_switch SET active = 0, deactivated_at = ? WHERE active = 1
-            """, (datetime.now(timezone.utc).isoformat(),))
+            """,
+                (datetime.now(timezone.utc).isoformat(),),
+            )
             await self._db_connection.commit()
 
-            await self._audit_log("kill_switch", deactivated_by, "system", "deactivate", {})
+            await self._audit_log(
+                "kill_switch", deactivated_by, "system", "deactivate", {}
+            )
 
             logger.warning(f"KILL SWITCH DEACTIVATED by {deactivated_by}")
 
@@ -494,8 +577,11 @@ class SafetyLayer(EventHandler):
     async def _are_critical_services_down(self, data: Dict[str, Any]) -> bool:
         """Check if critical services are down."""
         critical_services = ["zerodha_api", "database"]
-        return any(not cb.can_execute() for name, cb in self._circuit_breakers.items()
-                  if name in critical_services)
+        return any(
+            not cb.can_execute()
+            for name, cb in self._circuit_breakers.items()
+            if name in critical_services
+        )
 
     async def _is_duplicate_order(self, data: Dict[str, Any]) -> bool:
         """Check for duplicate orders."""
@@ -525,17 +611,20 @@ class SafetyLayer(EventHandler):
             self._circuit_breakers[service_name].record_failure()
 
             # Save state
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT OR REPLACE INTO circuit_breaker_state
                 (service_name, failure_count, last_failure_time, state, updated_at)
                 VALUES (?, ?, ?, ?, ?)
-            """, (
-                service_name,
-                self._circuit_breakers[service_name].failure_count,
-                self._circuit_breakers[service_name].last_failure_time,
-                self._circuit_breakers[service_name].state,
-                datetime.now(timezone.utc).isoformat()
-            ))
+            """,
+                (
+                    service_name,
+                    self._circuit_breakers[service_name].failure_count,
+                    self._circuit_breakers[service_name].last_failure_time,
+                    self._circuit_breakers[service_name].state,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
             await self._db_connection.commit()
 
     async def record_service_success(self, service_name: str) -> None:
@@ -544,17 +633,20 @@ class SafetyLayer(EventHandler):
             self._circuit_breakers[service_name].record_success()
 
             # Save state
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT OR REPLACE INTO circuit_breaker_state
                 (service_name, failure_count, last_failure_time, state, updated_at)
                 VALUES (?, ?, ?, ?, ?)
-            """, (
-                service_name,
-                self._circuit_breakers[service_name].failure_count,
-                self._circuit_breakers[service_name].last_failure_time,
-                self._circuit_breakers[service_name].state,
-                datetime.now(timezone.utc).isoformat()
-            ))
+            """,
+                (
+                    service_name,
+                    self._circuit_breakers[service_name].failure_count,
+                    self._circuit_breakers[service_name].last_failure_time,
+                    self._circuit_breakers[service_name].state,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
             await self._db_connection.commit()
 
     async def handle_event(self, event: Event) -> None:

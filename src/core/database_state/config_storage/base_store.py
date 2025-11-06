@@ -2,6 +2,7 @@
 
 import asyncio
 from typing import TYPE_CHECKING
+
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 class BaseConfigStore:
     """Base class for configuration stores with shared database access."""
 
-    def __init__(self, db_connection: 'DatabaseConnection'):
+    def __init__(self, db_connection: "DatabaseConnection"):
         """
         Initialize base configuration store.
 

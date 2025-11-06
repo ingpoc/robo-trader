@@ -1,25 +1,20 @@
 """Configuration management routes."""
 
 import logging
-import json
 import os
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict
 
-from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
-from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
-from src.models.scheduler import TaskType, QueueName
+from src.models.scheduler import QueueName, TaskType
+
 from ..dependencies import get_container
-from ..utils.error_handlers import (
-    handle_trading_error,
-    handle_unexpected_error,
-)
+from ..utils.error_handlers import (handle_unexpected_error)
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +33,7 @@ GLOBAL_SETTINGS_CONFIG = Path("config/global_settings.json")
 @router.get("/configuration/background-tasks")
 @limiter.limit(config_limit)
 async def get_background_tasks_config(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get background tasks configuration from database."""
     try:
@@ -58,7 +52,7 @@ async def update_background_task_config(
     request: Request,
     task_name: str,
     config_data: Dict[str, Any],
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, str]:
     """Update background task configuration in database."""
     try:
@@ -83,13 +77,15 @@ async def update_background_task_config(
             frequency_unit=frequency_unit,
             use_claude=config_data.get("use_claude", True),
             priority=config_data.get("priority", "medium"),
-            stock_symbols=config_data.get("stock_symbols", [])
+            stock_symbols=config_data.get("stock_symbols", []),
         )
 
         # Backup to JSON after database update
         await config_state.backup_to_json()
 
-        logger.info(f"Updated background task configuration for {task_name} in database")
+        logger.info(
+            f"Updated background task configuration for {task_name} in database"
+        )
 
         # If the feature management service is available, also update it
         feature_management = await container.get("feature_management_service")
@@ -101,11 +97,13 @@ async def update_background_task_config(
                         "enabled": config_data.get("enabled", False),
                         "use_claude": config_data.get("use_claude", True),
                         "frequency_seconds": frequency_seconds,
-                        "priority": config_data.get("priority", "medium")
-                    }
+                        "priority": config_data.get("priority", "medium"),
+                    },
                 )
             except Exception as e:
-                logger.warning(f"Failed to update feature management for {task_name}: {e}")
+                logger.warning(
+                    f"Failed to update feature management for {task_name}: {e}"
+                )
 
         return {"status": "Configuration updated", "task": task_name}
 
@@ -116,8 +114,7 @@ async def update_background_task_config(
 @router.get("/configuration/ai-agents")
 @limiter.limit(config_limit)
 async def get_ai_agents_config(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get AI agents configuration from database."""
     try:
@@ -125,7 +122,9 @@ async def get_ai_agents_config(
         config_state = await container.get("configuration_state")
         ai_agents = await config_state.get_all_ai_agents_config()
 
-        logger.info(f"AI agents config retrieved: {len(ai_agents.get('ai_agents', {}))} agents")
+        logger.info(
+            f"AI agents config retrieved: {len(ai_agents.get('ai_agents', {}))} agents"
+        )
         return ai_agents
 
     except Exception as e:
@@ -138,7 +137,7 @@ async def update_ai_agent_config(
     request: Request,
     agent_name: str,
     config_data: Dict[str, Any],
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, str]:
     """Update AI agent configuration in database."""
     try:
@@ -152,7 +151,7 @@ async def update_ai_agent_config(
             response_frequency=config_data.get("responseFrequency", 30),
             response_frequency_unit=config_data.get("responseFrequencyUnit", "minutes"),
             scope=config_data.get("scope", "portfolio"),
-            max_tokens_per_request=config_data.get("maxTokensPerRequest", 2000)
+            max_tokens_per_request=config_data.get("maxTokensPerRequest", 2000),
         )
 
         # Backup to JSON after database update
@@ -168,8 +167,7 @@ async def update_ai_agent_config(
 @router.get("/configuration/global-settings")
 @limiter.limit(config_limit)
 async def get_global_settings(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get global configuration settings from database."""
     try:
@@ -188,7 +186,7 @@ async def get_global_settings(
 async def update_global_settings(
     request: Request,
     settings_data: Dict[str, Any],
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, str]:
     """Update global configuration settings in database."""
     try:
@@ -209,8 +207,7 @@ async def update_global_settings(
 @router.post("/configuration/backup")
 @limiter.limit(config_limit)
 async def backup_configuration(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, str]:
     """Create a backup of all configuration from database."""
     try:
@@ -230,7 +227,7 @@ async def backup_configuration(
 async def restore_configuration(
     request: Request,
     restore_data: Dict[str, str],
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, str]:
     """Restore configuration from backup to database."""
     try:
@@ -252,8 +249,7 @@ async def restore_configuration(
 @router.post("/configuration/migrate-to-db")
 @limiter.limit(config_limit)
 async def migrate_configuration_to_db(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, str]:
     """Migrate existing configuration from JSON files to database."""
     try:
@@ -271,8 +267,7 @@ async def migrate_configuration_to_db(
 @router.get("/configuration/status")
 @limiter.limit(config_limit)
 async def get_configuration_status(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get configuration system status."""
     try:
@@ -288,8 +283,7 @@ async def get_configuration_status(
 @router.get("/configuration/prompts")
 @limiter.limit(config_limit)
 async def get_all_prompts(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
+    request: Request, container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
     """Get all AI prompts configuration from database."""
     try:
@@ -305,14 +299,16 @@ async def get_all_prompts(
 async def get_prompt(
     request: Request,
     prompt_name: str,
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, Any]:
     """Get specific prompt configuration from database."""
     try:
         config_state = await container.get("configuration_state")
         prompt = await config_state.get_prompt_config(prompt_name)
         if not prompt:
-            raise HTTPException(status_code=404, detail=f"Prompt {prompt_name} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Prompt {prompt_name} not found"
+            )
         return prompt
     except HTTPException:
         raise
@@ -326,7 +322,7 @@ async def update_prompt(
     request: Request,
     prompt_name: str,
     prompt_data: Dict[str, Any],
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, Any]:
     """Update prompt configuration in database."""
     try:
@@ -334,7 +330,7 @@ async def update_prompt(
         success = await config_state.update_prompt_config(
             prompt_name=prompt_name,
             prompt_content=prompt_data.get("content", ""),
-            description=prompt_data.get("description", "")
+            description=prompt_data.get("description", ""),
         )
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update prompt")
@@ -350,7 +346,7 @@ async def update_prompt(
 async def execute_scheduler_manually(
     request: Request,
     task_name: str,
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, Any]:
     """Manually execute a scheduler task via queue.
 
@@ -363,10 +359,26 @@ async def execute_scheduler_manually(
 
     # Map scheduler names to queue task creation
     scheduler_map = {
-        "portfolio_sync_scheduler": ("trigger_portfolio_sync", QueueName.PORTFOLIO_SYNC, TaskType.SYNC_ACCOUNT_BALANCES),
-        "data_fetcher_scheduler": ("trigger_data_fetch", QueueName.DATA_FETCHER, TaskType.FUNDAMENTALS_UPDATE),
-        "ai_analysis_scheduler": ("trigger_ai_analysis", QueueName.AI_ANALYSIS, TaskType.RECOMMENDATION_GENERATION),
-        "portfolio_analyzer": ("trigger_ai_analysis", QueueName.AI_ANALYSIS, TaskType.RECOMMENDATION_GENERATION),
+        "portfolio_sync_scheduler": (
+            "trigger_portfolio_sync",
+            QueueName.PORTFOLIO_SYNC,
+            TaskType.SYNC_ACCOUNT_BALANCES,
+        ),
+        "data_fetcher_scheduler": (
+            "trigger_data_fetch",
+            QueueName.DATA_FETCHER,
+            TaskType.FUNDAMENTALS_UPDATE,
+        ),
+        "ai_analysis_scheduler": (
+            "trigger_ai_analysis",
+            QueueName.AI_ANALYSIS,
+            TaskType.RECOMMENDATION_GENERATION,
+        ),
+        "portfolio_analyzer": (
+            "trigger_ai_analysis",
+            QueueName.AI_ANALYSIS,
+            TaskType.RECOMMENDATION_GENERATION,
+        ),
     }
 
     # Check if this is a known scheduler
@@ -374,7 +386,7 @@ async def execute_scheduler_manually(
         return {
             "status": "error",
             "message": f"Unknown scheduler: {task_name}",
-            "available": list(scheduler_map.keys())
+            "available": list(scheduler_map.keys()),
         }
 
     # Get queue configuration
@@ -384,7 +396,11 @@ async def execute_scheduler_manually(
     symbols = ["AAPL", "MSFT"]  # Default symbols
     try:
         body = await request.json()
-        if isinstance(body, dict) and "symbols" in body and isinstance(body["symbols"], list):
+        if (
+            isinstance(body, dict)
+            and "symbols" in body
+            and isinstance(body["symbols"], list)
+        ):
             if len(body["symbols"]) > 0:
                 symbols = body["symbols"]
                 logger.info(f"Using provided symbols: {symbols}")
@@ -398,7 +414,7 @@ async def execute_scheduler_manually(
             queue_name=queue_name,
             task_type=task_type,
             payload={"symbols": symbols, "manual_trigger": True},
-            priority=8
+            priority=8,
         )
         logger.info(f"✅ Task queued: {task_type} with symbols={symbols}")
         return {
@@ -409,14 +425,14 @@ async def execute_scheduler_manually(
             "task_type": task_type.value,
             "queue_name": queue_name.value,
             "symbols": symbols,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
     except Exception as e:
         logger.error(f"Failed to queue task: {e}", exc_info=True)
         return {
             "status": "error",
             "message": f"Failed to queue task: {str(e)}",
-            "task_name": task_name
+            "task_name": task_name,
         }
 
 
@@ -425,10 +441,10 @@ async def execute_scheduler_manually(
 async def execute_ai_agent_manually(
     request: Request,
     agent_name: str,
-    container: DependencyContainer = Depends(get_container)
+    container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, Any]:
     """Manually execute an AI agent for portfolio intelligence analysis.
-    
+
     This endpoint:
     1. Finds stocks with recent updates (earnings, news, fundamentals)
     2. Gathers all available data for those stocks
@@ -438,19 +454,20 @@ async def execute_ai_agent_manually(
     6. Logs all activity to AI Transparency tab
     """
     import time
+
     timestamp = datetime.now(timezone.utc).isoformat()
     start_time = time.time()
-    
+
     try:
         logger.info(f"Manual execution requested for AI agent: {agent_name}")
-        
+
         # Only support portfolio_analyzer for now
         if agent_name != "portfolio_analyzer":
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported AI agent: {agent_name}. Only 'portfolio_analyzer' is currently supported."
+                detail=f"Unsupported AI agent: {agent_name}. Only 'portfolio_analyzer' is currently supported.",
             )
-        
+
         # Get task service for queuing
         task_service = await container.get("task_service")
 
@@ -458,25 +475,24 @@ async def execute_ai_agent_manually(
         task = await task_service.create_task(
             queue_name=QueueName.AI_ANALYSIS,
             task_type=TaskType.RECOMMENDATION_GENERATION,
-            payload={
-                "agent_name": agent_name,
-                "symbols": None
-            },
-            priority=7  # High priority for manual requests
+            payload={"agent_name": agent_name, "symbols": None},
+            priority=7,  # High priority for manual requests
         )
 
         execution_time = time.time() - start_time
 
-        logger.info(f"AI agent {agent_name} queued for execution in {execution_time:.2f} seconds. Task ID: {task.task_id}")
+        logger.info(
+            f"AI agent {agent_name} queued for execution in {execution_time:.2f} seconds. Task ID: {task.task_id}"
+        )
 
         return {
             "status": "queued",
             "agent_name": agent_name,
             "task_id": task.task_id,
             "message": f"Portfolio analysis queued for execution. Task ID: {task.task_id}. Check AI Transparency tab for results.",
-            "timestamp": timestamp
+            "timestamp": timestamp,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:

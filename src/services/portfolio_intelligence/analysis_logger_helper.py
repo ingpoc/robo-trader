@@ -10,7 +10,7 @@ Handles:
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 class PortfolioAnalysisLoggerHelper:
     """Helper for logging portfolio intelligence analysis."""
 
-    def __init__(self, analysis_logger, broadcast_coordinator=None, status_coordinator=None):
+    def __init__(
+        self, analysis_logger, broadcast_coordinator=None, status_coordinator=None
+    ):
         self.analysis_logger = analysis_logger
         self.broadcast_coordinator = broadcast_coordinator
         self.status_coordinator = status_coordinator
@@ -29,19 +31,21 @@ class PortfolioAnalysisLoggerHelper:
         step_type: str,
         description: str,
         reasoning: str,
-        analysis_id: Optional[str] = None
+        analysis_id: Optional[str] = None,
     ) -> None:
         """Log analysis step to AI Transparency."""
         try:
             if not analysis_id:
-                analysis_id = f"portfolio_analysis_{int(datetime.now(timezone.utc).timestamp())}"
+                analysis_id = (
+                    f"portfolio_analysis_{int(datetime.now(timezone.utc).timestamp())}"
+                )
 
             # Create decision log if it doesn't exist
             if analysis_id not in self._active_analyses:
                 decision_log = await self.analysis_logger.start_trade_analysis(
                     session_id=f"portfolio_intelligence_{int(datetime.now(timezone.utc).timestamp())}",
                     symbol="PORTFOLIO",  # Portfolio-wide analysis
-                    decision_id=analysis_id
+                    decision_id=analysis_id,
                 )
                 self._active_analyses[analysis_id] = decision_log
 
@@ -53,7 +57,7 @@ class PortfolioAnalysisLoggerHelper:
                 input_data={},
                 reasoning=reasoning,
                 confidence_score=0.0,
-                duration_ms=0
+                duration_ms=0,
             )
         except Exception as e:
             logger.warning(f"Error logging analysis step: {e}")
@@ -64,7 +68,7 @@ class PortfolioAnalysisLoggerHelper:
         agent_name: str,
         symbols: List[str],
         stocks_data: Dict[str, Dict[str, Any]],
-        analysis_result: Dict[str, Any]
+        analysis_result: Dict[str, Any],
     ) -> None:
         """Log complete analysis to AI Transparency."""
         try:
@@ -75,12 +79,16 @@ class PortfolioAnalysisLoggerHelper:
                 description=f"Portfolio intelligence analysis completed for {len(symbols)} stocks",
                 input_data={
                     "symbols": symbols,
-                    "recommendations_count": len(analysis_result.get("recommendations", [])),
-                    "prompt_updates_count": len(analysis_result.get("prompt_updates", []))
+                    "recommendations_count": len(
+                        analysis_result.get("recommendations", [])
+                    ),
+                    "prompt_updates_count": len(
+                        analysis_result.get("prompt_updates", [])
+                    ),
                 },
-                reasoning=f"Analysis complete. Check Claude's response for detailed recommendations and prompt optimizations.",
+                reasoning="Analysis complete. Check Claude's response for detailed recommendations and prompt optimizations.",
                 confidence_score=0.0,
-                duration_ms=analysis_result.get("execution_time_ms", 0)
+                duration_ms=analysis_result.get("execution_time_ms", 0),
             )
 
             # Complete the trade decision to save it to database
@@ -91,16 +99,24 @@ class PortfolioAnalysisLoggerHelper:
                     "analysis_type": "portfolio_intelligence",
                     "agent_name": agent_name,
                     "symbols_analyzed": len(symbols),
-                    "recommendations_generated": len(analysis_result.get("recommendations", [])),
-                    "prompt_updates_generated": len(analysis_result.get("prompt_updates", [])),
+                    "recommendations_generated": len(
+                        analysis_result.get("recommendations", [])
+                    ),
+                    "prompt_updates_generated": len(
+                        analysis_result.get("prompt_updates", [])
+                    ),
                     "execution_time_ms": analysis_result.get("execution_time_ms", 0),
-                    "claude_response_length": len(analysis_result.get("claude_response", "")),
-                    "data_assessment": analysis_result.get("data_assessment", {})
-                }
+                    "claude_response_length": len(
+                        analysis_result.get("claude_response", "")
+                    ),
+                    "data_assessment": analysis_result.get("data_assessment", {}),
+                },
             )
 
             if completed_decision:
-                logger.info(f"Analysis {analysis_id} completed and saved to AI Transparency database")
+                logger.info(
+                    f"Analysis {analysis_id} completed and saved to AI Transparency database"
+                )
             else:
                 logger.warning(f"Failed to complete analysis decision {analysis_id}")
 
@@ -115,7 +131,7 @@ class PortfolioAnalysisLoggerHelper:
         analysis_id: Optional[str] = None,
         recommendations_count: int = 0,
         prompt_updates_count: int = 0,
-        error: Optional[str] = None
+        error: Optional[str] = None,
     ) -> None:
         """Broadcast analysis status via WebSocket."""
         if not self.broadcast_coordinator:
@@ -134,7 +150,7 @@ class PortfolioAnalysisLoggerHelper:
                 "recommendations_count": recommendations_count,
                 "prompt_updates_count": prompt_updates_count,
                 "error": error,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             await self.broadcast_coordinator.broadcast_to_ui(activity_message)
@@ -143,7 +159,9 @@ class PortfolioAnalysisLoggerHelper:
             # This ensures the System Health tab shows updated AI Analysis scheduler status
             if self.status_coordinator:
                 try:
-                    await self.status_coordinator.broadcast_status_change("ai_analysis", status)
+                    await self.status_coordinator.broadcast_status_change(
+                        "ai_analysis", status
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to trigger system health update: {e}")
 
@@ -151,10 +169,7 @@ class PortfolioAnalysisLoggerHelper:
             logger.warning(f"Failed to broadcast analysis status: {e}")
 
     async def log_error_to_transparency(
-        self,
-        analysis_id: str,
-        agent_name: str,
-        error_message: str
+        self, analysis_id: str, agent_name: str, error_message: str
     ) -> None:
         """Log error to AI Transparency."""
         try:
@@ -167,7 +182,7 @@ class PortfolioAnalysisLoggerHelper:
                     input_data={"agent_name": agent_name},
                     reasoning="Error occurred during portfolio intelligence analysis",
                     confidence_score=0.0,
-                    duration_ms=0
+                    duration_ms=0,
                 )
 
             logger.error(f"Error in analysis {analysis_id}: {error_message}")

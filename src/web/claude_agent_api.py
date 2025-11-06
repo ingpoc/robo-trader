@@ -4,17 +4,16 @@ Claude Agent API routes for session management and autonomous trading.
 Enhanced with comprehensive AI transparency endpoints.
 """
 
-import logging
 import json
-from typing import Optional, Dict, Any
+import logging
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from ..services.claude_agent.research_tracker import ResearchTracker
 from .dependencies import get_container
 
 logger = logging.getLogger(__name__)
@@ -29,11 +28,16 @@ limiter = Limiter(key_func=get_remote_address)
 # Request/Response Models
 # ============================================================================
 
+
 class StartSessionRequest(BaseModel):
     """Request to start a new Claude Agent session."""
 
-    account_type: str = Field(..., description="Account type: 'swing_trading' or 'options_trading'")
-    session_type: str = Field(..., description="Session type: 'morning_prep' or 'evening_review'")
+    account_type: str = Field(
+        ..., description="Account type: 'swing_trading' or 'options_trading'"
+    )
+    session_type: str = Field(
+        ..., description="Session type: 'morning_prep' or 'evening_review'"
+    )
 
 
 class SessionResponse(BaseModel):
@@ -42,9 +46,13 @@ class SessionResponse(BaseModel):
     session_id: str = Field(..., description="Unique session ID")
     account_type: str = Field(..., description="Account type for session")
     session_type: str = Field(..., description="Type of session")
-    status: str = Field(..., description="Session status: 'running', 'completed', 'failed', 'cancelled'")
+    status: str = Field(
+        ..., description="Session status: 'running', 'completed', 'failed', 'cancelled'"
+    )
     started_at: str = Field(..., description="ISO timestamp when session started")
-    completed_at: Optional[str] = Field(None, description="ISO timestamp when session completed")
+    completed_at: Optional[str] = Field(
+        None, description="ISO timestamp when session completed"
+    )
     turns: int = Field(default=0, description="Number of conversation turns")
     tools_executed: int = Field(default=0, description="Number of tools executed")
     decisions_made: int = Field(default=0, description="Number of decisions made")
@@ -64,12 +72,15 @@ class SessionListResponse(BaseModel):
 class CancelSessionRequest(BaseModel):
     """Request to cancel a running session."""
 
-    reason: str = Field(default="User requested cancellation", description="Reason for cancellation")
+    reason: str = Field(
+        default="User requested cancellation", description="Reason for cancellation"
+    )
 
 
 # ============================================================================
 # Transparency API Models
 # ============================================================================
+
 
 class ResearchActivityResponse(BaseModel):
     """Response containing research activity data."""
@@ -78,7 +89,9 @@ class ResearchActivityResponse(BaseModel):
     symbols_analyzed: int = Field(..., description="Symbols analyzed")
     data_sources_used: int = Field(..., description="Data sources consulted")
     key_findings: list[str] = Field(..., description="Key research findings")
-    recent_sessions: list[Dict[str, Any]] = Field(..., description="Recent research sessions")
+    recent_sessions: list[Dict[str, Any]] = Field(
+        ..., description="Recent research sessions"
+    )
 
 
 class AnalysisActivityResponse(BaseModel):
@@ -88,7 +101,9 @@ class AnalysisActivityResponse(BaseModel):
     avg_confidence: float = Field(..., description="Average confidence score")
     strategies_evaluated: int = Field(..., description="Strategies evaluated")
     refinements_made: int = Field(..., description="Strategy refinements implemented")
-    recent_decisions: list[Dict[str, Any]] = Field(..., description="Recent trade decisions")
+    recent_decisions: list[Dict[str, Any]] = Field(
+        ..., description="Recent trade decisions"
+    )
 
 
 class ExecutionActivityResponse(BaseModel):
@@ -99,7 +114,9 @@ class ExecutionActivityResponse(BaseModel):
     avg_slippage: float = Field(..., description="Average slippage (bps)")
     avg_cost: float = Field(..., description="Average execution cost (%)")
     risk_compliance: float = Field(..., description="Risk check compliance rate")
-    recent_executions: list[Dict[str, Any]] = Field(..., description="Recent executions")
+    recent_executions: list[Dict[str, Any]] = Field(
+        ..., description="Recent executions"
+    )
 
 
 class DailyStrategyReportResponse(BaseModel):
@@ -110,7 +127,9 @@ class DailyStrategyReportResponse(BaseModel):
     refinements_recommended: int = Field(..., description="Refinements recommended")
     confidence_score: float = Field(..., description="Overall confidence score")
     key_insights: list[str] = Field(..., description="Key insights from evaluation")
-    performance_summary: Dict[str, Any] = Field(..., description="Strategy performance summary")
+    performance_summary: Dict[str, Any] = Field(
+        ..., description="Strategy performance summary"
+    )
 
 
 class DailyActivitySummaryResponse(BaseModel):
@@ -124,17 +143,22 @@ class DailyActivitySummaryResponse(BaseModel):
     strategies_evaluated: int = Field(..., description="Strategies evaluated")
     key_achievements: list[str] = Field(..., description="Key achievements")
     areas_for_improvement: list[str] = Field(..., description="Areas for improvement")
-    planned_activities: list[str] = Field(..., description="Planned activities for tomorrow")
+    planned_activities: list[str] = Field(
+        ..., description="Planned activities for tomorrow"
+    )
 
 
 # ============================================================================
 # Dependency Functions
 # ============================================================================
 
+
 async def get_container(request: Request):
     """Get DI container from request state."""
     if not hasattr(request.app.state, "container"):
-        raise HTTPException(status_code=500, detail="Application not properly initialized")
+        raise HTTPException(
+            status_code=500, detail="Application not properly initialized"
+        )
     return request.app.state.container
 
 
@@ -144,6 +168,7 @@ async def get_container(request: Request):
 # ============================================================================
 # API Endpoints
 # ============================================================================
+
 
 @router.post("/sessions/start", response_model=SessionResponse)
 @limiter.limit("5/minute")
@@ -184,16 +209,23 @@ async def start_claude_session(
 
         # Build context from account state
         account_manager = await container.get("paper_trading_account_manager")
-        account = await account_manager.get_account(f"paper_{request_data.account_type}_main")
+        account = await account_manager.get_account(
+            f"paper_{request_data.account_type}_main"
+        )
 
         if not account:
             raise HTTPException(
-                status_code=404, detail=f"Account not found: paper_{request_data.account_type}_main"
+                status_code=404,
+                detail=f"Account not found: paper_{request_data.account_type}_main",
             )
 
         # Get account balance and positions
-        balance_info = await account_manager.get_account_balance(f"paper_{request_data.account_type}_main")
-        positions = await account_manager.get_open_positions(f"paper_{request_data.account_type}_main")
+        balance_info = await account_manager.get_account_balance(
+            f"paper_{request_data.account_type}_main"
+        )
+        positions = await account_manager.get_open_positions(
+            f"paper_{request_data.account_type}_main"
+        )
 
         # Build context dict for Claude
         context = {
@@ -240,7 +272,9 @@ async def start_claude_session(
         raise
     except Exception as e:
         logger.error(f"Failed to start Claude session: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to start session: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start session: {str(e)}"
+        )
 
 
 @router.get("/sessions", response_model=SessionListResponse)
@@ -290,7 +324,9 @@ async def list_claude_sessions(
 
     except Exception as e:
         logger.error(f"Failed to list Claude sessions: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list sessions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list sessions: {str(e)}"
+        )
 
 
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
@@ -315,7 +351,9 @@ async def get_claude_session(
         session = await strategy_store.get_session(session_id)
 
         if not session:
-            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+            raise HTTPException(
+                status_code=404, detail=f"Session not found: {session_id}"
+            )
 
         # Convert to response model
         return SessionResponse(
@@ -355,7 +393,9 @@ async def cancel_claude_session(
     Stops the current conversation and saves any partial results.
     """
     try:
-        logger.info(f"Cancelling Claude session: {session_id}, reason: {request_data.reason}")
+        logger.info(
+            f"Cancelling Claude session: {session_id}, reason: {request_data.reason}"
+        )
 
         # In a full implementation, this would:
         # 1. Get session from store
@@ -373,7 +413,9 @@ async def cancel_claude_session(
 
     except Exception as e:
         logger.error(f"Failed to cancel Claude session: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to cancel session: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to cancel session: {str(e)}"
+        )
 
 
 @router.get("/status")
@@ -395,8 +437,12 @@ async def get_claude_status(
             "initialized": True,
             "coordinator": {
                 "client": "initialized" if coordinator.client else "not_initialized",
-                "tool_executor": "initialized" if coordinator.tool_executor else "not_initialized",
-                "validator": "initialized" if coordinator.validator else "not_initialized",
+                "tool_executor": (
+                    "initialized" if coordinator.tool_executor else "not_initialized"
+                ),
+                "validator": (
+                    "initialized" if coordinator.validator else "not_initialized"
+                ),
                 "tools_available": len(coordinator._tools),
             },
             "timestamp": datetime.utcnow().isoformat(),
@@ -417,6 +463,7 @@ async def get_claude_status(
 # ============================================================================
 # Transparency API Endpoints
 # ============================================================================
+
 
 @router.get("/transparency/research", response_model=ResearchActivityResponse)
 @limiter.limit("30/minute")
@@ -443,23 +490,38 @@ async def get_research_activity(
         data_source_stats = await research_tracker.get_data_source_usage_stats()
 
         # Get research effectiveness (simplified for now)
-        research_sessions = await research_tracker.get_research_history(account_type=account_type)
+        research_sessions = await research_tracker.get_research_history(
+            account_type=account_type
+        )
         effectiveness = {
             "total_sessions": len(research_sessions),
-            "total_symbols_analyzed": sum(len(s.symbols_analyzed) for s in research_sessions),
-            "avg_confidence_score": sum(s.confidence_score for s in research_sessions) / len(research_sessions) if research_sessions else 0
+            "total_symbols_analyzed": sum(
+                len(s.symbols_analyzed) for s in research_sessions
+            ),
+            "avg_confidence_score": (
+                sum(s.confidence_score for s in research_sessions)
+                / len(research_sessions)
+                if research_sessions
+                else 0
+            ),
         }
 
         return ResearchActivityResponse(
             total_sessions=effectiveness["total_sessions"],
             symbols_analyzed=effectiveness["total_symbols_analyzed"],
             data_sources_used=data_source_stats["sources_used"],
-            key_findings=["Market analysis completed", "Technical indicators reviewed", "Fundamental data assessed"],  # Would come from sessions
-            recent_sessions=[s.to_dict() for s in research_sessions[-5:]]
+            key_findings=[
+                "Market analysis completed",
+                "Technical indicators reviewed",
+                "Fundamental data assessed",
+            ],  # Would come from sessions
+            recent_sessions=[s.to_dict() for s in research_sessions[-5:]],
         )
     except Exception as e:
         logger.error(f"Failed to get research activity: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get research activity: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get research activity: {str(e)}"
+        )
 
 
 @router.get("/transparency/analysis", response_model=AnalysisActivityResponse)
@@ -484,7 +546,8 @@ async def get_analysis_activity(
         conn = database.connection
 
         # Get all analyses with data quality info, ordered to prioritize complete data
-        cursor = await conn.execute("""
+        cursor = await conn.execute(
+            """
             SELECT symbol, timestamp, analysis, created_at,
                    json_extract(analysis, '$.data_quality.has_earnings') as has_earnings,
                    json_extract(analysis, '$.data_quality.has_news') as has_news,
@@ -503,14 +566,23 @@ async def get_analysis_activity(
                 END ASC,
                 created_at DESC
             LIMIT 100
-        """)
+        """
+        )
         rows = await cursor.fetchall()
 
         portfolio_analyses = []
         seen_symbols = set()
 
         for row in rows:
-            symbol, timestamp, analysis_json, created_at, has_earnings, has_news, has_fundamentals = row
+            (
+                symbol,
+                timestamp,
+                analysis_json,
+                created_at,
+                has_earnings,
+                has_news,
+                has_fundamentals,
+            ) = row
 
             # Keep only the latest analysis per symbol for recommendations tab
             if symbol in seen_symbols:
@@ -531,24 +603,32 @@ async def get_analysis_activity(
                     if "'" in analysis_content:
                         parts = analysis_content.split("'")
                         # Look for longer text segments that might be analysis
-                        analysis_content = next((p for p in parts if len(p) > 100), analysis_content[:500])
+                        analysis_content = next(
+                            (p for p in parts if len(p) > 100), analysis_content[:500]
+                        )
 
-                portfolio_analyses.append({
-                    "symbol": symbol,
-                    "timestamp": timestamp,
-                    "created_at": created_at,
-                    "analysis_type": analysis_data.get("analysis_type", "portfolio_intelligence"),
-                    "confidence_score": analysis_data.get("confidence_score", 0.75),
-                    "analysis_summary": analysis_content,  # Full content, not truncated
-                    "analysis_content": analysis_content,  # Also expose full content
-                    "recommendations_count": analysis_data.get("recommendations_count", 0),
-                    "data_quality": {
-                        "has_earnings": bool(has_earnings),
-                        "has_news": bool(has_news),
-                        "has_fundamentals": bool(has_fundamentals),
-                        **analysis_data.get("data_quality", {})
+                portfolio_analyses.append(
+                    {
+                        "symbol": symbol,
+                        "timestamp": timestamp,
+                        "created_at": created_at,
+                        "analysis_type": analysis_data.get(
+                            "analysis_type", "portfolio_intelligence"
+                        ),
+                        "confidence_score": analysis_data.get("confidence_score", 0.75),
+                        "analysis_summary": analysis_content,  # Full content, not truncated
+                        "analysis_content": analysis_content,  # Also expose full content
+                        "recommendations_count": analysis_data.get(
+                            "recommendations_count", 0
+                        ),
+                        "data_quality": {
+                            "has_earnings": bool(has_earnings),
+                            "has_news": bool(has_news),
+                            "has_fundamentals": bool(has_fundamentals),
+                            **analysis_data.get("data_quality", {}),
+                        },
                     }
-                })
+                )
             except json.JSONDecodeError:
                 continue
     except Exception as e:
@@ -568,7 +648,7 @@ async def get_analysis_activity(
         avg_confidence=avg_confidence,
         strategies_evaluated=0,
         refinements_made=0,
-        recent_decisions=portfolio_analyses
+        recent_decisions=portfolio_analyses,
     )
 
 
@@ -592,7 +672,9 @@ async def get_execution_activity(
         executions = await execution_monitor.get_execution_history()
 
         # Get execution quality metrics
-        quality_metrics = await execution_monitor.get_execution_quality_metrics(days=days)
+        quality_metrics = await execution_monitor.get_execution_quality_metrics(
+            days=days
+        )
 
         return ExecutionActivityResponse(
             total_executions=quality_metrics["total_executions"],
@@ -600,15 +682,19 @@ async def get_execution_activity(
             avg_slippage=quality_metrics["avg_slippage_bps"],
             avg_cost=quality_metrics["avg_cost_pct"],
             risk_compliance=quality_metrics["risk_checks_pass_rate"],
-            recent_executions=[e.to_dict() for e in executions[-5:]]
+            recent_executions=[e.to_dict() for e in executions[-5:]],
         )
 
     except Exception as e:
         logger.error(f"Failed to get execution activity: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get execution activity: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get execution activity: {str(e)}"
+        )
 
 
-@router.get("/transparency/daily-evaluation", response_model=DailyStrategyReportResponse)
+@router.get(
+    "/transparency/daily-evaluation", response_model=DailyStrategyReportResponse
+)
 @limiter.limit("20/minute")
 async def get_daily_strategy_evaluation(
     request: Request,
@@ -629,7 +715,9 @@ async def get_daily_strategy_evaluation(
 
         if not reports:
             # Generate a new evaluation if none exists
-            report = await strategy_evaluator.evaluate_daily_strategies(account_type, date)
+            report = await strategy_evaluator.evaluate_daily_strategies(
+                account_type, date
+            )
         else:
             report = reports[-1]  # Most recent
 
@@ -639,12 +727,16 @@ async def get_daily_strategy_evaluation(
             refinements_recommended=len(report.refinements_recommended),
             confidence_score=report.confidence_score,
             key_insights=report.key_insights,
-            performance_summary=report.performance_summary
+            performance_summary=report.performance_summary,
         )
 
     except Exception as e:
-        logger.error(f"Failed to get daily strategy evaluation: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get strategy evaluation: {str(e)}")
+        logger.error(
+            f"Failed to get daily strategy evaluation: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get strategy evaluation: {str(e)}"
+        )
 
 
 @router.get("/transparency/daily-summary", response_model=DailyActivitySummaryResponse)
@@ -664,7 +756,9 @@ async def get_daily_activity_summary(
         activity_summarizer = await container.get("activity_summarizer")
 
         # Get daily summaries
-        summaries = await activity_summarizer.get_daily_summaries(account_type=account_type)
+        summaries = await activity_summarizer.get_daily_summaries(
+            account_type=account_type
+        )
 
         if not summaries:
             # Generate a new summary if none exists
@@ -681,12 +775,14 @@ async def get_daily_activity_summary(
             strategies_evaluated=summary.strategies_evaluated,
             key_achievements=summary.key_achievements,
             areas_for_improvement=summary.areas_for_improvement,
-            planned_activities=summary.planned_activities
+            planned_activities=summary.planned_activities,
         )
 
     except Exception as e:
         logger.error(f"Failed to get daily activity summary: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get activity summary: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get activity summary: {str(e)}"
+        )
 
 
 @router.get("/transparency/strategy-evolution/{strategy_name}")
@@ -705,13 +801,19 @@ async def get_strategy_evolution_timeline(
     try:
         strategy_evaluator = await container.get("daily_strategy_evaluator")
 
-        timeline = await strategy_evaluator.get_strategy_evolution_timeline(strategy_name, days)
+        timeline = await strategy_evaluator.get_strategy_evolution_timeline(
+            strategy_name, days
+        )
 
         return timeline
 
     except Exception as e:
-        logger.error(f"Failed to get strategy evolution timeline: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get strategy timeline: {str(e)}")
+        logger.error(
+            f"Failed to get strategy evolution timeline: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get strategy timeline: {str(e)}"
+        )
 
 
 @router.get("/strategy-learnings")
@@ -734,12 +836,14 @@ async def get_strategy_learnings(
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "learnings": learnings,
             "total_strategies": len(learnings),
-            "recommendation": "Use top performers for increased capital allocation"
+            "recommendation": "Use top performers for increased capital allocation",
         }
 
     except Exception as e:
         logger.error(f"Failed to get strategy learnings: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get strategy learnings: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get strategy learnings: {str(e)}"
+        )
 
 
 @router.get("/monthly-performance/{account_type}")
@@ -759,7 +863,9 @@ async def get_monthly_performance(
         account = await account_manager.get_account(account_type)
 
         if not account:
-            raise HTTPException(status_code=404, detail=f"Account type {account_type} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Account type {account_type} not found"
+            )
 
         # Get monthly metrics
         monthly_data = {
@@ -772,7 +878,7 @@ async def get_monthly_performance(
             "losing_trades": account.get("losing_trades", 0),
             "win_rate": account.get("win_rate", 0),
             "max_drawdown": account.get("max_drawdown", 0),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         return monthly_data
@@ -781,4 +887,6 @@ async def get_monthly_performance(
         raise
     except Exception as e:
         logger.error(f"Failed to get monthly performance: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get monthly performance: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get monthly performance: {str(e)}"
+        )

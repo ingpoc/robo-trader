@@ -6,18 +6,23 @@ Extracted from BroadcastCoordinator for single responsibility.
 """
 
 import time
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
 from src.config import Config
+
 from ..base_coordinator import BaseCoordinator
 
 try:
-    from src.web.broadcast_health_monitor import BroadcastHealthMonitor, BroadcastError, BroadcastErrorSeverity
+    from src.web.broadcast_health_monitor import (BroadcastError,
+                                                  BroadcastErrorSeverity,
+                                                  BroadcastHealthMonitor)
+
     HEALTH_MONITOR_AVAILABLE = True
 except ImportError:
     HEALTH_MONITOR_AVAILABLE = False
+
     class BroadcastError:
         def __init__(self, error: Exception, severity: str = "medium"):
             self.error = error
@@ -35,7 +40,7 @@ except ImportError:
 class BroadcastExecutionCoordinator(BaseCoordinator):
     """
     Coordinates broadcast execution.
-    
+
     Responsibilities:
     - Execute broadcasts to WebSocket clients
     - Handle health monitor integration
@@ -53,16 +58,20 @@ class BroadcastExecutionCoordinator(BaseCoordinator):
             self._health_monitor = BroadcastHealthMonitor(
                 broadcast_callback=self._internal_broadcast_callback,
                 config={
-                    'failure_threshold': 5,
-                    'recovery_timeout': 60,
-                    'backpressure_threshold': 2.0,
-                    'health_check_interval': 30
-                }
+                    "failure_threshold": 5,
+                    "recovery_timeout": 60,
+                    "backpressure_threshold": 2.0,
+                    "health_check_interval": 30,
+                },
             )
             # Set up error and recovery handlers
             if health_coordinator:
-                self._health_monitor.add_error_handler(health_coordinator.handle_broadcast_error)
-                self._health_monitor.add_recovery_handler(health_coordinator.handle_broadcast_recovery)
+                self._health_monitor.add_error_handler(
+                    health_coordinator.handle_broadcast_error
+                )
+                self._health_monitor.add_recovery_handler(
+                    health_coordinator.handle_broadcast_recovery
+                )
 
     async def initialize(self) -> None:
         """Initialize broadcast execution coordinator."""
@@ -84,10 +93,16 @@ class BroadcastExecutionCoordinator(BaseCoordinator):
         """Set health coordinator."""
         self._health_coordinator = health_coordinator
         if self._health_monitor and health_coordinator:
-            self._health_monitor.add_error_handler(health_coordinator.handle_broadcast_error)
-            self._health_monitor.add_recovery_handler(health_coordinator.handle_broadcast_recovery)
+            self._health_monitor.add_error_handler(
+                health_coordinator.handle_broadcast_error
+            )
+            self._health_monitor.add_recovery_handler(
+                health_coordinator.handle_broadcast_recovery
+            )
 
-    async def broadcast_to_ui(self, message: Dict[str, Any], circuit_breaker_check=None) -> bool:
+    async def broadcast_to_ui(
+        self, message: Dict[str, Any], circuit_breaker_check=None
+    ) -> bool:
         """
         Broadcast message to all connected WebSocket clients.
 
@@ -105,7 +120,9 @@ class BroadcastExecutionCoordinator(BaseCoordinator):
         # Fallback to basic broadcasting
         return await self._basic_broadcast(message, circuit_breaker_check)
 
-    async def _basic_broadcast(self, message: Dict[str, Any], circuit_breaker_check=None) -> bool:
+    async def _basic_broadcast(
+        self, message: Dict[str, Any], circuit_breaker_check=None
+    ) -> bool:
         """Basic broadcast implementation without health monitoring."""
         # Check circuit breaker
         if circuit_breaker_check and circuit_breaker_check():
@@ -116,7 +133,7 @@ class BroadcastExecutionCoordinator(BaseCoordinator):
             self._log_warning("Broadcast callback not set - message not sent")
             return False
 
-        message_type = message.get('type', 'unknown')
+        message_type = message.get("type", "unknown")
         start_time = time.time()
 
         try:
@@ -146,4 +163,3 @@ class BroadcastExecutionCoordinator(BaseCoordinator):
 
         self._broadcast_callback = None
         self._log_info("BroadcastExecutionCoordinator cleanup complete")
-

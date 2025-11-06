@@ -6,20 +6,19 @@ Extracted from TaskCoordinator for single responsibility.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from ...event_bus import EventBus, Event, EventType
+from ...event_bus import Event, EventBus, EventType
 from ..base_coordinator import BaseCoordinator
-from ..message.agent_message import AgentMessage, MessageType
-from .collaboration_task import CollaborationTask, CollaborationMode, AgentRole
+from .collaboration_task import AgentRole, CollaborationMode, CollaborationTask
 
 
 class TaskCreationCoordinator(BaseCoordinator):
     """
     Coordinates task creation and agent assignment.
-    
+
     Responsibilities:
     - Create new collaborative tasks
     - Assign agents to tasks
@@ -41,7 +40,7 @@ class TaskCreationCoordinator(BaseCoordinator):
         required_roles: List[AgentRole],
         collaboration_mode: CollaborationMode = CollaborationMode.SEQUENTIAL,
         deadline: Optional[str] = None,
-        priority: int = 5
+        priority: int = 5,
     ) -> Optional[CollaborationTask]:
         """
         Create a new collaborative task.
@@ -63,34 +62,40 @@ class TaskCreationCoordinator(BaseCoordinator):
                 description=description,
                 required_roles=required_roles,
                 collaboration_mode=collaboration_mode,
-                deadline=deadline
+                deadline=deadline,
             )
             task.task_id = task_id  # Set task_id after creation
 
             # Emit task creation event
-            await self.event_bus.publish(Event(
-                id=f"task_created_{task_id}",
-                type=EventType.AI_ANALYSIS_COMPLETE,  # Using existing event type
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                source="task_creation_coordinator",
-                data={
-                    "event_type": "task_created",
-                    "task_id": task_id,
-                    "description": description,
-                    "required_roles": [role.value for role in required_roles],
-                    "collaboration_mode": collaboration_mode.value,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"task_created_{task_id}",
+                    type=EventType.AI_ANALYSIS_COMPLETE,  # Using existing event type
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    source="task_creation_coordinator",
+                    data={
+                        "event_type": "task_created",
+                        "task_id": task_id,
+                        "description": description,
+                        "required_roles": [role.value for role in required_roles],
+                        "collaboration_mode": collaboration_mode.value,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+            )
 
-            logger.info(f"Created task: {task_id} requiring {len(required_roles)} agent types")
+            logger.info(
+                f"Created task: {task_id} requiring {len(required_roles)} agent types"
+            )
             return task
 
         except Exception as e:
             logger.error(f"Failed to create task: {e}")
             return None
 
-    async def assign_agents_to_task(self, task: CollaborationTask, available_agents: Dict[AgentRole, List[str]]) -> bool:
+    async def assign_agents_to_task(
+        self, task: CollaborationTask, available_agents: Dict[AgentRole, List[str]]
+    ) -> bool:
         """
         Assign agents to a task based on availability.
 
@@ -116,7 +121,9 @@ class TaskCreationCoordinator(BaseCoordinator):
             task.assigned_agents = assigned_agents
             task.status = "assigned"
 
-            logger.info(f"Assigned {len(assigned_agents)} agents to task {task.task_id}")
+            logger.info(
+                f"Assigned {len(assigned_agents)} agents to task {task.task_id}"
+            )
             return True
 
         except Exception as e:
@@ -126,4 +133,3 @@ class TaskCreationCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         """Cleanup task creation coordinator resources."""
         logger.info("TaskCreationCoordinator cleanup complete")
-

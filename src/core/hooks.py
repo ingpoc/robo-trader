@@ -7,19 +7,19 @@ Implements PreToolUse hooks for:
 - Environment-specific restrictions
 """
 
-import json
-from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 from claude_agent_sdk import HookMatcher
-from loguru import logger
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
-from ..core.state_models import Intent, RiskDecision
 
 
-async def pre_tool_use_hook(input_data: Dict[str, Any], tool_use_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+async def pre_tool_use_hook(
+    input_data: Dict[str, Any], tool_use_id: str, context: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Main PreToolUse hook that delegates to specific validators.
     """
@@ -31,7 +31,12 @@ async def pre_tool_use_hook(input_data: Dict[str, Any], tool_use_id: str, contex
     state_manager: DatabaseStateManager = context.get("state_manager")
 
     if not config or not state_manager:
-        return {"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "Missing context"}}
+        return {
+            "hookSpecificOutput": {
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "Missing context",
+            }
+        }
 
     # Route to appropriate validator
     if tool_name.startswith("mcp__broker__"):
@@ -43,23 +48,36 @@ async def pre_tool_use_hook(input_data: Dict[str, Any], tool_use_id: str, contex
         return {}
 
 
-async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], config: Config, state_manager: DatabaseStateManager) -> Dict[str, Any]:
+async def _validate_broker_tool(
+    tool_name: str,
+    tool_input: Dict[str, Any],
+    config: Config,
+    state_manager: DatabaseStateManager,
+) -> Dict[str, Any]:
     """Validate broker-related tools (orders, portfolio, etc.)."""
 
     # In dry-run mode, deny all execution tools
     if config.environment == "dry-run":
-        if tool_name in ["mcp__broker__place_order", "mcp__broker__modify_order", "mcp__broker__cancel_order"]:
+        if tool_name in [
+            "mcp__broker__place_order",
+            "mcp__broker__modify_order",
+            "mcp__broker__cancel_order",
+        ]:
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": "Execution tools denied in dry-run mode"
+                    "permissionDecisionReason": "Execution tools denied in dry-run mode",
                 }
             }
 
     # In live mode, require explicit approval for execution tools
     if config.environment == "live" and config.execution.require_manual_approval_live:
-        if tool_name in ["mcp__broker__place_order", "mcp__broker__modify_order", "mcp__broker__cancel_order"]:
+        if tool_name in [
+            "mcp__broker__place_order",
+            "mcp__broker__modify_order",
+            "mcp__broker__cancel_order",
+        ]:
             # Check if this order has been approved
             client_tag = tool_input.get("client_tag", "")
             if not client_tag:
@@ -67,7 +85,7 @@ async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], conf
                     "hookSpecificOutput": {
                         "hookEventName": "PreToolUse",
                         "permissionDecision": "deny",
-                        "permissionDecisionReason": "Live orders require client_tag for approval tracking"
+                        "permissionDecisionReason": "Live orders require client_tag for approval tracking",
                     }
                 }
 
@@ -78,7 +96,7 @@ async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], conf
                     "hookSpecificOutput": {
                         "hookEventName": "PreToolUse",
                         "permissionDecision": "deny",
-                        "permissionDecisionReason": f"Intent {client_tag} not approved for execution"
+                        "permissionDecisionReason": f"Intent {client_tag} not approved for execution",
                     }
                 }
 
@@ -90,7 +108,7 @@ async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], conf
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": validation["reason"]
+                    "permissionDecisionReason": validation["reason"],
                 }
             }
 
@@ -101,14 +119,19 @@ async def _validate_broker_tool(tool_name: str, tool_input: Dict[str, Any], conf
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": "Orders not allowed outside market hours"
+                    "permissionDecisionReason": "Orders not allowed outside market hours",
                 }
             }
 
     return {}
 
 
-async def _validate_agent_tool(tool_name: str, tool_input: Dict[str, Any], config: Config, state_manager: DatabaseStateManager) -> Dict[str, Any]:
+async def _validate_agent_tool(
+    tool_name: str,
+    tool_input: Dict[str, Any],
+    config: Config,
+    state_manager: DatabaseStateManager,
+) -> Dict[str, Any]:
     """Validate agent-related tools."""
 
     # Validate execution agent calls
@@ -120,7 +143,7 @@ async def _validate_agent_tool(tool_name: str, tool_input: Dict[str, Any], confi
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": f"Intent {intent_id} not found"
+                    "permissionDecisionReason": f"Intent {intent_id} not found",
                 }
             }
 
@@ -129,14 +152,16 @@ async def _validate_agent_tool(tool_name: str, tool_input: Dict[str, Any], confi
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": f"Intent {intent_id} not approved by risk manager"
+                    "permissionDecisionReason": f"Intent {intent_id} not approved by risk manager",
                 }
             }
 
     return {}
 
 
-async def _validate_order_parameters(tool_input: Dict[str, Any], config: Config, state_manager: DatabaseStateManager) -> Dict[str, bool]:
+async def _validate_order_parameters(
+    tool_input: Dict[str, Any], config: Config, state_manager: DatabaseStateManager
+) -> Dict[str, bool]:
     """Validate order parameters against risk limits."""
 
     symbol = tool_input.get("symbol", "")
@@ -188,7 +213,7 @@ async def _validate_order_parameters(tool_input: Dict[str, Any], config: Config,
     if new_position_percent > config.risk.max_position_size_percent:
         return {
             "valid": False,
-            "reason": f"Order size {new_position_percent:.1f}% exceeds max position size {config.risk.max_position_size_percent}%"
+            "reason": f"Order size {new_position_percent:.1f}% exceeds max position size {config.risk.max_position_size_percent}%",
         }
 
     # Check single symbol exposure
@@ -196,7 +221,7 @@ async def _validate_order_parameters(tool_input: Dict[str, Any], config: Config,
     if new_symbol_exposure > config.risk.max_single_symbol_exposure_percent:
         return {
             "valid": False,
-            "reason": f"Symbol exposure {new_symbol_exposure:.1f}% exceeds max {config.risk.max_single_symbol_exposure_percent}%"
+            "reason": f"Symbol exposure {new_symbol_exposure:.1f}% exceeds max {config.risk.max_single_symbol_exposure_percent}%",
         }
 
     return {"valid": True}
@@ -233,11 +258,15 @@ def _is_market_open() -> bool:
     return market_open <= current_time <= market_close
 
 
-def create_safety_hooks(config: Config, state_manager: DatabaseStateManager) -> Dict[str, List[HookMatcher]]:
+def create_safety_hooks(
+    config: Config, state_manager: DatabaseStateManager
+) -> Dict[str, List[HookMatcher]]:
     """Create safety hooks configuration."""
 
     # Inject context into hook function
-    async def hook_with_context(input_data: Dict[str, Any], tool_use_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def hook_with_context(
+        input_data: Dict[str, Any], tool_use_id: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         context = context or {}
         context.update({"config": config, "state_manager": state_manager})
         return await pre_tool_use_hook(input_data, tool_use_id, context)

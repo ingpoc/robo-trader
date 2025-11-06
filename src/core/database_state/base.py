@@ -5,9 +5,9 @@ Handles database initialization, connection pooling, and schema creation.
 """
 
 import asyncio
-import aiosqlite
-from pathlib import Path
 from typing import Optional
+
+import aiosqlite
 from loguru import logger
 
 from src.config import Config
@@ -38,8 +38,7 @@ class DatabaseConnection:
 
         # Backup manager
         self.backup_manager = DatabaseBackupManager(
-            self.db_path,
-            backup_dir=self.db_path.parent / "backups"
+            self.db_path, backup_dir=self.db_path.parent / "backups"
         )
 
     async def initialize(self) -> None:
@@ -54,15 +53,12 @@ class DatabaseConnection:
             try:
                 logger.info(f"Connecting to database at {self.db_path}")
                 self._connection_pool = await asyncio.wait_for(
-                    aiosqlite.connect(str(self.db_path)),
-                    timeout=10.0
+                    aiosqlite.connect(str(self.db_path)), timeout=10.0
                 )
                 logger.info("Database connection established")
 
                 await self._perform_operation_with_timeout(
-                    self._create_tables(),
-                    timeout=15.0,
-                    operation_name="Table creation"
+                    self._create_tables(), timeout=15.0, operation_name="Table creation"
                 )
                 logger.info("Database tables created successfully")
 

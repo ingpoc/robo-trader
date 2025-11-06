@@ -6,15 +6,15 @@ SDK uses Claude Code CLI for authentication, no direct API keys needed.
 """
 
 import os
-from typing import Dict, Optional, Any
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
 
 class ClaudeAuthStatus:
     """Claude API authentication status."""
-    
+
     def __init__(
         self,
         is_valid: bool,
@@ -22,7 +22,7 @@ class ClaudeAuthStatus:
         error: Optional[str] = None,
         account_info: Optional[Dict[str, Any]] = None,
         checked_at: Optional[str] = None,
-        rate_limit_info: Optional[Dict[str, Any]] = None
+        rate_limit_info: Optional[Dict[str, Any]] = None,
     ):
         self.is_valid = is_valid
         self.api_key_present = api_key_present
@@ -30,7 +30,7 @@ class ClaudeAuthStatus:
         self.account_info = account_info or {}
         self.checked_at = checked_at or datetime.now(timezone.utc).isoformat()
         self.rate_limit_info = rate_limit_info or {}
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -40,7 +40,7 @@ class ClaudeAuthStatus:
             "account_info": self.account_info,
             "checked_at": self.checked_at,
             "status": "connected" if self.is_valid else "disconnected",
-            "rate_limit_info": self.rate_limit_info
+            "rate_limit_info": self.rate_limit_info,
         }
 
 
@@ -60,7 +60,9 @@ async def validate_claude_sdk_auth() -> ClaudeAuthStatus:
     cli_status = await check_claude_code_cli_auth()
     if cli_status["authenticated"]:
         auth_method = cli_status.get("auth_method", "subscription")
-        logger.info(f"✓ Claude Agent SDK authenticated via Claude Code CLI ({auth_method})")
+        logger.info(
+            f"✓ Claude Agent SDK authenticated via Claude Code CLI ({auth_method})"
+        )
         rate_limit_info = cli_status.get("rate_limit_info", {})
 
         return ClaudeAuthStatus(
@@ -70,9 +72,9 @@ async def validate_claude_sdk_auth() -> ClaudeAuthStatus:
                 "auth_method": f"claude_code_cli_{auth_method}",
                 "subscription": "active" if auth_method == "subscription" else "oauth",
                 "note": "SDK uses CLI authentication only",
-                **cli_status
+                **cli_status,
             },
-            rate_limit_info=rate_limit_info
+            rate_limit_info=rate_limit_info,
         )
 
     logger.error("Claude Agent SDK not authenticated - Claude Code CLI not available")
@@ -85,7 +87,7 @@ async def validate_claude_sdk_auth() -> ClaudeAuthStatus:
             "2. Run: claude auth login\n"
             "3. Follow browser authentication flow\n"
             "4. Restart the application"
-        )
+        ),
     )
 
 
@@ -106,7 +108,6 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
         }
     """
     import asyncio
-    import os
 
     # Check if ANTHROPIC_API_KEY with OAuth token is set
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -118,16 +119,17 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             "version": "oauth_token",
             "user": "oauth_user",
             "auth_method": "oauth_token",
-            "rate_limit_info": {"limited": False}
+            "rate_limit_info": {"limited": False},
         }
 
     try:
         # Check if claude CLI is installed and authenticated (non-blocking)
         # The correct command is 'claude', not 'claude-code'
         process = await asyncio.create_subprocess_exec(
-            "claude", "--version",
+            "claude",
+            "--version",
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
         )
 
         try:
@@ -142,7 +144,7 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                 "cli_installed": True,
                 "version": None,
                 "user": None,
-                "auth_method": None
+                "auth_method": None,
             }
 
         if result_code == 0:
@@ -153,13 +155,17 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             # Claude Code 2.0+ responds to any input if authenticated
             # Use echo to pipe input instead of --print which is for file operations
             test_process = await asyncio.create_subprocess_exec(
-                "bash", "-c", "echo 'test' | claude",
+                "bash",
+                "-c",
+                "echo 'test' | claude",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
             try:
-                test_stdout, test_stderr = await asyncio.wait_for(test_process.communicate(), timeout=10.0)
+                test_stdout, test_stderr = await asyncio.wait_for(
+                    test_process.communicate(), timeout=10.0
+                )
                 test_result_code = test_process.returncode
             except asyncio.TimeoutError:
                 test_process.kill()
@@ -171,7 +177,7 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                     "version": version,
                     "user": None,
                     "auth_method": None,
-                    "rate_limit_info": {}
+                    "rate_limit_info": {},
                 }
 
             # Parse the output for rate limit information
@@ -209,10 +215,14 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             # The CLI will respond if authenticated, regardless of the model underneath
             if output.strip():
                 is_authenticated = True
-                logger.debug("Claude CLI authentication confirmed - received response from CLI")
+                logger.debug(
+                    "Claude CLI authentication confirmed - received response from CLI"
+                )
             elif test_result_code == 0:
                 is_authenticated = True
-                logger.debug("Claude CLI authentication confirmed via successful exit code")
+                logger.debug(
+                    "Claude CLI authentication confirmed via successful exit code"
+                )
 
             if "limit" in output.lower():
                 # Extract rate limit details
@@ -221,7 +231,10 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                     rate_limit_info["type"] = "weekly"
                     # Try to extract reset time
                     import re
-                    reset_match = re.search(r'resets\s+(\d+:\d+\s*[ap]m)', output, re.IGNORECASE)
+
+                    reset_match = re.search(
+                        r"resets\s+(\d+:\d+\s*[ap]m)", output, re.IGNORECASE
+                    )
                     if reset_match:
                         rate_limit_info["resets_at"] = reset_match.group(1)
                 elif "daily limit" in output.lower():
@@ -244,7 +257,7 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                     "version": version,
                     "user": "claude_user",
                     "auth_method": auth_method,
-                    "rate_limit_info": rate_limit_info
+                    "rate_limit_info": rate_limit_info,
                 }
             else:
                 logger.debug(f"Claude CLI not authenticated: {test_stderr.decode()}")
@@ -254,7 +267,7 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
                     "version": version,
                     "user": None,
                     "auth_method": None,
-                    "rate_limit_info": {}
+                    "rate_limit_info": {},
                 }
 
     except FileNotFoundError:
@@ -265,7 +278,7 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             "cli_installed": False,
             "version": None,
             "user": None,
-            "auth_method": None
+            "auth_method": None,
         }
     except Exception as e:
         logger.debug(f"Claude Code CLI check failed: {e}")
@@ -274,7 +287,7 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             "cli_installed": False,
             "version": None,
             "user": None,
-            "auth_method": None
+            "auth_method": None,
         }
 
 
@@ -297,12 +310,11 @@ def require_claude_api(func):
         async def my_function():
             pass
     """
+
     async def wrapper(*args, **kwargs):
         status = await validate_claude_sdk_auth()
         if not status.is_valid:
-            raise RuntimeError(
-                f"Claude authentication failed: {status.error}"
-            )
+            raise RuntimeError(f"Claude authentication failed: {status.error}")
         return await func(*args, **kwargs)
 
     return wrapper
@@ -323,6 +335,7 @@ async def get_claude_sdk_status_cached() -> ClaudeAuthStatus:
 
     # Check cache age
     from datetime import datetime
+
     cache_time = datetime.fromisoformat(_cached_status.checked_at)
     age_seconds = (datetime.now(timezone.utc) - cache_time).total_seconds()
 

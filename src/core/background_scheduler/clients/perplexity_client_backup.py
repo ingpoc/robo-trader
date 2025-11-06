@@ -8,16 +8,14 @@ Consolidates all Perplexity API interactions in a single module with:
 - Structured response parsing
 """
 
-import asyncio
 import os
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
-import httpx
 from loguru import logger
-from openai import OpenAI, RateLimitError, AuthenticationError
+from openai import AuthenticationError, OpenAI
 
 from .api_key_rotator import APIKeyRotator
-from .retry_handler import RetryConfig, retry_on_rate_limit
+from .retry_handler import retry_on_rate_limit
 
 
 class PerplexityClient:
@@ -28,7 +26,7 @@ class PerplexityClient:
         api_key_rotator: Optional[APIKeyRotator] = None,
         model: str = "sonar-pro",
         timeout_seconds: int = 45,
-        configuration_state: Optional[Any] = None
+        configuration_state: Optional[Any] = None,
     ):
         """Initialize Perplexity client.
 
@@ -60,13 +58,17 @@ class PerplexityClient:
         # Try to fetch from database
         if self.configuration_state:
             try:
-                prompt_data = await self.configuration_state.get_prompt_config(prompt_name)
-                if prompt_data and prompt_data.get('content'):
-                    self._prompt_cache[prompt_name] = prompt_data['content']
+                prompt_data = await self.configuration_state.get_prompt_config(
+                    prompt_name
+                )
+                if prompt_data and prompt_data.get("content"):
+                    self._prompt_cache[prompt_name] = prompt_data["content"]
                     logger.info(f"Using database prompt for {prompt_name}")
-                    return prompt_data['content']
+                    return prompt_data["content"]
             except Exception as e:
-                logger.warning(f"Failed to fetch prompt {prompt_name} from database: {e}")
+                logger.warning(
+                    f"Failed to fetch prompt {prompt_name} from database: {e}"
+                )
 
         # Fallback to hardcoded prompts
         logger.info(f"Using hardcoded fallback prompt for {prompt_name}")
@@ -150,28 +152,26 @@ ANALYSIS REQUIREMENTS:
             List of non-empty API keys
         """
         # First check for comma-separated keys
-        keys_str = os.getenv('PERPLEXITY_API_KEYS', '')
+        keys_str = os.getenv("PERPLEXITY_API_KEYS", "")
         logger.info(f"Checking PERPLEXITY_API_KEYS: {repr(keys_str)}")
         if keys_str:
-            keys = [key.strip() for key in keys_str.split(',') if key.strip()]
+            keys = [key.strip() for key in keys_str.split(",") if key.strip()]
             logger.info(f"Parsed {len(keys)} keys from PERPLEXITY_API_KEYS")
             if keys:
                 return keys
 
         # Fall back to individual key variables
         keys = [
-            os.getenv('PERPLEXITY_API_KEY_1'),
-            os.getenv('PERPLEXITY_API_KEY_2'),
-            os.getenv('PERPLEXITY_API_KEY_3')
+            os.getenv("PERPLEXITY_API_KEY_1"),
+            os.getenv("PERPLEXITY_API_KEY_2"),
+            os.getenv("PERPLEXITY_API_KEY_3"),
         ]
         filtered_keys = [key for key in keys if key]
         logger.info(f"Found {len(filtered_keys)} keys from individual variables")
         return filtered_keys
 
     async def fetch_earnings_fundamentals(
-        self,
-        symbols: List[str],
-        max_tokens: int = 4000
+        self, symbols: List[str], max_tokens: int = 4000
     ) -> Optional[str]:
         """Fetch comprehensive earnings and financial fundamentals data.
 
@@ -197,13 +197,11 @@ ANALYSIS REQUIREMENTS:
             search_recency="week",
             max_search_results=15,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
     async def fetch_market_news(
-        self,
-        symbols: List[str],
-        max_tokens: int = 3000
+        self, symbols: List[str], max_tokens: int = 3000
     ) -> Optional[str]:
         """Fetch recent market-moving news and sentiment analysis.
 
@@ -229,13 +227,11 @@ ANALYSIS REQUIREMENTS:
             search_recency="day",
             max_search_results=15,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
     async def fetch_deep_fundamentals(
-        self,
-        symbols: List[str],
-        max_tokens: int = 5000
+        self, symbols: List[str], max_tokens: int = 5000
     ) -> Optional[str]:
         """Fetch deep fundamental analysis for investment assessment.
 
@@ -322,7 +318,7 @@ Use exact numerical values from recent reports. Mark fields as "TBD" only if dat
             search_recency="month",
             max_search_results=20,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
     async def fetch_news_and_earnings(
@@ -330,7 +326,7 @@ Use exact numerical values from recent reports. Mark fields as "TBD" only if dat
         symbols: List[str],
         search_recency: str = "day",
         max_search_results: int = 10,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
     ) -> Optional[str]:
         """Fetch news and earnings data for multiple symbols (legacy).
 
@@ -362,13 +358,11 @@ Return structured data for each stock."""
             search_recency=search_recency,
             max_search_results=max_search_results,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
     async def fetch_daily_news(
-        self,
-        symbols: List[str],
-        max_tokens: int = 3000
+        self, symbols: List[str], max_tokens: int = 3000
     ) -> Optional[str]:
         """Fetch daily news summary for symbols.
 
@@ -396,14 +390,10 @@ Format as structured JSON with stock symbols as keys."""
             search_recency="day",
             max_search_results=15,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
-    async def analyze_sentiment(
-        self,
-        content: str,
-        context: str = ""
-    ) -> Optional[str]:
+    async def analyze_sentiment(self, content: str, context: str = "") -> Optional[str]:
         """Analyze sentiment of provided content.
 
         Args:
@@ -432,12 +422,11 @@ Return as structured JSON."""
             search_recency="day",
             max_search_results=5,
             max_tokens=1000,
-            response_format="json"
+            response_format="json",
         )
 
     async def generate_recommendations(
-        self,
-        analysis_context: Dict[str, Any]
+        self, analysis_context: Dict[str, Any]
     ) -> Optional[str]:
         """Generate trading recommendations based on analysis context.
 
@@ -467,7 +456,7 @@ Return as structured JSON."""
             search_recency="week",
             max_search_results=10,
             max_tokens=1500,
-            response_format="json"
+            response_format="json",
         )
 
     async def _call_perplexity_api(
@@ -476,7 +465,7 @@ Return as structured JSON."""
         search_recency: str = "day",
         max_search_results: int = 10,
         max_tokens: int = 2000,
-        response_format: str = "text"
+        response_format: str = "text",
     ) -> Optional[str]:
         """Make a call to Perplexity API with exponential backoff retry.
 
@@ -493,6 +482,7 @@ Return as structured JSON."""
         Returns:
             API response content, or None on failure
         """
+
         async def _make_request() -> str:
             """Inner function for retry wrapper."""
             api_key = self.key_rotator.get_next_key()
@@ -502,10 +492,7 @@ Return as structured JSON."""
 
             try:
                 # Create OpenAI client without specifying http_client - it will handle async automatically
-                client = OpenAI(
-                    api_key=api_key,
-                    base_url="https://api.perplexity.ai"
-                )
+                client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
 
                 response_format_config = {"type": "text"}
                 if response_format == "json":
@@ -524,52 +511,88 @@ Return as structured JSON."""
                                                     "earnings": {
                                                         "type": "object",
                                                         "properties": {
-                                                            "latest_quarter": {"type": "object"},
-                                                            "growth_rates": {"type": "object"},
-                                                            "margins": {"type": "object"},
-                                                            "next_earnings_date": {"type": "string"}
+                                                            "latest_quarter": {
+                                                                "type": "object"
+                                                            },
+                                                            "growth_rates": {
+                                                                "type": "object"
+                                                            },
+                                                            "margins": {
+                                                                "type": "object"
+                                                            },
+                                                            "next_earnings_date": {
+                                                                "type": "string"
+                                                            },
                                                         },
-                                                        "required": ["latest_quarter", "growth_rates", "margins"]
+                                                        "required": [
+                                                            "latest_quarter",
+                                                            "growth_rates",
+                                                            "margins",
+                                                        ],
                                                     },
                                                     "fundamentals": {
                                                         "type": "object",
                                                         "properties": {
-                                                            "valuation": {"type": "object"},
-                                                            "profitability": {"type": "object"},
-                                                            "financial_health": {"type": "object"},
-                                                            "growth": {"type": "object"}
-                                                        }
+                                                            "valuation": {
+                                                                "type": "object"
+                                                            },
+                                                            "profitability": {
+                                                                "type": "object"
+                                                            },
+                                                            "financial_health": {
+                                                                "type": "object"
+                                                            },
+                                                            "growth": {
+                                                                "type": "object"
+                                                            },
+                                                        },
                                                     },
                                                     "analysis": {
                                                         "type": "object",
                                                         "properties": {
-                                                            "recommendation": {"type": "string"},
-                                                            "confidence_score": {"type": "number"},
-                                                            "risk_level": {"type": "string"},
-                                                            "key_drivers": {"type": "array"},
-                                                            "risk_factors": {"type": "array"}
-                                                        }
-                                                    }
+                                                            "recommendation": {
+                                                                "type": "string"
+                                                            },
+                                                            "confidence_score": {
+                                                                "type": "number"
+                                                            },
+                                                            "risk_level": {
+                                                                "type": "string"
+                                                            },
+                                                            "key_drivers": {
+                                                                "type": "array"
+                                                            },
+                                                            "risk_factors": {
+                                                                "type": "array"
+                                                            },
+                                                        },
+                                                    },
                                                 },
-                                                "required": ["earnings", "fundamentals", "analysis"]
+                                                "required": [
+                                                    "earnings",
+                                                    "fundamentals",
+                                                    "analysis",
+                                                ],
                                             }
-                                        }
+                                        },
                                     },
-                                    "required": ["stocks"]
-                                }
+                                    "required": ["stocks"],
+                                },
                             }
-                        }
+                        },
                     }
 
                 completion = client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": query}],
                     max_tokens=max_tokens,
-                    response_format=response_format_config if response_format == "json" else None,
+                    response_format=(
+                        response_format_config if response_format == "json" else None
+                    ),
                     web_search_options={
                         "search_recency_filter": search_recency,
-                        "max_search_results": max_search_results
-                    }
+                        "max_search_results": max_search_results,
+                    },
                 )
 
                 response_content = completion.choices[0].message.content

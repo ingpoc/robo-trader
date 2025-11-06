@@ -6,20 +6,23 @@ performance attribution, and backtesting engine.
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 import aiosqlite
 from loguru import logger
 
 from src.config import Config
-from ..core.event_bus import EventBus, Event, EventType, EventHandler
+
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
 
 
 @dataclass
 class TechnicalAnalysis:
     """Technical analysis result."""
+
     symbol: str
     timestamp: str
     indicators: Dict[str, float]
@@ -32,6 +35,7 @@ class TechnicalAnalysis:
 @dataclass
 class ScreeningResult:
     """Stock screening result."""
+
     symbol: str
     score: float
     criteria: Dict[str, Any]
@@ -132,7 +136,9 @@ class AnalyticsService(EventHandler):
         await self._db_connection.executescript(schema)
         await self._db_connection.commit()
 
-    async def perform_technical_analysis(self, symbol: str, price_data: List[Dict[str, Any]]) -> TechnicalAnalysis:
+    async def perform_technical_analysis(
+        self, symbol: str, price_data: List[Dict[str, Any]]
+    ) -> TechnicalAnalysis:
         """Perform technical analysis on price data."""
         async with self._lock:
             # Simple technical analysis - in real implementation this would be more sophisticated
@@ -144,11 +150,13 @@ class AnalyticsService(EventHandler):
                     signals=[],
                     trend="unknown",
                     support_levels=[],
-                    resistance_levels=[]
+                    resistance_levels=[],
                 )
 
             # Calculate basic indicators
-            prices = [d.get('close', d.get('price', 0)) for d in price_data[-20:]]  # Last 20 periods
+            prices = [
+                d.get("close", d.get("price", 0)) for d in price_data[-20:]
+            ]  # Last 20 periods
 
             if len(prices) < 2:
                 sma_20 = prices[0] if prices else 0
@@ -157,8 +165,12 @@ class AnalyticsService(EventHandler):
                 sma_20 = sum(prices) / len(prices)
 
                 # Simple RSI calculation
-                gains = [max(0, prices[i] - prices[i-1]) for i in range(1, len(prices))]
-                losses = [max(0, prices[i-1] - prices[i]) for i in range(1, len(prices))]
+                gains = [
+                    max(0, prices[i] - prices[i - 1]) for i in range(1, len(prices))
+                ]
+                losses = [
+                    max(0, prices[i - 1] - prices[i]) for i in range(1, len(prices))
+                ]
 
                 if losses:
                     avg_gain = sum(gains) / len(gains) if gains else 0
@@ -171,7 +183,7 @@ class AnalyticsService(EventHandler):
             indicators = {
                 "sma_20": sma_20,
                 "rsi": rsi,
-                "current_price": prices[-1] if prices else 0
+                "current_price": prices[-1] if prices else 0,
             }
 
             # Generate signals
@@ -205,7 +217,7 @@ class AnalyticsService(EventHandler):
                 signals=signals,
                 trend=trend,
                 support_levels=support_levels,
-                resistance_levels=resistance_levels
+                resistance_levels=resistance_levels,
             )
 
             # Save to database
@@ -215,30 +227,40 @@ class AnalyticsService(EventHandler):
 
     async def _save_technical_analysis(self, analysis: TechnicalAnalysis) -> None:
         """Save technical analysis to database."""
-        await self._db_connection.execute("""
+        await self._db_connection.execute(
+            """
             INSERT INTO technical_analysis
             (symbol, timestamp, indicators, signals, trend, support_levels, resistance_levels, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            analysis.symbol,
-            analysis.timestamp,
-            json.dumps(analysis.indicators),
-            json.dumps(analysis.signals),
-            analysis.trend,
-            json.dumps(analysis.support_levels),
-            json.dumps(analysis.resistance_levels),
-            datetime.now(timezone.utc).isoformat()
-        ))
+        """,
+            (
+                analysis.symbol,
+                analysis.timestamp,
+                json.dumps(analysis.indicators),
+                json.dumps(analysis.signals),
+                analysis.trend,
+                json.dumps(analysis.support_levels),
+                json.dumps(analysis.resistance_levels),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
         await self._db_connection.commit()
 
-    async def perform_fundamental_screening(self, criteria: Dict[str, Any]) -> List[ScreeningResult]:
+    async def perform_fundamental_screening(
+        self, criteria: Dict[str, Any]
+    ) -> List[ScreeningResult]:
         """Perform fundamental screening based on criteria."""
         async with self._lock:
             # Placeholder implementation - in real system this would query financial databases
             # For demo, return mock results
 
             mock_stocks = [
-                {"symbol": "RELIANCE", "pe_ratio": 25.5, "market_cap": 1500000, "roe": 12.5},
+                {
+                    "symbol": "RELIANCE",
+                    "pe_ratio": 25.5,
+                    "market_cap": 1500000,
+                    "roe": 12.5,
+                },
                 {"symbol": "TCS", "pe_ratio": 28.3, "market_cap": 1200000, "roe": 15.2},
                 {"symbol": "HDFC", "pe_ratio": 22.1, "market_cap": 800000, "roe": 18.1},
                 {"symbol": "INFY", "pe_ratio": 24.7, "market_cap": 600000, "roe": 14.8},
@@ -249,9 +271,15 @@ class AnalyticsService(EventHandler):
                 # Simple scoring based on criteria
                 score = 0.0
 
-                if "pe_ratio_max" in criteria and stock["pe_ratio"] <= criteria["pe_ratio_max"]:
+                if (
+                    "pe_ratio_max" in criteria
+                    and stock["pe_ratio"] <= criteria["pe_ratio_max"]
+                ):
                     score += 25
-                if "market_cap_min" in criteria and stock["market_cap"] >= criteria["market_cap_min"]:
+                if (
+                    "market_cap_min" in criteria
+                    and stock["market_cap"] >= criteria["market_cap_min"]
+                ):
                     score += 25
                 if "roe_min" in criteria and stock["roe"] >= criteria["roe_min"]:
                     score += 25
@@ -264,7 +292,7 @@ class AnalyticsService(EventHandler):
                         score=score,
                         criteria=stock,
                         rank=i + 1,
-                        timestamp=datetime.now(timezone.utc).isoformat()
+                        timestamp=datetime.now(timezone.utc).isoformat(),
                     )
                     results.append(result)
                     await self._save_screening_result(result)
@@ -276,21 +304,26 @@ class AnalyticsService(EventHandler):
 
     async def _save_screening_result(self, result: ScreeningResult) -> None:
         """Save screening result to database."""
-        await self._db_connection.execute("""
+        await self._db_connection.execute(
+            """
             INSERT INTO screening_results
             (symbol, score, criteria, rank, timestamp, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            result.symbol,
-            result.score,
-            json.dumps(result.criteria),
-            result.rank,
-            result.timestamp,
-            datetime.now(timezone.utc).isoformat()
-        ))
+        """,
+            (
+                result.symbol,
+                result.score,
+                json.dumps(result.criteria),
+                result.rank,
+                result.timestamp,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
         await self._db_connection.commit()
 
-    async def calculate_performance_metrics(self, symbol: Optional[str] = None, period: str = "1M") -> Dict[str, Any]:
+    async def calculate_performance_metrics(
+        self, symbol: Optional[str] = None, period: str = "1M"
+    ) -> Dict[str, Any]:
         """Calculate performance metrics."""
         async with self._lock:
             # Placeholder implementation
@@ -300,7 +333,7 @@ class AnalyticsService(EventHandler):
                 "sharpe_ratio": 1.45,
                 "max_drawdown": -0.08,
                 "win_rate": 0.62,
-                "period": period
+                "period": period,
             }
 
             if symbol:
@@ -311,22 +344,32 @@ class AnalyticsService(EventHandler):
 
             return metrics
 
-    async def _save_performance_metrics(self, symbol: Optional[str], metrics: Dict[str, Any], period: str) -> None:
+    async def _save_performance_metrics(
+        self, symbol: Optional[str], metrics: Dict[str, Any], period: str
+    ) -> None:
         """Save performance metrics to database."""
         timestamp = datetime.now(timezone.utc).isoformat()
 
         for metric_name, value in metrics.items():
             if metric_name not in ["symbol", "period"]:
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     INSERT INTO performance_metrics
                     (symbol, metric_name, value, period, timestamp, created_at)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (symbol, metric_name, value, period, timestamp, timestamp))
+                """,
+                    (symbol, metric_name, value, period, timestamp, timestamp),
+                )
 
         await self._db_connection.commit()
 
-    async def run_backtest(self, strategy_name: str, parameters: Dict[str, Any],
-                          start_date: str, end_date: str) -> Dict[str, Any]:
+    async def run_backtest(
+        self,
+        strategy_name: str,
+        parameters: Dict[str, Any],
+        start_date: str,
+        end_date: str,
+    ) -> Dict[str, Any]:
         """Run backtesting for a strategy."""
         async with self._lock:
             # Placeholder backtest implementation
@@ -338,69 +381,86 @@ class AnalyticsService(EventHandler):
                 "max_drawdown": -0.12,
                 "total_trades": 156,
                 "win_rate": 0.58,
-                "profit_factor": 1.35
+                "profit_factor": 1.35,
             }
 
             # Save backtest results
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO backtest_results
                 (strategy_name, parameters, results, start_date, end_date, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                strategy_name,
-                json.dumps(parameters),
-                json.dumps(results),
-                start_date,
-                end_date,
-                datetime.now(timezone.utc).isoformat()
-            ))
+            """,
+                (
+                    strategy_name,
+                    json.dumps(parameters),
+                    json.dumps(results),
+                    start_date,
+                    end_date,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
             await self._db_connection.commit()
 
-            logger.info(f"Backtest completed for {strategy_name}: {results['total_return']:.1%} return")
+            logger.info(
+                f"Backtest completed for {strategy_name}: {results['total_return']:.1%} return"
+            )
             return results
 
-    async def get_technical_analysis(self, symbol: str, limit: int = 10) -> List[TechnicalAnalysis]:
+    async def get_technical_analysis(
+        self, symbol: str, limit: int = 10
+    ) -> List[TechnicalAnalysis]:
         """Get recent technical analysis for a symbol."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT symbol, timestamp, indicators, signals, trend, support_levels, resistance_levels
                 FROM technical_analysis
                 WHERE symbol = ?
                 ORDER BY timestamp DESC LIMIT ?
-            """, (symbol, limit))
+            """,
+                (symbol, limit),
+            )
 
             results = []
             async for row in cursor:
-                results.append(TechnicalAnalysis(
-                    symbol=row[0],
-                    timestamp=row[1],
-                    indicators=json.loads(row[2]),
-                    signals=json.loads(row[3]),
-                    trend=row[4],
-                    support_levels=json.loads(row[5]) if row[5] else [],
-                    resistance_levels=json.loads(row[6]) if row[6] else []
-                ))
+                results.append(
+                    TechnicalAnalysis(
+                        symbol=row[0],
+                        timestamp=row[1],
+                        indicators=json.loads(row[2]),
+                        signals=json.loads(row[3]),
+                        trend=row[4],
+                        support_levels=json.loads(row[5]) if row[5] else [],
+                        resistance_levels=json.loads(row[6]) if row[6] else [],
+                    )
+                )
 
             return results
 
     async def get_screening_results(self, limit: int = 50) -> List[ScreeningResult]:
         """Get recent screening results."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT symbol, score, criteria, rank, timestamp
                 FROM screening_results
                 ORDER BY score DESC, timestamp DESC LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
 
             results = []
             async for row in cursor:
-                results.append(ScreeningResult(
-                    symbol=row[0],
-                    score=row[1],
-                    criteria=json.loads(row[2]),
-                    rank=row[3],
-                    timestamp=row[4]
-                ))
+                results.append(
+                    ScreeningResult(
+                        symbol=row[0],
+                        score=row[1],
+                        criteria=json.loads(row[2]),
+                        rank=row[3],
+                        timestamp=row[4],
+                    )
+                )
 
             return results
 
@@ -421,18 +481,21 @@ class AnalyticsService(EventHandler):
             analysis = data.get("analysis", {})
 
             if symbol and analysis:
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     INSERT INTO technical_analysis
                     (symbol, timestamp, indicators, signals, trend, created_at)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    symbol,
-                    datetime.now(timezone.utc).isoformat(),
-                    json.dumps(analysis.get("indicators", {})),
-                    json.dumps(analysis.get("signals", [])),
-                    analysis.get("trend", "unknown"),
-                    datetime.now(timezone.utc).isoformat()
-                ))
+                """,
+                    (
+                        symbol,
+                        datetime.now(timezone.utc).isoformat(),
+                        json.dumps(analysis.get("indicators", {})),
+                        json.dumps(analysis.get("signals", [])),
+                        analysis.get("trend", "unknown"),
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
                 await self._db_connection.commit()
 
     async def close(self) -> None:

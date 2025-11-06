@@ -5,6 +5,7 @@ Handles round-robin key rotation with error tracking.
 """
 
 from typing import List, Optional
+
 from loguru import logger
 
 
@@ -60,7 +61,9 @@ class APIKeyRotator:
         try:
             key_index = self.api_keys.index(key)
             self.error_counts[key_index] += 1
-            logger.warning(f"Error count for key {key_index + 1}: {self.error_counts[key_index]}")
+            logger.warning(
+                f"Error count for key {key_index + 1}: {self.error_counts[key_index]}"
+            )
         except ValueError:
             pass
 

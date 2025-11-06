@@ -6,22 +6,26 @@ slippage monitoring, and order state machine.
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
-from enum import Enum
 import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
 import aiosqlite
 from loguru import logger
 
 from src.config import Config
-from ..core.state_models import OrderCommand, ExecutionReport
-from ..core.event_bus import EventBus, Event, EventType, EventHandler
+
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
+from ..core.state_models import ExecutionReport, OrderCommand
+
 # from ..mcp.broker import ZerodhaBroker  # Commented out - no live trading
 
 
 class OrderStatus(Enum):
     """Order status enumeration."""
+
     PENDING = "pending"
     PLACED = "placed"
     PARTIAL_FILL = "partial_fill"
@@ -34,6 +38,7 @@ class OrderStatus(Enum):
 @dataclass
 class OrderState:
     """Order state tracking."""
+
     order_id: str
     broker_order_id: Optional[str]
     status: OrderStatus
@@ -146,13 +151,15 @@ class ExecutionService(EventHandler):
 
     async def _load_active_orders(self) -> None:
         """Load active orders from database."""
-        cursor = await self._db_connection.execute("""
+        cursor = await self._db_connection.execute(
+            """
             SELECT id, broker_order_id, symbol, quantity, order_type, product, price,
                    trigger_price, status, filled_quantity, remaining_quantity, average_price,
                    created_at, updated_at
             FROM orders
             WHERE status IN ('pending', 'placed', 'partial_fill')
-        """)
+        """
+        )
 
         async for row in cursor:
             order_state = OrderState(
@@ -164,7 +171,7 @@ class ExecutionService(EventHandler):
                 filled_quantity=row[9] or 0,
                 remaining_quantity=row[10] or row[3],
                 average_price=row[11],
-                created_at=row[12]
+                created_at=row[12],
             )
             order_state.updated_at = row[13]
             self._active_orders[row[0]] = order_state
@@ -181,58 +188,66 @@ class ExecutionService(EventHandler):
                 broker_order_id=None,
                 status=OrderStatus.PENDING,
                 symbol=order_command.symbol,
-                quantity=order_command.qty or 0
+                quantity=order_command.qty or 0,
             )
             self._active_orders[order_id] = order_state
 
             # Save to database
             now = datetime.now(timezone.utc).isoformat()
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO orders
                 (id, symbol, quantity, order_type, product, price, trigger_price, status,
                  remaining_quantity, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                order_id,
-                order_command.symbol,
-                order_command.qty,
-                order_command.order_type,
-                order_command.product,
-                order_command.price,
-                order_command.trigger_price,
-                order_state.status.value,
-                order_state.remaining_quantity,
-                now,
-                now
-            ))
+            """,
+                (
+                    order_id,
+                    order_command.symbol,
+                    order_command.qty,
+                    order_command.order_type,
+                    order_command.product,
+                    order_command.price,
+                    order_command.trigger_price,
+                    order_state.status.value,
+                    order_state.remaining_quantity,
+                    now,
+                    now,
+                ),
+            )
 
             # Save order command
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO order_commands (order_id, command_type, command_data, executed_at)
                 VALUES (?, ?, ?, ?)
-            """, (
-                order_id,
-                order_command.type,
-                json.dumps(order_command.to_dict()),
-                now
-            ))
+            """,
+                (
+                    order_id,
+                    order_command.type,
+                    json.dumps(order_command.to_dict()),
+                    now,
+                ),
+            )
 
             await self._db_connection.commit()
 
             # Publish order placed event
-            await self.event_bus.publish(Event(
-                id=f"order_placed_{order_id}",
-                type=EventType.EXECUTION_ORDER_PLACED,
-                timestamp=now,
-                source="execution_service",
-                data={
-                    "order_id": order_id,
-                    "symbol": order_command.symbol,
-                    "quantity": order_command.qty,
-                    "order_type": order_command.order_type,
-                    "price": order_command.price
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"order_placed_{order_id}",
+                    type=EventType.EXECUTION_ORDER_PLACED,
+                    timestamp=now,
+                    source="execution_service",
+                    data={
+                        "order_id": order_id,
+                        "symbol": order_command.symbol,
+                        "quantity": order_command.qty,
+                        "order_type": order_command.order_type,
+                        "price": order_command.price,
+                    },
+                )
+            )
 
             # Submit to broker (async)
             asyncio.create_task(self._submit_to_broker(order_id, order_command))
@@ -240,7 +255,9 @@ class ExecutionService(EventHandler):
             logger.info(f"Order placed: {order_id} for {order_command.symbol}")
             return order_id
 
-    async def _submit_to_broker(self, order_id: str, order_command: OrderCommand) -> None:
+    async def _submit_to_broker(
+        self, order_id: str, order_command: OrderCommand
+    ) -> None:
         """Submit order to broker."""
         try:
             # Convert to broker format
@@ -261,15 +278,25 @@ class ExecutionService(EventHandler):
                         order_state.updated_at = datetime.now(timezone.utc).isoformat()
 
                         # Update database
-                        await self._db_connection.execute("""
+                        await self._db_connection.execute(
+                            """
                             UPDATE orders SET broker_order_id = ?, status = ?, updated_at = ?
                             WHERE id = ?
-                        """, (broker_order_id, order_state.status.value, order_state.updated_at, order_id))
+                        """,
+                            (
+                                broker_order_id,
+                                order_state.status.value,
+                                order_state.updated_at,
+                                order_id,
+                            ),
+                        )
                         await self._db_connection.commit()
 
                 logger.info(f"Order {order_id} submitted to broker: {broker_order_id}")
             else:
-                await self._handle_order_rejection(order_id, broker_response.get("message", "Unknown error"))
+                await self._handle_order_rejection(
+                    order_id, broker_response.get("message", "Unknown error")
+                )
 
         except Exception as e:
             logger.error(f"Failed to submit order {order_id} to broker: {e}")
@@ -288,7 +315,7 @@ class ExecutionService(EventHandler):
             "price": order_command.price,
             "trigger_price": order_command.trigger_price,
             "validity": order_command.tif,
-            "variety": order_command.variety
+            "variety": order_command.variety,
         }
 
     async def cancel_order(self, order_id: str) -> bool:
@@ -304,14 +331,16 @@ class ExecutionService(EventHandler):
                 try:
                     cancel_result = await self.broker.cancel_order(
                         order_id=order_state.broker_order_id,
-                        variety="regular"  # Default
+                        variety="regular",  # Default
                     )
 
                     if cancel_result.get("status") == "success":
                         await self._update_order_status(order_id, OrderStatus.CANCELLED)
                         return True
                     else:
-                        logger.error(f"Failed to cancel order {order_id}: {cancel_result}")
+                        logger.error(
+                            f"Failed to cancel order {order_id}: {cancel_result}"
+                        )
                         return False
 
                 except Exception as e:
@@ -330,26 +359,37 @@ class ExecutionService(EventHandler):
                 order_state.status = status
                 order_state.updated_at = datetime.now(timezone.utc).isoformat()
 
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     UPDATE orders SET status = ?, updated_at = ? WHERE id = ?
-                """, (status.value, order_state.updated_at, order_id))
+                """,
+                    (status.value, order_state.updated_at, order_id),
+                )
                 await self._db_connection.commit()
 
                 # Publish status change event
-                await self.event_bus.publish(Event(
-                    id=f"order_status_{order_id}_{status.value}",
-                    type=EventType.EXECUTION_ORDER_CANCELLED if status == OrderStatus.CANCELLED
-                         else EventType.EXECUTION_ORDER_REJECTED if status == OrderStatus.REJECTED
-                         else EventType.EXECUTION_ORDER_FILLED,
-                    timestamp=order_state.updated_at,
-                    source="execution_service",
-                    data={
-                        "order_id": order_id,
-                        "broker_order_id": order_state.broker_order_id,
-                        "status": status.value,
-                        "symbol": order_state.symbol
-                    }
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=f"order_status_{order_id}_{status.value}",
+                        type=(
+                            EventType.EXECUTION_ORDER_CANCELLED
+                            if status == OrderStatus.CANCELLED
+                            else (
+                                EventType.EXECUTION_ORDER_REJECTED
+                                if status == OrderStatus.REJECTED
+                                else EventType.EXECUTION_ORDER_FILLED
+                            )
+                        ),
+                        timestamp=order_state.updated_at,
+                        source="execution_service",
+                        data={
+                            "order_id": order_id,
+                            "broker_order_id": order_state.broker_order_id,
+                            "status": status.value,
+                            "symbol": order_state.symbol,
+                        },
+                    )
+                )
 
     async def _handle_order_rejection(self, order_id: str, reason: str) -> None:
         """Handle order rejection."""
@@ -359,27 +399,32 @@ class ExecutionService(EventHandler):
         report = ExecutionReport(
             broker_order_id=None,
             status="REJECTED",
-            received_at=datetime.now(timezone.utc).isoformat()
+            received_at=datetime.now(timezone.utc).isoformat(),
         )
 
         await self._save_execution_report(order_id, report)
         logger.warning(f"Order {order_id} rejected: {reason}")
 
-    async def _save_execution_report(self, order_id: str, report: ExecutionReport) -> None:
+    async def _save_execution_report(
+        self, order_id: str, report: ExecutionReport
+    ) -> None:
         """Save execution report to database."""
-        await self._db_connection.execute("""
+        await self._db_connection.execute(
+            """
             INSERT INTO execution_reports
             (order_id, broker_order_id, status, fills, avg_price, slippage_bps, received_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            order_id,
-            report.broker_order_id,
-            report.status,
-            json.dumps(report.fills) if report.fills else None,
-            report.avg_price,
-            report.slippage_bps,
-            report.received_at
-        ))
+        """,
+            (
+                order_id,
+                report.broker_order_id,
+                report.status,
+                json.dumps(report.fills) if report.fills else None,
+                report.avg_price,
+                report.slippage_bps,
+                report.received_at,
+            ),
+        )
         await self._db_connection.commit()
 
     async def get_order_status(self, order_id: str) -> Optional[OrderState]:
@@ -407,7 +452,9 @@ class ExecutionService(EventHandler):
             # Handle risk breach - might need to cancel orders
             data = event.data
             if data.get("severity") == "high":
-                logger.warning("High severity risk breach - checking for order cancellation needs")
+                logger.warning(
+                    "High severity risk breach - checking for order cancellation needs"
+                )
 
     async def close(self) -> None:
         """Close the execution service."""

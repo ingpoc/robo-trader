@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple, Optional
+from typing import Any, Dict, Iterable, List, Tuple
 
 from loguru import logger
 
 from src.config import Config
-from ..core.state_models import PortfolioState
+
 from ..core.database_state import DatabaseStateManager
+from ..core.state_models import PortfolioState
 from .broker_data import get_live_portfolio_data, is_broker_connected
 
 SECTOR_KEYWORDS: Dict[str, Iterable[str]] = {
@@ -78,8 +79,11 @@ def _find_holdings_csv(config: Config) -> Path:
 
 async def _load_holdings_rows(csv_path: Path) -> List[Dict[str, Any]]:
     import aiofiles
+
     holdings: List[Dict[str, Any]] = []
-    async with aiofiles.open(csv_path, mode='r', newline="", encoding="utf-8-sig") as csvfile:
+    async with aiofiles.open(
+        csv_path, mode="r", newline="", encoding="utf-8-sig"
+    ) as csvfile:
         content = await csvfile.read()
         reader = csv.DictReader(content.splitlines())
         for row in reader:
@@ -145,9 +149,7 @@ def _build_portfolio_state(
         if total_value
         else 0.0
     )
-    weighted_day_change_pct = (
-        weighted_day_change / total_value if total_value else 0.0
-    )
+    weighted_day_change_pct = weighted_day_change / total_value if total_value else 0.0
 
     timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -179,9 +181,9 @@ def _build_portfolio_state(
 
     per_symbol = {
         item["symbol"]: {
-            "allocation_pct": (item["current_value"] / total_value * 100)
-            if total_value
-            else 0.0,
+            "allocation_pct": (
+                (item["current_value"] / total_value * 100) if total_value else 0.0
+            ),
             "pnl_pct": item["pnl_pct"],
             "day_change_pct": item["day_change_pct"],
         }
@@ -227,7 +229,9 @@ def _generate_screening_report(holdings: List[Dict[str, Any]]) -> Dict[str, Any]
     )[:5]
 
     momentum_candidates = sorted(
-        holdings, key=lambda item: (item["day_change_pct"], item["pnl_pct"]), reverse=True
+        holdings,
+        key=lambda item: (item["day_change_pct"], item["pnl_pct"]),
+        reverse=True,
     )[:5]
 
     risk_alerts = sorted(
@@ -279,7 +283,9 @@ def _generate_technical_signals(
                 "return_since_entry_pct": round(return_pct, 2),
                 "day_change_pct": round(day_change, 2),
                 "allocation_pct": (
-                    item["current_value"] / sum(h["current_value"] for h in holdings) * 100
+                    item["current_value"]
+                    / sum(h["current_value"] for h in holdings)
+                    * 100
                     if holdings
                     else 0.0
                 ),
@@ -305,9 +311,9 @@ def _generate_strategy_analysis(
     outsized_positions = [
         {
             "symbol": item["symbol"],
-            "allocation_pct": (item["current_value"] / total_value * 100)
-            if total_value
-            else 0.0,
+            "allocation_pct": (
+                (item["current_value"] / total_value * 100) if total_value else 0.0
+            ),
             "current_value": item["current_value"],
         }
         for item in largest_positions
@@ -372,20 +378,25 @@ async def run_portfolio_scan(
     # Try to fetch live data from broker first
     try:
         from src.mcp.broker import get_broker
+
         broker = await get_broker(config)
 
         # Check broker authentication status with detailed logging
         if not broker:
-            logger.warning("Broker client not available - cannot fetch live portfolio data")
+            logger.warning(
+                "Broker client not available - cannot fetch live portfolio data"
+            )
             raise TradingError(
                 "Broker client not available",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
                 recoverable=False,
-                details={"reason": "broker_client_unavailable"}
+                details={"reason": "broker_client_unavailable"},
             )
         elif not broker.is_authenticated():
-            logger.warning("Broker not authenticated - OAuth token may be expired or missing")
+            logger.warning(
+                "Broker not authenticated - OAuth token may be expired or missing"
+            )
             # Try to re-authenticate
             auth_success = await broker.authenticate()
             if not auth_success:
@@ -397,7 +408,7 @@ async def run_portfolio_scan(
                     recoverable=True,
                     retry_after_seconds=60,
                     details={"reason": "broker_auth_failed"},
-                    message="Please re-authenticate with Zerodha to fetch live portfolio data"
+                    message="Please re-authenticate with Zerodha to fetch live portfolio data",
                 )
         else:
             logger.info("Using live data from Zerodha broker")
@@ -408,7 +419,9 @@ async def run_portfolio_scan(
 
                 # Update cash info
                 portfolio_state, analytics = _build_portfolio_state(holdings, config)
-                portfolio_state.cash = live_data.get("cash", {"free": 0.0, "margin": 0.0})
+                portfolio_state.cash = live_data.get(
+                    "cash", {"free": 0.0, "margin": 0.0}
+                )
 
                 await state_manager.update_portfolio(portfolio_state)
                 return {
@@ -424,7 +437,7 @@ async def run_portfolio_scan(
                     severity=ErrorSeverity.MEDIUM,
                     recoverable=True,
                     retry_after_seconds=300,
-                    details={"reason": "no_holdings"}
+                    details={"reason": "no_holdings"},
                 )
     except ImportError as e:
         logger.warning(f"Broker module not available: {e}")
@@ -433,7 +446,7 @@ async def run_portfolio_scan(
             category=ErrorCategory.CONFIGURATION,
             severity=ErrorSeverity.HIGH,
             recoverable=False,
-            details={"error": str(e)}
+            details={"error": str(e)},
         )
     except TradingError:
         # Re-raise TradingError as-is
@@ -445,7 +458,7 @@ async def run_portfolio_scan(
             category=ErrorCategory.API,
             severity=ErrorSeverity.MEDIUM,
             recoverable=True,
-            retry_after_seconds=60
+            retry_after_seconds=60,
         )
 
     # Fallback to CSV data
@@ -456,7 +469,7 @@ async def run_portfolio_scan(
 
         await state_manager.update_portfolio(portfolio_state)
         return {
-            "source": f"csv_fallback",
+            "source": "csv_fallback",
             "portfolio": portfolio_state.to_dict(),
             "analytics": analytics,
         }
@@ -479,7 +492,16 @@ async def run_portfolio_scan(
             cash={"currency": "INR", "free": 100000.0, "margin": 0.0},  # Default cash
             holdings=[],
             exposure_total=0.0,
-            risk_aggregates={"portfolio": {"total_invested": 0.0, "total_current_value": 0.0, "total_pnl": 0.0, "total_pnl_pct": 0.0, "holdings_count": 0}, "per_symbol": {}}
+            risk_aggregates={
+                "portfolio": {
+                    "total_invested": 0.0,
+                    "total_current_value": 0.0,
+                    "total_pnl": 0.0,
+                    "total_pnl_pct": 0.0,
+                    "holdings_count": 0,
+                },
+                "per_symbol": {},
+            },
         )
         await state_manager.update_portfolio(empty_portfolio)
         return {
@@ -497,8 +519,9 @@ async def run_market_screening(
     """
     # Try live data first
     from src.mcp.broker import get_broker
+
     broker = await get_broker(config)
-    
+
     if is_broker_connected(broker):
         live_data = await get_live_portfolio_data(broker)
         if live_data and live_data.get("holdings"):
@@ -506,7 +529,7 @@ async def run_market_screening(
             report = _generate_screening_report(holdings)
             await state_manager.update_screening_results(report)
             return {"source": "zerodha_live", "screening": report}
-    
+
     # Fallback to CSV
     try:
         csv_path = _find_holdings_csv(config)
@@ -520,7 +543,7 @@ async def run_market_screening(
             "as_of": datetime.now(timezone.utc).isoformat(),
             "value_opportunities": [],
             "momentum": [],
-            "risk_alerts": []
+            "risk_alerts": [],
         }
         await state_manager.update_screening_results(empty_report)
         return {"source": "empty", "screening": empty_report}
@@ -534,8 +557,9 @@ async def run_strategy_analysis(
     """
     # Try live data first
     from src.mcp.broker import get_broker
+
     broker = await get_broker(config)
-    
+
     if is_broker_connected(broker):
         live_data = await get_live_portfolio_data(broker)
         if live_data and live_data.get("holdings"):
@@ -549,7 +573,7 @@ async def run_strategy_analysis(
                 "strategy": analysis,
                 "portfolio": analytics.get("portfolio"),
             }
-    
+
     # Fallback to CSV
     try:
         csv_path = _find_holdings_csv(config)
@@ -570,7 +594,9 @@ async def run_strategy_analysis(
             "rebalance_candidates": [],
             "take_profit_candidates": [],
             "loss_cut_candidates": [],
-            "actions": ["No portfolio data available. Connect to broker or provide CSV data."]
+            "actions": [
+                "No portfolio data available. Connect to broker or provide CSV data."
+            ],
         }
         await state_manager.update_strategy_results(empty_analysis)
         return {

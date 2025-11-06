@@ -5,13 +5,12 @@ Tracks all AI research activities, market analysis, and data sources used
 for complete transparency in Claude's decision-making process.
 """
 
-import logging
 import json
+import logging
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+from typing import Any, Dict, List, Optional
 
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...stores.claude_strategy_store import ClaudeStrategyStore
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ class ResearchSession:
         return asdict(self)
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> 'ResearchSession':
+    def from_dict(data: Dict[str, Any]) -> "ResearchSession":
         return ResearchSession(**data)
 
 
@@ -88,12 +87,14 @@ class ResearchTracker:
         account_type: str,
         research_type: str,
         symbols: List[str],
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> ResearchSession:
         """Start tracking a new research session."""
 
         if not session_id:
-            session_id = f"research_{int(datetime.now(timezone.utc).timestamp())}_{account_type}"
+            session_id = (
+                f"research_{int(datetime.now(timezone.utc).timestamp())}_{account_type}"
+            )
 
         session = ResearchSession(
             session_id=session_id,
@@ -101,11 +102,13 @@ class ResearchTracker:
             research_type=research_type,
             symbols_analyzed=symbols,
             data_sources_used=[],
-            analysis_start_time=datetime.now(timezone.utc).isoformat()
+            analysis_start_time=datetime.now(timezone.utc).isoformat(),
         )
 
         self.active_sessions[session_id] = session
-        logger.info(f"Started research session: {session_id} ({research_type}) for {len(symbols)} symbols")
+        logger.info(
+            f"Started research session: {session_id} ({research_type}) for {len(symbols)} symbols"
+        )
 
         return session
 
@@ -116,7 +119,7 @@ class ResearchTracker:
         source_type: str,
         queries: int = 1,
         data_points: int = 0,
-        cost: float = 0.0
+        cost: float = 0.0,
     ) -> None:
         """Record usage of a data source during research."""
 
@@ -135,7 +138,7 @@ class ResearchTracker:
             self.data_source_usage[source_name] = DataSourceUsage(
                 source_name=source_name,
                 source_type=source_type,
-                last_used=datetime.now(timezone.utc).isoformat()
+                last_used=datetime.now(timezone.utc).isoformat(),
             )
 
         usage = self.data_source_usage[source_name]
@@ -144,13 +147,12 @@ class ResearchTracker:
         usage.total_cost += cost
         usage.last_used = datetime.now(timezone.utc).isoformat()
 
-        logger.debug(f"Recorded data source usage: {source_name} ({queries} queries, {data_points} data points)")
+        logger.debug(
+            f"Recorded data source usage: {source_name} ({queries} queries, {data_points} data points)"
+        )
 
     async def add_research_findings(
-        self,
-        session_id: str,
-        findings: List[str],
-        confidence_score: float = 0.0
+        self, session_id: str, findings: List[str], confidence_score: float = 0.0
     ) -> None:
         """Add key findings from research analysis."""
 
@@ -165,26 +167,25 @@ class ResearchTracker:
         logger.info(f"Added {len(findings)} findings to research session {session_id}")
 
     async def add_recommendations(
-        self,
-        session_id: str,
-        recommendations: List[Dict[str, Any]]
+        self, session_id: str, recommendations: List[Dict[str, Any]]
     ) -> None:
         """Add trading recommendations from research."""
 
         if session_id not in self.active_sessions:
-            logger.warning(f"Session {session_id} not found for recommendations recording")
+            logger.warning(
+                f"Session {session_id} not found for recommendations recording"
+            )
             return
 
         session = self.active_sessions[session_id]
         session.recommendations.extend(recommendations)
 
-        logger.info(f"Added {len(recommendations)} recommendations to research session {session_id}")
+        logger.info(
+            f"Added {len(recommendations)} recommendations to research session {session_id}"
+        )
 
     async def complete_research_session(
-        self,
-        session_id: str,
-        token_usage: int = 0,
-        cost_usd: float = 0.0
+        self, session_id: str, token_usage: int = 0, cost_usd: float = 0.0
     ) -> Optional[ResearchSession]:
         """Complete a research session and save to storage."""
 
@@ -203,7 +204,9 @@ class ResearchTracker:
         # Remove from active sessions
         del self.active_sessions[session_id]
 
-        logger.info(f"Completed research session: {session_id} ({len(session.key_findings)} findings, {len(session.recommendations)} recommendations)")
+        logger.info(
+            f"Completed research session: {session_id} ({len(session.key_findings)} findings, {len(session.recommendations)} recommendations)"
+        )
 
         return session
 
@@ -211,7 +214,7 @@ class ResearchTracker:
         self,
         account_type: Optional[str] = None,
         research_type: Optional[str] = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> List[ResearchSession]:
         """Get historical research sessions."""
 
@@ -229,22 +232,26 @@ class ResearchTracker:
     async def get_data_source_usage_stats(self) -> Dict[str, Any]:
         """Get statistics on data source usage."""
 
-        total_queries = sum(usage.queries_made for usage in self.data_source_usage.values())
+        total_queries = sum(
+            usage.queries_made for usage in self.data_source_usage.values()
+        )
         total_cost = sum(usage.total_cost for usage in self.data_source_usage.values())
-        total_data_points = sum(usage.data_points_retrieved for usage in self.data_source_usage.values())
+        total_data_points = sum(
+            usage.data_points_retrieved for usage in self.data_source_usage.values()
+        )
 
         return {
             "total_queries": total_queries,
             "total_cost_usd": total_cost,
             "total_data_points": total_data_points,
             "sources_used": len(self.data_source_usage),
-            "source_breakdown": {name: usage.to_dict() for name, usage in self.data_source_usage.items()}
+            "source_breakdown": {
+                name: usage.to_dict() for name, usage in self.data_source_usage.items()
+            },
         }
 
     async def get_research_effectiveness(
-        self,
-        account_type: str,
-        days: int = 7
+        self, account_type: str, days: int = 7
     ) -> Dict[str, Any]:
         """Analyze research effectiveness over time."""
 
@@ -254,7 +261,8 @@ class ResearchTracker:
         # Filter by time period (simplified)
         cutoff_time = datetime.now(timezone.utc).timestamp() - (days * 24 * 60 * 60)
         recent_sessions = [
-            s for s in sessions
+            s
+            for s in sessions
             if datetime.fromisoformat(s.created_at).timestamp() > cutoff_time
         ]
 
@@ -263,7 +271,9 @@ class ResearchTracker:
 
         # Calculate effectiveness metrics
         total_sessions = len(recent_sessions)
-        avg_confidence = sum(s.confidence_score for s in recent_sessions) / total_sessions
+        avg_confidence = (
+            sum(s.confidence_score for s in recent_sessions) / total_sessions
+        )
         total_findings = sum(len(s.key_findings) for s in recent_sessions)
         total_recommendations = sum(len(s.recommendations) for s in recent_sessions)
         total_symbols = sum(len(s.symbols_analyzed) for s in recent_sessions)
@@ -275,9 +285,15 @@ class ResearchTracker:
             "total_findings": total_findings,
             "total_recommendations": total_recommendations,
             "total_symbols_analyzed": total_symbols,
-            "findings_per_session": total_findings / total_sessions if total_sessions > 0 else 0,
-            "recommendations_per_session": total_recommendations / total_sessions if total_sessions > 0 else 0,
-            "symbols_per_session": total_symbols / total_sessions if total_sessions > 0 else 0
+            "findings_per_session": (
+                total_findings / total_sessions if total_sessions > 0 else 0
+            ),
+            "recommendations_per_session": (
+                total_recommendations / total_sessions if total_sessions > 0 else 0
+            ),
+            "symbols_per_session": (
+                total_symbols / total_sessions if total_sessions > 0 else 0
+            ),
         }
 
     async def _save_research_session(self, session: ResearchSession) -> None:
@@ -294,7 +310,9 @@ class ResearchTracker:
     async def cleanup_old_sessions(self, days_to_keep: int = 30) -> int:
         """Clean up old research sessions from memory."""
 
-        cutoff_time = datetime.now(timezone.utc).timestamp() - (days_to_keep * 24 * 60 * 60)
+        cutoff_time = datetime.now(timezone.utc).timestamp() - (
+            days_to_keep * 24 * 60 * 60
+        )
         old_sessions = []
 
         for session_id, session in self.active_sessions.items():

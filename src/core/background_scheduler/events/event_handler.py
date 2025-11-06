@@ -4,7 +4,8 @@ Event handling service for Background Scheduler.
 Routes and dispatches events to registered handlers.
 """
 
-from typing import Dict, Callable, List, Any, Optional
+from typing import Any, Callable, Dict, List, Optional
+
 from loguru import logger
 
 
@@ -17,12 +18,14 @@ class EventHandler:
         "price_movement",
         "news_alert",
         "market_open",
-        "market_close"
+        "market_close",
     }
 
     def __init__(self):
         """Initialize event handler."""
-        self._handlers: Dict[str, List[Callable]] = {event: [] for event in self.VALID_EVENTS}
+        self._handlers: Dict[str, List[Callable]] = {
+            event: [] for event in self.VALID_EVENTS
+        }
 
     def register_handler(self, event_type: str, handler: Callable) -> bool:
         """Register a handler for an event type.
@@ -85,9 +88,9 @@ class EventHandler:
 
         for handler in handlers:
             try:
-                if hasattr(handler, '__call__'):
+                if hasattr(handler, "__call__"):
                     result = handler(event_data)
-                    if hasattr(result, '__await__'):
+                    if hasattr(result, "__await__"):
                         await result
             except Exception as e:
                 logger.error(f"Error invoking handler for {event_type}: {e}")
@@ -132,11 +135,13 @@ class EventHandler:
             Statistics dictionary
         """
         total_handlers = sum(len(handlers) for handlers in self._handlers.values())
-        events_with_handlers = sum(1 for handlers in self._handlers.values() if handlers)
+        events_with_handlers = sum(
+            1 for handlers in self._handlers.values() if handlers
+        )
 
         return {
             "total_handlers": total_handlers,
             "events_with_handlers": events_with_handlers,
             "total_events": len(self.VALID_EVENTS),
-            "handlers_per_event": self.get_registered_events()
+            "handlers_per_event": self.get_registered_events(),
         }

@@ -5,15 +5,13 @@ Handles portfolio scanning and market screening operations.
 Separated to follow the 350-line per module standard.
 """
 
-import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict
 
 from loguru import logger
 
 from ...database_state.database_state import DatabaseStateManager
 from ..base_coordinator import BaseCoordinator
-from ..task.collaboration_task import CollaborationTask, CollaborationMode, AgentRole
 
 
 class PortfolioCoordinator(BaseCoordinator):
@@ -51,8 +49,9 @@ class PortfolioCoordinator(BaseCoordinator):
             Portfolio scan results with holdings data
         """
         try:
-            from ....services.analytics import run_portfolio_scan as analytics_scan
             from ....config import load_config
+            from ....services.analytics import \
+                run_portfolio_scan as analytics_scan
 
             config = load_config()
             result = await analytics_scan(config, self.state_manager)
@@ -82,7 +81,7 @@ class PortfolioCoordinator(BaseCoordinator):
             if not portfolio:
                 return {
                     "status": "pending",
-                    "message": "Portfolio not available yet - please scan portfolio first"
+                    "message": "Portfolio not available yet - please scan portfolio first",
                 }
 
             # Return status that screening is in progress
@@ -90,7 +89,11 @@ class PortfolioCoordinator(BaseCoordinator):
             return {
                 "status": "started",
                 "message": "Market screening analysis in progress",
-                "portfolio_analyzed": portfolio.portfolio_id if hasattr(portfolio, 'portfolio_id') else "unknown"
+                "portfolio_analyzed": (
+                    portfolio.portfolio_id
+                    if hasattr(portfolio, "portfolio_id")
+                    else "unknown"
+                ),
             }
 
         except Exception as e:
@@ -114,17 +117,17 @@ class PortfolioCoordinator(BaseCoordinator):
                         "type": "sector_rebalance",
                         "action": "increase_technology_allocation",
                         "rationale": "Strong earnings momentum in tech sector",
-                        "confidence": 0.85
+                        "confidence": 0.85,
                     },
                     {
                         "type": "risk_adjustment",
                         "action": "reduce_volatility_exposure",
                         "rationale": "Current volatility levels above target",
-                        "confidence": 0.78
-                    }
+                        "confidence": 0.78,
+                    },
                 ],
                 "overall_assessment": "Strategy performing well with minor adjustments needed",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:

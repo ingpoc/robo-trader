@@ -5,7 +5,7 @@ Monitors system and external service health.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
@@ -43,7 +43,7 @@ class HealthMonitor:
         health_status = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "overall_status": "healthy",
-            "components": {}
+            "components": {},
         }
 
         claude_status = await self._check_claude_api()
@@ -52,7 +52,9 @@ class HealthMonitor:
         db_status = await self._check_database()
         health_status["components"]["database"] = db_status
 
-        if not all(status.get("healthy") for status in health_status["components"].values()):
+        if not all(
+            status.get("healthy") for status in health_status["components"].values()
+        ):
             health_status["overall_status"] = "degraded"
 
         return health_status
@@ -67,7 +69,7 @@ class HealthMonitor:
             "service": "claude_api",
             "healthy": True,
             "message": "Not checked",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         try:
@@ -96,7 +98,7 @@ class HealthMonitor:
             "service": "database",
             "healthy": False,
             "message": "Not checked",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         try:
@@ -126,7 +128,9 @@ class HealthMonitor:
 
         health_status = await self.check_system_health()
 
-        logger.info(f"Health check completed - Status: {health_status['overall_status']}")
+        logger.info(
+            f"Health check completed - Status: {health_status['overall_status']}"
+        )
 
         return health_status
 
@@ -139,7 +143,7 @@ class HealthMonitor:
         result = {
             "status": "failed",
             "message": "No state manager configured",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         try:

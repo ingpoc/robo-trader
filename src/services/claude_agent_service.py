@@ -3,16 +3,17 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from ..core.event_bus import EventHandler, Event, EventType, EventBus
-from ..core.di import DependencyContainer
-from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
 from src.config import Config
-from ..models.claude_agent import SessionType, ClaudeSessionResult
+
+from ....auth.claude_auth import get_claude_status_cached
+from ..core.di import DependencyContainer
+from ..core.errors import ErrorCategory, ErrorSeverity, TradingError
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
+from ..models.claude_agent import ClaudeSessionResult
 from ..stores.claude_strategy_store import ClaudeStrategyStore
 from .claude_agent import ClaudeAgentMCPServer
-from ....auth.claude_auth import get_claude_status_cached
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class ClaudeAgentService(EventHandler):
         config: Config,
         event_bus: EventBus,
         container: DependencyContainer,
-        strategy_store: ClaudeStrategyStore
+        strategy_store: ClaudeStrategyStore,
     ):
         """Initialize service."""
         self.config = config
@@ -44,7 +45,9 @@ class ClaudeAgentService(EventHandler):
         self._mcp_server: Optional[ClaudeAgentMCPServer] = None
         # Removed duplicate SDK auth - using centralized auth
         self._coordinator = None
-        self._token_budget_daily = config.get("claude_agent", {}).get("daily_token_budget", 15000)
+        self._token_budget_daily = config.get("claude_agent", {}).get(
+            "daily_token_budget", 15000
+        )
         self._tokens_used_today = 0
 
     async def initialize(self) -> None:
@@ -71,7 +74,7 @@ class ClaudeAgentService(EventHandler):
                 f"ClaudeAgentService initialization failed: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.CRITICAL,
-                recoverable=False
+                recoverable=False,
             )
 
     async def handle_event(self, event: Event) -> None:
@@ -97,7 +100,9 @@ class ClaudeAgentService(EventHandler):
         except Exception as e:
             logger.error(f"Error handling event {event.type}: {e}")
 
-    async def run_morning_prep(self, account_type: str) -> Optional[ClaudeSessionResult]:
+    async def run_morning_prep(
+        self, account_type: str
+    ) -> Optional[ClaudeSessionResult]:
         """
         Execute morning preparation session via MCP server.
 
@@ -108,14 +113,18 @@ class ClaudeAgentService(EventHandler):
         4. Execute autonomous trades
         """
         if not self._check_token_budget(2200):
-            logger.warning(f"Insufficient token budget for morning prep ({account_type})")
+            logger.warning(
+                f"Insufficient token budget for morning prep ({account_type})"
+            )
             return None
 
         try:
             # Validate SDK authentication using centralized auth
             auth_status = await get_claude_status_cached()
             if not auth_status.is_valid:
-                logger.error(f"SDK authentication failed for morning prep: {auth_status.error}")
+                logger.error(
+                    f"SDK authentication failed for morning prep: {auth_status.error}"
+                )
                 return None
 
             # Gather context
@@ -130,32 +139,44 @@ class ClaudeAgentService(EventHandler):
             self._tokens_used_today += result.token_input + result.token_output
 
             # Emit event
-            await self.event_bus.publish(Event(
-                id=str(uuid.uuid4()),
-                type=EventType.AI_RECOMMENDATION,
-                source="ClaudeAgentService",
-                data={
-                    "session_id": result.session_id,
-                    "session_type": "morning_prep",
-                    "account_type": account_type,
-                    "trades_executed": len([d for d in result.decisions_made if d.get("tool") == "execute_trade"]),
-                    "tokens_used": result.token_input + result.token_output
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.AI_RECOMMENDATION,
+                    source="ClaudeAgentService",
+                    data={
+                        "session_id": result.session_id,
+                        "session_type": "morning_prep",
+                        "account_type": account_type,
+                        "trades_executed": len(
+                            [
+                                d
+                                for d in result.decisions_made
+                                if d.get("tool") == "execute_trade"
+                            ]
+                        ),
+                        "tokens_used": result.token_input + result.token_output,
+                    },
+                )
+            )
 
             return result
 
         except Exception as e:
             logger.error(f"Morning prep failed for {account_type}: {e}")
-            await self.event_bus.publish(Event(
-                id=str(uuid.uuid4()),
-                type=EventType.SYSTEM_ERROR,
-                source="ClaudeAgentService",
-                data={"error": str(e), "session_type": "morning_prep"}
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.SYSTEM_ERROR,
+                    source="ClaudeAgentService",
+                    data={"error": str(e), "session_type": "morning_prep"},
+                )
+            )
             return None
 
-    async def run_evening_review(self, account_type: str) -> Optional[ClaudeSessionResult]:
+    async def run_evening_review(
+        self, account_type: str
+    ) -> Optional[ClaudeSessionResult]:
         """
         Execute evening review session via MCP server.
 
@@ -166,14 +187,18 @@ class ClaudeAgentService(EventHandler):
         4. Plan for next day
         """
         if not self._check_token_budget(1500):
-            logger.warning(f"Insufficient token budget for evening review ({account_type})")
+            logger.warning(
+                f"Insufficient token budget for evening review ({account_type})"
+            )
             return None
 
         try:
             # Validate SDK authentication using centralized auth
             auth_status = await get_claude_status_cached()
             if not auth_status.is_valid:
-                logger.error(f"SDK authentication failed for evening review: {auth_status.error}")
+                logger.error(
+                    f"SDK authentication failed for evening review: {auth_status.error}"
+                )
                 return None
 
             # Gather context
@@ -182,24 +207,30 @@ class ClaudeAgentService(EventHandler):
             logger.info(f"Starting evening review session for {account_type}")
 
             # Run session via MCP server
-            result = await self._run_mcp_session("evening_review", account_type, context)
+            result = await self._run_mcp_session(
+                "evening_review", account_type, context
+            )
 
             # Track tokens
             self._tokens_used_today += result.token_input + result.token_output
 
             # Emit event
-            await self.event_bus.publish(Event(
-                id=str(uuid.uuid4()),
-                type=EventType.AI_LEARNING_UPDATE,
-                source="ClaudeAgentService",
-                data={
-                    "session_id": result.session_id,
-                    "session_type": "evening_review",
-                    "account_type": account_type,
-                    "learnings": result.learnings.to_dict() if result.learnings else None,
-                    "tokens_used": result.token_input + result.token_output
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.AI_LEARNING_UPDATE,
+                    source="ClaudeAgentService",
+                    data={
+                        "session_id": result.session_id,
+                        "session_type": "evening_review",
+                        "account_type": account_type,
+                        "learnings": (
+                            result.learnings.to_dict() if result.learnings else None
+                        ),
+                        "tokens_used": result.token_input + result.token_output,
+                    },
+                )
+            )
 
             return result
 
@@ -207,27 +238,33 @@ class ClaudeAgentService(EventHandler):
             logger.error(f"Evening review failed for {account_type}: {e}")
             return None
 
-    async def _run_mcp_session(self, session_type: str, account_type: str, context: Dict[str, Any]) -> ClaudeSessionResult:
+    async def _run_mcp_session(
+        self, session_type: str, account_type: str, context: Dict[str, Any]
+    ) -> ClaudeSessionResult:
         """Run a session via ClaudeAgentCoordinator (real implementation)."""
         if not self._coordinator:
             raise TradingError(
                 "ClaudeAgentCoordinator not initialized",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.CRITICAL,
-                recoverable=False
+                recoverable=False,
             )
 
         try:
             if session_type == "morning_prep":
-                return await self._coordinator.run_morning_prep_session(account_type, context)
+                return await self._coordinator.run_morning_prep_session(
+                    account_type, context
+                )
             elif session_type == "evening_review":
-                return await self._coordinator.run_evening_review_session(account_type, context)
+                return await self._coordinator.run_evening_review_session(
+                    account_type, context
+                )
             else:
                 raise TradingError(
                     f"Unknown session type: {session_type}",
                     category=ErrorCategory.VALIDATION,
                     severity=ErrorSeverity.MEDIUM,
-                    recoverable=True
+                    recoverable=True,
                 )
         except Exception as e:
             logger.error(f"Session execution failed for {session_type}: {e}")
@@ -235,7 +272,7 @@ class ClaudeAgentService(EventHandler):
                 f"Claude session failed: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
-                recoverable=True
+                recoverable=True,
             )
 
     async def _build_morning_context(self, account_type: str) -> Dict[str, Any]:
@@ -255,21 +292,27 @@ class ClaudeAgentService(EventHandler):
         symbols = list(set([t.symbol for t in open_trades[:10]]))  # From open positions
 
         # Fetch optimized data using prompt optimization service
-        optimized_market_data = await self._fetch_optimized_market_data(symbols, account_type)
+        optimized_market_data = await self._fetch_optimized_market_data(
+            symbols, account_type
+        )
 
         # Get historical learnings for context
-        recent_sessions = await self.strategy_store.get_recent_sessions(account_type, limit=3)
+        recent_sessions = await self.strategy_store.get_recent_sessions(
+            account_type, limit=3
+        )
         historical_learnings = []
         for session in recent_sessions:
             if session.learnings:
-                historical_learnings.extend(session.learnings.get_learnings_list()[:2])  # Top 2 per session
+                historical_learnings.extend(
+                    session.learnings.get_learnings_list()[:2]
+                )  # Top 2 per session
 
         # Use ContextBuilder for token-optimized context
         context_builder = await self.container.get("claude_context_builder")
         account_data = {
             "current_balance": balance_info.get("current_balance", 100000),
             "buying_power": balance_info.get("buying_power", 100000),
-            "account_type": account_type
+            "account_type": account_type,
         }
 
         open_positions_data = [
@@ -278,7 +321,7 @@ class ClaudeAgentService(EventHandler):
                 "quantity": t.quantity,
                 "entry_price": t.entry_price,
                 "target_price": t.target_price,
-                "stop_loss": t.stop_loss
+                "stop_loss": t.stop_loss,
             }
             for t in open_trades[:5]  # Limit to top 5
         ]
@@ -288,7 +331,9 @@ class ClaudeAgentService(EventHandler):
             account_data=account_data,
             open_positions=open_positions_data,
             market_data=optimized_market_data.get("news"),  # Optimized news data
-            earnings_today=optimized_market_data.get("earnings")  # Optimized earnings data
+            earnings_today=optimized_market_data.get(
+                "earnings"
+            ),  # Optimized earnings data
         )
 
         # Add optimized fundamentals and data quality metrics
@@ -298,7 +343,9 @@ class ClaudeAgentService(EventHandler):
 
         # Add historical learnings for learning loop
         if historical_learnings:
-            context["historical_learnings"] = historical_learnings[:5]  # Limit to 5 recent learnings
+            context["historical_learnings"] = historical_learnings[
+                :5
+            ]  # Limit to 5 recent learnings
 
         return context
 
@@ -312,7 +359,7 @@ class ClaudeAgentService(EventHandler):
         async with paper_store.db.connect() as db:
             cursor = await db.execute(
                 "SELECT * FROM paper_trades WHERE account_id = ? AND DATE(entry_timestamp) = ?",
-                (account_id, today)
+                (account_id, today),
             )
             rows = await cursor.fetchall()
 
@@ -322,7 +369,9 @@ class ClaudeAgentService(EventHandler):
         daily_pnl = sum(float(t.get("realized_pnl", 0)) for t in today_trades)
 
         # Get strategy effectiveness from recent sessions
-        recent_sessions = await self.strategy_store.get_recent_sessions(account_type, limit=5)
+        recent_sessions = await self.strategy_store.get_recent_sessions(
+            account_type, limit=5
+        )
         strategy_effectiveness = self._analyze_strategy_effectiveness(recent_sessions)
 
         # Use ContextBuilder for token-optimized context
@@ -333,7 +382,7 @@ class ClaudeAgentService(EventHandler):
             account_data=account_data,
             today_trades=today_trades[:10],
             daily_pnl=daily_pnl,
-            strategy_effectiveness=strategy_effectiveness
+            strategy_effectiveness=strategy_effectiveness,
         )
 
         return context
@@ -343,7 +392,9 @@ class ClaudeAgentService(EventHandler):
         # Get current usage from store for real enforcement
         try:
             usage = self.strategy_store.get_daily_token_usage()
-            total_used = usage["total"]["input_tokens"] + usage["total"]["output_tokens"]
+            total_used = (
+                usage["total"]["input_tokens"] + usage["total"]["output_tokens"]
+            )
             return total_used + needed_tokens <= self._token_budget_daily
         except Exception as e:
             logger.warning(f"Could not get real token usage, using cached: {e}")
@@ -364,36 +415,45 @@ class ClaudeAgentService(EventHandler):
             logger.warning(f"Token budget low: {remaining} remaining")
 
             # Emit alert for low budget
-            await self.event_bus.publish(Event(
-                id=str(uuid.uuid4()),
-                type=EventType.AI_LEARNING_UPDATE,
-                source="ClaudeAgentService",
-                data={
-                    "token_usage": usage,
-                    "remaining_budget": remaining,
-                    "daily_budget": self._token_budget_daily,
-                    "alert": "low_budget" if remaining < 2000 else None
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.AI_LEARNING_UPDATE,
+                    source="ClaudeAgentService",
+                    data={
+                        "token_usage": usage,
+                        "remaining_budget": remaining,
+                        "daily_budget": self._token_budget_daily,
+                        "alert": "low_budget" if remaining < 2000 else None,
+                    },
+                )
+            )
 
             # If critically low, pause sessions
             if remaining < 500:
                 logger.error("Token budget critically low - pausing Claude sessions")
-                await self.event_bus.publish(Event(
-                    id=str(uuid.uuid4()),
-                    type=EventType.SYSTEM_ERROR,
-                    source="ClaudeAgentService",
-                    data={"error": "Token budget exhausted", "remaining": remaining}
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.SYSTEM_ERROR,
+                        source="ClaudeAgentService",
+                        data={
+                            "error": "Token budget exhausted",
+                            "remaining": remaining,
+                        },
+                    )
+                )
 
-    async def _fetch_optimized_market_data(self, symbols: list, account_type: str) -> Dict[str, Any]:
+    async def _fetch_optimized_market_data(
+        self, symbols: list, account_type: str
+    ) -> Dict[str, Any]:
         """Fetch market data using Claude's optimized prompts."""
         if not symbols:
             return {
                 "news": None,
                 "earnings": None,
                 "fundamentals": None,
-                "quality_summary": {}
+                "quality_summary": {},
             }
 
         try:
@@ -411,39 +471,53 @@ class ClaudeAgentService(EventHandler):
 
             for data_type in data_types:
                 try:
-                    logger.info(f"Fetching optimized {data_type} data for {len(symbols)} symbols")
+                    logger.info(
+                        f"Fetching optimized {data_type} data for {len(symbols)} symbols"
+                    )
 
                     # Get optimized data with quality check
-                    data, quality_score, final_prompt, optimization_metadata = await prompt_service.get_optimized_data(
-                        data_type=data_type,
-                        symbols=symbols,
-                        session_id=session_id,
-                        force_optimization=False  # Let Claude decide if optimization needed
+                    data, quality_score, final_prompt, optimization_metadata = (
+                        await prompt_service.get_optimized_data(
+                            data_type=data_type,
+                            symbols=symbols,
+                            session_id=session_id,
+                            force_optimization=False,  # Let Claude decide if optimization needed
+                        )
                     )
 
                     optimized_data[data_type] = data
                     quality_summary[data_type] = {
                         "quality_score": quality_score,
-                        "optimization_attempts": len(optimization_metadata.get("attempts", [])),
-                        "optimization_triggered": optimization_metadata.get("optimization_triggered", False),
-                        "prompt_optimized": optimization_metadata.get("optimization_successful", False)
+                        "optimization_attempts": len(
+                            optimization_metadata.get("attempts", [])
+                        ),
+                        "optimization_triggered": optimization_metadata.get(
+                            "optimization_triggered", False
+                        ),
+                        "prompt_optimized": optimization_metadata.get(
+                            "optimization_successful", False
+                        ),
                     }
 
                     # Emit data quality event for transparency
-                    await self.event_bus.publish(Event(
-                        id=str(uuid.uuid4()),
-                        type=EventType.CLAUDE_DATA_QUALITY_ANALYSIS,
-                        source="ClaudeAgentService",
-                        data={
-                            "session_id": session_id,
-                            "data_type": data_type,
-                            "quality_score": quality_score,
-                            "symbols_count": len(symbols),
-                            "optimization_metadata": optimization_metadata
-                        }
-                    ))
+                    await self.event_bus.publish(
+                        Event(
+                            id=str(uuid.uuid4()),
+                            type=EventType.CLAUDE_DATA_QUALITY_ANALYSIS,
+                            source="ClaudeAgentService",
+                            data={
+                                "session_id": session_id,
+                                "data_type": data_type,
+                                "quality_score": quality_score,
+                                "symbols_count": len(symbols),
+                                "optimization_metadata": optimization_metadata,
+                            },
+                        )
+                    )
 
-                    logger.info(f"Fetched {data_type} with quality score {quality_score}/10")
+                    logger.info(
+                        f"Fetched {data_type} with quality score {quality_score}/10"
+                    )
 
                 except Exception as e:
                     logger.error(f"Failed to get optimized {data_type} data: {e}")
@@ -451,7 +525,7 @@ class ClaudeAgentService(EventHandler):
                     quality_summary[data_type] = {
                         "quality_score": 0.0,
                         "error": str(e),
-                        "optimization_attempts": 0
+                        "optimization_attempts": 0,
                     }
 
             return {
@@ -459,7 +533,7 @@ class ClaudeAgentService(EventHandler):
                 "earnings": optimized_data.get("earnings"),
                 "fundamentals": optimized_data.get("fundamentals"),
                 "quality_summary": quality_summary,
-                "session_id": session_id
+                "session_id": session_id,
             }
 
         except Exception as e:
@@ -468,7 +542,7 @@ class ClaudeAgentService(EventHandler):
                 "news": None,
                 "earnings": None,
                 "fundamentals": None,
-                "quality_summary": {"error": str(e)}
+                "quality_summary": {"error": str(e)},
             }
 
     async def close(self) -> None:
@@ -481,7 +555,7 @@ class ClaudeAgentService(EventHandler):
             await self._mcp_server.cleanup()
 
         # Cleanup coordinator
-        if self._coordinator and hasattr(self._coordinator, 'cleanup'):
+        if self._coordinator and hasattr(self._coordinator, "cleanup"):
             await self._coordinator.cleanup()
 
         # Unsubscribe from events
@@ -511,5 +585,5 @@ class ClaudeAgentService(EventHandler):
 
         return {
             "what_worked": worked_well[:3],  # Top 3 successes
-            "what_failed": failed[:3]        # Top 3 failures
+            "what_failed": failed[:3],  # Top 3 failures
         }

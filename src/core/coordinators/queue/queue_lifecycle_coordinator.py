@@ -6,10 +6,10 @@ Extracted from QueueCoordinator for single responsibility.
 """
 
 import logging
-from typing import Dict, Any
 
 from src.config import Config
-from ...errors import TradingError, ErrorCategory, ErrorSeverity
+
+from ...errors import ErrorCategory, ErrorSeverity, TradingError
 from ..base_coordinator import BaseCoordinator
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class QueueLifecycleCoordinator(BaseCoordinator):
     """
     Coordinates queue lifecycle management.
-    
+
     Responsibilities:
     - Start queues
     - Stop queues
@@ -56,7 +56,7 @@ class QueueLifecycleCoordinator(BaseCoordinator):
                 f"Queue startup failed: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
-                recoverable=True
+                recoverable=True,
             )
 
     async def stop_queues(self) -> None:
@@ -83,4 +83,3 @@ class QueueLifecycleCoordinator(BaseCoordinator):
         if self._queues_running:
             await self.stop_queues()
         self._log_info("QueueLifecycleCoordinator cleanup complete")
-

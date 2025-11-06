@@ -6,13 +6,12 @@ transparency into how Claude executes trades, manages risk, and handles
 order flow in real-time.
 """
 
-import logging
 import json
+import logging
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+from typing import Any, Dict, List, Optional
 
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...stores.claude_strategy_store import ClaudeStrategyStore
 
 logger = logging.getLogger(__name__)
@@ -72,13 +71,15 @@ class TradeExecutionLog:
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        data['execution_steps'] = [step.to_dict() for step in self.execution_steps]
+        data["execution_steps"] = [step.to_dict() for step in self.execution_steps]
         return data
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> 'TradeExecutionLog':
-        if 'execution_steps' in data:
-            data['execution_steps'] = [ExecutionStep(**step) for step in data['execution_steps']]
+    def from_dict(data: Dict[str, Any]) -> "TradeExecutionLog":
+        if "execution_steps" in data:
+            data["execution_steps"] = [
+                ExecutionStep(**step) for step in data["execution_steps"]
+            ]
         return TradeExecutionLog(**data)
 
 
@@ -86,7 +87,9 @@ class TradeExecutionLog:
 class RiskCheckResult:
     """Result of a risk check during execution."""
 
-    check_type: str  # 'buying_power', 'position_size', 'portfolio_risk', 'concentration'
+    check_type: (
+        str  # 'buying_power', 'position_size', 'portfolio_risk', 'concentration'
+    )
     passed: bool
     value: float
     threshold: float
@@ -122,12 +125,14 @@ class ExecutionMonitor:
         quantity: int,
         entry_price: float,
         strategy_rationale: str,
-        execution_id: Optional[str] = None
+        execution_id: Optional[str] = None,
     ) -> TradeExecutionLog:
         """Start monitoring a trade execution."""
 
         if not execution_id:
-            execution_id = f"exec_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
+            execution_id = (
+                f"exec_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
+            )
 
         execution_log = TradeExecutionLog(
             execution_id=execution_id,
@@ -137,11 +142,13 @@ class ExecutionMonitor:
             action=action,
             quantity=quantity,
             entry_price=entry_price,
-            strategy_rationale=strategy_rationale
+            strategy_rationale=strategy_rationale,
         )
 
         self.active_executions[execution_id] = execution_log
-        logger.info(f"Started execution monitoring: {execution_id} ({action} {quantity} {symbol} @ {entry_price})")
+        logger.info(
+            f"Started execution monitoring: {execution_id} ({action} {quantity} {symbol} @ {entry_price})"
+        )
 
         return execution_log
 
@@ -154,7 +161,7 @@ class ExecutionMonitor:
         output_data: Optional[Dict[str, Any]] = None,
         success: bool = True,
         error_message: Optional[str] = None,
-        duration_ms: int = 0
+        duration_ms: int = 0,
     ) -> None:
         """Log a step in the execution process."""
 
@@ -170,16 +177,14 @@ class ExecutionMonitor:
             output_data=output_data,
             success=success,
             error_message=error_message,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
         )
 
         self.active_executions[execution_id].execution_steps.append(step)
         logger.debug(f"Logged execution step: {step_type} for execution {execution_id}")
 
     async def log_risk_checks(
-        self,
-        execution_id: str,
-        risk_checks: List[RiskCheckResult]
+        self, execution_id: str, risk_checks: List[RiskCheckResult]
     ) -> None:
         """Log risk validation results."""
 
@@ -191,15 +196,15 @@ class ExecutionMonitor:
         execution.risk_checks = {
             "checks": [check.to_dict() for check in risk_checks],
             "overall_passed": all(check.passed for check in risk_checks),
-            "highest_severity": max((check.severity for check in risk_checks), default="low")
+            "highest_severity": max(
+                (check.severity for check in risk_checks), default="low"
+            ),
         }
 
         logger.debug(f"Logged risk checks for execution {execution_id}")
 
     async def log_order_details(
-        self,
-        execution_id: str,
-        order_details: Dict[str, Any]
+        self, execution_id: str, order_details: Dict[str, Any]
     ) -> None:
         """Log order placement details."""
 
@@ -211,9 +216,7 @@ class ExecutionMonitor:
         logger.debug(f"Logged order details for execution {execution_id}")
 
     async def log_execution_result(
-        self,
-        execution_id: str,
-        execution_result: Dict[str, Any]
+        self, execution_id: str, execution_result: Dict[str, Any]
     ) -> None:
         """Log the final execution result."""
 
@@ -225,14 +228,16 @@ class ExecutionMonitor:
         execution.execution_result = execution_result
         execution.success = execution_result.get("success", False)
 
-        logger.info(f"Logged execution result for {execution_id}: success={execution.success}")
+        logger.info(
+            f"Logged execution result for {execution_id}: success={execution.success}"
+        )
 
     async def analyze_slippage(
         self,
         execution_id: str,
         expected_price: float,
         actual_price: float,
-        market_conditions: Dict[str, Any]
+        market_conditions: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Analyze execution slippage and quality."""
 
@@ -256,13 +261,15 @@ class ExecutionMonitor:
             "slippage_pct": slippage_pct,
             "quality": quality,
             "market_conditions": market_conditions,
-            "analysis_timestamp": datetime.now(timezone.utc).isoformat()
+            "analysis_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         if execution_id in self.active_executions:
             self.active_executions[execution_id].slippage_analysis = analysis
 
-        logger.debug(f"Analyzed slippage for execution {execution_id}: {slippage_bps} bps ({quality})")
+        logger.debug(
+            f"Analyzed slippage for execution {execution_id}: {slippage_bps} bps ({quality})"
+        )
 
         return analysis
 
@@ -272,7 +279,7 @@ class ExecutionMonitor:
         trade_value: float,
         commissions: float = 0.0,
         fees: float = 0.0,
-        slippage_cost: float = 0.0
+        slippage_cost: float = 0.0,
     ) -> Dict[str, Any]:
         """Analyze total execution costs."""
 
@@ -298,24 +305,28 @@ class ExecutionMonitor:
             "cost_pct": cost_pct,
             "quality": quality,
             "cost_breakdown": {
-                "commissions_pct": (commissions / trade_value) * 100 if trade_value > 0 else 0,
+                "commissions_pct": (
+                    (commissions / trade_value) * 100 if trade_value > 0 else 0
+                ),
                 "fees_pct": (fees / trade_value) * 100 if trade_value > 0 else 0,
-                "slippage_pct": (slippage_cost / trade_value) * 100 if trade_value > 0 else 0
+                "slippage_pct": (
+                    (slippage_cost / trade_value) * 100 if trade_value > 0 else 0
+                ),
             },
-            "analysis_timestamp": datetime.now(timezone.utc).isoformat()
+            "analysis_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         if execution_id in self.active_executions:
             self.active_executions[execution_id].cost_analysis = analysis
 
-        logger.debug(f"Analyzed execution costs for {execution_id}: {cost_pct:.2f}% ({quality})")
+        logger.debug(
+            f"Analyzed execution costs for {execution_id}: {cost_pct:.2f}% ({quality})"
+        )
 
         return analysis
 
     async def complete_execution_monitoring(
-        self,
-        execution_id: str,
-        total_duration_ms: int = 0
+        self, execution_id: str, total_duration_ms: int = 0
     ) -> Optional[TradeExecutionLog]:
         """Complete execution monitoring and save to storage."""
 
@@ -332,7 +343,9 @@ class ExecutionMonitor:
         # Remove from active executions
         del self.active_executions[execution_id]
 
-        logger.info(f"Completed execution monitoring: {execution_id} (success: {execution.success}, duration: {total_duration_ms}ms)")
+        logger.info(
+            f"Completed execution monitoring: {execution_id} (success: {execution.success}, duration: {total_duration_ms}ms)"
+        )
 
         return execution
 
@@ -340,7 +353,7 @@ class ExecutionMonitor:
         self,
         session_id: Optional[str] = None,
         symbol: Optional[str] = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> List[TradeExecutionLog]:
         """Get historical execution logs."""
 
@@ -355,10 +368,7 @@ class ExecutionMonitor:
 
         return executions[-limit:]  # Return most recent
 
-    async def get_execution_quality_metrics(
-        self,
-        days: int = 7
-    ) -> Dict[str, Any]:
+    async def get_execution_quality_metrics(self, days: int = 7) -> Dict[str, Any]:
         """Get execution quality metrics over time."""
 
         # Get recent executions
@@ -367,7 +377,8 @@ class ExecutionMonitor:
         # Filter by time period
         cutoff_time = datetime.now(timezone.utc).timestamp() - (days * 24 * 60 * 60)
         recent_executions = [
-            e for e in executions
+            e
+            for e in executions
             if datetime.fromisoformat(e.execution_timestamp).timestamp() > cutoff_time
         ]
 
@@ -381,13 +392,15 @@ class ExecutionMonitor:
                 "avg_slippage_bps": 0.0,
                 "avg_cost_pct": 0.0,
                 "risk_checks_pass_rate": 1.0,
-                "quality_score": 0.0
+                "quality_score": 0.0,
             }
 
         # Calculate quality metrics
         total_executions = len(recent_executions)
         successful_executions = len([e for e in recent_executions if e.success])
-        success_rate = successful_executions / total_executions if total_executions > 0 else 0
+        success_rate = (
+            successful_executions / total_executions if total_executions > 0 else 0
+        )
 
         # Analyze slippage
         slippage_data = []
@@ -395,7 +408,9 @@ class ExecutionMonitor:
             if execution.slippage_analysis:
                 slippage_data.append(execution.slippage_analysis["slippage_bps"])
 
-        avg_slippage_bps = sum(slippage_data) / len(slippage_data) if slippage_data else 0
+        avg_slippage_bps = (
+            sum(slippage_data) / len(slippage_data) if slippage_data else 0
+        )
 
         # Analyze costs
         cost_data = []
@@ -409,9 +424,15 @@ class ExecutionMonitor:
         risk_check_performance = []
         for execution in recent_executions:
             if execution.risk_checks:
-                risk_check_performance.append(execution.risk_checks.get("overall_passed", False))
+                risk_check_performance.append(
+                    execution.risk_checks.get("overall_passed", False)
+                )
 
-        risk_checks_passed = sum(risk_check_performance) / len(risk_check_performance) if risk_check_performance else 1.0
+        risk_checks_passed = (
+            sum(risk_check_performance) / len(risk_check_performance)
+            if risk_check_performance
+            else 1.0
+        )
 
         return {
             "period_days": days,
@@ -421,7 +442,9 @@ class ExecutionMonitor:
             "avg_slippage_bps": avg_slippage_bps,
             "avg_cost_pct": avg_cost_pct,
             "risk_checks_pass_rate": risk_checks_passed,
-            "quality_score": self._calculate_quality_score(success_rate, avg_slippage_bps, avg_cost_pct, risk_checks_passed)
+            "quality_score": self._calculate_quality_score(
+                success_rate, avg_slippage_bps, avg_cost_pct, risk_checks_passed
+            ),
         }
 
     def _calculate_quality_score(
@@ -429,7 +452,7 @@ class ExecutionMonitor:
         success_rate: float,
         avg_slippage_bps: float,
         avg_cost_pct: float,
-        risk_checks_pass_rate: float
+        risk_checks_pass_rate: float,
     ) -> float:
         """Calculate overall execution quality score (0-100)."""
 
@@ -460,11 +483,16 @@ class ExecutionMonitor:
     async def cleanup_old_logs(self, days_to_keep: int = 30) -> int:
         """Clean up old execution logs from memory."""
 
-        cutoff_time = datetime.now(timezone.utc).timestamp() - (days_to_keep * 24 * 60 * 60)
+        cutoff_time = datetime.now(timezone.utc).timestamp() - (
+            days_to_keep * 24 * 60 * 60
+        )
         old_executions = []
 
         for execution_id, execution in self.active_executions.items():
-            if datetime.fromisoformat(execution.execution_timestamp).timestamp() < cutoff_time:
+            if (
+                datetime.fromisoformat(execution.execution_timestamp).timestamp()
+                < cutoff_time
+            ):
                 old_executions.append(execution_id)
 
         for execution_id in old_executions:

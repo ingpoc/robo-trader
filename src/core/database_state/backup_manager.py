@@ -7,9 +7,10 @@ Ensures critical data (analysis, trades, portfolio state) is never lost.
 
 import asyncio
 import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from typing import Optional, List
+from typing import List, Optional
+
 from loguru import logger
 
 
@@ -42,7 +43,9 @@ class DatabaseBackupManager:
         async with self._backup_lock:
             try:
                 if not self.db_path.exists():
-                    logger.warning(f"Database not found at {self.db_path}, skipping backup")
+                    logger.warning(
+                        f"Database not found at {self.db_path}, skipping backup"
+                    )
                     return None
 
                 # Create backup filename with timestamp
@@ -77,7 +80,7 @@ class DatabaseBackupManager:
             backup_files = sorted(
                 self.backup_dir.glob(f"{self.db_path.stem}_*.db"),
                 key=lambda p: p.stat().st_mtime,
-                reverse=True
+                reverse=True,
             )
 
             deleted_count = 0
@@ -109,7 +112,7 @@ class DatabaseBackupManager:
             backup_files = sorted(
                 self.backup_dir.glob(f"{self.db_path.stem}_*.db"),
                 key=lambda p: p.stat().st_mtime,
-                reverse=True
+                reverse=True,
             )
             return backup_files[0] if backup_files else None
         except Exception as e:
@@ -131,15 +134,12 @@ class DatabaseBackupManager:
             cutoff_timestamp = cutoff_time.timestamp()
 
             backup_files = [
-                p for p in self.backup_dir.glob(f"{self.db_path.stem}_*.db")
+                p
+                for p in self.backup_dir.glob(f"{self.db_path.stem}_*.db")
                 if p.stat().st_mtime >= cutoff_timestamp
             ]
 
-            return sorted(
-                backup_files,
-                key=lambda p: p.stat().st_mtime,
-                reverse=True
-            )
+            return sorted(backup_files, key=lambda p: p.stat().st_mtime, reverse=True)
         except Exception as e:
             logger.error(f"Error getting backups: {e}")
             return []
@@ -162,7 +162,7 @@ class DatabaseBackupManager:
                     logger.error(f"Backup file not found: {backup_path}")
                     return False
 
-                if not backup_path.suffix == '.db':
+                if not backup_path.suffix == ".db":
                     logger.error(f"Invalid backup file: {backup_path}")
                     return False
 
@@ -205,10 +205,19 @@ class DatabaseBackupManager:
                 "backup_dir": str(self.backup_dir),
                 "latest_backup": (
                     backup_files[0].name
-                    if (backup_files := sorted(backup_files, key=lambda p: p.stat().st_mtime, reverse=True))
+                    if (
+                        backup_files := sorted(
+                            backup_files, key=lambda p: p.stat().st_mtime, reverse=True
+                        )
+                    )
                     else None
                 ),
-                "backups": [b.name for b in sorted(backup_files, key=lambda p: p.stat().st_mtime, reverse=True)]
+                "backups": [
+                    b.name
+                    for b in sorted(
+                        backup_files, key=lambda p: p.stat().st_mtime, reverse=True
+                    )
+                ],
             }
 
         except Exception as e:

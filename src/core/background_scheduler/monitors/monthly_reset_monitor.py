@@ -10,8 +10,8 @@ Runs daily and checks if it's the 1st of the month. If so:
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
-from pathlib import Path
+from typing import Any, Dict, Optional
+
 import aiofiles
 import aiofiles.os
 from loguru import logger
@@ -20,6 +20,7 @@ from loguru import logger
 @dataclass
 class MonthlyPerformanceHistory:
     """Record of monthly performance."""
+
     month: str  # "2024-10" format
     initial_balance: float
     final_balance: float
@@ -64,20 +65,24 @@ class MonthlyResetMonitor:
         """Load historical monthly performance data."""
         try:
             if await aiofiles.os.path.exists(str(self.history_file)):
-                async with aiofiles.open(str(self.history_file), 'r') as f:
+                async with aiofiles.open(str(self.history_file), "r") as f:
                     content = await f.read()
                     data = json.loads(content)
                     self._history = [MonthlyPerformanceHistory(**item) for item in data]
-                logger.debug(f"Loaded {len(self._history)} months of performance history")
+                logger.debug(
+                    f"Loaded {len(self._history)} months of performance history"
+                )
         except Exception as e:
             logger.warning(f"Could not load monthly performance history: {e}")
 
-    async def check_and_execute_reset(self,
-                                     account_manager,
-                                     current_balance: float,
-                                     initial_balance: float,
-                                     closed_trades: list,
-                                     account_type: str = "swing") -> Optional[Dict[str, Any]]:
+    async def check_and_execute_reset(
+        self,
+        account_manager,
+        current_balance: float,
+        initial_balance: float,
+        closed_trades: list,
+        account_type: str = "swing",
+    ) -> Optional[Dict[str, Any]]:
         """Check if reset is needed and execute if so.
 
         Args:
@@ -102,7 +107,9 @@ class MonthlyResetMonitor:
             return None
 
         # Execute reset
-        logger.info(f"Monthly reset triggered for {account_type} account ({current_month})")
+        logger.info(
+            f"Monthly reset triggered for {account_type} account ({current_month})"
+        )
 
         result = await self._execute_reset(
             account_manager,
@@ -110,19 +117,21 @@ class MonthlyResetMonitor:
             initial_balance,
             closed_trades,
             account_type,
-            current_month
+            current_month,
         )
 
         self._last_reset_month = current_month
         return result
 
-    async def _execute_reset(self,
-                            account_manager,
-                            current_balance: float,
-                            initial_balance: float,
-                            closed_trades: list,
-                            account_type: str,
-                            month: str) -> Dict[str, Any]:
+    async def _execute_reset(
+        self,
+        account_manager,
+        current_balance: float,
+        initial_balance: float,
+        closed_trades: list,
+        account_type: str,
+        month: str,
+    ) -> Dict[str, Any]:
         """Execute the monthly reset process.
 
         Steps:
@@ -134,18 +143,28 @@ class MonthlyResetMonitor:
         try:
             # Calculate performance metrics
             profit_loss = current_balance - initial_balance
-            profit_loss_pct = (profit_loss / initial_balance * 100) if initial_balance > 0 else 0
+            profit_loss_pct = (
+                (profit_loss / initial_balance * 100) if initial_balance > 0 else 0
+            )
 
             # Trade statistics
             trade_count = len(closed_trades)
-            winning_trades = sum(1 for t in closed_trades if t.exit_price and t.exit_price > t.entry_price)
+            winning_trades = sum(
+                1
+                for t in closed_trades
+                if t.exit_price and t.exit_price > t.entry_price
+            )
             win_rate = (winning_trades / trade_count * 100) if trade_count > 0 else 0
 
             # Calculate best/worst trades
             best_trade = 0.0
             worst_trade = 0.0
             if closed_trades:
-                pnls = [(t.exit_price - t.entry_price) * t.quantity for t in closed_trades if t.exit_price]
+                pnls = [
+                    (t.exit_price - t.entry_price) * t.quantity
+                    for t in closed_trades
+                    if t.exit_price
+                ]
                 best_trade = max(pnls) if pnls else 0
                 worst_trade = min(pnls) if pnls else 0
 
@@ -165,7 +184,7 @@ class MonthlyResetMonitor:
                 best_trade=best_trade,
                 worst_trade=worst_trade,
                 max_drawdown=max_dd,
-                recorded_at=datetime.now(timezone.utc).isoformat()
+                recorded_at=datetime.now(timezone.utc).isoformat(),
             )
 
             # Save to history
@@ -187,7 +206,7 @@ class MonthlyResetMonitor:
                 "win_rate": f"{win_rate:.1f}%",
                 "best_trade": best_trade,
                 "worst_trade": worst_trade,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             logger.info(
@@ -203,10 +222,12 @@ class MonthlyResetMonitor:
             return {
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-    async def _calculate_max_drawdown(self, closed_trades: list, initial_balance: float) -> float:
+    async def _calculate_max_drawdown(
+        self, closed_trades: list, initial_balance: float
+    ) -> float:
         """Calculate maximum drawdown during the month.
 
         Args:
@@ -238,10 +259,14 @@ class MonthlyResetMonitor:
                 if drawdown > max_drawdown:
                     max_drawdown = drawdown
 
-        max_drawdown_pct = (max_drawdown / initial_balance * 100) if initial_balance > 0 else 0
+        max_drawdown_pct = (
+            (max_drawdown / initial_balance * 100) if initial_balance > 0 else 0
+        )
         return max_drawdown_pct
 
-    async def get_performance_history(self, months: Optional[int] = None) -> list[Dict[str, Any]]:
+    async def get_performance_history(
+        self, months: Optional[int] = None
+    ) -> list[Dict[str, Any]]:
         """Get performance history for past months.
 
         Args:
@@ -267,7 +292,7 @@ class MonthlyResetMonitor:
                 "best_trade": r.best_trade,
                 "worst_trade": r.worst_trade,
                 "max_drawdown": f"{r.max_drawdown:.2f}%",
-                "recorded_at": r.recorded_at
+                "recorded_at": r.recorded_at,
             }
             for r in records
         ]
@@ -293,7 +318,9 @@ class MonthlyResetMonitor:
         total_trades = sum(r.trades_count for r in yearly_records)
         total_wins = sum(r.winning_trades for r in yearly_records)
 
-        avg_pnl_pct = sum(r.profit_loss_percentage for r in yearly_records) / len(yearly_records)
+        avg_pnl_pct = sum(r.profit_loss_percentage for r in yearly_records) / len(
+            yearly_records
+        )
         avg_win_rate = sum(r.win_rate for r in yearly_records) / len(yearly_records)
 
         return {
@@ -304,8 +331,16 @@ class MonthlyResetMonitor:
             "total_pnl": total_pnl,
             "average_monthly_pnl_percentage": f"{avg_pnl_pct:.2f}%",
             "average_win_rate": f"{avg_win_rate:.1f}%",
-            "best_month": max(yearly_records, key=lambda r: r.profit_loss).month if yearly_records else None,
-            "worst_month": min(yearly_records, key=lambda r: r.profit_loss).month if yearly_records else None
+            "best_month": (
+                max(yearly_records, key=lambda r: r.profit_loss).month
+                if yearly_records
+                else None
+            ),
+            "worst_month": (
+                min(yearly_records, key=lambda r: r.profit_loss).month
+                if yearly_records
+                else None
+            ),
         }
 
     async def _save_history(self) -> None:
@@ -324,14 +359,17 @@ class MonthlyResetMonitor:
                     "best_trade": r.best_trade,
                     "worst_trade": r.worst_trade,
                     "max_drawdown": r.max_drawdown,
-                    "recorded_at": r.recorded_at
+                    "recorded_at": r.recorded_at,
                 }
                 for r in self._history
             ]
 
             # Use atomic write
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=str(self.state_dir)) as tmp:
+
+            with tempfile.NamedTemporaryFile(
+                mode="w", delete=False, dir=str(self.state_dir)
+            ) as tmp:
                 json.dump(data, tmp, indent=2)
                 tmp_path = tmp.name
 

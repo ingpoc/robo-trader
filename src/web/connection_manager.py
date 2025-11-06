@@ -6,9 +6,9 @@ and concurrent broadcasting to eliminate race conditions.
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional, Set, Tuple
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Set, Tuple
 
 from fastapi import WebSocket
 from loguru import logger
@@ -17,6 +17,7 @@ from loguru import logger
 @dataclass
 class BroadcastResult:
     """Result of a broadcast operation."""
+
     total_connections: int
     successful_sends: int
     failed_sends: int
@@ -43,7 +44,9 @@ class ConnectionManager:
         self._cleanup_task: Optional[asyncio.Task] = None
         self._cleanup_interval_seconds = 10
 
-    async def connect(self, websocket: WebSocket, client_id: Optional[str] = None) -> str:
+    async def connect(
+        self, websocket: WebSocket, client_id: Optional[str] = None
+    ) -> str:
         """
         Add a new WebSocket connection.
 
@@ -62,14 +65,18 @@ class ConnectionManager:
             self.active_connections[connection_id] = websocket
             self._generation_counter += 1
 
-        logger.info(f"WebSocket connected: {connection_id} (total: {len(self.active_connections)})")
+        logger.info(
+            f"WebSocket connected: {connection_id} (total: {len(self.active_connections)})"
+        )
 
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
         return connection_id
 
-    async def disconnect(self, websocket: WebSocket, connection_id: Optional[str] = None) -> None:
+    async def disconnect(
+        self, websocket: WebSocket, connection_id: Optional[str] = None
+    ) -> None:
         """
         Remove a WebSocket connection.
 
@@ -87,7 +94,9 @@ class ConnectionManager:
                 self._generation_counter += 1
 
         if removed:
-            logger.info(f"WebSocket disconnected: {connection_id} (remaining: {len(self.active_connections)})")
+            logger.info(
+                f"WebSocket disconnected: {connection_id} (remaining: {len(self.active_connections)})"
+            )
 
     async def broadcast(self, message: Dict[str, Any]) -> BroadcastResult:
         """
@@ -109,7 +118,7 @@ class ConnectionManager:
                 successful_sends=0,
                 failed_sends=0,
                 dead_connections=0,
-                duration_ms=0.0
+                duration_ms=0.0,
             )
 
         tasks = [
@@ -123,7 +132,8 @@ class ConnectionManager:
         failed = sum(1 for r in results if r is False or isinstance(r, Exception))
 
         newly_dead = [
-            conn_id for conn_id, result in zip(snapshot.keys(), results)
+            conn_id
+            for conn_id, result in zip(snapshot.keys(), results)
             if result is False or isinstance(result, Exception)
         ]
 
@@ -139,7 +149,7 @@ class ConnectionManager:
             successful_sends=successful,
             failed_sends=failed,
             dead_connections=len(newly_dead),
-            duration_ms=duration
+            duration_ms=duration,
         )
 
     async def _get_snapshot(self) -> Tuple[Dict[str, WebSocket], int]:
@@ -156,10 +166,7 @@ class ConnectionManager:
         return snapshot, generation
 
     async def _send_message(
-        self,
-        websocket: WebSocket,
-        message: Dict[str, Any],
-        connection_id: str
+        self, websocket: WebSocket, message: Dict[str, Any], connection_id: str
     ) -> bool:
         """
         Send message to single WebSocket with timeout.
@@ -173,19 +180,18 @@ class ConnectionManager:
             True if successful, False if failed
         """
         try:
-            await asyncio.wait_for(
-                websocket.send_json(message),
-                timeout=2.0
-            )
+            await asyncio.wait_for(websocket.send_json(message), timeout=2.0)
             return True
         except asyncio.TimeoutError:
             logger.warning(f"WebSocket send timeout: {connection_id}")
             return False
         except Exception as e:
             error_msg = str(e).lower()
-            if ("close message has been sent" in error_msg or
-                "connection is closed" in error_msg or
-                "websocket is closed" in error_msg):
+            if (
+                "close message has been sent" in error_msg
+                or "connection is closed" in error_msg
+                or "websocket is closed" in error_msg
+            ):
                 logger.debug(f"WebSocket closed normally: {connection_id}")
             else:
                 logger.warning(f"WebSocket send failed for {connection_id}: {e}")
@@ -261,4 +267,6 @@ class ConnectionManager:
             self.active_connections.clear()
             self._dead_connections.clear()
 
-        logger.debug(f"ConnectionManager shutdown complete ({connection_count} connections closed)")
+        logger.debug(
+            f"ConnectionManager shutdown complete ({connection_count} connections closed)"
+        )

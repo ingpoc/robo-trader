@@ -8,16 +8,17 @@ and automated strategy discovery through evolutionary algorithms.
 import asyncio
 import json
 import random
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
-from statistics import mean, stdev
 from copy import deepcopy
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
+from statistics import mean, stdev
+from typing import Any, Dict, List, Optional
 
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
 from ..core.learning_engine import LearningEngine
 
@@ -25,8 +26,11 @@ from ..core.learning_engine import LearningEngine
 @dataclass
 class StrategyGenome:
     """Genetic representation of a trading strategy."""
+
     strategy_id: str
-    parameters: Dict[str, Any]  # Strategy parameters (entry/exit thresholds, position sizing, etc.)
+    parameters: Dict[
+        str, Any
+    ]  # Strategy parameters (entry/exit thresholds, position sizing, etc.)
     rules: List[Dict[str, Any]]  # Trading rules and conditions
     fitness_score: float = 0.0
     generation: int = 0
@@ -53,6 +57,7 @@ class StrategyGenome:
 @dataclass
 class ABTest:
     """A/B testing configuration for strategy comparison."""
+
     test_id: str
     strategy_a: StrategyGenome
     strategy_b: StrategyGenome
@@ -73,22 +78,23 @@ class ABTest:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "ABTest":
-        if 'strategy_a' in data:
-            data['strategy_a'] = StrategyGenome.from_dict(data['strategy_a'])
-        if 'strategy_b' in data:
-            data['strategy_b'] = StrategyGenome.from_dict(data['strategy_b'])
+        if "strategy_a" in data:
+            data["strategy_a"] = StrategyGenome.from_dict(data["strategy_a"])
+        if "strategy_b" in data:
+            data["strategy_b"] = StrategyGenome.from_dict(data["strategy_b"])
         return cls(**data)
 
     def to_dict(self) -> Dict:
         data = asdict(self)
-        data['strategy_a'] = self.strategy_a.to_dict()
-        data['strategy_b'] = self.strategy_b.to_dict()
+        data["strategy_a"] = self.strategy_a.to_dict()
+        data["strategy_b"] = self.strategy_b.to_dict()
         return data
 
 
 @dataclass
 class EvolutionPopulation:
     """Population of strategies undergoing evolution."""
+
     population_id: str
     generation: int
     strategies: List[StrategyGenome]
@@ -104,17 +110,19 @@ class EvolutionPopulation:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "EvolutionPopulation":
-        if 'strategies' in data:
-            data['strategies'] = [StrategyGenome.from_dict(s) for s in data['strategies']]
-        if 'best_strategy' in data and data['best_strategy']:
-            data['best_strategy'] = StrategyGenome.from_dict(data['best_strategy'])
+        if "strategies" in data:
+            data["strategies"] = [
+                StrategyGenome.from_dict(s) for s in data["strategies"]
+            ]
+        if "best_strategy" in data and data["best_strategy"]:
+            data["best_strategy"] = StrategyGenome.from_dict(data["best_strategy"])
         return cls(**data)
 
     def to_dict(self) -> Dict:
         data = asdict(self)
-        data['strategies'] = [s.to_dict() for s in self.strategies]
+        data["strategies"] = [s.to_dict() for s in self.strategies]
         if self.best_strategy:
-            data['best_strategy'] = self.best_strategy.to_dict()
+            data["best_strategy"] = self.best_strategy.to_dict()
         return data
 
 
@@ -130,7 +138,12 @@ class StrategyEvolutionEngine:
     - Fitness function optimization
     """
 
-    def __init__(self, config: Config, state_manager: DatabaseStateManager, learning_engine: LearningEngine):
+    def __init__(
+        self,
+        config: Config,
+        state_manager: DatabaseStateManager,
+        learning_engine: LearningEngine,
+    ):
         self.config = config
         self.state_manager = state_manager
         self.learning_engine = learning_engine
@@ -158,9 +171,7 @@ class StrategyEvolutionEngine:
                 logger.warning(f"Error cleaning up evolution client: {e}")
 
     async def evolve_strategy_population(
-        self,
-        base_strategy: Dict[str, Any],
-        evolution_criteria: Dict[str, Any]
+        self, base_strategy: Dict[str, Any], evolution_criteria: Dict[str, Any]
     ) -> Optional[EvolutionPopulation]:
         """
         Evolve a population of strategies using genetic algorithms.
@@ -178,7 +189,9 @@ class StrategyEvolutionEngine:
 
             # Evolutionary loop
             for generation in range(self.max_generations):
-                logger.info(f"Evolution generation {generation + 1}/{self.max_generations}")
+                logger.info(
+                    f"Evolution generation {generation + 1}/{self.max_generations}"
+                )
 
                 # Evaluate fitness
                 await self._evaluate_population_fitness(population, evolution_criteria)
@@ -197,7 +210,9 @@ class StrategyEvolutionEngine:
             # Store evolved population
             await self._store_evolution_results(population)
 
-            logger.info(f"Evolution completed. Best fitness: {population.best_strategy.fitness_score if population.best_strategy else 'N/A'}")
+            logger.info(
+                f"Evolution completed. Best fitness: {population.best_strategy.fitness_score if population.best_strategy else 'N/A'}"
+            )
             return population
 
         except Exception as e:
@@ -208,7 +223,7 @@ class StrategyEvolutionEngine:
         self,
         strategy_a: StrategyGenome,
         strategy_b: StrategyGenome,
-        test_period_days: int = 30
+        test_period_days: int = 30,
     ) -> Optional[ABTest]:
         """
         Run A/B test between two strategies.
@@ -230,7 +245,9 @@ class StrategyEvolutionEngine:
                 strategy_b=strategy_b,
                 test_period_days=test_period_days,
                 start_date=datetime.now(timezone.utc).date().isoformat(),
-                end_date=(datetime.now(timezone.utc) + timedelta(days=test_period_days)).date().isoformat()
+                end_date=(datetime.now(timezone.utc) + timedelta(days=test_period_days))
+                .date()
+                .isoformat(),
             )
 
             # Store test configuration
@@ -246,7 +263,9 @@ class StrategyEvolutionEngine:
             logger.error(f"A/B test setup failed: {e}")
             return None
 
-    async def discover_new_strategies(self, market_conditions: Dict[str, Any]) -> List[StrategyGenome]:
+    async def discover_new_strategies(
+        self, market_conditions: Dict[str, Any]
+    ) -> List[StrategyGenome]:
         """
         Discover new trading strategies using AI and evolutionary principles.
 
@@ -286,9 +305,7 @@ class StrategyEvolutionEngine:
             return []
 
     async def optimize_strategy_parameters(
-        self,
-        strategy: StrategyGenome,
-        optimization_target: str = "sharpe_ratio"
+        self, strategy: StrategyGenome, optimization_target: str = "sharpe_ratio"
     ) -> Optional[StrategyGenome]:
         """
         Optimize parameters of an existing strategy.
@@ -319,8 +336,12 @@ class StrategyEvolutionEngine:
             # Store optimization results
             await self._store_optimization_results(strategy, best_strategy)
 
-            improvement = ((best_score - strategy.fitness_score) / strategy.fitness_score) * 100
-            logger.info(f"Strategy optimization completed. Improvement: {improvement:.1f}%")
+            improvement = (
+                (best_score - strategy.fitness_score) / strategy.fitness_score
+            ) * 100
+            logger.info(
+                f"Strategy optimization completed. Improvement: {improvement:.1f}%"
+            )
 
             return best_strategy
 
@@ -328,7 +349,9 @@ class StrategyEvolutionEngine:
             logger.error(f"Strategy parameter optimization failed: {e}")
             return None
 
-    async def _initialize_population(self, base_strategy: Dict[str, Any]) -> EvolutionPopulation:
+    async def _initialize_population(
+        self, base_strategy: Dict[str, Any]
+    ) -> EvolutionPopulation:
         """Initialize evolution population from base strategy."""
         population_id = f"pop_{int(datetime.now(timezone.utc).timestamp())}"
 
@@ -346,17 +369,13 @@ class StrategyEvolutionEngine:
             strategies.append(mutated)
 
         population = EvolutionPopulation(
-            population_id=population_id,
-            generation=0,
-            strategies=strategies
+            population_id=population_id, generation=0, strategies=strategies
         )
 
         return population
 
     async def _evaluate_population_fitness(
-        self,
-        population: EvolutionPopulation,
-        criteria: Dict[str, Any]
+        self, population: EvolutionPopulation, criteria: Dict[str, Any]
     ) -> None:
         """Evaluate fitness of all strategies in population."""
         fitness_scores = []
@@ -368,11 +387,17 @@ class StrategyEvolutionEngine:
 
         # Update population statistics
         population.average_fitness = mean(fitness_scores) if fitness_scores else 0.0
-        population.best_strategy = max(population.strategies, key=lambda s: s.fitness_score)
+        population.best_strategy = max(
+            population.strategies, key=lambda s: s.fitness_score
+        )
 
         # Calculate diversity (simplified)
         if len(fitness_scores) > 1:
-            population.diversity_score = stdev(fitness_scores) / mean(fitness_scores) if mean(fitness_scores) > 0 else 0.0
+            population.diversity_score = (
+                stdev(fitness_scores) / mean(fitness_scores)
+                if mean(fitness_scores) > 0
+                else 0.0
+            )
 
     async def _check_convergence(self, population: EvolutionPopulation) -> bool:
         """Check if population has converged."""
@@ -381,14 +406,22 @@ class StrategyEvolutionEngine:
 
         # Check if best strategy dominates (fitness > average + 2*std)
         best_fitness = population.best_strategy.fitness_score
-        convergence_score = best_fitness / population.average_fitness if population.average_fitness > 0 else 1.0
+        convergence_score = (
+            best_fitness / population.average_fitness
+            if population.average_fitness > 0
+            else 1.0
+        )
 
         return convergence_score >= self.convergence_threshold
 
-    async def _create_next_generation(self, population: EvolutionPopulation) -> EvolutionPopulation:
+    async def _create_next_generation(
+        self, population: EvolutionPopulation
+    ) -> EvolutionPopulation:
         """Create next generation through selection, crossover, and mutation."""
         # Sort by fitness (descending)
-        sorted_strategies = sorted(population.strategies, key=lambda s: s.fitness_score, reverse=True)
+        sorted_strategies = sorted(
+            population.strategies, key=lambda s: s.fitness_score, reverse=True
+        )
 
         # Elitism - keep top performers
         elite_count = int(self.population_size * self.elitism_rate)
@@ -402,7 +435,9 @@ class StrategyEvolutionEngine:
 
             # Crossover
             if random.random() < self.crossover_rate:
-                offspring1, offspring2 = await self._crossover_strategies(parent1, parent2)
+                offspring1, offspring2 = await self._crossover_strategies(
+                    parent1, parent2
+                )
             else:
                 offspring1, offspring2 = parent1, parent2
 
@@ -419,12 +454,12 @@ class StrategyEvolutionEngine:
             next_generation.extend([offspring1, offspring2])
 
         # Trim to population size
-        next_generation = next_generation[:self.population_size]
+        next_generation = next_generation[: self.population_size]
 
         return EvolutionPopulation(
             population_id=population.population_id,
             generation=population.generation + 1,
-            strategies=next_generation
+            strategies=next_generation,
         )
 
     async def _calculate_fitness_score(self, strategy: StrategyGenome) -> float:
@@ -458,7 +493,9 @@ class StrategyEvolutionEngine:
     async def _mutate_strategy(self, strategy: StrategyGenome) -> StrategyGenome:
         """Apply random mutations to strategy parameters."""
         mutated = deepcopy(strategy)
-        mutated.strategy_id = f"mut_{strategy.strategy_id}_{int(datetime.now(timezone.utc).timestamp())}"
+        mutated.strategy_id = (
+            f"mut_{strategy.strategy_id}_{int(datetime.now(timezone.utc).timestamp())}"
+        )
 
         if random.random() < self.mutation_rate:
             # Mutate parameters
@@ -466,15 +503,23 @@ class StrategyEvolutionEngine:
 
             # Example mutations (would be strategy-specific)
             if "entry_threshold" in params:
-                params["entry_threshold"] = max(0.05, min(0.8, params["entry_threshold"] * random.uniform(0.8, 1.2)))
+                params["entry_threshold"] = max(
+                    0.05, min(0.8, params["entry_threshold"] * random.uniform(0.8, 1.2))
+                )
             if "stop_loss" in params:
-                params["stop_loss"] = max(0.02, min(0.3, params["stop_loss"] * random.uniform(0.9, 1.1)))
+                params["stop_loss"] = max(
+                    0.02, min(0.3, params["stop_loss"] * random.uniform(0.9, 1.1))
+                )
             if "take_profit" in params:
-                params["take_profit"] = max(0.05, min(0.5, params["take_profit"] * random.uniform(0.9, 1.1)))
+                params["take_profit"] = max(
+                    0.05, min(0.5, params["take_profit"] * random.uniform(0.9, 1.1))
+                )
 
         return mutated
 
-    async def _crossover_strategies(self, parent1: StrategyGenome, parent2: StrategyGenome) -> tuple:
+    async def _crossover_strategies(
+        self, parent1: StrategyGenome, parent2: StrategyGenome
+    ) -> tuple:
         """Perform crossover between two parent strategies."""
         child1 = deepcopy(parent1)
         child2 = deepcopy(parent2)
@@ -486,11 +531,16 @@ class StrategyEvolutionEngine:
         for key in set(child1.parameters.keys()) & set(child2.parameters.keys()):
             if random.random() < 0.5:
                 # Swap this parameter
-                child1.parameters[key], child2.parameters[key] = child2.parameters[key], child1.parameters[key]
+                child1.parameters[key], child2.parameters[key] = (
+                    child2.parameters[key],
+                    child1.parameters[key],
+                )
 
         return child1, child2
 
-    async def _tournament_selection(self, strategies: List[StrategyGenome], tournament_size: int = 3) -> StrategyGenome:
+    async def _tournament_selection(
+        self, strategies: List[StrategyGenome], tournament_size: int = 3
+    ) -> StrategyGenome:
         """Tournament selection for parent selection."""
         # Randomly select tournament participants
         tournament = random.sample(strategies, min(tournament_size, len(strategies)))
@@ -512,22 +562,28 @@ class StrategyEvolutionEngine:
             "strategy_a_return": strategy_a_return,
             "strategy_b_return": strategy_b_return,
             "test_duration_days": ab_test.test_period_days,
-            "confidence_interval": 0.95
+            "confidence_interval": 0.95,
         }
 
         if strategy_a_return > strategy_b_return:
             ab_test.winner = "A"
-            ab_test.confidence_level = min((strategy_a_return - strategy_b_return) / strategy_a_return, 0.95)
+            ab_test.confidence_level = min(
+                (strategy_a_return - strategy_b_return) / strategy_a_return, 0.95
+            )
         elif strategy_b_return > strategy_a_return:
             ab_test.winner = "B"
-            ab_test.confidence_level = min((strategy_b_return - strategy_a_return) / strategy_b_return, 0.95)
+            ab_test.confidence_level = min(
+                (strategy_b_return - strategy_a_return) / strategy_b_return, 0.95
+            )
         else:
             ab_test.winner = "tie"
             ab_test.confidence_level = 0.5
 
         ab_test.status = "completed"
 
-    async def _generate_strategy_ideas(self, market_conditions: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_strategy_ideas(
+        self, market_conditions: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """Generate novel strategy ideas using Claude."""
         if not self.client:
             await self._ensure_client()
@@ -551,9 +607,10 @@ class StrategyEvolutionEngine:
         try:
             # Use timeout helpers (MANDATORY per architecture pattern)
             from src.core.sdk_helpers import query_with_timeout
+
             # query_with_timeout handles both query() and receive_response() internally
             response_text = await query_with_timeout(self.client, query, timeout=45.0)
-            
+
             # Parse JSON response
             try:
                 return json.loads(response_text)
@@ -572,14 +629,16 @@ class StrategyEvolutionEngine:
             genome = StrategyGenome(
                 strategy_id=f"discovered_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}",
                 parameters=idea.get("parameters", {}),
-                rules=idea.get("rules", [])
+                rules=idea.get("rules", []),
             )
             return genome
         except Exception as e:
             logger.error(f"Failed to convert idea to genome: {e}")
             return None
 
-    async def _generate_parameter_variations(self, strategy: StrategyGenome) -> List[StrategyGenome]:
+    async def _generate_parameter_variations(
+        self, strategy: StrategyGenome
+    ) -> List[StrategyGenome]:
         """Generate parameter variations for optimization."""
         variations = []
 
@@ -598,7 +657,7 @@ class StrategyEvolutionEngine:
                     variation = StrategyGenome(
                         strategy_id=f"var_{strategy.strategy_id}_{param_name}_{multiplier}",
                         parameters=new_params,
-                        rules=strategy.rules.copy()
+                        rules=strategy.rules.copy(),
                     )
                     variations.append(variation)
 
@@ -610,20 +669,28 @@ class StrategyEvolutionEngine:
             options = ClaudeAgentOptions(
                 allowed_tools=[],
                 system_prompt=self._get_evolution_prompt(),
-                max_turns=15
+                max_turns=15,
             )
             # Use client manager instead of direct creation
-            from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+            from src.core.claude_sdk_client_manager import \
+                ClaudeSDKClientManager
+
             client_manager = await ClaudeSDKClientManager.get_instance()
             self.client = await client_manager.get_client("query", options)
-            logger.info("Strategy Evolution Engine Claude client initialized via manager")
+            logger.info(
+                "Strategy Evolution Engine Claude client initialized via manager"
+            )
 
-    async def _strategy_dict_to_genome(self, strategy_dict: Dict[str, Any]) -> StrategyGenome:
+    async def _strategy_dict_to_genome(
+        self, strategy_dict: Dict[str, Any]
+    ) -> StrategyGenome:
         """Convert strategy dictionary to genome."""
         return StrategyGenome(
-            strategy_id=strategy_dict.get("id", f"strategy_{int(datetime.now(timezone.utc).timestamp())}"),
+            strategy_id=strategy_dict.get(
+                "id", f"strategy_{int(datetime.now(timezone.utc).timestamp())}"
+            ),
             parameters=strategy_dict.get("parameters", {}),
-            rules=strategy_dict.get("rules", [])
+            rules=strategy_dict.get("rules", []),
         )
 
     async def _store_evolution_results(self, population: EvolutionPopulation) -> None:
@@ -634,13 +701,15 @@ class StrategyEvolutionEngine:
         """Store discovered strategy."""
         await self.state_manager.save_discovered_strategy(strategy.to_dict())
 
-    async def _store_optimization_results(self, original: StrategyGenome, optimized: StrategyGenome) -> None:
+    async def _store_optimization_results(
+        self, original: StrategyGenome, optimized: StrategyGenome
+    ) -> None:
         """Store optimization results."""
         results = {
             "original_strategy": original.to_dict(),
             "optimized_strategy": optimized.to_dict(),
             "improvement": optimized.fitness_score - original.fitness_score,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await self.state_manager.save_optimization_results(results)
 

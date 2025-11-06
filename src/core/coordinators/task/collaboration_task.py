@@ -4,11 +4,11 @@ Collaboration Task Management for Multi-Agent Framework
 Defines task structures and collaboration modes for agent teamwork.
 """
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
 from enum import Enum
-import uuid
+from typing import Any, Dict, List, Optional
 
 from ..agent.agent_profile import AgentRole
 
@@ -17,8 +17,8 @@ class CollaborationMode(Enum):
     """Modes of collaboration between agents."""
 
     SEQUENTIAL = "sequential"  # Agents work one after another
-    PARALLEL = "parallel"     # Agents work simultaneously
-    CONSENSUS = "consensus"   # Agents must reach consensus
+    PARALLEL = "parallel"  # Agents work simultaneously
+    CONSENSUS = "consensus"  # Agents must reach consensus
     COMPETITIVE = "competitive"  # Agents compete, best result chosen
     HIERARCHICAL = "hierarchical"  # Lead agent coordinates others
 
@@ -57,7 +57,7 @@ class TaskResult:
             "result": self.result,
             "confidence": self.confidence,
             "completion_time": self.completion_time.isoformat(),
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
 
@@ -83,7 +83,7 @@ class CollaborationTask:
         required_roles: List[AgentRole],
         collaboration_mode: CollaborationMode = CollaborationMode.SEQUENTIAL,
         deadline: Optional[datetime] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         self.task_id = str(uuid.uuid4())
         self.description = description
@@ -110,7 +110,7 @@ class CollaborationTask:
             "assigned_agents": self.assigned_agents,
             "results": [result.to_dict() for result in self.results],
             "final_result": self.final_result,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
     @classmethod
@@ -120,7 +120,7 @@ class CollaborationTask:
             description=data["description"],
             required_roles=[AgentRole(role) for role in data["required_roles"]],
             collaboration_mode=CollaborationMode(data["collaboration_mode"]),
-            metadata=data.get("metadata")
+            metadata=data.get("metadata"),
         )
 
         task.task_id = data["task_id"]
@@ -139,8 +139,10 @@ class CollaborationTask:
                     agent_role=AgentRole(result_data["agent_role"]),
                     result=result_data["result"],
                     confidence=result_data["confidence"],
-                    completion_time=datetime.fromisoformat(result_data["completion_time"]),
-                    metadata=result_data.get("metadata")
+                    completion_time=datetime.fromisoformat(
+                        result_data["completion_time"]
+                    ),
+                    metadata=result_data.get("metadata"),
                 )
                 task.results.append(result)
 
@@ -176,5 +178,7 @@ class CollaborationTask:
         if not self.required_roles:
             return 1.0
 
-        completed_roles = len([r for r in self.results if r.agent_role in self.required_roles])
+        completed_roles = len(
+            [r for r in self.results if r.agent_role in self.required_roles]
+        )
         return completed_roles / len(self.required_roles)

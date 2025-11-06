@@ -6,21 +6,24 @@ and pre-trade risk checks.
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 import aiosqlite
 from loguru import logger
 
 from src.config import Config
+
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
 from ..core.state_models import RiskDecision
-from ..core.event_bus import EventBus, Event, EventType, EventHandler
 
 
 @dataclass
 class RiskCheck:
     """Risk check result."""
+
     approved: bool
     reason: str
     suggested_size: Optional[int] = None
@@ -30,6 +33,7 @@ class RiskCheck:
 @dataclass
 class RiskLimit:
     """Risk limit configuration."""
+
     name: str
     value: float
     current: float = 0.0
@@ -138,13 +142,12 @@ class RiskService(EventHandler):
 
     async def _load_risk_limits(self) -> None:
         """Load risk limits from database."""
-        cursor = await self._db_connection.execute("SELECT name, value, current, breached FROM risk_limits")
+        cursor = await self._db_connection.execute(
+            "SELECT name, value, current, breached FROM risk_limits"
+        )
         async for row in cursor:
             self._risk_limits[row[0]] = RiskLimit(
-                name=row[0],
-                value=row[1],
-                current=row[2],
-                breached=bool(row[3])
+                name=row[0], value=row[1], current=row[2], breached=bool(row[3])
             )
 
         # Initialize default limits if not present
@@ -155,26 +158,37 @@ class RiskService(EventHandler):
         """Initialize default risk limits."""
         default_limits = {
             "max_portfolio_risk": RiskLimit("max_portfolio_risk", 0.02),  # 2% max risk
-            "max_single_position": RiskLimit("max_single_position", 0.05),  # 5% max per position
+            "max_single_position": RiskLimit(
+                "max_single_position", 0.05
+            ),  # 5% max per position
             "max_daily_loss": RiskLimit("max_daily_loss", 0.01),  # 1% max daily loss
-            "max_sector_exposure": RiskLimit("max_sector_exposure", 0.20),  # 20% max sector
+            "max_sector_exposure": RiskLimit(
+                "max_sector_exposure", 0.20
+            ),  # 20% max sector
         }
 
         now = datetime.now(timezone.utc).isoformat()
         for limit in default_limits.values():
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT OR REPLACE INTO risk_limits (name, value, current, breached, updated_at)
                 VALUES (?, ?, ?, ?, ?)
-            """, (limit.name, limit.value, limit.current, int(limit.breached), now))
+            """,
+                (limit.name, limit.value, limit.current, int(limit.breached), now),
+            )
 
         await self._db_connection.commit()
         self._risk_limits = default_limits
 
-    async def check_risk(self, symbol: str, quantity: int, price: float, portfolio_value: float) -> RiskCheck:
+    async def check_risk(
+        self, symbol: str, quantity: int, price: float, portfolio_value: float
+    ) -> RiskCheck:
         """Perform pre-trade risk check."""
         async with self._lock:
             position_risk = (quantity * price) / portfolio_value
-            max_position_risk = self._risk_limits.get("max_single_position", RiskLimit("", 0.05)).value
+            max_position_risk = self._risk_limits.get(
+                "max_single_position", RiskLimit("", 0.05)
+            ).value
 
             if position_risk > max_position_risk:
                 suggested_size = int((max_position_risk * portfolio_value) / price)
@@ -182,7 +196,10 @@ class RiskService(EventHandler):
                     approved=False,
                     reason=f"Position risk {position_risk:.1%} exceeds limit {max_position_risk:.1%}",
                     suggested_size=suggested_size,
-                    risk_metrics={"position_risk": position_risk, "max_allowed": max_position_risk}
+                    risk_metrics={
+                        "position_risk": position_risk,
+                        "max_allowed": max_position_risk,
+                    },
                 )
 
             # Check portfolio concentration
@@ -192,10 +209,12 @@ class RiskService(EventHandler):
                 approved=True,
                 reason="Risk check passed",
                 suggested_size=quantity,
-                risk_metrics={"position_risk": position_risk}
+                risk_metrics={"position_risk": position_risk},
             )
 
-    async def create_risk_decision(self, symbol: str, size_qty: Optional[int] = None) -> RiskDecision:
+    async def create_risk_decision(
+        self, symbol: str, size_qty: Optional[int] = None
+    ) -> RiskDecision:
         """Create a risk decision for a trade."""
         async with self._lock:
             # Simple risk decision logic - in real implementation this would be more sophisticated
@@ -209,54 +228,70 @@ class RiskService(EventHandler):
                 stop=0.95,  # 5% stop loss
                 targets=[1.05, 1.10],  # 5% and 10% targets
                 constraints=["max_5_percent_risk"],
-                reasons=["Standard risk parameters"]
+                reasons=["Standard risk parameters"],
             )
 
             # Save to database
             now = datetime.now(timezone.utc).isoformat()
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO risk_decisions
                 (symbol, decision, size_qty, max_risk_inr, stop_loss, targets, constraints, reasons, timestamp, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                symbol,
-                decision,
-                size_qty,
-                risk_decision.max_risk_inr,
-                risk_decision.stop,
-                json.dumps(risk_decision.targets),
-                json.dumps(risk_decision.constraints),
-                json.dumps(risk_decision.reasons),
-                now,
-                now
-            ))
+            """,
+                (
+                    symbol,
+                    decision,
+                    size_qty,
+                    risk_decision.max_risk_inr,
+                    risk_decision.stop,
+                    json.dumps(risk_decision.targets),
+                    json.dumps(risk_decision.constraints),
+                    json.dumps(risk_decision.reasons),
+                    now,
+                    now,
+                ),
+            )
             await self._db_connection.commit()
 
             return risk_decision
 
-    async def set_stop_loss(self, symbol: str, trigger_price: float, quantity: float, order_type: str = "MARKET") -> None:
+    async def set_stop_loss(
+        self,
+        symbol: str,
+        trigger_price: float,
+        quantity: float,
+        order_type: str = "MARKET",
+    ) -> None:
         """Set a stop loss order."""
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
 
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO stop_losses (symbol, trigger_price, quantity, order_type, active, created_at)
                 VALUES (?, ?, ?, ?, 1, ?)
-            """, (symbol, trigger_price, quantity, order_type, now))
+            """,
+                (symbol, trigger_price, quantity, order_type, now),
+            )
             await self._db_connection.commit()
 
             logger.info(f"Stop loss set for {symbol} at {trigger_price}")
 
-    async def check_stop_losses(self, current_prices: Dict[str, float]) -> List[Dict[str, Any]]:
+    async def check_stop_losses(
+        self, current_prices: Dict[str, float]
+    ) -> List[Dict[str, Any]]:
         """Check if any stop losses should be triggered."""
         async with self._lock:
             triggered = []
 
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT id, symbol, trigger_price, quantity, order_type
                 FROM stop_losses
                 WHERE active = 1
-            """)
+            """
+            )
 
             async for row in cursor:
                 stop_id, symbol, trigger_price, quantity, order_type = row
@@ -265,32 +300,39 @@ class RiskService(EventHandler):
                     current_price = current_prices[symbol]
                     if current_price <= trigger_price:
                         # Trigger stop loss
-                        triggered.append({
-                            "stop_id": stop_id,
-                            "symbol": symbol,
-                            "trigger_price": trigger_price,
-                            "current_price": current_price,
-                            "quantity": quantity,
-                            "order_type": order_type
-                        })
+                        triggered.append(
+                            {
+                                "stop_id": stop_id,
+                                "symbol": symbol,
+                                "trigger_price": trigger_price,
+                                "current_price": current_price,
+                                "quantity": quantity,
+                                "order_type": order_type,
+                            }
+                        )
 
                         # Mark as triggered
                         now = datetime.now(timezone.utc).isoformat()
-                        await self._db_connection.execute("""
+                        await self._db_connection.execute(
+                            """
                             UPDATE stop_losses SET active = 0, triggered_at = ? WHERE id = ?
-                        """, (now, stop_id))
+                        """,
+                            (now, stop_id),
+                        )
 
             await self._db_connection.commit()
 
             if triggered:
                 # Publish risk breach event
-                await self.event_bus.publish(Event(
-                    id=f"stop_loss_trigger_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                    type=EventType.RISK_STOP_LOSS_TRIGGER,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    source="risk_service",
-                    data={"triggered_stops": triggered}
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=f"stop_loss_trigger_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                        type=EventType.RISK_STOP_LOSS_TRIGGER,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="risk_service",
+                        data={"triggered_stops": triggered},
+                    )
+                )
 
             return triggered
 
@@ -300,10 +342,13 @@ class RiskService(EventHandler):
             now = datetime.now(timezone.utc).isoformat()
 
             for name, value in limits.items():
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     INSERT OR REPLACE INTO risk_limits (name, value, updated_at)
                     VALUES (?, ?, ?)
-                """, (name, value, now))
+                """,
+                    (name, value, now),
+                )
 
                 if name in self._risk_limits:
                     self._risk_limits[name].value = value
@@ -316,30 +361,37 @@ class RiskService(EventHandler):
         async with self._lock:
             return self._risk_limits.copy()
 
-    async def create_risk_alert(self, alert_type: str, message: str, severity: str, symbol: Optional[str] = None) -> None:
+    async def create_risk_alert(
+        self, alert_type: str, message: str, severity: str, symbol: Optional[str] = None
+    ) -> None:
         """Create a risk alert."""
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
 
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO risk_alerts (alert_type, symbol, message, severity, created_at)
                 VALUES (?, ?, ?, ?, ?)
-            """, (alert_type, symbol, message, severity, now))
+            """,
+                (alert_type, symbol, message, severity, now),
+            )
             await self._db_connection.commit()
 
             # Publish risk breach event
-            await self.event_bus.publish(Event(
-                id=f"risk_alert_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                type=EventType.RISK_BREACH,
-                timestamp=now,
-                source="risk_service",
-                data={
-                    "alert_type": alert_type,
-                    "symbol": symbol,
-                    "message": message,
-                    "severity": severity
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"risk_alert_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                    type=EventType.RISK_BREACH,
+                    timestamp=now,
+                    source="risk_service",
+                    data={
+                        "alert_type": alert_type,
+                        "symbol": symbol,
+                        "message": message,
+                        "severity": severity,
+                    },
+                )
+            )
 
             logger.warning(f"Risk alert created: {alert_type} - {message}")
 
@@ -386,7 +438,7 @@ class RiskService(EventHandler):
                     "pre_trade_risk_breach",
                     f"Order for {symbol} failed risk check: {risk_check.reason}",
                     "high",
-                    symbol
+                    symbol,
                 )
 
     async def close(self) -> None:

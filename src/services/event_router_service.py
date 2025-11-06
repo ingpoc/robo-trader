@@ -6,12 +6,13 @@ Extracted from core/queues/event_router.py to follow service layer patterns.
 """
 
 import logging
-from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
 
+from ..core.errors import ErrorCategory, ErrorSeverity, TradingError
 from ..core.event_bus import Event, EventType
 from ..models.scheduler import QueueName, TaskType
-from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
+
 # from ..core.di import DependencyContainer  # Circular import - removed
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EventTrigger:
     """Represents an event trigger configuration."""
+
     trigger_id: str
     source_queue: QueueName
     target_queue: QueueName
@@ -92,7 +94,7 @@ class EventRouterService:
         event_type: EventType,
         condition: Dict[str, Any],
         trigger_id: Optional[str] = None,
-        priority: int = 5
+        priority: int = 5,
     ) -> str:
         """Register a new event trigger and persist to database."""
         if trigger_id is None:
@@ -104,7 +106,7 @@ class EventRouterService:
                 f"Trigger {trigger_id} already exists",
                 category=ErrorCategory.VALIDATION,
                 severity=ErrorSeverity.MEDIUM,
-                recoverable=True
+                recoverable=True,
             )
 
         trigger = EventTrigger(
@@ -113,7 +115,7 @@ class EventRouterService:
             target_queue=target_queue,
             event_type=event_type,
             condition=condition,
-            priority=priority
+            priority=priority,
         )
 
         # Persist to database
@@ -130,7 +132,7 @@ class EventRouterService:
                 f"Trigger {trigger_id} not found",
                 category=ErrorCategory.VALIDATION,
                 severity=ErrorSeverity.LOW,
-                recoverable=True
+                recoverable=True,
             )
 
         # Remove from database
@@ -139,14 +141,16 @@ class EventRouterService:
 
         self._log_info(f"Unregistered event trigger: {trigger_id}")
 
-    async def update_trigger_condition(self, trigger_id: str, condition: Dict[str, Any]) -> None:
+    async def update_trigger_condition(
+        self, trigger_id: str, condition: Dict[str, Any]
+    ) -> None:
         """Update trigger condition."""
         if trigger_id not in self._triggers:
             raise TradingError(
                 f"Trigger {trigger_id} not found",
                 category=ErrorCategory.VALIDATION,
                 severity=ErrorSeverity.LOW,
-                recoverable=True
+                recoverable=True,
             )
 
         trigger = self._triggers[trigger_id]
@@ -164,7 +168,7 @@ class EventRouterService:
                 f"Trigger {trigger_id} not found",
                 category=ErrorCategory.VALIDATION,
                 severity=ErrorSeverity.LOW,
-                recoverable=True
+                recoverable=True,
             )
 
         trigger = self._triggers[trigger_id]
@@ -215,7 +219,9 @@ class EventRouterService:
         matching.sort(key=lambda t: t.priority, reverse=True)
         return matching
 
-    def _matches_condition(self, condition: Dict[str, Any], event_data: Dict[str, Any]) -> bool:
+    def _matches_condition(
+        self, condition: Dict[str, Any], event_data: Dict[str, Any]
+    ) -> bool:
         """Check if event data matches the trigger condition."""
         for key, expected_value in condition.items():
             if key not in event_data:
@@ -227,14 +233,20 @@ class EventRouterService:
             if isinstance(expected_value, str) and expected_value.startswith(">"):
                 try:
                     threshold = float(expected_value[1:])
-                    if not isinstance(actual_value, (int, float)) or actual_value <= threshold:
+                    if (
+                        not isinstance(actual_value, (int, float))
+                        or actual_value <= threshold
+                    ):
                         return False
                 except ValueError:
                     return False
             elif isinstance(expected_value, str) and expected_value.startswith("<"):
                 try:
                     threshold = float(expected_value[1:])
-                    if not isinstance(actual_value, (int, float)) or actual_value >= threshold:
+                    if (
+                        not isinstance(actual_value, (int, float))
+                        or actual_value >= threshold
+                    ):
                         return False
                 except ValueError:
                     return False
@@ -252,9 +264,13 @@ class EventRouterService:
 
         return True
 
-    async def _execute_trigger(self, trigger: EventTrigger, event: Event) -> Optional[Dict[str, Any]]:
+    async def _execute_trigger(
+        self, trigger: EventTrigger, event: Event
+    ) -> Optional[Dict[str, Any]]:
         """Execute a trigger based on the event."""
-        self._log_info(f"Executing trigger: {trigger.trigger_id} for event {event.event_type.value}")
+        self._log_info(
+            f"Executing trigger: {trigger.trigger_id} for event {event.event_type.value}"
+        )
 
         # Create appropriate task payload based on trigger and event
         task_payload = self._build_task_payload(trigger, event)
@@ -265,7 +281,7 @@ class EventRouterService:
                 "target_queue": trigger.target_queue.value,
                 "task_type": self._determine_task_type(trigger, event).value,
                 "payload": task_payload,
-                "priority": trigger.priority
+                "priority": trigger.priority,
             }
 
             self._log_info(f"Created triggered action: {action}")
@@ -273,7 +289,9 @@ class EventRouterService:
 
         return None
 
-    def _build_task_payload(self, trigger: EventTrigger, event: Event) -> Optional[Dict[str, Any]]:
+    def _build_task_payload(
+        self, trigger: EventTrigger, event: Event
+    ) -> Optional[Dict[str, Any]]:
         """Build task payload based on trigger and event."""
         base_payload = {
             "triggered_by": trigger.trigger_id,
@@ -284,25 +302,31 @@ class EventRouterService:
 
         # Add event-specific data
         if event.event_type == EventType.FEATURE_UPDATED:
-            base_payload.update({
-                "completed_task_id": event.data.get("task_id"),
-                "completed_task_type": event.data.get("task_type"),
-                "execution_time": event.data.get("execution_time"),
-            })
+            base_payload.update(
+                {
+                    "completed_task_id": event.data.get("task_id"),
+                    "completed_task_type": event.data.get("task_type"),
+                    "execution_time": event.data.get("execution_time"),
+                }
+            )
         elif event.event_type == EventType.MARKET_NEWS:
-            base_payload.update({
-                "symbol": event.data.get("symbol"),
-                "headline": event.data.get("headline"),
-                "impact_score": event.data.get("impact_score"),
-                "sentiment": event.data.get("sentiment"),
-            })
+            base_payload.update(
+                {
+                    "symbol": event.data.get("symbol"),
+                    "headline": event.data.get("headline"),
+                    "impact_score": event.data.get("impact_score"),
+                    "sentiment": event.data.get("sentiment"),
+                }
+            )
         elif event.event_type == EventType.EARNINGS_ANNOUNCEMENT:
-            base_payload.update({
-                "symbol": event.data.get("symbol"),
-                "quarter": event.data.get("quarter"),
-                "year": event.data.get("year"),
-                "eps": event.data.get("eps"),
-            })
+            base_payload.update(
+                {
+                    "symbol": event.data.get("symbol"),
+                    "quarter": event.data.get("quarter"),
+                    "year": event.data.get("year"),
+                    "eps": event.data.get("eps"),
+                }
+            )
 
         return base_payload
 
@@ -317,7 +341,10 @@ class EventRouterService:
         elif trigger.target_queue == QueueName.AI_ANALYSIS:
             if event.event_type == EventType.FEATURE_UPDATED:
                 return TaskType.CLAUDE_MORNING_PREP
-            elif event.event_type in [EventType.MARKET_NEWS, EventType.EARNINGS_ANNOUNCEMENT]:
+            elif event.event_type in [
+                EventType.MARKET_NEWS,
+                EventType.EARNINGS_ANNOUNCEMENT,
+            ]:
                 return TaskType.RECOMMENDATION_GENERATION
 
         # Default fallback
@@ -405,7 +432,7 @@ class EventRouterService:
                 source_queue=QueueName.PORTFOLIO_SYNC,
                 target_queue=QueueName.DATA_FETCHER,
                 event_type=EventType.FEATURE_UPDATED,
-                condition={"task_types": ["sync_account_balances", "update_positions"]}
+                condition={"task_types": ["sync_account_balances", "update_positions"]},
             )
 
             # Data fetcher → AI analysis trigger
@@ -413,7 +440,7 @@ class EventRouterService:
                 source_queue=QueueName.DATA_FETCHER,
                 target_queue=QueueName.AI_ANALYSIS,
                 event_type=EventType.FEATURE_UPDATED,
-                condition={"task_types": ["fundamentals_update", "news_monitoring"]}
+                condition={"task_types": ["fundamentals_update", "news_monitoring"]},
             )
 
             # Market news trigger
@@ -421,7 +448,7 @@ class EventRouterService:
                 source_queue=QueueName.DATA_FETCHER,
                 target_queue=QueueName.AI_ANALYSIS,
                 event_type=EventType.MARKET_NEWS,
-                condition={"impact_score": ">0.7"}
+                condition={"impact_score": ">0.7"},
             )
 
         except Exception as e:

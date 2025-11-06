@@ -12,31 +12,41 @@ This is a facade that delegates to focused modules:
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from src.config import Config
-from src.core.event_bus import EventBus, Event, EventType, EventHandler
-from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
-from src.services.feature_management.models import (
-    FeatureConfig, FeatureState, FeatureMetadata, FeatureDependency,
-    BulkFeatureUpdate, DependencyResolutionResult,
-    FeatureStatus, FeatureType
-)
+from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
+from src.core.event_bus import Event, EventBus, EventHandler, EventType
+from src.services.feature_management.agent_integration import \
+    AgentManagementIntegration
 from src.services.feature_management.database import FeatureDatabase
-from src.services.feature_management.dependency_resolver import DependencyResolver
-from src.services.feature_management.lifecycle_manager import ServiceLifecycleManager
-from src.services.feature_management.scheduler_integration import BackgroundSchedulerIntegration
-from src.services.feature_management.agent_integration import AgentManagementIntegration
-from src.services.feature_management.service_integration import ServiceManagementIntegration
-from src.services.feature_management.resource_cleanup import ResourceCleanupManager
+from src.services.feature_management.dependency_resolver import \
+    DependencyResolver
 from src.services.feature_management.error_recovery import ErrorRecoveryManager
-from src.services.feature_management.event_broadcasting import EventBroadcastingService
-
+from src.services.feature_management.event_broadcasting import \
+    EventBroadcastingService
+from src.services.feature_management.feature_activation import \
+    FeatureActivation
 # Import focused modules
 from src.services.feature_management.feature_crud import FeatureCRUD
-from src.services.feature_management.feature_activation import FeatureActivation
-from src.services.feature_management.feature_validation import FeatureValidation
+from src.services.feature_management.feature_validation import \
+    FeatureValidation
+from src.services.feature_management.lifecycle_manager import \
+    ServiceLifecycleManager
+from src.services.feature_management.models import (BulkFeatureUpdate,
+                                                    DependencyResolutionResult,
+                                                    FeatureConfig,
+                                                    FeatureMetadata,
+                                                    FeatureState,
+                                                    FeatureStatus, FeatureType)
+from src.services.feature_management.resource_cleanup import \
+    ResourceCleanupManager
+from src.services.feature_management.scheduler_integration import \
+    BackgroundSchedulerIntegration
+from src.services.feature_management.service_integration import \
+    ServiceManagementIntegration
 
 
 class FeatureManagementError(TradingError):
@@ -48,7 +58,7 @@ class FeatureManagementError(TradingError):
             category=ErrorCategory.CONFIGURATION,
             severity=ErrorSeverity.MEDIUM,
             feature_id=feature_id,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -142,24 +152,29 @@ class FeatureManagementService(EventHandler):
                 logger.info("Feature management service initialized")
 
                 # Emit initialization event
-                await self.event_bus.publish(Event(
-                    id=f"feature_service_init_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                    type=EventType.SYSTEM_HEALTH_CHECK,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    source="feature_management_service",
-                    data={"service": "feature_management", "status": "initialized"}
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=f"feature_service_init_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                        type=EventType.SYSTEM_HEALTH_CHECK,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="feature_management_service",
+                        data={"service": "feature_management", "status": "initialized"},
+                    )
+                )
 
             except Exception as e:
                 logger.error(f"Failed to initialize feature management service: {e}")
                 await self.error_recovery.handle_error(
-                    "system", "initialization", "startup", e,
-                    {"component": "feature_management_service"}
+                    "system",
+                    "initialization",
+                    "startup",
+                    e,
+                    {"component": "feature_management_service"},
                 )
                 raise FeatureManagementError(
                     f"Service initialization failed: {str(e)}",
                     recoverable=True,
-                    retry_after_seconds=5
+                    retry_after_seconds=5,
                 )
 
     def _initialize_modules(self) -> None:
@@ -169,7 +184,7 @@ class FeatureManagementService(EventHandler):
             self.event_bus,
             self.features,
             self.dependency_resolver,
-            self._lock
+            self._lock,
         )
 
         self.activation = FeatureActivation(
@@ -184,7 +199,7 @@ class FeatureManagementService(EventHandler):
             self.service_integration,
             self.error_recovery,
             self.event_broadcasting,
-            self._lock
+            self._lock,
         )
 
         self.validation = FeatureValidation(
@@ -199,7 +214,7 @@ class FeatureManagementService(EventHandler):
             self.service_integration,
             self.resource_cleanup,
             self.error_recovery,
-            self.event_broadcasting
+            self.event_broadcasting,
         )
 
     async def _initialize_deactivation_system(self) -> None:
@@ -207,8 +222,12 @@ class FeatureManagementService(EventHandler):
         try:
             # Set up integrations
             if self.background_scheduler:
-                self.lifecycle_manager.set_background_scheduler(self.background_scheduler)
-                self.scheduler_integration.background_scheduler = self.background_scheduler
+                self.lifecycle_manager.set_background_scheduler(
+                    self.background_scheduler
+                )
+                self.scheduler_integration.background_scheduler = (
+                    self.background_scheduler
+                )
 
             if self.agent_coordinator:
                 self.lifecycle_manager.set_agent_coordinator(self.agent_coordinator)
@@ -219,7 +238,7 @@ class FeatureManagementService(EventHandler):
                 self.service_integration.service_registry = self.service_registry
 
             # Set up queue manager if available
-            if hasattr(self, 'queue_manager') and self.queue_manager:
+            if hasattr(self, "queue_manager") and self.queue_manager:
                 self.lifecycle_manager.set_queue_manager(self.queue_manager)
                 self.scheduler_integration.queue_manager = self.queue_manager
 
@@ -247,7 +266,9 @@ class FeatureManagementService(EventHandler):
             for state in states:
                 self.states[state.feature_id] = state
 
-            logger.info(f"Loaded {len(self.features)} feature configurations and {len(self.states)} states")
+            logger.info(
+                f"Loaded {len(self.features)} feature configurations and {len(self.states)} states"
+            )
 
         except Exception as e:
             logger.error(f"Failed to load features: {e}")
@@ -256,76 +277,95 @@ class FeatureManagementService(EventHandler):
     async def _register_config_agents_as_features(self) -> None:
         """Register agents from config.json as features in the feature management system."""
         try:
-            if not hasattr(self.config, 'agents'):
+            if not hasattr(self.config, "agents"):
                 logger.debug("No agents configuration found to register as features")
                 return
 
             agents_config = self.config.agents
-            if hasattr(agents_config, '__dict__'):
+            if hasattr(agents_config, "__dict__"):
                 for agent_name, agent_cfg in agents_config.__dict__.items():
-                    if hasattr(agent_cfg, 'enabled'):
+                    if hasattr(agent_cfg, "enabled"):
                         # Check if feature already exists
                         if agent_name not in self.features:
                             # Create feature configuration for agent
-                            feature_config = self._create_agent_feature_config(agent_name, agent_cfg)
+                            feature_config = self._create_agent_feature_config(
+                                agent_name, agent_cfg
+                            )
 
                             # Register feature in database
-                            if await self.database.create_feature_config(feature_config):
+                            if await self.database.create_feature_config(
+                                feature_config
+                            ):
                                 self.features[agent_name] = feature_config
 
                                 # Create initial state
                                 initial_state = FeatureState(
                                     feature_id=agent_name,
-                                    status=FeatureStatus.ENABLED if getattr(agent_cfg, 'enabled', False) else FeatureStatus.DISABLED,
-                                    enabled=getattr(agent_cfg, 'enabled', False)
+                                    status=(
+                                        FeatureStatus.ENABLED
+                                        if getattr(agent_cfg, "enabled", False)
+                                        else FeatureStatus.DISABLED
+                                    ),
+                                    enabled=getattr(agent_cfg, "enabled", False),
                                 )
                                 self.states[agent_name] = initial_state
                                 await self.database.update_feature_state(initial_state)
 
-                                logger.info(f"Registered agent '{agent_name}' as feature from config.json")
+                                logger.info(
+                                    f"Registered agent '{agent_name}' as feature from config.json"
+                                )
                             else:
-                                logger.warning(f"Failed to register agent '{agent_name}' as feature in database")
+                                logger.warning(
+                                    f"Failed to register agent '{agent_name}' as feature in database"
+                                )
                         else:
-                            logger.debug(f"Agent '{agent_name}' already registered as feature, skipping")
+                            logger.debug(
+                                f"Agent '{agent_name}' already registered as feature, skipping"
+                            )
 
-            logger.info(f"Agent-to-feature registration completed. Total features: {len(self.features)}")
+            logger.info(
+                f"Agent-to-feature registration completed. Total features: {len(self.features)}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to register config agents as features: {e}")
 
-    def _create_agent_feature_config(self, agent_name: str, agent_cfg: Any) -> FeatureConfig:
+    def _create_agent_feature_config(
+        self, agent_name: str, agent_cfg: Any
+    ) -> FeatureConfig:
         """Create a FeatureConfig from agent configuration."""
         return FeatureConfig(
             feature_id=agent_name,
             metadata=FeatureMetadata(
-                name=agent_name.replace('_', ' ').title(),
+                name=agent_name.replace("_", " ").title(),
                 description=f"Agent feature: {agent_name}",
                 feature_type=FeatureType.AGENT,
                 version="1.0.0",
                 author="system",
                 tags=["agent", "config-based"],
                 created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
+                updated_at=datetime.now(timezone.utc),
             ),
             configuration={
-                "use_claude": getattr(agent_cfg, 'use_claude', True),
-                "frequency_seconds": getattr(agent_cfg, 'frequency_seconds', 300),
-                "priority": getattr(agent_cfg, 'priority', 'medium'),
-                "source": "config.json"
+                "use_claude": getattr(agent_cfg, "use_claude", True),
+                "frequency_seconds": getattr(agent_cfg, "frequency_seconds", 300),
+                "priority": getattr(agent_cfg, "priority", "medium"),
+                "source": "config.json",
             },
             dependencies=[],
-            auto_start=getattr(agent_cfg, 'enabled', False),
+            auto_start=getattr(agent_cfg, "enabled", False),
             max_retries=3,
             retry_delay_seconds=60,
             health_check_interval_seconds=300,
             rollback_enabled=True,
-            rollback_timeout_seconds=300
+            rollback_timeout_seconds=300,
         )
 
     async def _auto_start_features(self) -> None:
         """Auto-start features that are configured to do so."""
         auto_start_features = [
-            feature_id for feature_id, config in self.features.items()
+            feature_id
+            for feature_id, config in self.features.items()
             if config.auto_start
         ]
 
@@ -387,10 +427,12 @@ class FeatureManagementService(EventHandler):
         feature_id: str,
         reason: Optional[str] = None,
         requested_by: str = "system",
-        cascade: bool = True
+        cascade: bool = True,
     ) -> bool:
         """Enable a feature and its dependencies."""
-        result = await self.activation.enable_feature(feature_id, reason, requested_by, cascade)
+        result = await self.activation.enable_feature(
+            feature_id, reason, requested_by, cascade
+        )
         # Update dependency resolver after enabling
         self.dependency_resolver.update_graph(self.features, self.states)
         return result
@@ -400,17 +442,21 @@ class FeatureManagementService(EventHandler):
         feature_id: str,
         reason: Optional[str] = None,
         requested_by: str = "system",
-        cascade: bool = True
+        cascade: bool = True,
     ) -> bool:
         """Disable a feature and its dependents."""
-        result = await self.activation.disable_feature(feature_id, reason, requested_by, cascade)
+        result = await self.activation.disable_feature(
+            feature_id, reason, requested_by, cascade
+        )
         # Update dependency resolver after disabling
         self.dependency_resolver.update_graph(self.features, self.states)
         return result
 
     # Bulk Operations (delegate to FeatureActivation)
 
-    async def bulk_update_features(self, bulk_update: BulkFeatureUpdate) -> Dict[str, Any]:
+    async def bulk_update_features(
+        self, bulk_update: BulkFeatureUpdate
+    ) -> Dict[str, Any]:
         """Perform bulk feature updates."""
         return await self.activation.bulk_update_features(bulk_update)
 
@@ -428,7 +474,9 @@ class FeatureManagementService(EventHandler):
         """Validate feature dependencies."""
         return await self.validation.validate_feature_dependencies(feature_id)
 
-    async def get_dependency_resolution(self, feature_ids: List[str], operation: str) -> DependencyResolutionResult:
+    async def get_dependency_resolution(
+        self, feature_ids: List[str], operation: str
+    ) -> DependencyResolutionResult:
         """Get dependency resolution for features."""
         return await self.validation.get_dependency_resolution(feature_ids, operation)
 
@@ -542,14 +590,14 @@ class FeatureManagementService(EventHandler):
         """Get all resources associated with a feature."""
         return await self.validation.get_feature_resources(feature_id)
 
-    async def get_error_history(self, feature_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_error_history(
+        self, feature_id: Optional[str] = None, limit: int = 50
+    ) -> List[Dict[str, Any]]:
         """Get error history for a feature or all features."""
         return await self.validation.get_error_history(feature_id, limit)
 
     async def get_event_history(
-        self,
-        feature_id: Optional[str] = None,
-        limit: int = 50
+        self, feature_id: Optional[str] = None, limit: int = 50
     ) -> List[Dict[str, Any]]:
         """Get event history for a feature or all features."""
         return await self.validation.get_event_history(feature_id, limit)

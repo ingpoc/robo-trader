@@ -1,15 +1,16 @@
 """Data store for paper trading accounts and trades."""
 
-import logging
 import asyncio
+import logging
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Dict, List, Optional
+
 import aiosqlite
 
-from ..models.paper_trading import (
-    PaperTradingAccount, PaperTrade, TradeType, TradeStatus, AccountType, RiskLevel
-)
+from ..models.paper_trading import (AccountType, PaperTrade,
+                                    PaperTradingAccount, RiskLevel,
+                                    TradeStatus, TradeType)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ class PaperTradingStore:
             # Use the database connection from state manager (direct connection, not pool)
             db = self.db_connection
             # Create accounts table
-            await db.execute("""
+            await db.execute(
+                """
                 CREATE TABLE IF NOT EXISTS paper_trading_accounts (
                     account_id TEXT PRIMARY KEY,
                     account_name TEXT NOT NULL,
@@ -49,10 +51,12 @@ class PaperTradingStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """)
+            """
+            )
 
             # Create trades table
-            await db.execute("""
+            await db.execute(
+                """
                 CREATE TABLE IF NOT EXISTS paper_trades (
                     trade_id TEXT PRIMARY KEY,
                     account_id TEXT NOT NULL,
@@ -73,17 +77,22 @@ class PaperTradingStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """)
+            """
+            )
 
             # Create indexes
-            await db.execute("""
+            await db.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_trades_account_id
                 ON paper_trades(account_id)
-            """)
-            await db.execute("""
+            """
+            )
+            await db.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_trades_symbol
                 ON paper_trades(symbol)
-            """)
+            """
+            )
 
             await db.commit()
             logger.info("Paper trading schema initialized in database")
@@ -96,7 +105,7 @@ class PaperTradingStore:
         risk_level: RiskLevel = RiskLevel.MODERATE,
         max_position_size: float = 5.0,
         max_portfolio_risk: float = 10.0,
-        account_id: Optional[str] = None
+        account_id: Optional[str] = None,
     ) -> PaperTradingAccount:
         """Create new paper trading account."""
         async with self._lock:
@@ -114,10 +123,21 @@ class PaperTradingStore:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    account_id, account_name, initial_balance, initial_balance, initial_balance,
-                    strategy_type.value, risk_level.value, max_position_size, max_portfolio_risk,
-                    1, today, 0.0, now, now
-                )
+                    account_id,
+                    account_name,
+                    initial_balance,
+                    initial_balance,
+                    initial_balance,
+                    strategy_type.value,
+                    risk_level.value,
+                    max_position_size,
+                    max_portfolio_risk,
+                    1,
+                    today,
+                    0.0,
+                    now,
+                    now,
+                ),
             )
             await cursor.close()
             await self.db_connection.commit()
@@ -125,12 +145,13 @@ class PaperTradingStore:
             logger.info(f"Created paper trading account: {account_id}")
             return await self._get_account_unlocked(account_id)
 
-    async def _get_account_unlocked(self, account_id: str) -> Optional[PaperTradingAccount]:
+    async def _get_account_unlocked(
+        self, account_id: str
+    ) -> Optional[PaperTradingAccount]:
         """Get account by ID (assumes lock is already held)."""
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
-            "SELECT * FROM paper_trading_accounts WHERE account_id = ?",
-            (account_id,)
+            "SELECT * FROM paper_trading_accounts WHERE account_id = ?", (account_id,)
         )
         row = await cursor.fetchone()
         await cursor.close()
@@ -153,7 +174,9 @@ class PaperTradingStore:
         await cursor.close()
         return [PaperTradingAccount.from_dict(dict(row)) for row in rows]
 
-    async def update_account_balance(self, account_id: str, new_balance: float, buying_power: float) -> None:
+    async def update_account_balance(
+        self, account_id: str, new_balance: float, buying_power: float
+    ) -> None:
         """Update account balance and buying power."""
         async with self._lock:
             now = datetime.utcnow().isoformat()
@@ -163,7 +186,7 @@ class PaperTradingStore:
                 SET current_balance = ?, buying_power = ?, updated_at = ?
                 WHERE account_id = ?
                 """,
-                (new_balance, buying_power, now, account_id)
+                (new_balance, buying_power, now, account_id),
             )
             await cursor.close()
             await self.db_connection.commit()
@@ -178,7 +201,7 @@ class PaperTradingStore:
         strategy_rationale: str,
         claude_session_id: str,
         stop_loss: Optional[float] = None,
-        target_price: Optional[float] = None
+        target_price: Optional[float] = None,
     ) -> PaperTrade:
         """Create new trade record."""
         async with self._lock:
@@ -194,23 +217,35 @@ class PaperTradingStore:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    trade_id, account_id, symbol, trade_type.value, quantity, entry_price,
-                    now, strategy_rationale, claude_session_id, stop_loss,
-                    target_price, TradeStatus.OPEN.value, now, now
-                )
+                    trade_id,
+                    account_id,
+                    symbol,
+                    trade_type.value,
+                    quantity,
+                    entry_price,
+                    now,
+                    strategy_rationale,
+                    claude_session_id,
+                    stop_loss,
+                    target_price,
+                    TradeStatus.OPEN.value,
+                    now,
+                    now,
+                ),
             )
             await cursor.close()
             await self.db_connection.commit()
 
-            logger.info(f"Created trade: {trade_id} ({symbol} {quantity}@{entry_price})")
+            logger.info(
+                f"Created trade: {trade_id} ({symbol} {quantity}@{entry_price})"
+            )
             return await self._get_trade_unlocked(trade_id)
 
     async def _get_trade_unlocked(self, trade_id: str) -> Optional[PaperTrade]:
         """Get trade by ID (assumes lock is already held)."""
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
-            "SELECT * FROM paper_trades WHERE trade_id = ?",
-            (trade_id,)
+            "SELECT * FROM paper_trades WHERE trade_id = ?", (trade_id,)
         )
         row = await cursor.fetchone()
         await cursor.close()
@@ -228,7 +263,7 @@ class PaperTradingStore:
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
             "SELECT * FROM paper_trades WHERE account_id = ? AND status = ?",
-            (account_id, TradeStatus.OPEN.value)
+            (account_id, TradeStatus.OPEN.value),
         )
         rows = await cursor.fetchall()
         await cursor.close()
@@ -239,7 +274,7 @@ class PaperTradingStore:
         trade_id: str,
         exit_price: float,
         realized_pnl: float,
-        reason: str = "Manual exit"
+        reason: str = "Manual exit",
     ) -> Optional[PaperTrade]:
         """Close a trade."""
         async with self._lock:
@@ -252,14 +287,23 @@ class PaperTradingStore:
                     status = ?, updated_at = ?
                 WHERE trade_id = ?
                 """,
-                (exit_price, now, realized_pnl, TradeStatus.CLOSED.value, now, trade_id)
+                (
+                    exit_price,
+                    now,
+                    realized_pnl,
+                    TradeStatus.CLOSED.value,
+                    now,
+                    trade_id,
+                ),
             )
             await cursor.close()
             await self.db_connection.commit()
 
             return await self._get_trade_unlocked(trade_id)
 
-    async def mark_stopped_out(self, trade_id: str, exit_price: float, realized_pnl: float) -> Optional[PaperTrade]:
+    async def mark_stopped_out(
+        self, trade_id: str, exit_price: float, realized_pnl: float
+    ) -> Optional[PaperTrade]:
         """Mark trade as stopped out."""
         async with self._lock:
             now = datetime.utcnow().isoformat()
@@ -271,14 +315,23 @@ class PaperTradingStore:
                     status = ?, updated_at = ?
                 WHERE trade_id = ?
                 """,
-                (exit_price, now, realized_pnl, TradeStatus.STOPPED_OUT.value, now, trade_id)
+                (
+                    exit_price,
+                    now,
+                    realized_pnl,
+                    TradeStatus.STOPPED_OUT.value,
+                    now,
+                    trade_id,
+                ),
             )
             await cursor.close()
             await self.db_connection.commit()
 
             return await self._get_trade_unlocked(trade_id)
 
-    async def get_monthly_trades(self, account_id: str, year: int, month: int) -> List[PaperTrade]:
+    async def get_monthly_trades(
+        self, account_id: str, year: int, month: int
+    ) -> List[PaperTrade]:
         """Get all trades for a specific month."""
         start_date = f"{year:04d}-{month:02d}-01"
         if month == 12:
@@ -293,13 +346,15 @@ class PaperTradingStore:
             WHERE account_id = ? AND entry_timestamp >= ? AND entry_timestamp < ?
             ORDER BY entry_timestamp DESC
             """,
-            (account_id, start_date, end_date)
+            (account_id, start_date, end_date),
         )
         rows = await cursor.fetchall()
         await cursor.close()
         return [PaperTrade.from_dict(dict(row)) for row in rows]
 
-    async def calculate_account_pnl(self, account_id: str, current_prices: Dict[str, float]) -> tuple[float, float]:
+    async def calculate_account_pnl(
+        self, account_id: str, current_prices: Dict[str, float]
+    ) -> tuple[float, float]:
         """
         Calculate account P&L.
 
@@ -329,12 +384,17 @@ class PaperTradingStore:
             FROM paper_trades
             WHERE account_id = ? AND status IN (?, ?) AND exit_timestamp >= ?
             """,
-            (account_id, TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value, today)
+            (
+                account_id,
+                TradeStatus.CLOSED.value,
+                TradeStatus.STOPPED_OUT.value,
+                today,
+            ),
         )
         row = await cursor.fetchone()
         await cursor.close()
         if row:
-            realized_pnl = row['total']
+            realized_pnl = row["total"]
 
         total_pnl = realized_pnl + unrealized_pnl
         initial = account.initial_balance
@@ -358,13 +418,21 @@ class PaperTradingStore:
                 monthly_pnl = 0.0, updated_at = ?
             WHERE account_id = ?
             """,
-            (account.initial_balance, account.initial_balance, today, now, account_id)
+            (account.initial_balance, account.initial_balance, today, now, account_id),
         )
         await cursor.close()
         await self.db_connection.commit()
 
         logger.info(f"Reset monthly account: {account_id}")
-    async def get_closed_trades(self, account_id: str, month: Optional[int] = None, year: Optional[int] = None, symbol: Optional[str] = None, limit: int = 50) -> List[PaperTrade]:
+
+    async def get_closed_trades(
+        self,
+        account_id: str,
+        month: Optional[int] = None,
+        year: Optional[int] = None,
+        symbol: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[PaperTrade]:
         """Get closed trades for account with optional filters."""
         query = """
             SELECT * FROM paper_trades

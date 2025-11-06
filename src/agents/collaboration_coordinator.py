@@ -6,24 +6,19 @@ Manages task assignment, result synthesis, and agent performance tracking.
 """
 
 import asyncio
-import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
+from claude_agent_sdk import ClaudeSDKClient
 from loguru import logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
-from ..core.multi_agent_framework import (
-    MultiAgentFramework,
-    AgentRole,
-    CollaborationMode,
-    AgentMessage,
-    MessageType,
-    CollaborationTask
-)
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
 from ..core.event_bus import EventBus
+from ..core.multi_agent_framework import (AgentMessage, AgentRole,
+                                          CollaborationMode, CollaborationTask,
+                                          MessageType, MultiAgentFramework)
 
 
 class CollaborationCoordinator:
@@ -42,7 +37,7 @@ class CollaborationCoordinator:
         config: Config,
         state_manager: DatabaseStateManager,
         event_bus: EventBus,
-        framework: MultiAgentFramework
+        framework: MultiAgentFramework,
     ):
         self.config = config
         self.state_manager = state_manager
@@ -64,10 +59,7 @@ class CollaborationCoordinator:
                 logger.warning(f"Error cleaning up coordinator client: {e}")
 
     async def initiate_comprehensive_analysis(
-        self,
-        symbol: str,
-        analysis_type: str = "full",
-        urgency: str = "normal"
+        self, symbol: str, analysis_type: str = "full", urgency: str = "normal"
     ) -> Optional[CollaborationTask]:
         """
         Initiate comprehensive analysis using multiple specialized agents.
@@ -98,14 +90,16 @@ class CollaborationCoordinator:
                 description=description,
                 required_roles=required_roles,
                 collaboration_mode=collaboration_mode,
-                deadline=deadline
+                deadline=deadline,
             )
 
             if task:
                 # Send initial analysis request to all assigned agents
                 await self._send_initial_analysis_request(task, symbol, analysis_type)
 
-                logger.info(f"Initiated comprehensive analysis for {symbol}: task {task.task_id}")
+                logger.info(
+                    f"Initiated comprehensive analysis for {symbol}: task {task.task_id}"
+                )
                 return task
 
         except Exception as e:
@@ -114,10 +108,7 @@ class CollaborationCoordinator:
         return None
 
     async def coordinate_trading_decision(
-        self,
-        symbol: str,
-        action_type: str,
-        context: Dict[str, Any]
+        self, symbol: str, action_type: str, context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Coordinate a complex trading decision using multiple agents.
@@ -136,18 +127,21 @@ class CollaborationCoordinator:
                 AgentRole.TECHNICAL_ANALYST,
                 AgentRole.FUNDAMENTAL_SCREENER,
                 AgentRole.RISK_MANAGER,
-                AgentRole.STRATEGY_AGENT
+                AgentRole.STRATEGY_AGENT,
             ]
 
             task = await self.framework.create_collaboration_task(
                 description=f"Trading decision coordination for {symbol} ({action_type})",
                 required_roles=required_roles,
                 collaboration_mode=CollaborationMode.VOTING,
-                deadline=self._calculate_deadline("high")
+                deadline=self._calculate_deadline("high"),
             )
 
             if not task:
-                return {"status": "failed", "error": "Could not create coordination task"}
+                return {
+                    "status": "failed",
+                    "error": "Could not create coordination task",
+                }
 
             # Send decision context to agents
             await self._send_decision_context(task, symbol, action_type, context)
@@ -158,12 +152,14 @@ class CollaborationCoordinator:
 
             if result:
                 # Process and return final decision
-                final_decision = await self._process_decision_result(result, symbol, action_type)
+                final_decision = await self._process_decision_result(
+                    result, symbol, action_type
+                )
                 return {
                     "status": "success",
                     "decision": final_decision,
                     "task_id": task.task_id,
-                    "agents_involved": len(task.assigned_agents)
+                    "agents_involved": len(task.assigned_agents),
                 }
             else:
                 return {"status": "timeout", "error": "Decision coordination timed out"}
@@ -187,13 +183,15 @@ class CollaborationCoordinator:
                 agent_performance[agent_id] = performance
 
             # Analyze collaboration patterns and effectiveness
-            optimization_recommendations = await self._analyze_agent_optimization_opportunities(agent_performance)
+            optimization_recommendations = (
+                await self._analyze_agent_optimization_opportunities(agent_performance)
+            )
 
             return {
                 "status": "success",
                 "agent_performance": agent_performance,
                 "optimization_recommendations": optimization_recommendations,
-                "generated_at": datetime.now(timezone.utc).isoformat()
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
@@ -201,10 +199,7 @@ class CollaborationCoordinator:
             return {"status": "error", "error": str(e)}
 
     async def _send_initial_analysis_request(
-        self,
-        task: CollaborationTask,
-        symbol: str,
-        analysis_type: str
+        self, task: CollaborationTask, symbol: str, analysis_type: str
     ) -> None:
         """Send initial analysis request to all assigned agents."""
         analysis_context = {
@@ -212,7 +207,7 @@ class CollaborationCoordinator:
             "analysis_type": analysis_type,
             "timeframe": "comprehensive",
             "market_context": await self._get_market_context(),
-            "portfolio_context": await self._get_portfolio_context()
+            "portfolio_context": await self._get_portfolio_context(),
         }
 
         for agent_id in task.assigned_agents:
@@ -229,11 +224,11 @@ class CollaborationCoordinator:
                         "analysis": "detailed analysis text",
                         "recommendations": ["list of recommendations"],
                         "risk_assessment": "risk level assessment",
-                        "time_horizon": "short/medium/long term"
-                    }
+                        "time_horizon": "short/medium/long term",
+                    },
                 },
                 correlation_id=task.task_id,
-                priority=8
+                priority=8,
             )
             await self.framework.send_message(message)
 
@@ -242,7 +237,7 @@ class CollaborationCoordinator:
         task: CollaborationTask,
         symbol: str,
         action_type: str,
-        context: Dict[str, Any]
+        context: Dict[str, Any],
     ) -> None:
         """Send decision context to agents for voting."""
         decision_context = {
@@ -253,7 +248,9 @@ class CollaborationCoordinator:
             "risk_tolerance": context.get("risk_tolerance"),
             "time_horizon": context.get("time_horizon"),
             "market_conditions": await self._get_market_context(),
-            "portfolio_impact": await self._get_portfolio_impact(symbol, action_type, context)
+            "portfolio_impact": await self._get_portfolio_impact(
+                symbol, action_type, context
+            ),
         }
 
         for agent_id in task.assigned_agents:
@@ -269,15 +266,17 @@ class CollaborationCoordinator:
                         "vote": "approve/reject/modify",
                         "confidence": "0-1 scale",
                         "rationale": "brief explanation",
-                        "modifications": "if vote is modify, suggested changes"
-                    }
+                        "modifications": "if vote is modify, suggested changes",
+                    },
                 },
                 correlation_id=task.task_id,
-                priority=9
+                priority=9,
             )
             await self.framework.send_message(message)
 
-    async def _wait_for_task_completion(self, task_id: str, timeout: float) -> Optional[Dict[str, Any]]:
+    async def _wait_for_task_completion(
+        self, task_id: str, timeout: float
+    ) -> Optional[Dict[str, Any]]:
         """Wait for a collaboration task to complete."""
         start_time = datetime.now(timezone.utc)
 
@@ -290,10 +289,7 @@ class CollaborationCoordinator:
         return None
 
     async def _process_decision_result(
-        self,
-        result: Dict[str, Any],
-        symbol: str,
-        action_type: str
+        self, result: Dict[str, Any], symbol: str, action_type: str
     ) -> Dict[str, Any]:
         """Process the final decision result from agent collaboration."""
         # Extract votes and analysis from result
@@ -316,7 +312,9 @@ class CollaborationCoordinator:
                 rationales.append(f"{agent_id}: {analysis['rationale']}")
 
         # Determine final decision
-        avg_confidence = total_confidence / len(analysis_results) if analysis_results else 0
+        avg_confidence = (
+            total_confidence / len(analysis_results) if analysis_results else 0
+        )
 
         if votes["approve"] > votes["reject"] and votes["approve"] > votes["modify"]:
             final_decision = "approved"
@@ -332,10 +330,14 @@ class CollaborationCoordinator:
             "vote_breakdown": votes,
             "average_confidence": avg_confidence,
             "agent_rationales": rationales,
-            "recommendations": self._extract_consensus_recommendations(analysis_results)
+            "recommendations": self._extract_consensus_recommendations(
+                analysis_results
+            ),
         }
 
-    async def _analyze_agent_optimization_opportunities(self, agent_performance: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _analyze_agent_optimization_opportunities(
+        self, agent_performance: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """Analyze opportunities to optimize agent performance."""
         recommendations = []
 
@@ -345,13 +347,15 @@ class CollaborationCoordinator:
             completed_tasks = performance.get("completed_tasks", 0)
 
             if score < 0.6 and completed_tasks > 5:
-                recommendations.append({
-                    "agent_id": agent_id,
-                    "issue": "low_performance_score",
-                    "recommendation": "Consider retraining or specialization adjustment",
-                    "current_score": score,
-                    "tasks_completed": completed_tasks
-                })
+                recommendations.append(
+                    {
+                        "agent_id": agent_id,
+                        "issue": "low_performance_score",
+                        "recommendation": "Consider retraining or specialization adjustment",
+                        "current_score": score,
+                        "tasks_completed": completed_tasks,
+                    }
+                )
 
         # Identify collaboration patterns
         # This could analyze which agent combinations work best together
@@ -365,12 +369,12 @@ class CollaborationCoordinator:
                 AgentRole.TECHNICAL_ANALYST,
                 AgentRole.FUNDAMENTAL_SCREENER,
                 AgentRole.RISK_MANAGER,
-                AgentRole.PORTFOLIO_ANALYST
+                AgentRole.PORTFOLIO_ANALYST,
             ],
             "technical": [AgentRole.TECHNICAL_ANALYST],
             "fundamental": [AgentRole.FUNDAMENTAL_SCREENER],
             "risk": [AgentRole.RISK_MANAGER],
-            "market": [AgentRole.MARKET_MONITOR]
+            "market": [AgentRole.MARKET_MONITOR],
         }
 
         return role_mappings.get(analysis_type, role_mappings["full"])
@@ -389,9 +393,13 @@ class CollaborationCoordinator:
         now = datetime.now(timezone.utc)
 
         if urgency == "high":
-            deadline = now.replace(second=0, microsecond=0) + asyncio.timedelta(minutes=5)
+            deadline = now.replace(second=0, microsecond=0) + asyncio.timedelta(
+                minutes=5
+            )
         elif urgency == "normal":
-            deadline = now.replace(second=0, microsecond=0) + asyncio.timedelta(minutes=15)
+            deadline = now.replace(second=0, microsecond=0) + asyncio.timedelta(
+                minutes=15
+            )
         else:  # low
             deadline = now.replace(second=0, microsecond=0) + asyncio.timedelta(hours=1)
 
@@ -400,11 +408,7 @@ class CollaborationCoordinator:
     async def _get_market_context(self) -> Dict[str, Any]:
         """Get current market context."""
         # This would integrate with market data services
-        return {
-            "volatility": "moderate",
-            "trend": "bullish",
-            "key_events": []
-        }
+        return {"volatility": "moderate", "trend": "bullish", "key_events": []}
 
     async def _get_portfolio_context(self) -> Dict[str, Any]:
         """Get current portfolio context."""
@@ -412,19 +416,23 @@ class CollaborationCoordinator:
         return {
             "total_value": 100000.0,
             "risk_level": "moderate",
-            "sector_allocation": {}
+            "sector_allocation": {},
         }
 
-    async def _get_portfolio_impact(self, symbol: str, action: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get_portfolio_impact(
+        self, symbol: str, action: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Calculate portfolio impact of a potential trade."""
         # This would perform portfolio impact analysis
         return {
             "diversification_impact": "minimal",
             "risk_change": "slight_increase",
-            "sector_exposure": "maintains_balance"
+            "sector_exposure": "maintains_balance",
         }
 
-    def _extract_consensus_recommendations(self, analysis_results: Dict[str, Any]) -> List[str]:
+    def _extract_consensus_recommendations(
+        self, analysis_results: Dict[str, Any]
+    ) -> List[str]:
         """Extract consensus recommendations from agent analyses."""
         all_recommendations = []
 
@@ -439,7 +447,8 @@ class CollaborationCoordinator:
 
         # Return recommendations mentioned by multiple agents
         consensus_recs = [
-            rec for rec, count in recommendation_counts.items()
+            rec
+            for rec, count in recommendation_counts.items()
             if count > 1  # Mentioned by more than one agent
         ]
 

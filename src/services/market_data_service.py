@@ -6,22 +6,24 @@ for live trading operations.
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-import json
+from typing import Any, Dict, List, Optional
+
 import aiosqlite
 from loguru import logger
 
 from src.config import Config
-from ..core.event_bus import EventBus, Event, EventType, EventHandler
-from ..core.errors import TradingError, APIError
+
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
+
 # from ..mcp.broker import ZerodhaBroker  # Commented out - no live trading
 
 
 class MarketDataProvider(Enum):
     """Market data provider types."""
+
     ZERODHA_KITE = "zerodha_kite"
     UPSTOX = "upstox"
     YAHOO_FINANCE = "yahoo_finance"
@@ -30,6 +32,7 @@ class MarketDataProvider(Enum):
 
 class SubscriptionMode(Enum):
     """Market data subscription modes."""
+
     QUOTE = "quote"
     FULL = "full"
     LTP = "ltp"
@@ -38,6 +41,7 @@ class SubscriptionMode(Enum):
 @dataclass
 class MarketData:
     """Market data snapshot."""
+
     symbol: str
     ltp: float
     open_price: Optional[float] = None
@@ -56,6 +60,7 @@ class MarketData:
 @dataclass
 class MarketSubscription:
     """Market data subscription."""
+
     symbol: str
     mode: SubscriptionMode
     provider: MarketDataProvider
@@ -167,11 +172,13 @@ class MarketDataService(EventHandler):
 
     async def _load_subscriptions(self) -> None:
         """Load subscriptions from database."""
-        cursor = await self._db_connection.execute("""
+        cursor = await self._db_connection.execute(
+            """
             SELECT symbol, mode, provider, active, last_update
             FROM market_subscriptions
             WHERE active = 1
-        """)
+        """
+        )
 
         async for row in cursor:
             subscription = MarketSubscription(
@@ -179,17 +186,19 @@ class MarketDataService(EventHandler):
                 mode=SubscriptionMode(row[1]),
                 provider=MarketDataProvider(row[2]),
                 active=bool(row[3]),
-                last_update=row[4]
+                last_update=row[4],
             )
             self._subscriptions[row[0]] = subscription
 
     async def _load_cached_data(self) -> None:
         """Load cached market data from database."""
-        cursor = await self._db_connection.execute("""
+        cursor = await self._db_connection.execute(
+            """
             SELECT symbol, ltp, open_price, high_price, low_price, close_price, volume, timestamp, provider
             FROM market_data_cache
             WHERE datetime(cached_at) > datetime('now', '-5 minutes')
-        """)
+        """
+        )
 
         async for row in cursor:
             market_data = MarketData(
@@ -201,12 +210,16 @@ class MarketDataService(EventHandler):
                 close_price=row[5],
                 volume=row[6],
                 timestamp=row[7],
-                provider=row[8]
+                provider=row[8],
             )
             self._market_data[row[0]] = market_data
 
-    async def subscribe_market_data(self, symbol: str, mode: SubscriptionMode = SubscriptionMode.LTP,
-                                  provider: MarketDataProvider = MarketDataProvider.ZERODHA_KITE) -> bool:
+    async def subscribe_market_data(
+        self,
+        symbol: str,
+        mode: SubscriptionMode = SubscriptionMode.LTP,
+        provider: MarketDataProvider = MarketDataProvider.ZERODHA_KITE,
+    ) -> bool:
         """Subscribe to market data for a symbol."""
         async with self._lock:
             if symbol in self._subscriptions:
@@ -217,31 +230,37 @@ class MarketDataService(EventHandler):
                 subscription.active = True
                 subscription.last_update = datetime.now(timezone.utc).isoformat()
 
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     UPDATE market_subscriptions SET mode = ?, provider = ?, active = 1, last_update = ?
                     WHERE symbol = ?
-                """, (mode.value, provider.value, subscription.last_update, symbol))
+                """,
+                    (mode.value, provider.value, subscription.last_update, symbol),
+                )
             else:
                 # Create new subscription
                 subscription = MarketSubscription(
-                    symbol=symbol,
-                    mode=mode,
-                    provider=provider
+                    symbol=symbol, mode=mode, provider=provider
                 )
                 self._subscriptions[symbol] = subscription
 
                 now = datetime.now(timezone.utc).isoformat()
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     INSERT INTO market_subscriptions (symbol, mode, provider, active, last_update, created_at)
                     VALUES (?, ?, ?, 1, ?, ?)
-                """, (symbol, mode.value, provider.value, now, now))
+                """,
+                    (symbol, mode.value, provider.value, now, now),
+                )
 
             await self._db_connection.commit()
 
             # Try to get initial data
             await self._fetch_symbol_data(symbol, provider)
 
-            logger.info(f"Subscribed to {mode.value} data for {symbol} via {provider.value}")
+            logger.info(
+                f"Subscribed to {mode.value} data for {symbol} via {provider.value}"
+            )
             return True
 
     async def unsubscribe_market_data(self, symbol: str) -> bool:
@@ -251,9 +270,12 @@ class MarketDataService(EventHandler):
                 subscription = self._subscriptions[symbol]
                 subscription.active = False
 
-                await self._db_connection.execute("""
+                await self._db_connection.execute(
+                    """
                     UPDATE market_subscriptions SET active = 0 WHERE symbol = ?
-                """, (symbol,))
+                """,
+                    (symbol,),
+                )
                 await self._db_connection.commit()
 
                 # Remove from memory
@@ -271,7 +293,9 @@ class MarketDataService(EventHandler):
         async with self._lock:
             return self._market_data.get(symbol)
 
-    async def get_multiple_market_data(self, symbols: List[str]) -> Dict[str, MarketData]:
+    async def get_multiple_market_data(
+        self, symbols: List[str]
+    ) -> Dict[str, MarketData]:
         """Get market data for multiple symbols."""
         async with self._lock:
             result = {}
@@ -280,7 +304,9 @@ class MarketDataService(EventHandler):
                     result[symbol] = self._market_data[symbol]
             return result
 
-    async def _fetch_symbol_data(self, symbol: str, provider: MarketDataProvider) -> None:
+    async def _fetch_symbol_data(
+        self, symbol: str, provider: MarketDataProvider
+    ) -> None:
         """Fetch market data for a symbol from the specified provider."""
         try:
             if provider == MarketDataProvider.ZERODHA_KITE:
@@ -292,7 +318,9 @@ class MarketDataService(EventHandler):
                 await self._fetch_from_broker_api(symbol)
 
         except Exception as e:
-            logger.error(f"Failed to fetch market data for {symbol} from {provider.value}: {e}")
+            logger.error(
+                f"Failed to fetch market data for {symbol} from {provider.value}: {e}"
+            )
 
     async def _fetch_from_zerodha(self, symbol: str) -> None:
         """Fetch data from Zerodha Kite."""
@@ -317,7 +345,7 @@ class MarketDataService(EventHandler):
                     low_price=quote.get("ohlc", {}).get("low"),
                     close_price=quote.get("ohlc", {}).get("close"),
                     volume=quote.get("volume"),
-                    provider="zerodha_kite"
+                    provider="zerodha_kite",
                 )
 
                 await self._update_market_data(market_data)
@@ -332,7 +360,7 @@ class MarketDataService(EventHandler):
 
     async def _fetch_from_broker_api(self, symbol: str) -> None:
         """Fallback to broker API."""
-        if hasattr(self.broker, 'quote'):
+        if hasattr(self.broker, "quote"):
             try:
                 quotes = await self.broker.quote(instruments=[symbol])
                 if symbol in quotes:
@@ -340,7 +368,7 @@ class MarketDataService(EventHandler):
                     market_data = MarketData(
                         symbol=symbol,
                         ltp=quote.get("last_price", 0),
-                        provider="broker_api"
+                        provider="broker_api",
                     )
                     await self._update_market_data(market_data)
             except Exception as e:
@@ -360,50 +388,58 @@ class MarketDataService(EventHandler):
 
             # Update database cache
             now = datetime.now(timezone.utc).isoformat()
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT OR REPLACE INTO market_data_cache
                 (symbol, ltp, open_price, high_price, low_price, close_price, volume, timestamp, provider, cached_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                market_data.symbol,
-                market_data.ltp,
-                market_data.open_price,
-                market_data.high_price,
-                market_data.low_price,
-                market_data.close_price,
-                market_data.volume,
-                market_data.timestamp,
-                market_data.provider,
-                now
-            ))
+            """,
+                (
+                    market_data.symbol,
+                    market_data.ltp,
+                    market_data.open_price,
+                    market_data.high_price,
+                    market_data.low_price,
+                    market_data.close_price,
+                    market_data.volume,
+                    market_data.timestamp,
+                    market_data.provider,
+                    now,
+                ),
+            )
 
             # Store in price history
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO price_history (symbol, price, volume, timestamp, provider)
                 VALUES (?, ?, ?, ?, ?)
-            """, (
-                market_data.symbol,
-                market_data.ltp,
-                market_data.volume,
-                market_data.timestamp,
-                market_data.provider
-            ))
+            """,
+                (
+                    market_data.symbol,
+                    market_data.ltp,
+                    market_data.volume,
+                    market_data.timestamp,
+                    market_data.provider,
+                ),
+            )
 
             await self._db_connection.commit()
 
             # Emit price update event
-            await self.event_bus.publish(Event(
-                id=f"price_update_{market_data.symbol}_{int(datetime.now(timezone.utc).timestamp())}",
-                type=EventType.MARKET_PRICE_UPDATE,
-                timestamp=market_data.timestamp,
-                source="market_data_service",
-                data={
-                    "symbol": market_data.symbol,
-                    "price": market_data.ltp,
-                    "volume": market_data.volume,
-                    "provider": market_data.provider
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"price_update_{market_data.symbol}_{int(datetime.now(timezone.utc).timestamp())}",
+                    type=EventType.MARKET_PRICE_UPDATE,
+                    timestamp=market_data.timestamp,
+                    source="market_data_service",
+                    data={
+                        "symbol": market_data.symbol,
+                        "price": market_data.ltp,
+                        "volume": market_data.volume,
+                        "provider": market_data.provider,
+                    },
+                )
+            )
 
     async def _background_price_updates(self) -> None:
         """Background task for periodic price updates."""
@@ -412,13 +448,22 @@ class MarketDataService(EventHandler):
                 await asyncio.sleep(self._update_interval)
 
                 # Update all active subscriptions
-                symbols_to_update = [s.symbol for s in self._subscriptions.values() if s.active]
+                symbols_to_update = [
+                    s.symbol for s in self._subscriptions.values() if s.active
+                ]
                 if symbols_to_update:
                     # Batch update in smaller chunks
                     chunk_size = 10
                     for i in range(0, len(symbols_to_update), chunk_size):
-                        chunk = symbols_to_update[i:i + chunk_size]
-                        await asyncio.gather(*[self._fetch_symbol_data(s, MarketDataProvider.ZERODHA_KITE) for s in chunk])
+                        chunk = symbols_to_update[i : i + chunk_size]
+                        await asyncio.gather(
+                            *[
+                                self._fetch_symbol_data(
+                                    s, MarketDataProvider.ZERODHA_KITE
+                                )
+                                for s in chunk
+                            ]
+                        )
                         await asyncio.sleep(0.1)  # Small delay between chunks
 
             except asyncio.CancelledError:
@@ -435,17 +480,27 @@ class MarketDataService(EventHandler):
                 await asyncio.sleep(300)  # Clean up every 5 minutes
 
                 # Remove old cache entries
-                cutoff_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-                await self._db_connection.execute("""
+                cutoff_time = (
+                    datetime.now(timezone.utc) - timedelta(minutes=10)
+                ).isoformat()
+                await self._db_connection.execute(
+                    """
                     DELETE FROM market_data_cache WHERE cached_at < ?
-                """, (cutoff_time,))
+                """,
+                    (cutoff_time,),
+                )
                 await self._db_connection.commit()
 
                 # Remove old price history (keep last 30 days)
-                history_cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-                await self._db_connection.execute("""
+                history_cutoff = (
+                    datetime.now(timezone.utc) - timedelta(days=30)
+                ).isoformat()
+                await self._db_connection.execute(
+                    """
                     DELETE FROM price_history WHERE timestamp < ?
-                """, (history_cutoff,))
+                """,
+                    (history_cutoff,),
+                )
                 await self._db_connection.commit()
 
             except asyncio.CancelledError:
@@ -455,25 +510,32 @@ class MarketDataService(EventHandler):
                 logger.error(f"Error in cache cleanup: {e}")
                 await asyncio.sleep(60)
 
-    async def get_price_history(self, symbol: str, hours: int = 24) -> List[Dict[str, Any]]:
+    async def get_price_history(
+        self, symbol: str, hours: int = 24
+    ) -> List[Dict[str, Any]]:
         """Get price history for a symbol."""
         cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
-        cursor = await self._db_connection.execute("""
+        cursor = await self._db_connection.execute(
+            """
             SELECT price, volume, timestamp, provider
             FROM price_history
             WHERE symbol = ? AND timestamp > ?
             ORDER BY timestamp ASC
-        """, (symbol, cutoff_time))
+        """,
+            (symbol, cutoff_time),
+        )
 
         history = []
         async for row in cursor:
-            history.append({
-                "price": row[0],
-                "volume": row[1],
-                "timestamp": row[2],
-                "provider": row[3]
-            })
+            history.append(
+                {
+                    "price": row[0],
+                    "volume": row[1],
+                    "timestamp": row[2],
+                    "provider": row[3],
+                }
+            )
 
         return history
 

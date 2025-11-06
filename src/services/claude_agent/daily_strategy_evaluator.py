@@ -5,15 +5,15 @@ Evaluates and refines trading strategies daily, providing complete transparency
 into Claude's learning process, strategy improvements, and performance analysis.
 """
 
-import logging
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+import logging
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
+from ...services.paper_trading.performance_calculator import \
+    PerformanceCalculator
 from ...stores.claude_strategy_store import ClaudeStrategyStore
-from ...services.paper_trading.performance_calculator import PerformanceCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,9 @@ class StrategyRefinement:
 
     refinement_id: str
     strategy_name: str
-    refinement_type: str  # 'parameter_adjustment', 'rule_change', 'new_condition', 'risk_adjustment'
+    refinement_type: (
+        str  # 'parameter_adjustment', 'rule_change', 'new_condition', 'risk_adjustment'
+    )
     description: str
     current_value: Any
     proposed_value: Any
@@ -86,7 +88,9 @@ class DailyStrategyReport:
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        data['refinements_recommended'] = [r.to_dict() for r in self.refinements_recommended]
+        data["refinements_recommended"] = [
+            r.to_dict() for r in self.refinements_recommended
+        ]
         return data
 
 
@@ -101,22 +105,26 @@ class DailyStrategyEvaluator:
     - Strategy evolution insights
     """
 
-    def __init__(self, strategy_store: ClaudeStrategyStore, performance_calculator: PerformanceCalculator):
+    def __init__(
+        self,
+        strategy_store: ClaudeStrategyStore,
+        performance_calculator: PerformanceCalculator,
+    ):
         self.strategy_store = strategy_store
         self.performance_calculator = performance_calculator
         self.active_strategies = {}  # Cache of strategy configurations
 
     async def evaluate_daily_strategies(
-        self,
-        account_type: str,
-        evaluation_date: Optional[str] = None
+        self, account_type: str, evaluation_date: Optional[str] = None
     ) -> DailyStrategyReport:
         """Perform daily evaluation of all strategies for an account type."""
 
         if not evaluation_date:
             evaluation_date = datetime.now(timezone.utc).date().isoformat()
 
-        logger.info(f"Starting daily strategy evaluation for {account_type} on {evaluation_date}")
+        logger.info(
+            f"Starting daily strategy evaluation for {account_type} on {evaluation_date}"
+        )
 
         # Get strategies for this account type
         strategies = await self._get_account_strategies(account_type)
@@ -128,11 +136,15 @@ class DailyStrategyEvaluator:
         for strategy_name in strategies:
             try:
                 # Evaluate performance
-                performance = await self._evaluate_strategy_performance(strategy_name, account_type, evaluation_date)
+                performance = await self._evaluate_strategy_performance(
+                    strategy_name, account_type, evaluation_date
+                )
                 performance_summaries[strategy_name] = performance.to_dict()
 
                 # Generate refinements
-                refinements = await self._generate_strategy_refinements(strategy_name, performance)
+                refinements = await self._generate_strategy_refinements(
+                    strategy_name, performance
+                )
                 all_refinements.extend(refinements)
 
             except Exception as e:
@@ -143,7 +155,9 @@ class DailyStrategyEvaluator:
         market_conditions = await self._analyze_market_conditions()
 
         # Generate key insights
-        key_insights = await self._generate_key_insights(performance_summaries, all_refinements)
+        key_insights = await self._generate_key_insights(
+            performance_summaries, all_refinements
+        )
 
         # Calculate overall confidence
         confidence_score = self._calculate_overall_confidence(performance_summaries)
@@ -158,22 +172,23 @@ class DailyStrategyEvaluator:
             refinements_recommended=all_refinements,
             market_conditions=market_conditions,
             key_insights=key_insights,
-            next_evaluation_date=(datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat(),
-            confidence_score=confidence_score
+            next_evaluation_date=(datetime.now(timezone.utc) + timedelta(days=1))
+            .date()
+            .isoformat(),
+            confidence_score=confidence_score,
         )
 
         # Save report
         await self._save_daily_report(report)
 
-        logger.info(f"Completed daily strategy evaluation for {account_type}: {len(all_refinements)} refinements recommended")
+        logger.info(
+            f"Completed daily strategy evaluation for {account_type}: {len(all_refinements)} refinements recommended"
+        )
 
         return report
 
     async def _evaluate_strategy_performance(
-        self,
-        strategy_name: str,
-        account_type: str,
-        evaluation_date: str
+        self, strategy_name: str, account_type: str, evaluation_date: str
     ) -> StrategyPerformanceMetrics:
         """Evaluate performance of a specific strategy."""
 
@@ -183,7 +198,9 @@ class DailyStrategyEvaluator:
 
         # This would query the database for trades tagged with this strategy
         # For now, simulate performance data
-        trades = await self._get_strategy_trades(strategy_name, account_type, start_date, end_date)
+        trades = await self._get_strategy_trades(
+            strategy_name, account_type, start_date, end_date
+        )
 
         if not trades:
             return StrategyPerformanceMetrics(
@@ -197,7 +214,7 @@ class DailyStrategyEvaluator:
                 avg_win=0.0,
                 avg_loss=0.0,
                 profit_factor=0.0,
-                total_return=0.0
+                total_return=0.0,
             )
 
         # Calculate performance metrics using PerformanceCalculator
@@ -206,7 +223,7 @@ class DailyStrategyEvaluator:
             current_balance=100000,  # Would calculate
             closed_trades=trades,
             open_trades=[],
-            current_prices={}
+            current_prices={},
         )
 
         return StrategyPerformanceMetrics(
@@ -223,13 +240,11 @@ class DailyStrategyEvaluator:
             total_return=performance_data["total_pnl_percentage"],
             sharpe_ratio=performance_data.get("sharpe_ratio"),
             max_drawdown=performance_data.get("max_drawdown_percentage", 0.0),
-            volatility=0.0  # Would calculate
+            volatility=0.0,  # Would calculate
         )
 
     async def _generate_strategy_refinements(
-        self,
-        strategy_name: str,
-        performance: StrategyPerformanceMetrics
+        self, strategy_name: str, performance: StrategyPerformanceMetrics
     ) -> List[StrategyRefinement]:
         """Generate refinement recommendations based on performance."""
 
@@ -237,59 +252,67 @@ class DailyStrategyEvaluator:
 
         # Analyze win rate
         if performance.win_rate < 0.4:
-            refinements.append(StrategyRefinement(
-                refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_win_rate",
-                strategy_name=strategy_name,
-                refinement_type="parameter_adjustment",
-                description="Win rate below 40% - consider tightening entry conditions",
-                current_value=f"{performance.win_rate:.1%}",
-                proposed_value="Improve entry filters",
-                expected_impact="Higher quality trades with better win rate",
-                confidence_score=0.7,
-                implementation_priority="high"
-            ))
+            refinements.append(
+                StrategyRefinement(
+                    refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_win_rate",
+                    strategy_name=strategy_name,
+                    refinement_type="parameter_adjustment",
+                    description="Win rate below 40% - consider tightening entry conditions",
+                    current_value=f"{performance.win_rate:.1%}",
+                    proposed_value="Improve entry filters",
+                    expected_impact="Higher quality trades with better win rate",
+                    confidence_score=0.7,
+                    implementation_priority="high",
+                )
+            )
 
         # Analyze profit factor
         if performance.profit_factor < 1.2:
-            refinements.append(StrategyRefinement(
-                refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_profit_factor",
-                strategy_name=strategy_name,
-                refinement_type="risk_adjustment",
-                description="Profit factor below 1.2 - consider adjusting risk management",
-                current_value=f"{performance.profit_factor:.2f}",
-                proposed_value="Implement stricter stop losses",
-                expected_impact="Better risk-reward ratio",
-                confidence_score=0.8,
-                implementation_priority="high"
-            ))
+            refinements.append(
+                StrategyRefinement(
+                    refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_profit_factor",
+                    strategy_name=strategy_name,
+                    refinement_type="risk_adjustment",
+                    description="Profit factor below 1.2 - consider adjusting risk management",
+                    current_value=f"{performance.profit_factor:.2f}",
+                    proposed_value="Implement stricter stop losses",
+                    expected_impact="Better risk-reward ratio",
+                    confidence_score=0.8,
+                    implementation_priority="high",
+                )
+            )
 
         # Analyze drawdown
         if performance.max_drawdown > 15.0:
-            refinements.append(StrategyRefinement(
-                refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_drawdown",
-                strategy_name=strategy_name,
-                refinement_type="rule_change",
-                description="Maximum drawdown exceeds 15% - implement position size limits",
-                current_value=f"{performance.max_drawdown:.1f}%",
-                proposed_value="Reduce max position size to 3%",
-                expected_impact="Lower portfolio volatility",
-                confidence_score=0.9,
-                implementation_priority="high"
-            ))
+            refinements.append(
+                StrategyRefinement(
+                    refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_drawdown",
+                    strategy_name=strategy_name,
+                    refinement_type="rule_change",
+                    description="Maximum drawdown exceeds 15% - implement position size limits",
+                    current_value=f"{performance.max_drawdown:.1f}%",
+                    proposed_value="Reduce max position size to 3%",
+                    expected_impact="Lower portfolio volatility",
+                    confidence_score=0.9,
+                    implementation_priority="high",
+                )
+            )
 
         # Positive performance refinements
         if performance.win_rate > 0.6 and performance.profit_factor > 1.5:
-            refinements.append(StrategyRefinement(
-                refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_scale_up",
-                strategy_name=strategy_name,
-                refinement_type="parameter_adjustment",
-                description="Strong performance - consider scaling up position sizes",
-                current_value="Current sizing",
-                proposed_value="Increase position size by 25%",
-                expected_impact="Higher returns while maintaining risk profile",
-                confidence_score=0.6,
-                implementation_priority="medium"
-            ))
+            refinements.append(
+                StrategyRefinement(
+                    refinement_id=f"ref_{strategy_name}_{int(datetime.now(timezone.utc).timestamp())}_scale_up",
+                    strategy_name=strategy_name,
+                    refinement_type="parameter_adjustment",
+                    description="Strong performance - consider scaling up position sizes",
+                    current_value="Current sizing",
+                    proposed_value="Increase position size by 25%",
+                    expected_impact="Higher returns while maintaining risk profile",
+                    confidence_score=0.6,
+                    implementation_priority="medium",
+                )
+            )
 
         return refinements
 
@@ -304,19 +327,16 @@ class DailyStrategyEvaluator:
             "sector_performance": {
                 "technology": 2.1,
                 "finance": -0.5,
-                "healthcare": 1.8
+                "healthcare": 1.8,
             },
-            "key_levels": {
-                "nifty_support": 19500,
-                "nifty_resistance": 20500
-            },
-            "analysis_timestamp": datetime.now(timezone.utc).isoformat()
+            "key_levels": {"nifty_support": 19500, "nifty_resistance": 20500},
+            "analysis_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def _generate_key_insights(
         self,
         performance_summaries: Dict[str, Any],
-        refinements: List[StrategyRefinement]
+        refinements: List[StrategyRefinement],
     ) -> List[str]:
         """Generate key insights from the evaluation."""
 
@@ -324,34 +344,52 @@ class DailyStrategyEvaluator:
 
         # Analyze overall performance
         total_strategies = len(performance_summaries)
-        profitable_strategies = sum(1 for p in performance_summaries.values() if p["total_return"] > 0)
+        profitable_strategies = sum(
+            1 for p in performance_summaries.values() if p["total_return"] > 0
+        )
 
         if profitable_strategies > total_strategies * 0.6:
-            insights.append(f"{profitable_strategies}/{total_strategies} strategies are profitable - portfolio performing well")
+            insights.append(
+                f"{profitable_strategies}/{total_strategies} strategies are profitable - portfolio performing well"
+            )
         elif profitable_strategies < total_strategies * 0.3:
-            insights.append(f"Only {profitable_strategies}/{total_strategies} strategies profitable - review strategy selection")
+            insights.append(
+                f"Only {profitable_strategies}/{total_strategies} strategies profitable - review strategy selection"
+            )
 
         # Analyze refinements needed
-        high_priority_refinements = [r for r in refinements if r.implementation_priority == "high"]
+        high_priority_refinements = [
+            r for r in refinements if r.implementation_priority == "high"
+        ]
         if high_priority_refinements:
-            insights.append(f"{len(high_priority_refinements)} high-priority refinements recommended")
+            insights.append(
+                f"{len(high_priority_refinements)} high-priority refinements recommended"
+            )
 
         # Market condition insights
-        insights.append("Market conditions suggest cautious approach with focus on risk management")
+        insights.append(
+            "Market conditions suggest cautious approach with focus on risk management"
+        )
 
         return insights
 
-    def _calculate_overall_confidence(self, performance_summaries: Dict[str, Any]) -> float:
+    def _calculate_overall_confidence(
+        self, performance_summaries: Dict[str, Any]
+    ) -> float:
         """Calculate overall confidence score for the evaluation."""
 
         if not performance_summaries:
             return 0.0
 
         # Average win rate across strategies
-        avg_win_rate = sum(p["win_rate"] for p in performance_summaries.values()) / len(performance_summaries)
+        avg_win_rate = sum(p["win_rate"] for p in performance_summaries.values()) / len(
+            performance_summaries
+        )
 
         # Average profit factor
-        avg_profit_factor = sum(p["profit_factor"] for p in performance_summaries.values()) / len(performance_summaries)
+        avg_profit_factor = sum(
+            p["profit_factor"] for p in performance_summaries.values()
+        ) / len(performance_summaries)
 
         # Calculate confidence based on performance
         confidence = (avg_win_rate * 0.4) + (min(avg_profit_factor / 2, 1.0) * 0.6)
@@ -359,9 +397,7 @@ class DailyStrategyEvaluator:
         return min(confidence, 1.0)
 
     async def get_daily_reports(
-        self,
-        account_type: Optional[str] = None,
-        limit: int = 30
+        self, account_type: Optional[str] = None, limit: int = 30
     ) -> List[DailyStrategyReport]:
         """Get historical daily strategy reports."""
 
@@ -370,9 +406,7 @@ class DailyStrategyEvaluator:
         return []
 
     async def get_strategy_evolution_timeline(
-        self,
-        strategy_name: str,
-        days: int = 90
+        self, strategy_name: str, days: int = 90
     ) -> Dict[str, Any]:
         """Get evolution timeline for a strategy."""
 
@@ -380,28 +414,44 @@ class DailyStrategyEvaluator:
         reports = await self.get_daily_reports()
 
         # Filter for strategy
-        strategy_reports = [r for r in reports if strategy_name in r.strategies_evaluated]
+        strategy_reports = [
+            r for r in reports if strategy_name in r.strategies_evaluated
+        ]
 
         # Build evolution timeline
         timeline = []
         for report in strategy_reports[-days:]:
             if strategy_name in report.performance_summary:
                 perf = report.performance_summary[strategy_name]
-                timeline.append({
-                    "date": report.evaluation_date,
-                    "win_rate": perf["win_rate"],
-                    "profit_factor": perf["profit_factor"],
-                    "total_return": perf["total_return"],
-                    "refinements": len([r for r in report.refinements_recommended if r.strategy_name == strategy_name])
-                })
+                timeline.append(
+                    {
+                        "date": report.evaluation_date,
+                        "win_rate": perf["win_rate"],
+                        "profit_factor": perf["profit_factor"],
+                        "total_return": perf["total_return"],
+                        "refinements": len(
+                            [
+                                r
+                                for r in report.refinements_recommended
+                                if r.strategy_name == strategy_name
+                            ]
+                        ),
+                    }
+                )
 
         return {
             "strategy_name": strategy_name,
             "timeline": timeline,
             "total_evaluations": len(timeline),
-            "avg_win_rate": sum(t["win_rate"] for t in timeline) / len(timeline) if timeline else 0,
-            "avg_profit_factor": sum(t["profit_factor"] for t in timeline) / len(timeline) if timeline else 0,
-            "total_refinements": sum(t["refinements"] for t in timeline)
+            "avg_win_rate": (
+                sum(t["win_rate"] for t in timeline) / len(timeline) if timeline else 0
+            ),
+            "avg_profit_factor": (
+                sum(t["profit_factor"] for t in timeline) / len(timeline)
+                if timeline
+                else 0
+            ),
+            "total_refinements": sum(t["refinements"] for t in timeline),
         }
 
     async def _get_account_strategies(self, account_type: str) -> List[str]:
@@ -413,10 +463,16 @@ class DailyStrategyEvaluator:
             "rsi_momentum",
             "macd_divergence",
             "bollinger_mean_reversion",
-            "breakout_momentum"
+            "breakout_momentum",
         ]
 
-    async def _get_strategy_trades(self, strategy_name: str, account_type: str, start_date: datetime, end_date: datetime) -> List:
+    async def _get_strategy_trades(
+        self,
+        strategy_name: str,
+        account_type: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> List:
         """Get trades for a specific strategy."""
 
         # This would query the database for trades tagged with this strategy

@@ -7,22 +7,30 @@ dependency resolution and lifecycle management.
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
-from src.core.event_bus import EventBus, Event, EventType
 from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
-from src.services.feature_management.models import (
-    FeatureConfig, FeatureState, BulkFeatureUpdate, FeatureStatus, FeatureType
-)
+from src.core.event_bus import Event, EventBus, EventType
+from src.services.feature_management.agent_integration import \
+    AgentManagementIntegration
 from src.services.feature_management.database import FeatureDatabase
-from src.services.feature_management.dependency_resolver import DependencyResolver
-from src.services.feature_management.lifecycle_manager import ServiceLifecycleManager
-from src.services.feature_management.scheduler_integration import BackgroundSchedulerIntegration
-from src.services.feature_management.agent_integration import AgentManagementIntegration
-from src.services.feature_management.service_integration import ServiceManagementIntegration
+from src.services.feature_management.dependency_resolver import \
+    DependencyResolver
 from src.services.feature_management.error_recovery import ErrorRecoveryManager
-from src.services.feature_management.event_broadcasting import EventBroadcastingService
+from src.services.feature_management.event_broadcasting import \
+    EventBroadcastingService
+from src.services.feature_management.lifecycle_manager import \
+    ServiceLifecycleManager
+from src.services.feature_management.models import (BulkFeatureUpdate,
+                                                    FeatureConfig,
+                                                    FeatureState,
+                                                    FeatureStatus, FeatureType)
+from src.services.feature_management.scheduler_integration import \
+    BackgroundSchedulerIntegration
+from src.services.feature_management.service_integration import \
+    ServiceManagementIntegration
 
 
 class FeatureManagementError(TradingError):
@@ -34,7 +42,7 @@ class FeatureManagementError(TradingError):
             category=ErrorCategory.CONFIGURATION,
             severity=ErrorSeverity.MEDIUM,
             feature_id=feature_id,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -62,7 +70,7 @@ class FeatureActivation:
         service_integration: ServiceManagementIntegration,
         error_recovery: ErrorRecoveryManager,
         event_broadcasting: EventBroadcastingService,
-        lock: asyncio.Lock
+        lock: asyncio.Lock,
     ):
         self.database = database
         self.event_bus = event_bus
@@ -82,7 +90,7 @@ class FeatureActivation:
         feature_id: str,
         reason: Optional[str] = None,
         requested_by: str = "system",
-        cascade: bool = True
+        cascade: bool = True,
     ) -> bool:
         """Enable a feature and its dependencies."""
         async with self._lock:
@@ -90,8 +98,7 @@ class FeatureActivation:
                 # Check if feature exists
                 if feature_id not in self.features:
                     raise FeatureManagementError(
-                        f"Feature {feature_id} not found",
-                        feature_id=feature_id
+                        f"Feature {feature_id} not found", feature_id=feature_id
                     )
 
                 # Check if already enabled
@@ -109,18 +116,24 @@ class FeatureActivation:
                     raise FeatureManagementError(
                         f"Dependency resolution failed: {resolution.warnings}",
                         feature_id=feature_id,
-                        details=resolution.to_dict()
+                        details=resolution.to_dict(),
                     )
 
                 # Enable features in resolved order
                 for fid in resolution.resolved_order:
                     await self._enable_feature_internal(
                         fid,
-                        reason=f"Cascade from {feature_id}" if fid != feature_id else reason,
-                        requested_by=requested_by
+                        reason=(
+                            f"Cascade from {feature_id}"
+                            if fid != feature_id
+                            else reason
+                        ),
+                        requested_by=requested_by,
                     )
 
-                logger.info(f"Enabled feature {feature_id} with {len(resolution.resolved_order)-1} dependencies")
+                logger.info(
+                    f"Enabled feature {feature_id} with {len(resolution.resolved_order)-1} dependencies"
+                )
                 return True
 
             except Exception as e:
@@ -132,7 +145,7 @@ class FeatureActivation:
         feature_id: str,
         reason: Optional[str] = None,
         requested_by: str = "system",
-        cascade: bool = True
+        cascade: bool = True,
     ) -> bool:
         """Disable a feature and its dependents."""
         async with self._lock:
@@ -140,8 +153,7 @@ class FeatureActivation:
                 # Check if feature exists
                 if feature_id not in self.features:
                     raise FeatureManagementError(
-                        f"Feature {feature_id} not found",
-                        feature_id=feature_id
+                        f"Feature {feature_id} not found", feature_id=feature_id
                     )
 
                 # Check if already disabled
@@ -159,18 +171,24 @@ class FeatureActivation:
                     raise FeatureManagementError(
                         f"Dependency resolution failed: {resolution.warnings}",
                         feature_id=feature_id,
-                        details=resolution.to_dict()
+                        details=resolution.to_dict(),
                     )
 
                 # Disable features in resolved order
                 for fid in resolution.resolved_order:
                     await self._disable_feature_internal(
                         fid,
-                        reason=f"Cascade from {feature_id}" if fid != feature_id else reason,
-                        requested_by=requested_by
+                        reason=(
+                            f"Cascade from {feature_id}"
+                            if fid != feature_id
+                            else reason
+                        ),
+                        requested_by=requested_by,
                     )
 
-                logger.info(f"Disabled feature {feature_id} with {len(resolution.resolved_order)-1} dependents")
+                logger.info(
+                    f"Disabled feature {feature_id} with {len(resolution.resolved_order)-1} dependents"
+                )
                 return True
 
             except Exception as e:
@@ -181,7 +199,7 @@ class FeatureActivation:
         self,
         feature_id: str,
         reason: Optional[str] = None,
-        requested_by: str = "system"
+        requested_by: str = "system",
     ) -> None:
         """Internal method to enable a single feature."""
         try:
@@ -189,9 +207,7 @@ class FeatureActivation:
             state = self.states.get(feature_id)
             if not state:
                 state = FeatureState(
-                    feature_id=feature_id,
-                    status=FeatureStatus.DISABLED,
-                    enabled=False
+                    feature_id=feature_id, status=FeatureStatus.DISABLED, enabled=False
                 )
                 self.states[feature_id] = state
 
@@ -210,22 +226,24 @@ class FeatureActivation:
                 old_state=old_state,
                 new_state=state.to_dict(),
                 reason=reason,
-                requested_by=requested_by
+                requested_by=requested_by,
             )
 
             # Emit event
-            await self.event_bus.publish(Event(
-                id=f"feature_enabled_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                type=EventType.FEATURE_ENABLED,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                source="feature_management_service",
-                data={
-                    "action": "feature_enabled",
-                    "feature_id": feature_id,
-                    "reason": reason,
-                    "requested_by": requested_by
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"feature_enabled_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                    type=EventType.FEATURE_ENABLED,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    source="feature_management_service",
+                    data={
+                        "action": "feature_enabled",
+                        "feature_id": feature_id,
+                        "reason": reason,
+                        "requested_by": requested_by,
+                    },
+                )
+            )
 
             # Integrate with other services
             await self._integrate_feature_enable(feature_id)
@@ -240,7 +258,7 @@ class FeatureActivation:
         self,
         feature_id: str,
         reason: Optional[str] = None,
-        requested_by: str = "system"
+        requested_by: str = "system",
     ) -> None:
         """Internal method to disable a single feature."""
         try:
@@ -249,7 +267,7 @@ class FeatureActivation:
             if not config:
                 raise FeatureManagementError(
                     f"Feature configuration not found: {feature_id}",
-                    feature_id=feature_id
+                    feature_id=feature_id,
                 )
 
             # Broadcast deactivation started
@@ -260,11 +278,11 @@ class FeatureActivation:
             # Get state
             state = self.states.get(feature_id)
             if not state:
-                logger.warning(f"Feature {feature_id} state not found, creating disabled state")
+                logger.warning(
+                    f"Feature {feature_id} state not found, creating disabled state"
+                )
                 state = FeatureState(
-                    feature_id=feature_id,
-                    status=FeatureStatus.DISABLED,
-                    enabled=False
+                    feature_id=feature_id, status=FeatureStatus.DISABLED, enabled=False
                 )
                 self.states[feature_id] = state
 
@@ -280,21 +298,25 @@ class FeatureActivation:
                 if deactivation_result.status.value != "completed":
                     # Handle deactivation failure
                     await self.error_recovery.handle_error(
-                        feature_id, "deactivation", "lifecycle_manager",
-                        Exception(deactivation_result.error_message or "Deactivation failed"),
-                        {"config": config.to_dict(), "reason": reason}
+                        feature_id,
+                        "deactivation",
+                        "lifecycle_manager",
+                        Exception(
+                            deactivation_result.error_message or "Deactivation failed"
+                        ),
+                        {"config": config.to_dict(), "reason": reason},
                     )
 
                     await self.event_broadcasting.broadcast_feature_deactivation_failed(
                         feature_id,
                         deactivation_result.error_message or "Unknown error",
                         deactivation_result.current_stage.value,
-                        len(deactivation_result.stages_completed) > 0
+                        len(deactivation_result.stages_completed) > 0,
                     )
 
                     raise FeatureManagementError(
                         f"Feature deactivation failed: {deactivation_result.error_message}",
-                        feature_id=feature_id
+                        feature_id=feature_id,
                     )
 
                 # Mark as disabled in state
@@ -304,7 +326,9 @@ class FeatureActivation:
                 await self.database.update_feature_state(state)
 
                 # Calculate duration
-                duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+                duration_ms = int(
+                    (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                )
 
                 # Get resource cleanup metrics
                 resources_cleaned = {
@@ -331,22 +355,24 @@ class FeatureActivation:
                 old_state=old_state,
                 new_state=state.to_dict(),
                 reason=reason,
-                requested_by=requested_by
+                requested_by=requested_by,
             )
 
             # Emit event
-            await self.event_bus.publish(Event(
-                id=f"feature_disabled_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                type=EventType.FEATURE_DISABLED,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                source="feature_management_service",
-                data={
-                    "action": "feature_disabled",
-                    "feature_id": feature_id,
-                    "reason": reason,
-                    "requested_by": requested_by
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=f"feature_disabled_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                    type=EventType.FEATURE_DISABLED,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    source="feature_management_service",
+                    data={
+                        "action": "feature_disabled",
+                        "feature_id": feature_id,
+                        "reason": reason,
+                        "requested_by": requested_by,
+                    },
+                )
+            )
 
             logger.info(f"Disabled feature: {feature_id}")
 
@@ -355,20 +381,20 @@ class FeatureActivation:
 
             # Handle error through recovery system
             await self.error_recovery.handle_error(
-                feature_id, "disable_feature", "state_update", e,
-                {"reason": reason, "requested_by": requested_by}
+                feature_id,
+                "disable_feature",
+                "state_update",
+                e,
+                {"reason": reason, "requested_by": requested_by},
             )
 
             raise
 
-    async def bulk_update_features(self, bulk_update: BulkFeatureUpdate) -> Dict[str, Any]:
+    async def bulk_update_features(
+        self, bulk_update: BulkFeatureUpdate
+    ) -> Dict[str, Any]:
         """Perform bulk feature updates."""
-        results = {
-            "success": True,
-            "updated": [],
-            "failed": [],
-            "errors": []
-        }
+        results = {"success": True, "updated": [], "failed": [], "errors": []}
 
         try:
             if bulk_update.strategy == "atomic":
@@ -378,9 +404,13 @@ class FeatureActivation:
             elif bulk_update.strategy == "best_effort":
                 await self._bulk_update_best_effort(bulk_update, results)
             else:
-                raise FeatureManagementError(f"Unknown bulk update strategy: {bulk_update.strategy}")
+                raise FeatureManagementError(
+                    f"Unknown bulk update strategy: {bulk_update.strategy}"
+                )
 
-            logger.info(f"Bulk update completed: {len(results['updated'])} updated, {len(results['failed'])} failed")
+            logger.info(
+                f"Bulk update completed: {len(results['updated'])} updated, {len(results['failed'])} failed"
+            )
 
         except Exception as e:
             logger.error(f"Bulk update failed: {e}")
@@ -389,7 +419,9 @@ class FeatureActivation:
 
         return results
 
-    async def _bulk_update_atomic(self, bulk_update: BulkFeatureUpdate, results: Dict[str, Any]) -> None:
+    async def _bulk_update_atomic(
+        self, bulk_update: BulkFeatureUpdate, results: Dict[str, Any]
+    ) -> None:
         """Atomic bulk update - all succeed or all fail."""
         # Validate all updates first
         for update in bulk_update.updates:
@@ -404,14 +436,14 @@ class FeatureActivation:
                         update.feature_id,
                         reason=update.reason,
                         requested_by=update.requested_by,
-                        cascade=update.cascade
+                        cascade=update.cascade,
                     )
                 else:
                     await self.disable_feature(
                         update.feature_id,
                         reason=update.reason,
                         requested_by=update.requested_by,
-                        cascade=update.cascade
+                        cascade=update.cascade,
                     )
 
                 results["updated"].append(update.feature_id)
@@ -421,7 +453,9 @@ class FeatureActivation:
                 results["errors"].append(f"{update.feature_id}: {str(e)}")
                 raise
 
-    async def _bulk_update_sequential(self, bulk_update: BulkFeatureUpdate, results: Dict[str, Any]) -> None:
+    async def _bulk_update_sequential(
+        self, bulk_update: BulkFeatureUpdate, results: Dict[str, Any]
+    ) -> None:
         """Sequential bulk update - stop on first failure."""
         for update in bulk_update.updates:
             try:
@@ -430,14 +464,14 @@ class FeatureActivation:
                         update.feature_id,
                         reason=update.reason,
                         requested_by=update.requested_by,
-                        cascade=update.cascade
+                        cascade=update.cascade,
                     )
                 else:
                     await self.disable_feature(
                         update.feature_id,
                         reason=update.reason,
                         requested_by=update.requested_by,
-                        cascade=update.cascade
+                        cascade=update.cascade,
                     )
 
                 results["updated"].append(update.feature_id)
@@ -447,7 +481,9 @@ class FeatureActivation:
                 results["errors"].append(f"{update.feature_id}: {str(e)}")
                 break
 
-    async def _bulk_update_best_effort(self, bulk_update: BulkFeatureUpdate, results: Dict[str, Any]) -> None:
+    async def _bulk_update_best_effort(
+        self, bulk_update: BulkFeatureUpdate, results: Dict[str, Any]
+    ) -> None:
         """Best effort bulk update - continue on failures."""
         for update in bulk_update.updates:
             try:
@@ -456,14 +492,14 @@ class FeatureActivation:
                         update.feature_id,
                         reason=update.reason,
                         requested_by=update.requested_by,
-                        cascade=update.cascade
+                        cascade=update.cascade,
                     )
                 else:
                     await self.disable_feature(
                         update.feature_id,
                         reason=update.reason,
                         requested_by=update.requested_by,
-                        cascade=update.cascade
+                        cascade=update.cascade,
                     )
 
                 results["updated"].append(update.feature_id)
@@ -478,21 +514,31 @@ class FeatureActivation:
             config = self.features[feature_id]
 
             # Start background scheduler tasks
-            if config.feature_type == FeatureType.AGENT and self.scheduler_integration.background_scheduler:
+            if (
+                config.feature_type == FeatureType.AGENT
+                and self.scheduler_integration.background_scheduler
+            ):
                 await self.scheduler_integration.register_feature_tasks(
-                    feature_id, config,
-                    self.scheduler_integration._get_expected_task_types(config)
+                    feature_id,
+                    config,
+                    self.scheduler_integration._get_expected_task_types(config),
                 )
 
             # Register with service registry
-            if config.feature_type == FeatureType.SERVICE and self.service_integration.service_registry:
+            if (
+                config.feature_type == FeatureType.SERVICE
+                and self.service_integration.service_registry
+            ):
                 service_ids = [f"{config.feature_type}_{feature_id}"]
                 await self.service_integration.register_feature_services(
                     feature_id, config, service_ids
                 )
 
             # Notify agent coordinator
-            if config.feature_type == FeatureType.AGENT and self.agent_integration.agent_coordinator:
+            if (
+                config.feature_type == FeatureType.AGENT
+                and self.agent_integration.agent_coordinator
+            ):
                 agent_ids = [feature_id]
                 await self.agent_integration.register_feature_agents(
                     feature_id, config, agent_ids
@@ -501,6 +547,9 @@ class FeatureActivation:
         except Exception as e:
             logger.error(f"Failed to integrate feature enable {feature_id}: {e}")
             await self.error_recovery.handle_error(
-                feature_id, "enable_feature", "service_integration", e,
-                {"feature_type": config.feature_type.value}
+                feature_id,
+                "enable_feature",
+                "service_integration",
+                e,
+                {"feature_type": config.feature_type.value},
             )

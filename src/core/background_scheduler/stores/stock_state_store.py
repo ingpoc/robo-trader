@@ -1,11 +1,9 @@
 """Track per-stock scheduler state (last run times for each scheduler type)."""
 
-import json
-from datetime import datetime, date
-from pathlib import Path
-from typing import Dict, Optional
-from dataclasses import dataclass, field, asdict
 import logging
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +11,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class StockSchedulerState:
     """State for a single stock across all scheduler types."""
+
     symbol: str
     last_news_check: Optional[date] = None
     last_earnings_check: Optional[date] = None
@@ -25,10 +24,24 @@ class StockSchedulerState:
         """Convert to JSON-serializable dict."""
         return {
             "symbol": self.symbol,
-            "last_news_check": self.last_news_check.isoformat() if self.last_news_check else None,
-            "last_earnings_check": self.last_earnings_check.isoformat() if self.last_earnings_check else None,
-            "last_fundamentals_check": self.last_fundamentals_check.isoformat() if self.last_fundamentals_check else None,
-            "last_portfolio_update": self.last_portfolio_update.isoformat() if self.last_portfolio_update else None,
+            "last_news_check": (
+                self.last_news_check.isoformat() if self.last_news_check else None
+            ),
+            "last_earnings_check": (
+                self.last_earnings_check.isoformat()
+                if self.last_earnings_check
+                else None
+            ),
+            "last_fundamentals_check": (
+                self.last_fundamentals_check.isoformat()
+                if self.last_fundamentals_check
+                else None
+            ),
+            "last_portfolio_update": (
+                self.last_portfolio_update.isoformat()
+                if self.last_portfolio_update
+                else None
+            ),
             "needs_fundamentals_recheck": self.needs_fundamentals_recheck,
             "updated_at": self.updated_at,
         }
@@ -38,10 +51,26 @@ class StockSchedulerState:
         """Create from JSON dict."""
         return StockSchedulerState(
             symbol=data.get("symbol"),
-            last_news_check=date.fromisoformat(data["last_news_check"]) if data.get("last_news_check") else None,
-            last_earnings_check=date.fromisoformat(data["last_earnings_check"]) if data.get("last_earnings_check") else None,
-            last_fundamentals_check=date.fromisoformat(data["last_fundamentals_check"]) if data.get("last_fundamentals_check") else None,
-            last_portfolio_update=datetime.fromisoformat(data["last_portfolio_update"]) if data.get("last_portfolio_update") else None,
+            last_news_check=(
+                date.fromisoformat(data["last_news_check"])
+                if data.get("last_news_check")
+                else None
+            ),
+            last_earnings_check=(
+                date.fromisoformat(data["last_earnings_check"])
+                if data.get("last_earnings_check")
+                else None
+            ),
+            last_fundamentals_check=(
+                date.fromisoformat(data["last_fundamentals_check"])
+                if data.get("last_fundamentals_check")
+                else None
+            ),
+            last_portfolio_update=(
+                datetime.fromisoformat(data["last_portfolio_update"])
+                if data.get("last_portfolio_update")
+                else None
+            ),
             needs_fundamentals_recheck=data.get("needs_fundamentals_recheck", False),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
         )
@@ -79,11 +108,13 @@ class StockStateStore:
                     last_fundamentals_check=row[3],
                     last_portfolio_update=row[4],
                     needs_fundamentals_recheck=row[5],
-                    updated_at=row[6] or datetime.now().isoformat()
+                    updated_at=row[6] or datetime.now().isoformat(),
                 )
                 self._state[state.symbol] = state
 
-            logger.info(f"Loaded stock scheduler state for {len(self._state)} stocks from database")
+            logger.info(
+                f"Loaded stock scheduler state for {len(self._state)} stocks from database"
+            )
         except Exception as e:
             logger.error(f"Failed to load stock scheduler state from database: {e}")
             self._state = {}
@@ -98,7 +129,9 @@ class StockStateStore:
 
         return self._state[symbol]
 
-    async def update_news_check(self, symbol: str, check_date: Optional[date] = None) -> None:
+    async def update_news_check(
+        self, symbol: str, check_date: Optional[date] = None
+    ) -> None:
         """Update last news check date for a stock."""
         state = await self.get_state(symbol)
         state.last_news_check = check_date or date.today()
@@ -106,22 +139,30 @@ class StockStateStore:
         await self._save_state(symbol)
         logger.debug(f"Updated news check for {symbol}: {state.last_news_check}")
 
-    async def update_earnings_check(self, symbol: str, check_date: Optional[date] = None) -> None:
+    async def update_earnings_check(
+        self, symbol: str, check_date: Optional[date] = None
+    ) -> None:
         """Update last earnings check date for a stock."""
         state = await self.get_state(symbol)
         state.last_earnings_check = check_date or date.today()
         state.updated_at = datetime.now().isoformat()
         await self._save_state(symbol)
-        logger.debug(f"Updated earnings check for {symbol}: {state.last_earnings_check}")
+        logger.debug(
+            f"Updated earnings check for {symbol}: {state.last_earnings_check}"
+        )
 
-    async def update_fundamentals_check(self, symbol: str, check_date: Optional[date] = None) -> None:
+    async def update_fundamentals_check(
+        self, symbol: str, check_date: Optional[date] = None
+    ) -> None:
         """Update last fundamentals check date for a stock."""
         state = await self.get_state(symbol)
         state.last_fundamentals_check = check_date or date.today()
         state.needs_fundamentals_recheck = False
         state.updated_at = datetime.now().isoformat()
         await self._save_state(symbol)
-        logger.debug(f"Updated fundamentals check for {symbol}: {state.last_fundamentals_check}")
+        logger.debug(
+            f"Updated fundamentals check for {symbol}: {state.last_fundamentals_check}"
+        )
 
     async def flag_fundamentals_recheck(self, symbol: str) -> None:
         """Flag that fundamentals need rechecking due to material news."""
@@ -176,7 +217,7 @@ class StockStateStore:
 
     async def get_oldest_news_stocks(self, symbols: list, limit: int = 5) -> list:
         """Get stocks with oldest last_news_check date (prioritize by oldest first).
-        
+
         None (never checked) stocks come first, then sorted by oldest date.
         """
         stocks_with_dates = []
@@ -194,14 +235,16 @@ class StockStateStore:
 
     async def get_oldest_earnings_stocks(self, symbols: list, limit: int = 5) -> list:
         """Get stocks with oldest last_earnings_check date (prioritize by oldest first).
-        
+
         None (never checked) stocks come first, then sorted by oldest date.
         """
         stocks_with_dates = []
         for symbol in symbols:
             state = await self.get_state(symbol)
             # Use date.min as sentinel for None to enable proper sorting
-            check_date = state.last_earnings_check if state.last_earnings_check else date.min
+            check_date = (
+                state.last_earnings_check if state.last_earnings_check else date.min
+            )
             stocks_with_dates.append((symbol, state.last_earnings_check, check_date))
 
         # Sort: None first (check_date == date.min), then oldest dates (ascending)
@@ -210,17 +253,25 @@ class StockStateStore:
         # Return top N symbols
         return [symbol for symbol, _, _ in stocks_with_dates[:limit]]
 
-    async def get_oldest_fundamentals_stocks(self, symbols: list, limit: int = 5) -> list:
+    async def get_oldest_fundamentals_stocks(
+        self, symbols: list, limit: int = 5
+    ) -> list:
         """Get stocks with oldest last_fundamentals_check date (prioritize by oldest first).
-        
+
         None (never checked) stocks come first, then sorted by oldest date.
         """
         stocks_with_dates = []
         for symbol in symbols:
             state = await self.get_state(symbol)
             # Use date.min as sentinel for None to enable proper sorting
-            check_date = state.last_fundamentals_check if state.last_fundamentals_check else date.min
-            stocks_with_dates.append((symbol, state.last_fundamentals_check, check_date))
+            check_date = (
+                state.last_fundamentals_check
+                if state.last_fundamentals_check
+                else date.min
+            )
+            stocks_with_dates.append(
+                (symbol, state.last_fundamentals_check, check_date)
+            )
 
         # Sort: None first (check_date == date.min), then oldest dates (ascending)
         stocks_with_dates.sort(key=lambda x: (x[2] != date.min, x[2]))
@@ -256,7 +307,7 @@ class StockStateStore:
                     state.last_fundamentals_check,
                     state.last_portfolio_update,
                     state.needs_fundamentals_recheck,
-                    state.updated_at
+                    state.updated_at,
                 ),
             )
             await self.db.commit()

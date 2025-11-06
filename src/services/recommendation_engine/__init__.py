@@ -8,6 +8,12 @@ All components are modularized for maintainability.
 """
 
 from .engine import RecommendationEngine
-from .models import RecommendationFactors, RecommendationResult, RecommendationConfig
+from .models import (RecommendationConfig, RecommendationFactors,
+                     RecommendationResult)
 
-__all__ = ["RecommendationEngine", "RecommendationFactors", "RecommendationResult", "RecommendationConfig"]
+__all__ = [
+    "RecommendationEngine",
+    "RecommendationFactors",
+    "RecommendationResult",
+    "RecommendationConfig",
+]

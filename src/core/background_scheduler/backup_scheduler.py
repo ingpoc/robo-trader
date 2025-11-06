@@ -6,12 +6,13 @@ Runs as a background task to ensure backups happen without blocking main operati
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
+
 from loguru import logger
 
-from src.core.database_state.backup_manager import DatabaseBackupManager
 from src.config import Config
+from src.core.database_state.backup_manager import DatabaseBackupManager
 
 
 class BackupScheduler:
@@ -66,7 +67,9 @@ class BackupScheduler:
             backup_interval_hours = self.config.database.backup_interval_hours
             backup_interval_seconds = backup_interval_hours * 3600
 
-            logger.info(f"Backup scheduler configured: every {backup_interval_hours} hours")
+            logger.info(
+                f"Backup scheduler configured: every {backup_interval_hours} hours"
+            )
 
             while self._running:
                 try:

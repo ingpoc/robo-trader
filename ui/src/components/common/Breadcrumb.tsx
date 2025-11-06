@@ -33,7 +33,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
   const [searchQuery, setSearchQuery] = useState('')
 
   // Auto-generate breadcrumbs from current path if not provided
-  const breadcrumbItems = items || React.useMemo(() => {
+  const generatedBreadcrumbs = React.useMemo(() => {
     const pathSegments = location.pathname.split('/').filter(Boolean)
     const breadcrumbs: BreadcrumbItem[] = [{ label: 'Dashboard', path: '/' }]
 
@@ -46,6 +46,8 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
 
     return breadcrumbs
   }, [location.pathname])
+
+  const breadcrumbItems = items || generatedBreadcrumbs
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -141,7 +143,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
 export function BreadcrumbCompact({ items, className }: BreadcrumbProps) {
   const location = useLocation()
 
-  const breadcrumbItems = items || React.useMemo(() => {
+  const generatedBreadcrumbs = React.useMemo(() => {
     const pathSegments = location.pathname.split('/').filter(Boolean)
     const breadcrumbs: BreadcrumbItem[] = [{ label: 'Dashboard', path: '/' }]
 
@@ -154,6 +156,8 @@ export function BreadcrumbCompact({ items, className }: BreadcrumbProps) {
 
     return breadcrumbs
   }, [location.pathname])
+
+  const breadcrumbItems = items || generatedBreadcrumbs
 
   if (breadcrumbItems.length <= 1) return null
 

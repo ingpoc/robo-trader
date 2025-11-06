@@ -6,23 +6,31 @@ and monitoring operations.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
-from src.core.event_bus import EventBus, Event, EventType
 from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
-from src.services.feature_management.models import (
-    FeatureConfig, FeatureState, DependencyResolutionResult
-)
+from src.core.event_bus import Event, EventBus, EventType
+from src.services.feature_management.agent_integration import \
+    AgentManagementIntegration
 from src.services.feature_management.database import FeatureDatabase
-from src.services.feature_management.dependency_resolver import DependencyResolver
-from src.services.feature_management.lifecycle_manager import ServiceLifecycleManager
-from src.services.feature_management.scheduler_integration import BackgroundSchedulerIntegration
-from src.services.feature_management.agent_integration import AgentManagementIntegration
-from src.services.feature_management.service_integration import ServiceManagementIntegration
-from src.services.feature_management.resource_cleanup import ResourceCleanupManager
+from src.services.feature_management.dependency_resolver import \
+    DependencyResolver
 from src.services.feature_management.error_recovery import ErrorRecoveryManager
-from src.services.feature_management.event_broadcasting import EventBroadcastingService
+from src.services.feature_management.event_broadcasting import \
+    EventBroadcastingService
+from src.services.feature_management.lifecycle_manager import \
+    ServiceLifecycleManager
+from src.services.feature_management.models import (DependencyResolutionResult,
+                                                    FeatureConfig,
+                                                    FeatureState)
+from src.services.feature_management.resource_cleanup import \
+    ResourceCleanupManager
+from src.services.feature_management.scheduler_integration import \
+    BackgroundSchedulerIntegration
+from src.services.feature_management.service_integration import \
+    ServiceManagementIntegration
 
 
 class FeatureManagementError(TradingError):
@@ -34,7 +42,7 @@ class FeatureManagementError(TradingError):
             category=ErrorCategory.CONFIGURATION,
             severity=ErrorSeverity.MEDIUM,
             feature_id=feature_id,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -62,7 +70,7 @@ class FeatureValidation:
         service_integration: ServiceManagementIntegration,
         resource_cleanup: ResourceCleanupManager,
         error_recovery: ErrorRecoveryManager,
-        event_broadcasting: EventBroadcastingService
+        event_broadcasting: EventBroadcastingService,
     ):
         self.database = database
         self.event_bus = event_bus
@@ -85,14 +93,16 @@ class FeatureValidation:
         dependencies = []
         for dep in self.features[feature_id].dependencies:
             dep_state = self.states.get(dep.feature_id)
-            dependencies.append({
-                "feature_id": dep.feature_id,
-                "type": dep.dependency_type.value,
-                "optional": dep.optional,
-                "version_constraint": dep.version_constraint,
-                "current_state": dep_state.status.value if dep_state else "unknown",
-                "enabled": dep_state.enabled if dep_state else False
-            })
+            dependencies.append(
+                {
+                    "feature_id": dep.feature_id,
+                    "type": dep.dependency_type.value,
+                    "optional": dep.optional,
+                    "version_constraint": dep.version_constraint,
+                    "current_state": dep_state.status.value if dep_state else "unknown",
+                    "enabled": dep_state.enabled if dep_state else False,
+                }
+            )
 
         return dependencies
 
@@ -104,11 +114,13 @@ class FeatureValidation:
         dependents = []
         for dependent in self.dependency_resolver.graph.get_dependents(feature_id):
             dep_state = self.states.get(dependent)
-            dependents.append({
-                "feature_id": dependent,
-                "current_state": dep_state.status.value if dep_state else "unknown",
-                "enabled": dep_state.enabled if dep_state else False
-            })
+            dependents.append(
+                {
+                    "feature_id": dependent,
+                    "current_state": dep_state.status.value if dep_state else "unknown",
+                    "enabled": dep_state.enabled if dep_state else False,
+                }
+            )
 
         return dependents
 
@@ -119,7 +131,9 @@ class FeatureValidation:
 
         return await self.dependency_resolver.validate_feature_state(feature_id)
 
-    async def get_dependency_resolution(self, feature_ids: List[str], operation: str) -> DependencyResolutionResult:
+    async def get_dependency_resolution(
+        self, feature_ids: List[str], operation: str
+    ) -> DependencyResolutionResult:
         """Get dependency resolution for features."""
         try:
             if operation == "enable":
@@ -154,17 +168,19 @@ class FeatureValidation:
                 await self.database.update_feature_state(state)
 
                 # Emit health change event
-                await self.event_bus.publish(Event(
-                    id=f"feature_health_change_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
-                    type=EventType.SYSTEM_HEALTH_CHECK,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    source="feature_management_service",
-                    data={
-                        "feature_id": feature_id,
-                        "health_status": health_status,
-                        "error_count": state.error_count
-                    }
-                ))
+                await self.event_bus.publish(
+                    Event(
+                        id=f"feature_health_change_{feature_id}_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                        type=EventType.SYSTEM_HEALTH_CHECK,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="feature_management_service",
+                        data={
+                            "feature_id": feature_id,
+                            "health_status": health_status,
+                            "error_count": state.error_count,
+                        },
+                    )
+                )
 
         except Exception as e:
             logger.error(f"Failed to check feature health {feature_id}: {e}")
@@ -172,13 +188,15 @@ class FeatureValidation:
     async def get_deactivation_status(self, feature_id: str) -> Dict[str, Any]:
         """Get the current deactivation status for a feature."""
         status = {
-            "lifecycle_manager": await self.lifecycle_manager.get_deactivation_status(feature_id),
+            "lifecycle_manager": await self.lifecycle_manager.get_deactivation_status(
+                feature_id
+            ),
             "scheduler_integration": await self.scheduler_integration.get_integration_status(),
             "agent_integration": await self.agent_integration.get_integration_status(),
             "service_integration": await self.service_integration.get_integration_status(),
             "resource_cleanup": await self.resource_cleanup.get_system_resource_summary(),
             "error_recovery": await self.error_recovery.get_recovery_statistics(),
-            "event_broadcasting": await self.event_broadcasting.get_broadcasting_statistics()
+            "event_broadcasting": await self.event_broadcasting.get_broadcasting_statistics(),
         }
 
         return status
@@ -186,28 +204,42 @@ class FeatureValidation:
     async def get_feature_resources(self, feature_id: str) -> Dict[str, Any]:
         """Get all resources associated with a feature."""
         resources = {
-            "lifecycle_manager": await self.lifecycle_manager.get_feature_resources(feature_id),
-            "scheduler_tasks": await self.scheduler_integration.get_feature_task_info(feature_id),
-            "agent_info": await self.agent_integration.get_feature_agent_info(feature_id),
-            "service_info": await self.service_integration.get_feature_service_info(feature_id),
-            "connection_info": await self.service_integration.get_feature_connection_info(feature_id),
-            "resource_summary": await self.resource_cleanup.get_feature_resource_summary(feature_id)
+            "lifecycle_manager": await self.lifecycle_manager.get_feature_resources(
+                feature_id
+            ),
+            "scheduler_tasks": await self.scheduler_integration.get_feature_task_info(
+                feature_id
+            ),
+            "agent_info": await self.agent_integration.get_feature_agent_info(
+                feature_id
+            ),
+            "service_info": await self.service_integration.get_feature_service_info(
+                feature_id
+            ),
+            "connection_info": await self.service_integration.get_feature_connection_info(
+                feature_id
+            ),
+            "resource_summary": await self.resource_cleanup.get_feature_resource_summary(
+                feature_id
+            ),
         }
 
         return resources
 
-    async def get_error_history(self, feature_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_error_history(
+        self, feature_id: Optional[str] = None, limit: int = 50
+    ) -> List[Dict[str, Any]]:
         """Get error history for a feature or all features."""
         errors = await self.error_recovery.get_error_history(feature_id, limit=limit)
         return [error.to_dict() for error in errors]
 
     async def get_event_history(
-        self,
-        feature_id: Optional[str] = None,
-        limit: int = 50
+        self, feature_id: Optional[str] = None, limit: int = 50
     ) -> List[Dict[str, Any]]:
         """Get event history for a feature or all features."""
-        events = await self.event_broadcasting.get_event_history(feature_id, limit=limit)
+        events = await self.event_broadcasting.get_event_history(
+            feature_id, limit=limit
+        )
         return [event.to_dict() for event in events]
 
     async def force_cleanup_feature(self, feature_id: str) -> bool:
@@ -216,13 +248,24 @@ class FeatureValidation:
             logger.warning(f"Force cleaning up feature {feature_id}")
 
             # Force cleanup through all components
-            lifecycle_success = await self.lifecycle_manager.force_cleanup_feature(feature_id)
+            lifecycle_success = await self.lifecycle_manager.force_cleanup_feature(
+                feature_id
+            )
             scheduler_success = True
             agent_success = await self.agent_integration.force_stop_agent(feature_id)
-            service_success = await self.service_integration.force_stop_service(feature_id)
-            resource_success = await self.resource_cleanup.force_cleanup_feature(feature_id)
+            service_success = await self.service_integration.force_stop_service(
+                feature_id
+            )
+            resource_success = await self.resource_cleanup.force_cleanup_feature(
+                feature_id
+            )
 
-            success = lifecycle_success and agent_success and service_success and resource_success
+            success = (
+                lifecycle_success
+                and agent_success
+                and service_success
+                and resource_success
+            )
 
             if success:
                 logger.info(f"Successfully force cleaned up feature {feature_id}")

@@ -5,18 +5,19 @@ Thin orchestrator that delegates to focused message coordinators.
 Refactored from 333-line monolith into focused coordinators.
 """
 
-from typing import Dict, List, Optional, Any
 from collections import defaultdict
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
 from src.config import Config
+
 from ...database_state.database_state import DatabaseStateManager
 from ...event_bus import EventBus
 from ..base_coordinator import BaseCoordinator
+from .agent_message import AgentMessage, MessageType
 from .message_handling_coordinator import MessageHandlingCoordinator
 from .message_routing_coordinator import MessageRoutingCoordinator
-from .agent_message import AgentMessage, MessageType
 
 
 class MessageCoordinator(BaseCoordinator):
@@ -29,7 +30,9 @@ class MessageCoordinator(BaseCoordinator):
     - Track message statistics
     """
 
-    def __init__(self, config: Config, state_manager: DatabaseStateManager, event_bus: EventBus):
+    def __init__(
+        self, config: Config, state_manager: DatabaseStateManager, event_bus: EventBus
+    ):
         super().__init__(config)
         self.state_manager = state_manager
         self.event_bus = event_bus
@@ -50,7 +53,9 @@ class MessageCoordinator(BaseCoordinator):
         await self.handling_coordinator.initialize()
 
         # Register default handlers
-        await self.handling_coordinator.register_default_handlers(self.routing_coordinator)
+        await self.handling_coordinator.register_default_handlers(
+            self.routing_coordinator
+        )
 
         logger.info("Message Coordinator initialized successfully")
 
@@ -66,14 +71,14 @@ class MessageCoordinator(BaseCoordinator):
 
         await self.routing_coordinator.send_message(message)
 
-    async def register_handler(self, message_type: MessageType, handler: callable) -> None:
+    async def register_handler(
+        self, message_type: MessageType, handler: callable
+    ) -> None:
         """Register a handler for a message type."""
         await self.routing_coordinator.register_handler(message_type, handler)
 
     async def send_request_response(
-        self,
-        request: AgentMessage,
-        timeout: float = 30.0
+        self, request: AgentMessage, timeout: float = 30.0
     ) -> Optional[AgentMessage]:
         """Send a request and wait for response."""
         return await self.routing_coordinator.send_request_response(request, timeout)
@@ -90,6 +95,7 @@ class MessageCoordinator(BaseCoordinator):
             "messages_by_type": dict(self.message_counts),
             "pending_responses": len(self.routing_coordinator.pending_responses),
             "active_handlers": sum(
-                len(handlers) for handlers in self.routing_coordinator.message_handlers.values()
-            )
+                len(handlers)
+                for handlers in self.routing_coordinator.message_handlers.values()
+            ),
         }

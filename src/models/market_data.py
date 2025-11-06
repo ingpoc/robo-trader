@@ -5,13 +5,14 @@ Defines data structures for market data, providers, and subscriptions.
 """
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional, Dict, Any
 from datetime import datetime
+from enum import Enum
+from typing import Optional
 
 
 class MarketDataProvider(Enum):
     """Market data provider types."""
+
     ZERODHA_KITE = "zerodha_kite"
     UPSTOX = "upstox"
     YAHOO_FINANCE = "yahoo_finance"
@@ -20,6 +21,7 @@ class MarketDataProvider(Enum):
 
 class SubscriptionMode(Enum):
     """Market data subscription modes."""
+
     QUOTE = "quote"
     FULL = "full"
     LTP = "ltp"
@@ -28,6 +30,7 @@ class SubscriptionMode(Enum):
 @dataclass
 class MarketData:
     """Market data snapshot."""
+
     symbol: str
     ltp: float
     open_price: Optional[float] = None
@@ -42,6 +45,7 @@ class MarketData:
 @dataclass
 class MarketDataSubscription:
     """Market data subscription request."""
+
     symbol: str
     mode: SubscriptionMode
     provider: MarketDataProvider
@@ -51,6 +55,7 @@ class MarketDataSubscription:
 @dataclass
 class OHLCV:
     """OHLCV candle data."""
+
     symbol: str
     timestamp: datetime
     open: float
@@ -64,6 +69,7 @@ class OHLCV:
 @dataclass
 class MarketTick:
     """Individual market tick."""
+
     symbol: str
     timestamp: datetime
     price: float

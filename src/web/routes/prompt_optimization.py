@@ -8,20 +8,19 @@ Provides REST endpoints for:
 - Monitoring prompt performance
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
 import json
+from datetime import datetime, timedelta
+from typing import Any, List
 
-from ..dependencies import get_container
-from ...services.prompt_optimization_service import PromptOptimizationService
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ...core.di import DependencyContainer
-from ..utils.error_handlers import (
-    handle_trading_error,
-    handle_unexpected_error,
-)
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from loguru import logger
+
+from ...core.di import DependencyContainer
+from ...core.errors import TradingError
+from ...services.prompt_optimization_service import PromptOptimizationService
+from ..dependencies import get_container
+from ..utils.error_handlers import (handle_trading_error,
+                                    handle_unexpected_error)
 
 router = APIRouter(prefix="/api/prompts", tags=["prompt-optimization"])
 
@@ -37,8 +36,7 @@ async def get_active_prompt(
     valid_types = ["earnings", "news", "fundamentals", "metrics"]
     if data_type not in valid_types:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid data type. Must be one of: {valid_types}"
+            status_code=400, detail=f"Invalid data type. Must be one of: {valid_types}"
         )
 
     try:
@@ -54,7 +52,7 @@ async def get_active_prompt(
                 ORDER BY last_optimized_at DESC
                 LIMIT 1
                 """,
-                (data_type,)
+                (data_type,),
             )
             row = await cursor.fetchone()
 
@@ -62,7 +60,7 @@ async def get_active_prompt(
                 return {
                     "data_type": data_type,
                     "active_prompt": None,
-                    "message": "No optimized prompt found"
+                    "message": "No optimized prompt found",
                 }
 
             return {
@@ -79,7 +77,7 @@ async def get_active_prompt(
                 "total_optimizations": row[9],
                 "success_rate": row[10],
                 "last_used": row[11],
-                "is_active": True
+                "is_active": True,
             }
 
     except TradingError as e:
@@ -101,8 +99,7 @@ async def get_optimization_history(
     valid_types = ["earnings", "news", "fundamentals", "metrics"]
     if data_type not in valid_types:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid data type. Must be one of: {valid_types}"
+            status_code=400, detail=f"Invalid data type. Must be one of: {valid_types}"
         )
 
     try:
@@ -116,7 +113,7 @@ async def get_optimization_history(
             "data_type": data_type,
             "history": limited_history,
             "total_count": len(history),
-            "period_days": days
+            "period_days": days,
         }
 
     except TradingError as e:
@@ -140,7 +137,7 @@ async def get_prompt_attempts(
         async with database.connect() as conn:
             cursor = await conn.execute(
                 "SELECT data_type, original_prompt FROM optimized_prompts WHERE id = ?",
-                (prompt_id,)
+                (prompt_id,),
             )
             prompt_row = await cursor.fetchone()
 
@@ -157,31 +154,35 @@ async def get_prompt_attempts(
                 WHERE prompt_id = ?
                 ORDER BY attempt_number
                 """,
-                (prompt_id,)
+                (prompt_id,),
             )
             attempt_rows = await cursor.fetchall()
 
             attempts = []
             for row in attempt_rows:
-                attempts.append({
-                    "attempt_number": row[0],
-                    "prompt_text": row[1],
-                    "data_received": row[2][:1000] + "..." if len(row[2]) > 1000 else row[2],
-                    "quality_score": row[3],
-                    "claude_analysis": row[4],
-                    "missing_elements": _parse_json_field(row[5]),
-                    "redundant_elements": _parse_json_field(row[6]),
-                    "optimization_time_ms": row[7],
-                    "tokens_used": row[8],
-                    "created_at": row[9]
-                })
+                attempts.append(
+                    {
+                        "attempt_number": row[0],
+                        "prompt_text": row[1],
+                        "data_received": (
+                            row[2][:1000] + "..." if len(row[2]) > 1000 else row[2]
+                        ),
+                        "quality_score": row[3],
+                        "claude_analysis": row[4],
+                        "missing_elements": _parse_json_field(row[5]),
+                        "redundant_elements": _parse_json_field(row[6]),
+                        "optimization_time_ms": row[7],
+                        "tokens_used": row[8],
+                        "created_at": row[9],
+                    }
+                )
 
             return {
                 "prompt_id": prompt_id,
                 "data_type": prompt_row[0],
                 "original_prompt": prompt_row[1],
                 "attempts": attempts,
-                "total_attempts": len(attempts)
+                "total_attempts": len(attempts),
             }
 
     except HTTPException:
@@ -207,7 +208,7 @@ async def get_quality_trends(
         return {
             "trends": trends,
             "period_days": days,
-            "data_types": list(trends.keys())
+            "data_types": list(trends.keys()),
         }
 
     except TradingError as e:
@@ -239,28 +240,30 @@ async def get_session_prompt_usage(
                 WHERE sp.session_id = ?
                 ORDER BY sp.created_at
                 """,
-                (session_id,)
+                (session_id,),
             )
             rows = await cursor.fetchall()
 
             session_prompts = []
             for row in rows:
-                session_prompts.append({
-                    "usage_id": row[0],
-                    "data_type": row[1],
-                    "quality_achieved": row[2],
-                    "symbols_analyzed": _parse_json_field(row[3]),
-                    "trading_decisions_influenced": row[4],
-                    "created_at": row[5],
-                    "prompt_used": row[6],
-                    "baseline_quality": row[7],
-                    "claude_feedback": row[8]
-                })
+                session_prompts.append(
+                    {
+                        "usage_id": row[0],
+                        "data_type": row[1],
+                        "quality_achieved": row[2],
+                        "symbols_analyzed": _parse_json_field(row[3]),
+                        "trading_decisions_influenced": row[4],
+                        "created_at": row[5],
+                        "prompt_used": row[6],
+                        "baseline_quality": row[7],
+                        "claude_feedback": row[8],
+                    }
+                )
 
             return {
                 "session_id": session_id,
                 "prompts_used": session_prompts,
-                "total_prompts": len(session_prompts)
+                "total_prompts": len(session_prompts),
             }
 
     except TradingError as e:
@@ -283,8 +286,7 @@ async def trigger_manual_optimization(
     valid_types = ["earnings", "news", "fundamentals", "metrics"]
     if data_type not in valid_types:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid data type. Must be one of: {valid_types}"
+            status_code=400, detail=f"Invalid data type. Must be one of: {valid_types}"
         )
 
     if not symbols:
@@ -303,7 +305,7 @@ async def trigger_manual_optimization(
             data_type,
             symbols,
             test_session_id,
-            force_optimization
+            force_optimization,
         )
 
         return {
@@ -311,7 +313,7 @@ async def trigger_manual_optimization(
             "data_type": data_type,
             "session_id": test_session_id,
             "symbols": symbols,
-            "message": "Optimization started in background"
+            "message": "Optimization started in background",
         }
 
     except TradingError as e:
@@ -340,7 +342,7 @@ async def get_optimization_status(
                 FROM session_prompt_usage
                 WHERE session_id = ?
                 """,
-                (session_id,)
+                (session_id,),
             )
             row = await cursor.fetchone()
 
@@ -348,7 +350,7 @@ async def get_optimization_status(
                 return {
                     "session_id": session_id,
                     "status": "not_found",
-                    "message": "No optimization activity found for this session"
+                    "message": "No optimization activity found for this session",
                 }
 
             return {
@@ -356,7 +358,7 @@ async def get_optimization_status(
                 "status": "completed",
                 "total_prompts": row[0],
                 "avg_quality": round(row[1], 2) if row[1] else 0.0,
-                "last_update": row[2]
+                "last_update": row[2],
             }
 
     except TradingError as e:
@@ -391,7 +393,7 @@ async def get_performance_summary(
                 FROM optimized_prompts
                 WHERE created_at >= ?
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
             overall_row = await cursor.fetchone()
 
@@ -408,7 +410,7 @@ async def get_performance_summary(
                 GROUP BY data_type
                 ORDER BY avg_quality DESC
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
             type_rows = await cursor.fetchall()
 
@@ -420,7 +422,7 @@ async def get_performance_summary(
                     "best_quality": round(overall_row[2] or 0, 2),
                     "worst_quality": round(overall_row[3] or 0, 2),
                     "total_usage": overall_row[4] or 0,
-                    "avg_user_rating": round(overall_row[5] or 0, 2)
+                    "avg_user_rating": round(overall_row[5] or 0, 2),
                 },
                 "by_data_type": [
                     {
@@ -428,10 +430,10 @@ async def get_performance_summary(
                         "prompt_count": row[1],
                         "avg_quality": round(row[2], 2),
                         "total_usage": row[3],
-                        "avg_rating": round(row[4], 2)
+                        "avg_rating": round(row[4], 2),
                     }
                     for row in type_rows
-                ]
+                ],
             }
 
     except TradingError as e:
@@ -457,15 +459,17 @@ async def _run_optimization_task(
     data_type: str,
     symbols: List[str],
     session_id: str,
-    force_optimization: bool
+    force_optimization: bool,
 ) -> None:
     """Background task to run optimization."""
     try:
-        data, quality_score, final_prompt, optimization_metadata = await prompt_service.get_optimized_data(
-            data_type=data_type,
-            symbols=symbols,
-            session_id=session_id,
-            force_optimization=force_optimization
+        data, quality_score, final_prompt, optimization_metadata = (
+            await prompt_service.get_optimized_data(
+                data_type=data_type,
+                symbols=symbols,
+                session_id=session_id,
+                force_optimization=force_optimization,
+            )
         )
 
         logger.info(

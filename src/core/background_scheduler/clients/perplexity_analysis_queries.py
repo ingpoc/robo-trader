@@ -4,8 +4,8 @@ Analysis Query Module for Perplexity API
 Handles sentiment analysis, recommendations, and general analysis queries.
 """
 
-from typing import List, Optional, Any
-from loguru import logger
+from typing import Any, List, Optional
+
 
 from .perplexity_prompt_manager import PromptManager
 
@@ -28,9 +28,7 @@ class AnalysisQueries:
         self.prompt_manager = prompt_manager
 
     async def analyze_sentiment(
-        self,
-        symbols: List[str],
-        max_tokens: int = 2000
+        self, symbols: List[str], max_tokens: int = 2000
     ) -> Optional[str]:
         """Analyze market sentiment for given stocks.
 
@@ -61,14 +59,14 @@ Format as JSON."""
             search_recency="week",
             max_search_results=15,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
     async def generate_recommendations(
         self,
         symbols: List[str],
         analysis_data: Optional[str] = None,
-        max_tokens: int = 3000
+        max_tokens: int = 3000,
     ) -> Optional[str]:
         """Generate trading recommendations based on analysis.
 
@@ -115,5 +113,5 @@ Format as JSON with recommendations for each stock."""
             search_recency="week",
             max_search_results=20,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )

@@ -7,11 +7,11 @@ Provides proper SDK authentication patterns instead of direct API usage.
 
 import logging
 import os
-from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict
 
-from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...core.di import DependencyContainer
+from ...core.errors import ErrorCategory, ErrorSeverity, TradingError
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,11 @@ class ClaudeSDKAuth:
             cli_status = await self._check_claude_cli_auth()
 
             # Check OAuth token if CLI not available
-            oauth_status = await self._check_oauth_token() if not cli_status["authenticated"] else None
+            oauth_status = (
+                await self._check_oauth_token()
+                if not cli_status["authenticated"]
+                else None
+            )
 
             # Determine overall auth status
             if cli_status["authenticated"]:
@@ -68,7 +72,7 @@ class ClaudeSDKAuth:
                 auth_details = {
                     "error": "No valid authentication method found",
                     "cli_status": cli_status,
-                    "oauth_status": oauth_status
+                    "oauth_status": oauth_status,
                 }
 
             # Build SDK auth status
@@ -81,8 +85,8 @@ class ClaudeSDKAuth:
                 "sdk_requirements": {
                     "claude_code_cli": cli_status["installed"],
                     "oauth_token": oauth_status["valid"] if oauth_status else False,
-                    "recommended_method": "claude_code_cli"
-                }
+                    "recommended_method": "claude_code_cli",
+                },
             }
 
             # Cache the result
@@ -99,7 +103,7 @@ class ClaudeSDKAuth:
                 "auth_method": None,
                 "sdk_ready": False,
                 "error": str(e),
-                "checked_at": datetime.now(timezone.utc).isoformat()
+                "checked_at": datetime.now(timezone.utc).isoformat(),
             }
 
     async def get_sdk_config(self) -> Dict[str, Any]:
@@ -115,7 +119,7 @@ class ClaudeSDKAuth:
                 f"SDK authentication failed: {auth_status.get('error', 'Unknown error')}",
                 category=ErrorCategory.CONFIGURATION,
                 severity=ErrorSeverity.CRITICAL,
-                recoverable=False
+                recoverable=False,
             )
 
         # Build SDK config based on auth method
@@ -125,20 +129,20 @@ class ClaudeSDKAuth:
             "session_config": {
                 "auto_auth": True,
                 "validate_on_start": True,
-                "error_handling": "strict"
-            }
+                "error_handling": "strict",
+            },
         }
 
         if auth_status["auth_method"] == "claude_code_cli":
             config["cli_config"] = {
                 "command": "claude",
                 "timeout": 30,
-                "working_directory": os.getcwd()
+                "working_directory": os.getcwd(),
             }
         elif auth_status["auth_method"] == "oauth_token":
             config["oauth_config"] = {
                 "token_validation": True,
-                "auto_refresh": False  # SDK handles this
+                "auto_refresh": False,  # SDK handles this
             }
 
         return config
@@ -158,8 +162,8 @@ class ClaudeSDKAuth:
             "capabilities": [
                 "tool_execution",
                 "multi_turn_conversation",
-                "error_recovery"
-            ]
+                "error_recovery",
+            ],
         }
 
         self._log_info(f"Created SDK session: {session_config['session_id']}")
@@ -168,14 +172,14 @@ class ClaudeSDKAuth:
     async def _check_claude_cli_auth(self) -> Dict[str, Any]:
         """Check Claude Code CLI authentication status."""
         import asyncio
-        import subprocess
 
         try:
             # Check if CLI is installed
             process = await asyncio.create_subprocess_exec(
-                "claude", "--version",
+                "claude",
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
@@ -184,49 +188,47 @@ class ClaudeSDKAuth:
                 return {
                     "installed": False,
                     "authenticated": False,
-                    "error": "CLI not found or not working"
+                    "error": "CLI not found or not working",
                 }
 
             version = stdout.decode().strip()
 
             # Test authentication with a minimal command
             test_process = await asyncio.create_subprocess_exec(
-                "claude", "--print", "test",
+                "claude",
+                "--print",
+                "test",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
-            test_stdout, test_stderr = await asyncio.wait_for(test_process.communicate(), timeout=5.0)
+            test_stdout, test_stderr = await asyncio.wait_for(
+                test_process.communicate(), timeout=5.0
+            )
             test_output = test_stdout.decode() + test_stderr.decode()
 
-            authenticated = test_process.returncode == 0 or "limit" in test_output.lower()
+            authenticated = (
+                test_process.returncode == 0 or "limit" in test_output.lower()
+            )
 
             return {
                 "installed": True,
                 "authenticated": authenticated,
                 "version": version,
                 "rate_limited": "limit" in test_output.lower(),
-                "error": None if authenticated else "CLI not authenticated"
+                "error": None if authenticated else "CLI not authenticated",
             }
 
         except asyncio.TimeoutError:
-            return {
-                "installed": True,
-                "authenticated": False,
-                "error": "CLI timeout"
-            }
+            return {"installed": True, "authenticated": False, "error": "CLI timeout"}
         except FileNotFoundError:
             return {
                 "installed": False,
                 "authenticated": False,
-                "error": "CLI not installed"
+                "error": "CLI not installed",
             }
         except Exception as e:
-            return {
-                "installed": False,
-                "authenticated": False,
-                "error": str(e)
-            }
+            return {"installed": False, "authenticated": False, "error": str(e)}
 
     async def _check_oauth_token(self) -> Dict[str, Any]:
         """Check OAuth token validity."""
@@ -235,36 +237,34 @@ class ClaudeSDKAuth:
         if not api_key:
             return {
                 "valid": False,
-                "error": "No ANTHROPIC_API_KEY environment variable"
+                "error": "No ANTHROPIC_API_KEY environment variable",
             }
 
         # Check if it's an OAuth token (starts with sk-ant-oat)
         if not api_key.startswith("sk-ant-oat"):
-            return {
-                "valid": False,
-                "error": "Not an OAuth token format"
-            }
+            return {"valid": False, "error": "Not an OAuth token format"}
 
         # Basic format validation (OAuth tokens are longer)
         if len(api_key) < 100:
-            return {
-                "valid": False,
-                "error": "Token appears too short for OAuth format"
-            }
+            return {"valid": False, "error": "Token appears too short for OAuth format"}
 
         # For SDK usage, we trust the token format
         # The SDK will handle actual validation during API calls
         return {
             "valid": True,
             "token_type": "oauth",
-            "masked_token": f"{api_key[:10]}...{api_key[-4:]}"
+            "masked_token": f"{api_key[:10]}...{api_key[-4:]}",
         }
 
     async def _validate_auth_setup(self) -> None:
         """Validate that authentication is properly configured."""
         # Check environment variables
         api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key and not api_key.startswith("sk-ant-oat") and api_key != "your_anthropic_api_key_here":
+        if (
+            api_key
+            and not api_key.startswith("sk-ant-oat")
+            and api_key != "your_anthropic_api_key_here"
+        ):
             self._log_warning(
                 "ANTHROPIC_API_KEY found but not in OAuth format. "
                 "SDK prefers Claude Code CLI authentication."

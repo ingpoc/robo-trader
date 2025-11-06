@@ -6,7 +6,7 @@ Extracted from TaskCoordinator for single responsibility.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from loguru import logger
 
@@ -18,7 +18,7 @@ from .collaboration_task import CollaborationTask
 class TaskMaintenanceCoordinator(BaseCoordinator):
     """
     Coordinates task maintenance operations.
-    
+
     Responsibilities:
     - Check task deadlines
     - Clean up old completed tasks
@@ -35,9 +35,7 @@ class TaskMaintenanceCoordinator(BaseCoordinator):
         self._initialized = True
 
     async def check_task_deadlines(
-        self,
-        active_tasks: Dict[str, CollaborationTask],
-        update_status_callback
+        self, active_tasks: Dict[str, CollaborationTask], update_status_callback
     ) -> List[str]:
         """
         Check for tasks that have exceeded deadlines.
@@ -57,14 +55,14 @@ class TaskMaintenanceCoordinator(BaseCoordinator):
                 deadline = datetime.fromisoformat(task.deadline)
                 if current_time > deadline:
                     timed_out_tasks.append(task_id)
-                    await update_status_callback(task_id, "failed", {"error": "deadline_exceeded"})
+                    await update_status_callback(
+                        task_id, "failed", {"error": "deadline_exceeded"}
+                    )
 
         return timed_out_tasks
 
     async def cleanup_old_tasks(
-        self,
-        completed_tasks: Dict[str, CollaborationTask],
-        max_age_hours: int = 24
+        self, completed_tasks: Dict[str, CollaborationTask], max_age_hours: int = 24
     ) -> int:
         """
         Clean up old completed tasks.
@@ -97,4 +95,3 @@ class TaskMaintenanceCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         """Cleanup task maintenance coordinator resources."""
         logger.info("TaskMaintenanceCoordinator cleanup complete")
-

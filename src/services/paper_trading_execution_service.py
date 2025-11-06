@@ -1,17 +1,15 @@
 """Paper Trading Execution Service - Handles buy/sell/close operations using Claude Agent SDK."""
 
-import uuid
 import json
 import logging
-import asyncio
+import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, TYPE_CHECKING
-from decimal import Decimal
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger as loguru_logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
-from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
 
 if TYPE_CHECKING:
     from src.core.database_state.database_state import DatabaseStateManager
@@ -22,7 +20,7 @@ logger = logging.getLogger(__name__)
 class PaperTradingExecutionService:
     """Service for executing paper trades using Claude Agent SDK for decision-making."""
 
-    def __init__(self, state_manager: Optional['DatabaseStateManager'] = None):
+    def __init__(self, state_manager: Optional["DatabaseStateManager"] = None):
         """Initialize execution service."""
         self._state_manager = state_manager
         self._initialized = False
@@ -53,7 +51,7 @@ class PaperTradingExecutionService:
         quantity: int,
         order_type: str = "MARKET",
         price: Optional[float] = None,
-        strategy_rationale: str = "User initiated trade"
+        strategy_rationale: str = "User initiated trade",
     ) -> Dict[str, Any]:
         """
         Execute buy trade with Claude Agent SDK validation and decision-making.
@@ -80,7 +78,7 @@ class PaperTradingExecutionService:
                     f"Invalid symbol: {symbol}",
                     category=ErrorCategory.VALIDATION,
                     severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
+                    recoverable=False,
                 )
 
             if quantity <= 0 or quantity > 10000:
@@ -88,7 +86,7 @@ class PaperTradingExecutionService:
                     f"Invalid quantity: {quantity}. Must be between 1 and 10000",
                     category=ErrorCategory.VALIDATION,
                     severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
+                    recoverable=False,
                 )
 
             # Use Claude Agent SDK to validate and execute trade (create fresh client)
@@ -126,10 +124,15 @@ Respond with ONLY the JSON object. No explanation text."""
                 await self._ensure_client()
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
-                # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
 
-                loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(
+                    self._client, prompt, timeout=30.0
+                )
+
+                loguru_logger.debug(
+                    f"Claude SDK response received: {response_text[:200]}..."
+                )
 
                 # Parse Claude's response
                 result = self._parse_claude_response(response_text)
@@ -140,18 +143,22 @@ Respond with ONLY the JSON object. No explanation text."""
                     category=ErrorCategory.SYSTEM,
                     severity=ErrorSeverity.CRITICAL,
                     recoverable=True,
-                    metadata={"error": str(e), "error_type": "connection"}
+                    metadata={"error": str(e), "error_type": "connection"},
                 )
             except Exception as e:
                 error_str = str(e).lower()
-                if "auth" in error_str or "api key" in error_str or "invalid" in error_str:
+                if (
+                    "auth" in error_str
+                    or "api key" in error_str
+                    or "invalid" in error_str
+                ):
                     loguru_logger.error(f"Claude SDK authentication failed: {e}")
                     raise TradingError(
                         "Claude Agent SDK authentication failed. Run 'claude auth' to authenticate.",
                         category=ErrorCategory.SYSTEM,
                         severity=ErrorSeverity.CRITICAL,
                         recoverable=True,
-                        metadata={"error": str(e), "error_type": "authentication"}
+                        metadata={"error": str(e), "error_type": "authentication"},
                     )
                 else:
                     loguru_logger.error(f"Claude SDK query failed: {e}")
@@ -160,25 +167,27 @@ Respond with ONLY the JSON object. No explanation text."""
                         category=ErrorCategory.SYSTEM,
                         severity=ErrorSeverity.HIGH,
                         recoverable=True,
-                        metadata={"error": str(e), "error_type": "query_execution"}
+                        metadata={"error": str(e), "error_type": "query_execution"},
                     )
 
-            if result['decision'] != 'APPROVE':
+            if result["decision"] != "APPROVE":
                 raise TradingError(
                     f"Trade rejected: {result['reason']}",
                     category=ErrorCategory.TRADING,
                     severity=ErrorSeverity.MEDIUM,
                     recoverable=True,
-                    metadata={"reason": result['reason']}
+                    metadata={"reason": result["reason"]},
                 )
 
             # Create trade record
             trade_id = f"trade_{uuid.uuid4().hex[:8]}"
             session_id = f"session_{uuid.uuid4().hex[:8]}"
             now = datetime.now(timezone.utc).isoformat()
-            trade_price = result.get('trade_price', 2000.0)
+            trade_price = result.get("trade_price", 2000.0)
 
-            loguru_logger.info(f"Buy trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}")
+            loguru_logger.info(
+                f"Buy trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}"
+            )
 
             return {
                 "success": True,
@@ -190,7 +199,7 @@ Respond with ONLY the JSON object. No explanation text."""
                 "status": "COMPLETED",
                 "timestamp": now,
                 "account_id": account_id,
-                "remaining_balance": 100000.0 - (quantity * trade_price)
+                "remaining_balance": 100000.0 - (quantity * trade_price),
             }
 
         except TradingError:
@@ -201,7 +210,7 @@ Respond with ONLY the JSON object. No explanation text."""
                 f"Trade execution failed: {str(e)}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
-                recoverable=False
+                recoverable=False,
             )
 
     async def execute_sell_trade(
@@ -211,7 +220,7 @@ Respond with ONLY the JSON object. No explanation text."""
         quantity: int,
         order_type: str = "MARKET",
         price: Optional[float] = None,
-        strategy_rationale: str = "User initiated trade"
+        strategy_rationale: str = "User initiated trade",
     ) -> Dict[str, Any]:
         """
         Execute sell trade with Claude Agent SDK validation.
@@ -238,7 +247,7 @@ Respond with ONLY the JSON object. No explanation text."""
                     f"Invalid symbol: {symbol}",
                     category=ErrorCategory.VALIDATION,
                     severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
+                    recoverable=False,
                 )
 
             if quantity <= 0 or quantity > 10000:
@@ -246,7 +255,7 @@ Respond with ONLY the JSON object. No explanation text."""
                     f"Invalid quantity: {quantity}. Must be between 1 and 10000",
                     category=ErrorCategory.VALIDATION,
                     severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
+                    recoverable=False,
                 )
 
             # Use Claude Agent SDK to validate and execute SELL trade (create fresh client)
@@ -286,10 +295,15 @@ Respond with ONLY the JSON object. No explanation text."""
                 await self._ensure_client()
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
-                # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
 
-                loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(
+                    self._client, prompt, timeout=30.0
+                )
+
+                loguru_logger.debug(
+                    f"Claude SDK response received: {response_text[:200]}..."
+                )
 
                 # Parse Claude's response
                 result = self._parse_claude_response(response_text)
@@ -300,18 +314,22 @@ Respond with ONLY the JSON object. No explanation text."""
                     category=ErrorCategory.SYSTEM,
                     severity=ErrorSeverity.CRITICAL,
                     recoverable=True,
-                    metadata={"error": str(e), "error_type": "connection"}
+                    metadata={"error": str(e), "error_type": "connection"},
                 )
             except Exception as e:
                 error_str = str(e).lower()
-                if "auth" in error_str or "api key" in error_str or "invalid" in error_str:
+                if (
+                    "auth" in error_str
+                    or "api key" in error_str
+                    or "invalid" in error_str
+                ):
                     loguru_logger.error(f"Claude SDK authentication failed: {e}")
                     raise TradingError(
                         "Claude Agent SDK authentication failed. Run 'claude auth' to authenticate.",
                         category=ErrorCategory.SYSTEM,
                         severity=ErrorSeverity.CRITICAL,
                         recoverable=True,
-                        metadata={"error": str(e), "error_type": "authentication"}
+                        metadata={"error": str(e), "error_type": "authentication"},
                     )
                 else:
                     loguru_logger.error(f"Claude SDK query failed: {e}")
@@ -320,27 +338,29 @@ Respond with ONLY the JSON object. No explanation text."""
                         category=ErrorCategory.SYSTEM,
                         severity=ErrorSeverity.HIGH,
                         recoverable=True,
-                        metadata={"error": str(e), "error_type": "query_execution"}
+                        metadata={"error": str(e), "error_type": "query_execution"},
                     )
 
-            if result['decision'] != 'APPROVE':
+            if result["decision"] != "APPROVE":
                 raise TradingError(
                     f"Trade rejected: {result['reason']}",
                     category=ErrorCategory.TRADING,
                     severity=ErrorSeverity.MEDIUM,
                     recoverable=True,
-                    metadata={"reason": result['reason']}
+                    metadata={"reason": result["reason"]},
                 )
 
             # Create sell trade
             trade_id = f"trade_{uuid.uuid4().hex[:8]}"
             session_id = f"session_{uuid.uuid4().hex[:8]}"
             now = datetime.now(timezone.utc).isoformat()
-            trade_price = result.get('trade_price', 2000.0)
-            proceeds = result.get('proceeds', quantity * trade_price)
-            realized_pnl = result.get('realized_pnl', proceeds - (quantity * 2750.0))
+            trade_price = result.get("trade_price", 2000.0)
+            proceeds = result.get("proceeds", quantity * trade_price)
+            realized_pnl = result.get("realized_pnl", proceeds - (quantity * 2750.0))
 
-            loguru_logger.info(f"Sell trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}, P&L: ₹{realized_pnl}")
+            loguru_logger.info(
+                f"Sell trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}, P&L: ₹{realized_pnl}"
+            )
 
             return {
                 "success": True,
@@ -354,7 +374,7 @@ Respond with ONLY the JSON object. No explanation text."""
                 "account_id": account_id,
                 "realized_pnl": float(realized_pnl),
                 "proceeds": float(proceeds),
-                "new_balance": 100000.0 + proceeds
+                "new_balance": 100000.0 + proceeds,
             }
 
         except TradingError:
@@ -365,14 +385,10 @@ Respond with ONLY the JSON object. No explanation text."""
                 f"Trade execution failed: {str(e)}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
-                recoverable=False
+                recoverable=False,
             )
 
-    async def close_trade(
-        self,
-        account_id: str,
-        trade_id: str
-    ) -> Dict[str, Any]:
+    async def close_trade(self, account_id: str, trade_id: str) -> Dict[str, Any]:
         """
         Close an existing open trade using Claude Agent SDK.
 
@@ -414,10 +430,15 @@ Respond with ONLY the JSON object. No explanation text."""
                 await self._ensure_client()
                 # Use timeout helpers (MANDATORY per architecture pattern)
                 from src.core.sdk_helpers import query_with_timeout
-                # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
 
-                loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
+                # query_with_timeout handles both query() and receive_response() internally
+                response_text = await query_with_timeout(
+                    self._client, prompt, timeout=30.0
+                )
+
+                loguru_logger.debug(
+                    f"Claude SDK response received: {response_text[:200]}..."
+                )
 
                 # Parse Claude's response
                 result = self._parse_claude_response(response_text)
@@ -428,18 +449,22 @@ Respond with ONLY the JSON object. No explanation text."""
                     category=ErrorCategory.SYSTEM,
                     severity=ErrorSeverity.CRITICAL,
                     recoverable=True,
-                    metadata={"error": str(e), "error_type": "connection"}
+                    metadata={"error": str(e), "error_type": "connection"},
                 )
             except Exception as e:
                 error_str = str(e).lower()
-                if "auth" in error_str or "api key" in error_str or "invalid" in error_str:
+                if (
+                    "auth" in error_str
+                    or "api key" in error_str
+                    or "invalid" in error_str
+                ):
                     loguru_logger.error(f"Claude SDK authentication failed: {e}")
                     raise TradingError(
                         "Claude Agent SDK authentication failed. Run 'claude auth' to authenticate.",
                         category=ErrorCategory.SYSTEM,
                         severity=ErrorSeverity.CRITICAL,
                         recoverable=True,
-                        metadata={"error": str(e), "error_type": "authentication"}
+                        metadata={"error": str(e), "error_type": "authentication"},
                     )
                 else:
                     loguru_logger.error(f"Claude SDK query failed: {e}")
@@ -448,24 +473,26 @@ Respond with ONLY the JSON object. No explanation text."""
                         category=ErrorCategory.SYSTEM,
                         severity=ErrorSeverity.HIGH,
                         recoverable=True,
-                        metadata={"error": str(e), "error_type": "query_execution"}
+                        metadata={"error": str(e), "error_type": "query_execution"},
                     )
 
-            if result['decision'] != 'APPROVE':
+            if result["decision"] != "APPROVE":
                 raise TradingError(
                     f"Trade close rejected: {result['reason']}",
                     category=ErrorCategory.TRADING,
                     severity=ErrorSeverity.MEDIUM,
                     recoverable=True,
-                    metadata={"reason": result['reason']}
+                    metadata={"reason": result["reason"]},
                 )
 
             # Close trade
             now = datetime.now(timezone.utc).isoformat()
-            exit_price = result.get('exit_price', 2050.0)
-            realized_pnl = result.get('realized_pnl', (exit_price - 2750.0) * 10)
+            exit_price = result.get("exit_price", 2050.0)
+            realized_pnl = result.get("realized_pnl", (exit_price - 2750.0) * 10)
 
-            loguru_logger.info(f"Trade closed by Claude Agent: {trade_id}, exit_price={exit_price}, P&L: ₹{realized_pnl}")
+            loguru_logger.info(
+                f"Trade closed by Claude Agent: {trade_id}, exit_price={exit_price}, P&L: ₹{realized_pnl}"
+            )
 
             return {
                 "success": True,
@@ -473,7 +500,7 @@ Respond with ONLY the JSON object. No explanation text."""
                 "status": "CLOSED",
                 "exit_price": float(exit_price),
                 "realized_pnl": float(realized_pnl),
-                "timestamp": now
+                "timestamp": now,
             }
 
         except TradingError:
@@ -484,7 +511,7 @@ Respond with ONLY the JSON object. No explanation text."""
                 f"Trade close failed: {str(e)}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
-                recoverable=False
+                recoverable=False,
             )
 
     async def _ensure_client(self) -> None:
@@ -498,10 +525,14 @@ Respond with ONLY the JSON object. No explanation text."""
                     disallowed_tools=["WebSearch", "WebFetch", "Bash", "Read", "Write"],
                 )
                 # Use client manager with unique client type for paper trading
-                from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+                from src.core.claude_sdk_client_manager import \
+                    ClaudeSDKClientManager
+
                 client_manager = await ClaudeSDKClientManager.get_instance()
                 self._client = await client_manager.get_client("paper_trading", options)
-                loguru_logger.debug("Initialized Claude SDK client for trade execution via manager")
+                loguru_logger.debug(
+                    "Initialized Claude SDK client for trade execution via manager"
+                )
             except Exception as e:
                 loguru_logger.error(f"Failed to initialize Claude SDK client: {e}")
                 raise TradingError(
@@ -509,7 +540,7 @@ Respond with ONLY the JSON object. No explanation text."""
                     category=ErrorCategory.SYSTEM,
                     severity=ErrorSeverity.HIGH,
                     recoverable=True,
-                    metadata={"error": str(e)}
+                    metadata={"error": str(e)},
                 )
 
     def _get_trading_prompt(self) -> str:
@@ -565,7 +596,9 @@ Only REJECT if parameters are invalid (empty symbol, negative quantity, etc.).
             import re
 
             # Step 1: Try to extract JSON from markdown code blocks (```json...```)
-            markdown_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+            markdown_match = re.search(
+                r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL
+            )
             if markdown_match:
                 json_str = markdown_match.group(1)
                 result = json.loads(json_str)
@@ -574,15 +607,15 @@ Only REJECT if parameters are invalid (empty symbol, negative quantity, etc.).
             # Step 2: Find any JSON object (handles nested braces properly)
             # Use a more robust pattern that finds the first complete JSON object
             brace_count = 0
-            start_idx = response_text.find('{')
+            start_idx = response_text.find("{")
             if start_idx != -1:
                 for i, char in enumerate(response_text[start_idx:], start=start_idx):
-                    if char == '{':
+                    if char == "{":
                         brace_count += 1
-                    elif char == '}':
+                    elif char == "}":
                         brace_count -= 1
                         if brace_count == 0:
-                            json_str = response_text[start_idx:i+1]
+                            json_str = response_text[start_idx : i + 1]
                             result = json.loads(json_str)
                             return result
 
@@ -591,14 +624,16 @@ Only REJECT if parameters are invalid (empty symbol, negative quantity, etc.).
             return result
 
         except json.JSONDecodeError as e:
-            loguru_logger.warning(f"Failed to parse Claude response as JSON: {response_text[:200]}... Error: {e}")
+            loguru_logger.warning(
+                f"Failed to parse Claude response as JSON: {response_text[:200]}... Error: {e}"
+            )
             # Return default rejection if parsing fails
             return {
                 "decision": "REJECT",
                 "reason": "Failed to parse trading response from Claude",
                 "trade_price": None,
                 "proceeds": None,
-                "realized_pnl": None
+                "realized_pnl": None,
             }
         except Exception as e:
             loguru_logger.error(f"Unexpected error parsing Claude response: {e}")
@@ -607,7 +642,7 @@ Only REJECT if parameters are invalid (empty symbol, negative quantity, etc.).
                 "reason": f"Error parsing response: {str(e)}",
                 "trade_price": None,
                 "proceeds": None,
-                "realized_pnl": None
+                "realized_pnl": None,
             }
 
     async def cleanup(self) -> None:

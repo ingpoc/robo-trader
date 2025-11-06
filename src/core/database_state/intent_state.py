@@ -8,10 +8,12 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
 from loguru import logger
 
+from src.core.event_bus import Event, EventBus, EventType
 from src.core.state_models import Intent, Signal
-from src.core.event_bus import EventBus, Event, EventType
+
 from .base import DatabaseConnection
 
 
@@ -59,7 +61,7 @@ class IntentStateManager:
                         "status": row[7],
                         "approved_at": row[8],
                         "executed_at": row[9],
-                        "source": row[10]
+                        "source": row[10],
                     }
                     self._intents[row[0]] = Intent.from_dict(intent_data)
 
@@ -89,10 +91,7 @@ class IntentStateManager:
             return list(self._intents.values())
 
     async def create_intent(
-        self,
-        symbol: str,
-        signal: Optional[Signal] = None,
-        source: str = "system"
+        self, symbol: str, signal: Optional[Signal] = None, source: str = "system"
     ) -> Intent:
         """
         Create new trading intent.
@@ -107,14 +106,11 @@ class IntentStateManager:
         """
         async with self._lock:
             # Generate unique intent ID
-            intent_id = f"intent_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{symbol}"
-
-            intent = Intent(
-                id=intent_id,
-                symbol=symbol,
-                signal=signal,
-                source=source
+            intent_id = (
+                f"intent_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{symbol}"
             )
+
+            intent = Intent(id=intent_id, symbol=symbol, signal=signal, source=source)
 
             self._intents[intent_id] = intent
             await self._save_intent(intent)
@@ -151,24 +147,31 @@ class IntentStateManager:
         Args:
             intent: Intent to save
         """
-        async with self.db.connection.execute("""
+        async with self.db.connection.execute(
+            """
             INSERT OR REPLACE INTO intents
             (id, symbol, created_at, signal, risk_decision, order_commands,
              execution_reports, status, approved_at, executed_at, source)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            intent.id,
-            intent.symbol,
-            intent.created_at,
-            json.dumps(intent.signal.to_dict()) if intent.signal else None,
-            json.dumps(intent.risk_decision.to_dict()) if intent.risk_decision else None,
-            json.dumps([cmd.to_dict() for cmd in intent.order_commands]),
-            json.dumps([rep.to_dict() for rep in intent.execution_reports]),
-            intent.status,
-            intent.approved_at,
-            intent.executed_at,
-            intent.source
-        )):
+        """,
+            (
+                intent.id,
+                intent.symbol,
+                intent.created_at,
+                json.dumps(intent.signal.to_dict()) if intent.signal else None,
+                (
+                    json.dumps(intent.risk_decision.to_dict())
+                    if intent.risk_decision
+                    else None
+                ),
+                json.dumps([cmd.to_dict() for cmd in intent.order_commands]),
+                json.dumps([rep.to_dict() for rep in intent.execution_reports]),
+                intent.status,
+                intent.approved_at,
+                intent.executed_at,
+                intent.source,
+            ),
+        ):
             await self.db.connection.commit()
 
     async def _emit_intent_created(self, intent: Intent) -> None:
@@ -181,8 +184,8 @@ class IntentStateManager:
                     "intent_id": intent.id,
                     "symbol": intent.symbol,
                     "source": intent.source,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             )
             await self.event_bus.publish(event)
         except Exception as e:
@@ -207,8 +210,8 @@ class IntentStateManager:
                     "intent_id": intent.id,
                     "symbol": intent.symbol,
                     "status": intent.status,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             )
             await self.event_bus.publish(event)
         except Exception as e:

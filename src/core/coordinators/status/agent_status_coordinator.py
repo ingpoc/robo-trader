@@ -6,9 +6,10 @@ Extracted from StatusCoordinator for single responsibility.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict
 
 from src.config import Config
+
 from ..base_coordinator import BaseCoordinator
 
 
@@ -37,40 +38,48 @@ class AgentStatusCoordinator(BaseCoordinator):
         """Get status of all agents from database."""
         try:
             # Get AI agents store from container
-            if not hasattr(self, 'container') or not self.container:
-                self._log_warning("No container available, returning empty agents status")
+            if not hasattr(self, "container") or not self.container:
+                self._log_warning(
+                    "No container available, returning empty agents status"
+                )
                 return {}
 
             config_state = await self.container.get("configuration_state")
             if not config_state:
-                self._log_warning("No config_state available, returning empty agents status")
+                self._log_warning(
+                    "No config_state available, returning empty agents status"
+                )
                 return {}
 
             # Get AI agents from database
             ai_agents_data = await config_state.get_all_ai_agents_config()
 
-            if not ai_agents_data or 'ai_agents' not in ai_agents_data:
+            if not ai_agents_data or "ai_agents" not in ai_agents_data:
                 self._log_info("No AI agents found in database")
                 return {}
 
             agents = {}
             current_time = datetime.now(timezone.utc).isoformat()
 
-            for agent_name, agent_config in ai_agents_data['ai_agents'].items():
+            for agent_name, agent_config in ai_agents_data["ai_agents"].items():
                 # Determine status based on enabled flag
-                status = "active" if agent_config.get('enabled', False) else "idle"
+                status = "active" if agent_config.get("enabled", False) else "idle"
 
                 agents[agent_name] = {
-                    "name": agent_name.replace('_', ' ').title(),
-                    "active": agent_config.get('enabled', False),
+                    "name": agent_name.replace("_", " ").title(),
+                    "active": agent_config.get("enabled", False),
                     "status": status,
-                    "tools": agent_config.get('tools', []),
-                    "use_claude": agent_config.get('useClaude', True),
-                    "response_frequency": agent_config.get('responseFrequency', 30),
-                    "response_frequency_unit": agent_config.get('responseFrequencyUnit', 'minutes'),
-                    "scope": agent_config.get('scope', 'portfolio'),
-                    "max_tokens_per_request": agent_config.get('maxTokensPerRequest', 2000),
-                    "last_activity": current_time
+                    "tools": agent_config.get("tools", []),
+                    "use_claude": agent_config.get("useClaude", True),
+                    "response_frequency": agent_config.get("responseFrequency", 30),
+                    "response_frequency_unit": agent_config.get(
+                        "responseFrequencyUnit", "minutes"
+                    ),
+                    "scope": agent_config.get("scope", "portfolio"),
+                    "max_tokens_per_request": agent_config.get(
+                        "maxTokensPerRequest", 2000
+                    ),
+                    "last_activity": current_time,
                 }
 
             self._log_info(f"Retrieved {len(agents)} AI agents from database")
@@ -84,4 +93,3 @@ class AgentStatusCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         """Cleanup agent status coordinator resources."""
         self._log_info("AgentStatusCoordinator cleanup complete")
-

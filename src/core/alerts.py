@@ -4,18 +4,20 @@ Alert Management System
 Handles creation, storage, and retrieval of trading alerts.
 """
 
+import asyncio
 import json
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Optional
-from dataclasses import dataclass, asdict
-import asyncio
+from typing import Dict, List, Optional
+
 from loguru import logger
 
 
 @dataclass
 class Alert:
     """Trading alert data structure."""
+
     id: str
     type: str
     severity: str
@@ -52,7 +54,8 @@ class AlertManager:
         if self.alerts_file.exists():
             try:
                 import aiofiles
-                async with aiofiles.open(self.alerts_file, 'r') as f:
+
+                async with aiofiles.open(self.alerts_file, "r") as f:
                     content = await f.read()
                     data = json.loads(content)
                 self._alerts = {
@@ -69,8 +72,9 @@ class AlertManager:
         """Save alerts to file."""
         try:
             import aiofiles
+
             data = {k: v.to_dict() for k, v in self._alerts.items()}
-            async with aiofiles.open(self.alerts_file, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(self.alerts_file, "w", encoding="utf-8") as f:
                 await f.write(json.dumps(data, indent=2, ensure_ascii=False))
         except Exception as e:
             logger.error(f"Failed to save alerts: {e}")
@@ -83,13 +87,15 @@ class AlertManager:
         message: str,
         symbol: str,
         actionable: bool = False,
-        persistent: bool = False
+        persistent: bool = False,
     ) -> Alert:
         """Create a new alert."""
         await self._ensure_loaded()
         async with self._lock:
             timestamp = datetime.now(timezone.utc).isoformat()
-            alert_id = f"alert_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{symbol}"
+            alert_id = (
+                f"alert_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{symbol}"
+            )
 
             alert = Alert(
                 id=alert_id,
@@ -100,7 +106,7 @@ class AlertManager:
                 timestamp=timestamp,
                 symbol=symbol,
                 actionable=actionable,
-                persistent=persistent
+                persistent=persistent,
             )
 
             self._alerts[alert_id] = alert
@@ -113,7 +119,8 @@ class AlertManager:
         await self._ensure_loaded()
         async with self._lock:
             return [
-                alert for alert in self._alerts.values()
+                alert
+                for alert in self._alerts.values()
                 if not alert.acknowledged or alert.persistent
             ]
 
@@ -129,7 +136,9 @@ class AlertManager:
         async with self._lock:
             if alert_id in self._alerts:
                 self._alerts[alert_id].acknowledged = True
-                self._alerts[alert_id].acknowledged_at = datetime.now(timezone.utc).isoformat()
+                self._alerts[alert_id].acknowledged_at = datetime.now(
+                    timezone.utc
+                ).isoformat()
                 await self._save_alerts()
                 logger.info(f"Alert {alert_id} acknowledged")
                 return True
@@ -151,7 +160,8 @@ class AlertManager:
         await self._ensure_loaded()
         async with self._lock:
             to_remove = [
-                alert_id for alert_id, alert in self._alerts.items()
+                alert_id
+                for alert_id, alert in self._alerts.items()
                 if alert.acknowledged and not alert.persistent
             ]
             for alert_id in to_remove:

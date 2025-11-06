@@ -5,15 +5,16 @@ Structured error context for debugging and proper error handling.
 """
 
 import logging
-from enum import Enum
-from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class ErrorCategory(Enum):
     """Error categories for classification."""
+
     TRADING = "trading"
     MARKET_DATA = "market_data"
     API = "api"
@@ -26,6 +27,7 @@ class ErrorCategory(Enum):
 
 class ErrorSeverity(Enum):
     """Error severity levels."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -35,6 +37,7 @@ class ErrorSeverity(Enum):
 @dataclass
 class ErrorContext:
     """Structured error context for debugging."""
+
     category: ErrorCategory
     severity: ErrorSeverity
     code: str
@@ -56,7 +59,7 @@ class ErrorContext:
             "metadata": self.metadata,
             "recoverable": self.recoverable,
             "retry_after_seconds": self.retry_after_seconds,
-            "correlation_id": self.correlation_id
+            "correlation_id": self.correlation_id,
         }
 
 
@@ -77,7 +80,7 @@ class TradingError(Exception):
         recoverable: bool = True,
         retry_after_seconds: Optional[int] = None,
         correlation_id: Optional[str] = None,
-        **metadata
+        **metadata,
     ):
         # Call parent constructor with message to maintain Exception compatibility
         super().__init__(message)
@@ -94,7 +97,7 @@ class TradingError(Exception):
             metadata=metadata,
             recoverable=recoverable,
             retry_after_seconds=retry_after_seconds,
-            correlation_id=correlation_id
+            correlation_id=correlation_id,
         )
 
         # Skip logging during initialization to avoid LogRecord conflicts
@@ -114,54 +117,70 @@ class TradingError(Exception):
 
 # Specific error types
 
+
 class MarketDataError(TradingError):
     """Errors related to market data fetching and processing."""
 
     def __init__(self, message: str, symbol: Optional[str] = None, **kwargs):
         super().__init__(
-            message,
-            category=ErrorCategory.MARKET_DATA,
-            symbol=symbol,
-            **kwargs
+            message, category=ErrorCategory.MARKET_DATA, symbol=symbol, **kwargs
         )
 
 
 class APIError(TradingError):
     """Errors related to external API calls."""
 
-    def __init__(self, message: str, api_name: Optional[str] = None, status_code: Optional[int] = None, **kwargs):
+    def __init__(
+        self,
+        message: str,
+        api_name: Optional[str] = None,
+        status_code: Optional[int] = None,
+        **kwargs,
+    ):
         super().__init__(
             message,
             category=ErrorCategory.API,
             api_name=api_name,
             status_code=status_code,
-            **kwargs
+            **kwargs,
         )
 
 
 class ValidationError(TradingError):
     """Errors related to input validation."""
 
-    def __init__(self, message: str, field: Optional[str] = None, value: Optional[Any] = None, **kwargs):
+    def __init__(
+        self,
+        message: str,
+        field: Optional[str] = None,
+        value: Optional[Any] = None,
+        **kwargs,
+    ):
         super().__init__(
             message,
             category=ErrorCategory.VALIDATION,
             field=field,
             value=value,
-            **kwargs
+            **kwargs,
         )
 
 
 class ResourceError(TradingError):
     """Errors related to resource management (database, files, etc.)."""
 
-    def __init__(self, message: str, resource_type: Optional[str] = None, resource_id: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        message: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(
             message,
             category=ErrorCategory.RESOURCE,
             resource_type=resource_type,
             resource_id=resource_id,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -173,7 +192,7 @@ class ConfigurationError(TradingError):
             message,
             category=ErrorCategory.CONFIGURATION,
             config_key=config_key,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -186,7 +205,7 @@ class SDKError(TradingError):
         sdk_operation: Optional[str] = None,
         tool_name: Optional[str] = None,
         session_id: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             message,
@@ -194,7 +213,7 @@ class SDKError(TradingError):
             sdk_operation=sdk_operation,
             tool_name=tool_name,
             session_id=session_id,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -208,7 +227,7 @@ class SDKAUTHError(SDKError):
             auth_method=auth_method,
             severity=ErrorSeverity.CRITICAL,
             recoverable=False,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -221,7 +240,7 @@ class SDKToolError(SDKError):
         tool_name: str,
         tool_input: Optional[Dict[str, Any]] = None,
         execution_error: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             message,
@@ -229,7 +248,7 @@ class SDKToolError(SDKError):
             tool_name=tool_name,
             tool_input=tool_input,
             execution_error=execution_error,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -241,14 +260,14 @@ class SDKSessionError(SDKError):
         message: str,
         session_id: Optional[str] = None,
         session_type: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             message,
             sdk_operation="session_management",
             session_id=session_id,
             session_type=session_type,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -260,7 +279,7 @@ class SDKRateLimitError(SDKError):
         message: str,
         retry_after_seconds: int,
         limit_type: str = "requests_per_minute",
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             message,
@@ -269,24 +288,31 @@ class SDKRateLimitError(SDKError):
             limit_type=limit_type,
             severity=ErrorSeverity.MEDIUM,
             recoverable=True,
-            **kwargs
+            **kwargs,
         )
 
 
 class FeatureManagementError(TradingError):
     """Errors related to feature management operations."""
 
-    def __init__(self, message: str, feature_id: Optional[str] = None, operation: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        message: str,
+        feature_id: Optional[str] = None,
+        operation: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(
             message,
             category=ErrorCategory.SYSTEM,
             feature_id=feature_id,
             operation=operation,
-            **kwargs
+            **kwargs,
         )
 
 
 # Error recovery utilities
+
 
 def is_recoverable_error(error: Exception) -> bool:
     """Check if an error is recoverable."""
@@ -318,10 +344,11 @@ def get_error_severity(error: Exception) -> ErrorSeverity:
 
 # Error handling decorator
 
+
 def handle_errors(
     category: ErrorCategory = ErrorCategory.SYSTEM,
     severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-    recoverable: bool = True
+    recoverable: bool = True,
 ):
     """
     Decorator to handle errors and convert them to TradingError.
@@ -332,6 +359,7 @@ def handle_errors(
             # Function that might raise exceptions
             pass
     """
+
     def decorator(func):
         async def wrapper(*args, **kwargs):
             try:
@@ -348,9 +376,11 @@ def handle_errors(
                     recoverable=recoverable,
                     function_name=func.__name__,
                     args_count=len(args),
-                    kwargs_keys=list(kwargs.keys())
+                    kwargs_keys=list(kwargs.keys()),
                 ) from e
+
         return wrapper
+
     return decorator
 
 
@@ -370,7 +400,7 @@ class ErrorHandler:
                 severity=ErrorSeverity.MEDIUM,
                 code="VALIDATION_ERROR",
                 message=str(error),
-                recoverable=True
+                recoverable=True,
             )
         elif isinstance(error, ConnectionError) or isinstance(error, TimeoutError):
             return ErrorContext(
@@ -379,7 +409,7 @@ class ErrorHandler:
                 code="CONNECTION_ERROR",
                 message=str(error),
                 recoverable=True,
-                retry_after_seconds=30
+                retry_after_seconds=30,
             )
         elif isinstance(error, PermissionError):
             return ErrorContext(
@@ -387,7 +417,7 @@ class ErrorHandler:
                 severity=ErrorSeverity.HIGH,
                 code="PERMISSION_ERROR",
                 message=str(error),
-                recoverable=False
+                recoverable=False,
             )
         else:
             return ErrorContext(
@@ -395,7 +425,7 @@ class ErrorHandler:
                 severity=ErrorSeverity.HIGH,
                 code="SYSTEM_ERROR",
                 message=str(error),
-                recoverable=False
+                recoverable=False,
             )
 
     @staticmethod
@@ -408,5 +438,5 @@ class ErrorHandler:
             "severity": context.severity.value,
             "code": context.code,
             "recoverable": context.recoverable,
-            "retry_after_seconds": context.retry_after_seconds
+            "retry_after_seconds": context.retry_after_seconds,
         }

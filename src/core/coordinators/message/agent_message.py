@@ -4,11 +4,11 @@ Agent Message Types for Multi-Agent Framework
 Defines message structure and types for inter-agent communication.
 """
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
 from enum import Enum
-import uuid
+from typing import Any, Dict, Optional
 
 
 class MessageType(Enum):
@@ -60,7 +60,7 @@ class AgentMessage:
         message_type: MessageType,
         content: Dict[str, Any],
         correlation_id: Optional[str] = None,
-        priority: int = 1
+        priority: int = 1,
     ):
         self.message_id = str(uuid.uuid4())
         self.sender_id = sender_id
@@ -81,7 +81,7 @@ class AgentMessage:
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
             "correlation_id": self.correlation_id,
-            "priority": self.priority
+            "priority": self.priority,
         }
 
     @classmethod
@@ -93,7 +93,7 @@ class AgentMessage:
             message_type=MessageType(data["message_type"]),
             content=data["content"],
             correlation_id=data.get("correlation_id"),
-            priority=data.get("priority", 1)
+            priority=data.get("priority", 1),
         )
         message.message_id = data["message_id"]
         message.timestamp = datetime.fromisoformat(data["timestamp"])

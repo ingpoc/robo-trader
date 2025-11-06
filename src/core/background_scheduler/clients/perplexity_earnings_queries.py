@@ -4,7 +4,8 @@ Earnings and Fundamentals Query Module for Perplexity API
 Handles earnings announcements, financial fundamentals, and deep analysis queries.
 """
 
-from typing import List, Optional, Any
+from typing import Any, List, Optional
+
 from loguru import logger
 
 from .perplexity_prompt_manager import PromptManager
@@ -28,9 +29,7 @@ class EarningsQueries:
         self.prompt_manager = prompt_manager
 
     async def fetch_earnings_fundamentals(
-        self,
-        symbols: List[str],
-        max_tokens: int = 4000
+        self, symbols: List[str], max_tokens: int = 4000
     ) -> Optional[str]:
         """Fetch comprehensive earnings and financial fundamentals data.
 
@@ -48,7 +47,7 @@ class EarningsQueries:
 
         symbols_str = ", ".join(symbols)
         symbols_list = "\n".join([f"- {symbol}" for symbol in symbols])
-        
+
         # Explicitly request structured JSON format matching our schema
         query = f"""You are a financial data analyst with access to comprehensive financial databases. 
 Provide earnings and financial fundamentals data for ALL {len(symbols)} stocks listed below.
@@ -154,11 +153,11 @@ CRITICAL INSTRUCTIONS:
         response = await self.api_caller(
             query=query,
             search_recency="month",  # Increased from "week" to get more comprehensive data
-            max_search_results=20,   # Increased from 15 to search more sources
+            max_search_results=20,  # Increased from 15 to search more sources
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
-        
+
         # Log the response received
         if response:
             logger.info("=" * 80)
@@ -169,13 +168,11 @@ CRITICAL INSTRUCTIONS:
             logger.info("=" * 80)
         else:
             logger.warning("PERPLEXITY RESPONSE (EARNINGS): Empty response received")
-        
+
         return response
 
     async def fetch_news_and_earnings(
-        self,
-        symbols: List[str],
-        max_tokens: int = 4000
+        self, symbols: List[str], max_tokens: int = 4000
     ) -> Optional[str]:
         """Fetch both news and earnings data in a single query.
 
@@ -207,13 +204,11 @@ Format as JSON with 'earnings' and 'news' keys."""
             search_recency="week",
             max_search_results=20,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )
 
     async def fetch_deep_fundamentals(
-        self,
-        symbols: List[str],
-        max_tokens: int = 6000
+        self, symbols: List[str], max_tokens: int = 6000
     ) -> Optional[str]:
         """Fetch deep fundamental analysis for comprehensive evaluation.
 
@@ -247,5 +242,5 @@ ADDITIONAL ANALYSIS:
             search_recency="month",
             max_search_results=25,
             max_tokens=max_tokens,
-            response_format="json"
+            response_format="json",
         )

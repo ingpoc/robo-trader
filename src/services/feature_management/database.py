@@ -7,22 +7,22 @@ using SQLite with async operations.
 
 import asyncio
 import json
-import aiosqlite
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
+import aiosqlite
 from loguru import logger
 
-from .models import (
-    FeatureConfig, FeatureState, FeatureMetadata, FeatureDependency,
-    FeatureToggleRequest, BulkFeatureUpdate, DependencyResolutionResult
-)
+from .models import (DependencyResolutionResult,
+                     FeatureConfig, FeatureDependency, FeatureMetadata,
+                     FeatureState)
 
 
 class FeatureDatabase:
     """
     Database layer for feature management persistence.
-    
+
     Provides async database operations for all feature-related data
     with proper error handling and connection management.
     """
@@ -137,39 +137,48 @@ class FeatureDatabase:
         """Create a new feature configuration."""
         try:
             now = datetime.now(timezone.utc).isoformat()
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO feature_configs (
                     feature_id, metadata, dependencies, default_enabled, auto_start,
                     restart_on_failure, max_retries, timeout_seconds,
                     resource_requirements, environment_variables, configuration_schema,
                     health_check_url, metrics_enabled, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                config.feature_id,
-                json.dumps(config.metadata.to_dict()),
-                json.dumps([dep.to_dict() for dep in config.dependencies]),
-                config.default_enabled,
-                config.auto_start,
-                config.restart_on_failure,
-                config.max_retries,
-                config.timeout_seconds,
-                json.dumps(config.resource_requirements),
-                json.dumps(config.environment_variables),
-                json.dumps(config.configuration_schema) if config.configuration_schema else None,
-                config.health_check_url,
-                config.metrics_enabled,
-                now,
-                now
-            ))
+            """,
+                (
+                    config.feature_id,
+                    json.dumps(config.metadata.to_dict()),
+                    json.dumps([dep.to_dict() for dep in config.dependencies]),
+                    config.default_enabled,
+                    config.auto_start,
+                    config.restart_on_failure,
+                    config.max_retries,
+                    config.timeout_seconds,
+                    json.dumps(config.resource_requirements),
+                    json.dumps(config.environment_variables),
+                    (
+                        json.dumps(config.configuration_schema)
+                        if config.configuration_schema
+                        else None
+                    ),
+                    config.health_check_url,
+                    config.metrics_enabled,
+                    now,
+                    now,
+                ),
+            )
             await self._db_connection.commit()
-            
+
             # Create initial state
-            await self.create_feature_state(FeatureState(
-                feature_id=config.feature_id,
-                status=config.default_enabled and "enabled" or "disabled",
-                enabled=config.default_enabled
-            ))
-            
+            await self.create_feature_state(
+                FeatureState(
+                    feature_id=config.feature_id,
+                    status=config.default_enabled and "enabled" or "disabled",
+                    enabled=config.default_enabled,
+                )
+            )
+
             logger.info(f"Created feature config: {config.feature_id}")
             return True
         except Exception as e:
@@ -179,15 +188,18 @@ class FeatureDatabase:
     async def get_feature_config(self, feature_id: str) -> Optional[FeatureConfig]:
         """Get a feature configuration by ID."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT feature_id, metadata, dependencies, default_enabled, auto_start,
                        restart_on_failure, max_retries, timeout_seconds,
                        resource_requirements, environment_variables, configuration_schema,
                        health_check_url, metrics_enabled, created_at, updated_at
                 FROM feature_configs
                 WHERE feature_id = ?
-            """, (feature_id,))
-            
+            """,
+                (feature_id,),
+            )
+
             row = await cursor.fetchone()
             if row:
                 return self._row_to_feature_config(row)
@@ -196,15 +208,17 @@ class FeatureDatabase:
     async def get_all_feature_configs(self) -> List[FeatureConfig]:
         """Get all feature configurations."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT feature_id, metadata, dependencies, default_enabled, auto_start,
                        restart_on_failure, max_retries, timeout_seconds,
                        resource_requirements, environment_variables, configuration_schema,
                        health_check_url, metrics_enabled, created_at, updated_at
                 FROM feature_configs
                 ORDER BY feature_id
-            """)
-            
+            """
+            )
+
             configs = []
             async for row in cursor:
                 configs.append(self._row_to_feature_config(row))
@@ -214,31 +228,38 @@ class FeatureDatabase:
         """Update an existing feature configuration."""
         try:
             now = datetime.now(timezone.utc).isoformat()
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 UPDATE feature_configs SET
                     metadata = ?, dependencies = ?, default_enabled = ?, auto_start = ?,
                     restart_on_failure = ?, max_retries = ?, timeout_seconds = ?,
                     resource_requirements = ?, environment_variables = ?, configuration_schema = ?,
                     health_check_url = ?, metrics_enabled = ?, updated_at = ?
                 WHERE feature_id = ?
-            """, (
-                json.dumps(config.metadata.to_dict()),
-                json.dumps([dep.to_dict() for dep in config.dependencies]),
-                config.default_enabled,
-                config.auto_start,
-                config.restart_on_failure,
-                config.max_retries,
-                config.timeout_seconds,
-                json.dumps(config.resource_requirements),
-                json.dumps(config.environment_variables),
-                json.dumps(config.configuration_schema) if config.configuration_schema else None,
-                config.health_check_url,
-                config.metrics_enabled,
-                now,
-                config.feature_id
-            ))
+            """,
+                (
+                    json.dumps(config.metadata.to_dict()),
+                    json.dumps([dep.to_dict() for dep in config.dependencies]),
+                    config.default_enabled,
+                    config.auto_start,
+                    config.restart_on_failure,
+                    config.max_retries,
+                    config.timeout_seconds,
+                    json.dumps(config.resource_requirements),
+                    json.dumps(config.environment_variables),
+                    (
+                        json.dumps(config.configuration_schema)
+                        if config.configuration_schema
+                        else None
+                    ),
+                    config.health_check_url,
+                    config.metrics_enabled,
+                    now,
+                    config.feature_id,
+                ),
+            )
             await self._db_connection.commit()
-            
+
             logger.info(f"Updated feature config: {config.feature_id}")
             return True
         except Exception as e:
@@ -248,11 +269,14 @@ class FeatureDatabase:
     async def delete_feature_config(self, feature_id: str) -> bool:
         """Delete a feature configuration."""
         try:
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 DELETE FROM feature_configs WHERE feature_id = ?
-            """, (feature_id,))
+            """,
+                (feature_id,),
+            )
             await self._db_connection.commit()
-            
+
             logger.info(f"Deleted feature config: {feature_id}")
             return True
         except Exception as e:
@@ -264,32 +288,35 @@ class FeatureDatabase:
     async def create_feature_state(self, state: FeatureState) -> bool:
         """Create a new feature state."""
         try:
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO feature_states (
                     feature_id, status, enabled, last_enabled_at, last_disabled_at,
                     error_count, last_error, last_error_at, restart_count,
                     health_status, last_health_check, metrics, configuration,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                state.feature_id,
-                state.status.value,
-                state.enabled,
-                state.last_enabled_at,
-                state.last_disabled_at,
-                state.error_count,
-                state.last_error,
-                state.last_error_at,
-                state.restart_count,
-                state.health_status,
-                state.last_health_check,
-                json.dumps(state.metrics),
-                json.dumps(state.configuration),
-                state.created_at,
-                state.updated_at
-            ))
+            """,
+                (
+                    state.feature_id,
+                    state.status.value,
+                    state.enabled,
+                    state.last_enabled_at,
+                    state.last_disabled_at,
+                    state.error_count,
+                    state.last_error,
+                    state.last_error_at,
+                    state.restart_count,
+                    state.health_status,
+                    state.last_health_check,
+                    json.dumps(state.metrics),
+                    json.dumps(state.configuration),
+                    state.created_at,
+                    state.updated_at,
+                ),
+            )
             await self._db_connection.commit()
-            
+
             logger.debug(f"Created feature state: {state.feature_id}")
             return True
         except Exception as e:
@@ -299,15 +326,18 @@ class FeatureDatabase:
     async def get_feature_state(self, feature_id: str) -> Optional[FeatureState]:
         """Get a feature state by ID."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT feature_id, status, enabled, last_enabled_at, last_disabled_at,
                        error_count, last_error, last_error_at, restart_count,
                        health_status, last_health_check, metrics, configuration,
                        created_at, updated_at
                 FROM feature_states
                 WHERE feature_id = ?
-            """, (feature_id,))
-            
+            """,
+                (feature_id,),
+            )
+
             row = await cursor.fetchone()
             if row:
                 return self._row_to_feature_state(row)
@@ -316,15 +346,17 @@ class FeatureDatabase:
     async def get_all_feature_states(self) -> List[FeatureState]:
         """Get all feature states."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT feature_id, status, enabled, last_enabled_at, last_disabled_at,
                        error_count, last_error, last_error_at, restart_count,
                        health_status, last_health_check, metrics, configuration,
                        created_at, updated_at
                 FROM feature_states
                 ORDER BY feature_id
-            """)
-            
+            """
+            )
+
             states = []
             async for row in cursor:
                 states.append(self._row_to_feature_state(row))
@@ -333,31 +365,34 @@ class FeatureDatabase:
     async def update_feature_state(self, state: FeatureState) -> bool:
         """Update an existing feature state."""
         try:
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 UPDATE feature_states SET
                     status = ?, enabled = ?, last_enabled_at = ?, last_disabled_at = ?,
                     error_count = ?, last_error = ?, last_error_at = ?, restart_count = ?,
                     health_status = ?, last_health_check = ?, metrics = ?, configuration = ?,
                     updated_at = ?
                 WHERE feature_id = ?
-            """, (
-                state.status.value,
-                state.enabled,
-                state.last_enabled_at,
-                state.last_disabled_at,
-                state.error_count,
-                state.last_error,
-                state.last_error_at,
-                state.restart_count,
-                state.health_status,
-                state.last_health_check,
-                json.dumps(state.metrics),
-                json.dumps(state.configuration),
-                state.updated_at,
-                state.feature_id
-            ))
+            """,
+                (
+                    state.status.value,
+                    state.enabled,
+                    state.last_enabled_at,
+                    state.last_disabled_at,
+                    state.error_count,
+                    state.last_error,
+                    state.last_error_at,
+                    state.restart_count,
+                    state.health_status,
+                    state.last_health_check,
+                    json.dumps(state.metrics),
+                    json.dumps(state.configuration),
+                    state.updated_at,
+                    state.feature_id,
+                ),
+            )
             await self._db_connection.commit()
-            
+
             logger.debug(f"Updated feature state: {state.feature_id}")
             return True
         except Exception as e:
@@ -374,27 +409,30 @@ class FeatureDatabase:
         new_state: Optional[Dict[str, Any]] = None,
         reason: Optional[str] = None,
         requested_by: str = "system",
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
     ) -> bool:
         """Log a feature action to the audit log."""
         try:
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO feature_audit_log (
                     feature_id, action, old_state, new_state, reason,
                     requested_by, timestamp, correlation_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                feature_id,
-                action,
-                json.dumps(old_state) if old_state else None,
-                json.dumps(new_state) if new_state else None,
-                reason,
-                requested_by,
-                datetime.now(timezone.utc).isoformat(),
-                correlation_id
-            ))
+            """,
+                (
+                    feature_id,
+                    action,
+                    json.dumps(old_state) if old_state else None,
+                    json.dumps(new_state) if new_state else None,
+                    reason,
+                    requested_by,
+                    datetime.now(timezone.utc).isoformat(),
+                    correlation_id,
+                ),
+            )
             await self._db_connection.commit()
-            
+
             logger.debug(f"Logged feature action: {feature_id} - {action}")
             return True
         except Exception as e:
@@ -402,10 +440,7 @@ class FeatureDatabase:
             return False
 
     async def get_feature_audit_log(
-        self,
-        feature_id: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0
+        self, feature_id: Optional[str] = None, limit: int = 100, offset: int = 0
     ) -> List[Dict[str, Any]]:
         """Get audit log entries."""
         query = """
@@ -414,70 +449,72 @@ class FeatureDatabase:
             FROM feature_audit_log
         """
         params = []
-        
+
         if feature_id:
             query += " WHERE feature_id = ?"
             params.append(feature_id)
-        
+
         query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        
+
         async with self._lock:
             cursor = await self._db_connection.execute(query, params)
-            
+
             entries = []
             async for row in cursor:
-                entries.append({
-                    "id": row[0],
-                    "feature_id": row[1],
-                    "action": row[2],
-                    "old_state": json.loads(row[3]) if row[3] else None,
-                    "new_state": json.loads(row[4]) if row[4] else None,
-                    "reason": row[5],
-                    "requested_by": row[6],
-                    "timestamp": row[7],
-                    "correlation_id": row[8]
-                })
+                entries.append(
+                    {
+                        "id": row[0],
+                        "feature_id": row[1],
+                        "action": row[2],
+                        "old_state": json.loads(row[3]) if row[3] else None,
+                        "new_state": json.loads(row[4]) if row[4] else None,
+                        "reason": row[5],
+                        "requested_by": row[6],
+                        "timestamp": row[7],
+                        "correlation_id": row[8],
+                    }
+                )
             return entries
 
     # Dependency Cache Operations
 
     async def cache_dependency_resolution(
-        self,
-        cache_key: str,
-        result: DependencyResolutionResult,
-        ttl_seconds: int = 300
+        self, cache_key: str, result: DependencyResolutionResult, ttl_seconds: int = 300
     ) -> bool:
         """Cache a dependency resolution result."""
         try:
             now = datetime.now(timezone.utc)
             expires_at = (now + timedelta(seconds=ttl_seconds)).isoformat()
-            
-            await self._db_connection.execute("""
+
+            await self._db_connection.execute(
+                """
                 INSERT OR REPLACE INTO dependency_cache (
                     cache_key, resolution_result, created_at, expires_at
                 ) VALUES (?, ?, ?, ?)
-            """, (
-                cache_key,
-                json.dumps(result.to_dict()),
-                now.isoformat(),
-                expires_at
-            ))
+            """,
+                (cache_key, json.dumps(result.to_dict()), now.isoformat(), expires_at),
+            )
             await self._db_connection.commit()
-            
+
             return True
         except Exception as e:
             logger.error(f"Failed to cache dependency resolution: {e}")
             return False
 
-    async def get_cached_dependency_resolution(self, cache_key: str) -> Optional[DependencyResolutionResult]:
+    async def get_cached_dependency_resolution(
+        self, cache_key: str
+    ) -> Optional[DependencyResolutionResult]:
         """Get a cached dependency resolution result."""
         async with self._lock:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 SELECT resolution_result FROM dependency_cache
                 WHERE cache_key = ? AND expires_at > ?
-            """, (cache_key, datetime.now(timezone.utc).isoformat()))
-            
+            """,
+                (cache_key, datetime.now(timezone.utc).isoformat()),
+            )
+
             row = await cursor.fetchone()
             if row:
                 return DependencyResolutionResult.from_dict(json.loads(row[0]))
@@ -491,34 +528,34 @@ class FeatureDatabase:
         metric_name: str,
         metric_value: float,
         metric_unit: Optional[str] = None,
-        tags: Optional[Dict[str, str]] = None
+        tags: Optional[Dict[str, str]] = None,
     ) -> bool:
         """Record a feature metric."""
         try:
-            await self._db_connection.execute("""
+            await self._db_connection.execute(
+                """
                 INSERT INTO feature_metrics (
                     feature_id, metric_name, metric_value, metric_unit, timestamp, tags
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                feature_id,
-                metric_name,
-                metric_value,
-                metric_unit,
-                datetime.now(timezone.utc).isoformat(),
-                json.dumps(tags or {})
-            ))
+            """,
+                (
+                    feature_id,
+                    metric_name,
+                    metric_value,
+                    metric_unit,
+                    datetime.now(timezone.utc).isoformat(),
+                    json.dumps(tags or {}),
+                ),
+            )
             await self._db_connection.commit()
-            
+
             return True
         except Exception as e:
             logger.error(f"Failed to record feature metric: {e}")
             return False
 
     async def get_feature_metrics(
-        self,
-        feature_id: str,
-        metric_name: Optional[str] = None,
-        limit: int = 100
+        self, feature_id: str, metric_name: Optional[str] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Get feature metrics."""
         query = """
@@ -527,26 +564,28 @@ class FeatureDatabase:
             WHERE feature_id = ?
         """
         params = [feature_id]
-        
+
         if metric_name:
             query += " AND metric_name = ?"
             params.append(metric_name)
-        
+
         query += " ORDER BY timestamp DESC LIMIT ?"
         params.append(limit)
-        
+
         async with self._lock:
             cursor = await self._db_connection.execute(query, params)
-            
+
             metrics = []
             async for row in cursor:
-                metrics.append({
-                    "metric_name": row[0],
-                    "metric_value": row[1],
-                    "metric_unit": row[2],
-                    "timestamp": row[3],
-                    "tags": json.loads(row[4])
-                })
+                metrics.append(
+                    {
+                        "metric_name": row[0],
+                        "metric_value": row[1],
+                        "metric_unit": row[2],
+                        "timestamp": row[3],
+                        "tags": json.loads(row[4]),
+                    }
+                )
             return metrics
 
     # Utility Methods
@@ -556,7 +595,9 @@ class FeatureDatabase:
         return FeatureConfig(
             feature_id=row[0],
             metadata=FeatureMetadata.from_dict(json.loads(row[1])),
-            dependencies=[FeatureDependency.from_dict(dep) for dep in json.loads(row[2])],
+            dependencies=[
+                FeatureDependency.from_dict(dep) for dep in json.loads(row[2])
+            ],
             default_enabled=bool(row[3]),
             auto_start=bool(row[4]),
             restart_on_failure=bool(row[5]),
@@ -566,7 +607,7 @@ class FeatureDatabase:
             environment_variables=json.loads(row[9]),
             configuration_schema=json.loads(row[10]) if row[10] else None,
             health_check_url=row[11],
-            metrics_enabled=bool(row[12])
+            metrics_enabled=bool(row[12]),
         )
 
     def _row_to_feature_state(self, row) -> FeatureState:
@@ -586,7 +627,7 @@ class FeatureDatabase:
             metrics=json.loads(row[11]),
             configuration=json.loads(row[12]),
             created_at=row[13],
-            updated_at=row[14]
+            updated_at=row[14],
         )
 
     async def close(self) -> None:
@@ -599,16 +640,19 @@ class FeatureDatabase:
     async def cleanup_expired_cache(self) -> int:
         """Clean up expired dependency cache entries."""
         try:
-            cursor = await self._db_connection.execute("""
+            cursor = await self._db_connection.execute(
+                """
                 DELETE FROM dependency_cache WHERE expires_at <= ?
-            """, (datetime.now(timezone.utc).isoformat(),))
-            
+            """,
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+
             deleted_count = cursor.rowcount
             await self._db_connection.commit()
-            
+
             if deleted_count > 0:
                 logger.info(f"Cleaned up {deleted_count} expired cache entries")
-            
+
             return deleted_count
         except Exception as e:
             logger.error(f"Failed to cleanup expired cache: {e}")

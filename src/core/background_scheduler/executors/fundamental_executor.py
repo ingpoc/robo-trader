@@ -5,19 +5,19 @@ Orchestrates data flow: Perplexity API → Processor → Store
 Handles task execution, error management, and event emission.
 """
 
-from typing import Dict, List, Any, Optional
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 import aiosqlite
 from loguru import logger
 
+from ...event_bus import Event, EventBus, EventType
 from ..clients.perplexity_client import PerplexityClient
 from ..parsers.earnings import parse_comprehensive_earnings
-from ..parsers.news import parse_categorized_news
 from ..parsers.fundamental_analysis import parse_deep_fundamentals
+from ..parsers.news import parse_categorized_news
 from ..stores.fundamental_store import FundamentalStore
-from ...event_bus import EventBus, Event, EventType
 
 
 class FundamentalExecutor:
@@ -28,7 +28,7 @@ class FundamentalExecutor:
         perplexity_client: PerplexityClient,
         db_connection: aiosqlite.Connection,
         event_bus: EventBus,
-        execution_tracker=None
+        execution_tracker=None,
     ):
         """Initialize executor with dependencies.
 
@@ -56,13 +56,16 @@ class FundamentalExecutor:
             Status dict with success/failure information
         """
         import time
+
         start_time = time.time()
 
         try:
             logger.info(f"Executing earnings fundamentals for {symbols}")
 
-            response = await self.perplexity_client.earnings.fetch_earnings_fundamentals(
-                symbols
+            response = (
+                await self.perplexity_client.earnings.fetch_earnings_fundamentals(
+                    symbols
+                )
             )
 
             if not response:
@@ -77,7 +80,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Empty API response",
-                        execution_time=time.time() - start_time
+                        execution_time=time.time() - start_time,
                     )
                 return {"status": "failed", "error": "Empty API response"}
 
@@ -88,22 +91,39 @@ class FundamentalExecutor:
             if isinstance(response, str):
                 try:
                     import json
+
                     parsed_test = json.loads(response)
-                    logger.info(f"Parsed JSON keys: {list(parsed_test.keys()) if isinstance(parsed_test, dict) else 'not a dict'}")
+                    logger.info(
+                        f"Parsed JSON keys: {list(parsed_test.keys()) if isinstance(parsed_test, dict) else 'not a dict'}"
+                    )
                     if isinstance(parsed_test, dict) and "stocks" in parsed_test:
-                        stocks_keys = list(parsed_test["stocks"].keys()) if isinstance(parsed_test["stocks"], dict) else "not a dict"
+                        stocks_keys = (
+                            list(parsed_test["stocks"].keys())
+                            if isinstance(parsed_test["stocks"], dict)
+                            else "not a dict"
+                        )
                         logger.info(f"Stocks keys: {stocks_keys}")
                         # Show structure of first stock
-                        if isinstance(parsed_test["stocks"], dict) and len(parsed_test["stocks"]) > 0:
+                        if (
+                            isinstance(parsed_test["stocks"], dict)
+                            and len(parsed_test["stocks"]) > 0
+                        ):
                             first_symbol = list(parsed_test["stocks"].keys())[0]
                             first_stock = parsed_test["stocks"][first_symbol]
-                            logger.info(f"First stock ({first_symbol}) keys: {list(first_stock.keys()) if isinstance(first_stock, dict) else 'not a dict'}")
-                            if isinstance(first_stock, dict) and "earnings" in first_stock:
-                                logger.info(f"First stock earnings keys: {list(first_stock['earnings'].keys()) if isinstance(first_stock['earnings'], dict) else 'not a dict'}")
+                            logger.info(
+                                f"First stock ({first_symbol}) keys: {list(first_stock.keys()) if isinstance(first_stock, dict) else 'not a dict'}"
+                            )
+                            if (
+                                isinstance(first_stock, dict)
+                                and "earnings" in first_stock
+                            ):
+                                logger.info(
+                                    f"First stock earnings keys: {list(first_stock['earnings'].keys()) if isinstance(first_stock['earnings'], dict) else 'not a dict'}"
+                                )
                 except Exception as e:
                     logger.warning(f"Could not parse response for logging: {e}")
             logger.info("=" * 80)
-            
+
             parsed_data = parse_comprehensive_earnings(response)
 
             if not parsed_data:
@@ -118,7 +138,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Parse failure",
-                        execution_time=time.time() - start_time
+                        execution_time=time.time() - start_time,
                     )
                 return {"status": "failed", "error": "Parse failure"}
 
@@ -136,7 +156,7 @@ class FundamentalExecutor:
                         user=metadata.get("user", "system"),
                         symbols=symbols,
                         status="completed",
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
                 return {"status": "success", "symbols": symbols}
             else:
@@ -150,7 +170,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Storage failure",
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
                 return {"status": "failed", "error": "Storage failure"}
 
@@ -167,7 +187,7 @@ class FundamentalExecutor:
                     symbols=symbols,
                     status="failed",
                     error_message=str(e),
-                    execution_time=execution_time
+                    execution_time=execution_time,
                 )
             return {"status": "failed", "error": str(e)}
 
@@ -184,6 +204,7 @@ class FundamentalExecutor:
             Status dict with success/failure information
         """
         import time
+
         start_time = time.time()
 
         try:
@@ -203,7 +224,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Empty API response",
-                        execution_time=time.time() - start_time
+                        execution_time=time.time() - start_time,
                     )
                 return {"status": "failed", "error": "Empty API response"}
 
@@ -221,7 +242,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Parse failure",
-                        execution_time=time.time() - start_time
+                        execution_time=time.time() - start_time,
                     )
                 return {"status": "failed", "error": "Parse failure"}
 
@@ -254,9 +275,13 @@ class FundamentalExecutor:
                         user=metadata.get("user", "system"),
                         symbols=symbols,
                         status="completed",
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
-                return {"status": "success", "symbols": symbols, "items": len(news_items)}
+                return {
+                    "status": "success",
+                    "symbols": symbols,
+                    "items": len(news_items),
+                }
             else:
                 # Record failed execution
                 if self.execution_tracker:
@@ -268,7 +293,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Storage failure",
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
                 return {"status": "failed", "error": "Storage failure"}
 
@@ -285,7 +310,7 @@ class FundamentalExecutor:
                     symbols=symbols,
                     status="failed",
                     error_message=str(e),
-                    execution_time=execution_time
+                    execution_time=execution_time,
                 )
             return {"status": "failed", "error": str(e)}
 
@@ -302,12 +327,15 @@ class FundamentalExecutor:
             Status dict with success/failure information
         """
         import time
+
         start_time = time.time()
 
         try:
             logger.info(f"Executing deep fundamental analysis for {symbols}")
 
-            response = await self.perplexity_client.earnings.fetch_deep_fundamentals(symbols)
+            response = await self.perplexity_client.earnings.fetch_deep_fundamentals(
+                symbols
+            )
 
             if not response:
                 logger.warning("Empty response from Perplexity API")
@@ -321,7 +349,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Empty API response",
-                        execution_time=time.time() - start_time
+                        execution_time=time.time() - start_time,
                     )
                 return {"status": "failed", "error": "Empty API response"}
 
@@ -339,7 +367,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Parse failure",
-                        execution_time=time.time() - start_time
+                        execution_time=time.time() - start_time,
                     )
                 return {"status": "failed", "error": "Parse failure"}
 
@@ -370,7 +398,7 @@ class FundamentalExecutor:
                         user=metadata.get("user", "system"),
                         symbols=symbols,
                         status="completed",
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
                 return {"status": "success", "symbols": symbols}
             else:
@@ -384,7 +412,7 @@ class FundamentalExecutor:
                         symbols=symbols,
                         status="failed",
                         error_message="Storage failure",
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
                 return {"status": "failed", "error": "Storage failure"}
 
@@ -401,7 +429,7 @@ class FundamentalExecutor:
                     symbols=symbols,
                     status="failed",
                     error_message=str(e),
-                    execution_time=execution_time
+                    execution_time=execution_time,
                 )
             return {"status": "failed", "error": str(e)}
 
@@ -426,9 +454,15 @@ class FundamentalExecutor:
                 for article in articles:
                     news_items.append(
                         {
-                            "symbol": article.get("symbol", symbols[0] if symbols else ""),
-                            "headline": article.get("headline", article.get("title", "")),
-                            "content": article.get("content", article.get("summary", "")),
+                            "symbol": article.get(
+                                "symbol", symbols[0] if symbols else ""
+                            ),
+                            "headline": article.get(
+                                "headline", article.get("title", "")
+                            ),
+                            "content": article.get(
+                                "content", article.get("summary", "")
+                            ),
                             "source": article.get("source", "Perplexity"),
                             "article_type": article.get("type", "news"),
                             "category": article.get("category", "general"),

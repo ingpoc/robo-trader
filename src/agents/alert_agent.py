@@ -5,21 +5,22 @@ Provides customizable alerts for market conditions, portfolio changes, and tradi
 """
 
 import json
-from typing import Dict, List, Any
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from dataclasses import dataclass, asdict
+from typing import Any, Dict, List
 
 from claude_agent_sdk import tool
 from loguru import logger
 
 from src.config import Config
+
 from ..core.database_state import DatabaseStateManager
-from ..core.state_models import PortfolioState
 
 
 @dataclass
 class AlertRule:
     """Customizable alert rule."""
+
     id: str
     name: str
     condition_type: str  # "price", "volume", "technical", "portfolio"
@@ -36,14 +37,18 @@ class AlertRule:
 
 def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> List:
     """Create alert tools with dependencies via closure."""
-    
-    @tool("create_alert_rule", "Create a custom alert rule", {
-        "name": str,
-        "condition_type": str,
-        "symbol": str,
-        "condition": Dict[str, Any],
-        "notification_type": str
-    })
+
+    @tool(
+        "create_alert_rule",
+        "Create a custom alert rule",
+        {
+            "name": str,
+            "condition_type": str,
+            "symbol": str,
+            "condition": Dict[str, Any],
+            "notification_type": str,
+        },
+    )
     async def create_alert_rule_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Create a customizable alert rule for market conditions."""
         try:
@@ -53,7 +58,7 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
                 condition_type=args["condition_type"],
                 symbol=args["symbol"],
                 condition=args["condition"],
-                notification_type=args["notification_type"]
+                notification_type=args["notification_type"],
             )
 
             # Store the alert rule (in a real implementation, this would be persisted)
@@ -61,16 +66,21 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Alert rule '{rule.name}' created successfully"},
-                    {"type": "text", "text": json.dumps(asdict(rule), indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Alert rule '{rule.name}' created successfully",
+                    },
+                    {"type": "text", "text": json.dumps(asdict(rule), indent=2)},
                 ]
             }
 
         except Exception as e:
             logger.error(f"Alert rule creation failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error creating alert rule: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error creating alert rule: {str(e)}"}
+                ],
+                "is_error": True,
             }
 
     @tool("list_alert_rules", "List all active alert rules", {})
@@ -82,15 +92,20 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
             return {
                 "content": [
                     {"type": "text", "text": f"Found {len(rules)} active alert rules"},
-                    {"type": "text", "text": json.dumps([asdict(rule) for rule in rules], indent=2)}
+                    {
+                        "type": "text",
+                        "text": json.dumps([asdict(rule) for rule in rules], indent=2),
+                    },
                 ]
             }
 
         except Exception as e:
             logger.error(f"Failed to list alert rules: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error listing alert rules: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error listing alert rules: {str(e)}"}
+                ],
+                "is_error": True,
             }
 
     @tool("check_alerts", "Check all alert conditions and trigger notifications", {})
@@ -109,27 +124,42 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Checked {len(rules)} alert rules, {len(triggered_alerts)} triggered"},
-                    {"type": "text", "text": json.dumps({
-                        "total_rules": len(rules),
-                        "triggered_alerts": len(triggered_alerts),
-                        "alerts": [asdict(rule) for rule in triggered_alerts]
-                    }, indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Checked {len(rules)} alert rules, {len(triggered_alerts)} triggered",
+                    },
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "total_rules": len(rules),
+                                "triggered_alerts": len(triggered_alerts),
+                                "alerts": [asdict(rule) for rule in triggered_alerts],
+                            },
+                            indent=2,
+                        ),
+                    },
                 ]
             }
 
         except Exception as e:
             logger.error(f"Alert check failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error checking alerts: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error checking alerts: {str(e)}"}
+                ],
+                "is_error": True,
             }
 
-    @tool("create_recommendation_alert", "Create alert for new trading recommendations", {
-        "symbol": str,
-        "recommendation_types": List[str],
-        "confidence_levels": List[str]
-    })
+    @tool(
+        "create_recommendation_alert",
+        "Create alert for new trading recommendations",
+        {
+            "symbol": str,
+            "recommendation_types": List[str],
+            "confidence_levels": List[str],
+        },
+    )
     async def create_recommendation_alert_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """Create an alert rule for new trading recommendations."""
         try:
@@ -146,9 +176,9 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
                 condition={
                     "recommendation_types": recommendation_types,
                     "confidence_levels": confidence_levels,
-                    "min_confidence_score": 60
+                    "min_confidence_score": 60,
                 },
-                notification_type="toast"
+                notification_type="toast",
             )
 
             # Store the alert rule
@@ -156,17 +186,28 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Recommendation alert created for {symbol}"},
-                    {"type": "text", "text": f"Will alert on: {', '.join(recommendation_types)} recommendations with {', '.join(confidence_levels)} confidence"},
-                    {"type": "text", "text": json.dumps(asdict(rule), indent=2)}
+                    {
+                        "type": "text",
+                        "text": f"Recommendation alert created for {symbol}",
+                    },
+                    {
+                        "type": "text",
+                        "text": f"Will alert on: {', '.join(recommendation_types)} recommendations with {', '.join(confidence_levels)} confidence",
+                    },
+                    {"type": "text", "text": json.dumps(asdict(rule), indent=2)},
                 ]
             }
 
         except Exception as e:
             logger.error(f"Recommendation alert creation failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error creating recommendation alert: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Error creating recommendation alert: {str(e)}",
+                    }
+                ],
+                "is_error": True,
             }
 
     @tool("delete_alert_rule", "Delete an alert rule", {"rule_id": str})
@@ -178,21 +219,34 @@ def create_alert_tools(config: Config, state_manager: DatabaseStateManager) -> L
 
             return {
                 "content": [
-                    {"type": "text", "text": f"Alert rule {rule_id} deleted successfully"}
+                    {
+                        "type": "text",
+                        "text": f"Alert rule {rule_id} deleted successfully",
+                    }
                 ]
             }
 
         except Exception as e:
             logger.error(f"Alert rule deletion failed: {e}")
             return {
-                "content": [{"type": "text", "text": f"Error deleting alert rule: {str(e)}"}],
-                "is_error": True
+                "content": [
+                    {"type": "text", "text": f"Error deleting alert rule: {str(e)}"}
+                ],
+                "is_error": True,
             }
-    
-    return [create_alert_rule_tool, list_alert_rules_tool, check_alerts_tool, delete_alert_rule_tool, create_recommendation_alert_tool]
+
+    return [
+        create_alert_rule_tool,
+        list_alert_rules_tool,
+        check_alerts_tool,
+        delete_alert_rule_tool,
+        create_recommendation_alert_tool,
+    ]
 
 
-async def _evaluate_alert_rule(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
+async def _evaluate_alert_rule(
+    rule: AlertRule, state_manager: DatabaseStateManager
+) -> bool:
     """Evaluate if an alert rule condition is met."""
 
     try:
@@ -213,7 +267,9 @@ async def _evaluate_alert_rule(rule: AlertRule, state_manager: DatabaseStateMana
         return False
 
 
-async def _check_price_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
+async def _check_price_alert(
+    rule: AlertRule, state_manager: DatabaseStateManager
+) -> bool:
     """Check price-based alert conditions."""
 
     symbol = rule.symbol
@@ -223,19 +279,29 @@ async def _check_price_alert(rule: AlertRule, state_manager: DatabaseStateManage
     # For now, we'll simulate price data
     current_price = await _get_current_price(symbol)
 
-    if condition.get("operator") == "above" and current_price > condition.get("price", 0):
+    if condition.get("operator") == "above" and current_price > condition.get(
+        "price", 0
+    ):
         return True
-    elif condition.get("operator") == "below" and current_price < condition.get("price", 0):
+    elif condition.get("operator") == "below" and current_price < condition.get(
+        "price", 0
+    ):
         return True
-    elif condition.get("operator") == "crosses_above" and current_price > condition.get("price", 0):
+    elif condition.get("operator") == "crosses_above" and current_price > condition.get(
+        "price", 0
+    ):
         return True
-    elif condition.get("operator") == "crosses_below" and current_price < condition.get("price", 0):
+    elif condition.get("operator") == "crosses_below" and current_price < condition.get(
+        "price", 0
+    ):
         return True
 
     return False
 
 
-async def _check_portfolio_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
+async def _check_portfolio_alert(
+    rule: AlertRule, state_manager: DatabaseStateManager
+) -> bool:
     """Check portfolio-based alert conditions."""
 
     portfolio = await state_manager.get_portfolio()
@@ -257,7 +323,9 @@ async def _check_portfolio_alert(rule: AlertRule, state_manager: DatabaseStateMa
     return False
 
 
-async def _check_technical_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
+async def _check_technical_alert(
+    rule: AlertRule, state_manager: DatabaseStateManager
+) -> bool:
     """Check technical indicator-based alert conditions."""
 
     # This would check technical indicators against thresholds
@@ -266,17 +334,25 @@ async def _check_technical_alert(rule: AlertRule, state_manager: DatabaseStateMa
     condition = rule.condition
 
     # Simulate technical indicator check
-    indicator_value = await _get_technical_indicator(symbol, condition.get("indicator", "rsi"))
+    indicator_value = await _get_technical_indicator(
+        symbol, condition.get("indicator", "rsi")
+    )
 
-    if condition.get("operator") == "above" and indicator_value > condition.get("threshold", 0):
+    if condition.get("operator") == "above" and indicator_value > condition.get(
+        "threshold", 0
+    ):
         return True
-    elif condition.get("operator") == "below" and indicator_value < condition.get("threshold", 0):
+    elif condition.get("operator") == "below" and indicator_value < condition.get(
+        "threshold", 0
+    ):
         return True
 
     return False
 
 
-async def _check_recommendation_alert(rule: AlertRule, state_manager: DatabaseStateManager) -> bool:
+async def _check_recommendation_alert(
+    rule: AlertRule, state_manager: DatabaseStateManager
+) -> bool:
     """Check recommendation-based alert conditions."""
 
     symbol = rule.symbol
@@ -298,7 +374,9 @@ async def _check_recommendation_alert(rule: AlertRule, state_manager: DatabaseSt
     # Check confidence level
     confidence_map = {"HIGH": 80, "MEDIUM": 65, "LOW": 45}
     min_confidence = condition.get("min_confidence_score", 0)
-    rec_confidence_score = latest_rec.confidence_score or confidence_map.get(latest_rec.recommendation_type, 50)
+    rec_confidence_score = latest_rec.confidence_score or confidence_map.get(
+        latest_rec.recommendation_type, 50
+    )
 
     if rec_confidence_score < min_confidence:
         return False
@@ -309,7 +387,9 @@ async def _check_recommendation_alert(rule: AlertRule, state_manager: DatabaseSt
     return True
 
 
-async def _send_alert_notification(rule: AlertRule, trigger_data: Dict[str, Any]) -> None:
+async def _send_alert_notification(
+    rule: AlertRule, trigger_data: Dict[str, Any]
+) -> None:
     """Send alert notification through specified channel."""
 
     message = f"🚨 Alert: {rule.name}\nSymbol: {rule.symbol}\nCondition: {rule.condition_type}\nTime: {datetime.now().strftime('%H:%M:%S')}"
@@ -335,16 +415,18 @@ async def _send_websocket_notification(message: str, type: str) -> None:
 
 # Helper functions (in a real implementation, these would connect to actual data sources)
 
+
 async def _get_current_price(symbol: str) -> float:
     """Get current market price for symbol."""
     # Simulate price data - in reality, this would fetch from broker API
     import random
+
     base_prices = {
         "RELIANCE": 2685.40,
         "TCS": 4185.80,
         "HDFCBANK": 1720.90,
         "ICICIBANK": 1158.60,
-        "INFY": 1925.75
+        "INFY": 1925.75,
     }
     base_price = base_prices.get(symbol, 1000)
     # Add some random variation
@@ -361,7 +443,7 @@ async def _get_technical_indicator(symbol: str, indicator: str) -> float:
         "rsi": random.uniform(30, 70),
         "macd": random.uniform(-50, 50),
         "volume": random.uniform(100000, 1000000),
-        "ema_20": random.uniform(100, 200)
+        "ema_20": random.uniform(100, 200),
     }
 
     return indicators.get(indicator, 50)
@@ -384,7 +466,7 @@ async def _get_alert_rules() -> List[AlertRule]:
             condition_type="price",
             symbol="RELIANCE",
             condition={"operator": "above", "price": 2700},
-            notification_type="toast"
+            notification_type="toast",
         ),
         AlertRule(
             id="default_risk_alert",
@@ -392,8 +474,8 @@ async def _get_alert_rules() -> List[AlertRule]:
             condition_type="portfolio",
             symbol="PORTFOLIO",
             condition={"metric": "concentration_risk", "threshold": 25},
-            notification_type="toast"
-        )
+            notification_type="toast",
+        ),
     ]
 
 

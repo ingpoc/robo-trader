@@ -7,13 +7,12 @@ Handles:
 - Result parsing
 """
 
+import json
 import logging
 import time
-import json
-from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
 
 logger = logging.getLogger(__name__)
 
@@ -32,23 +31,27 @@ class PortfolioAnalysisExecutor:
         prompts: Dict[str, str],
         analysis_id: str,
         mcp_server: Any,
-        tool_names: List[str]
+        tool_names: List[str],
     ) -> Dict[str, Any]:
         """Execute Claude analysis with provided tools."""
 
         start_time = time.time()
 
-        logger.debug(f"_execute_claude_analysis() called with {len(stocks_data)} stocks, analysis_id={analysis_id}")
+        logger.debug(
+            f"_execute_claude_analysis() called with {len(stocks_data)} stocks, analysis_id={analysis_id}"
+        )
 
         try:
             # Initialize analysis logging for portfolio analysis (not a single trade)
             # Create a generic decision log for portfolio analysis
-            from src.services.claude_agent.analysis_logger import TradeDecisionLog
+            from src.services.claude_agent.analysis_logger import \
+                TradeDecisionLog
+
             decision_log = TradeDecisionLog(
                 decision_id=analysis_id,
                 session_id=f"portfolio_{int(time.time())}",
                 symbol="PORTFOLIO",  # Generic symbol for portfolio analysis
-                action="ANALYZE"  # Portfolio analysis action
+                action="ANALYZE",  # Portfolio analysis action
             )
             self.analysis_logger.active_decisions[analysis_id] = decision_log
 
@@ -57,19 +60,23 @@ class PortfolioAnalysisExecutor:
                 decision_id=analysis_id,
                 step_type="ai_analysis",
                 description="Starting Claude AI analysis of portfolio stocks",
-                input_data={"stocks_count": len(stocks_data), "prompts_count": len(prompts)},
+                input_data={
+                    "stocks_count": len(stocks_data),
+                    "prompts_count": len(prompts),
+                },
                 reasoning="Using Claude AI to analyze data quality, optimize prompts, and provide recommendations",
                 confidence_score=0.0,
-                duration_ms=0
+                duration_ms=0,
             )
 
             # Create Claude SDK client with MCP server
             from claude_agent_sdk import ClaudeAgentOptions
+
             options = ClaudeAgentOptions(
                 system_prompt=system_prompt,
                 mcp_servers={"portfolio_intelligence": mcp_server},
                 allowed_tools=tool_names,
-                max_turns=15
+                max_turns=15,
             )
 
             client = await self.client_manager.get_client("portfolio_analysis", options)
@@ -81,11 +88,11 @@ class PortfolioAnalysisExecutor:
                     "last_checks": {
                         "news": data.get("last_news_check"),
                         "earnings": data.get("last_earnings_check"),
-                        "fundamentals": data.get("last_fundamentals_check")
+                        "fundamentals": data.get("last_fundamentals_check"),
                     },
                     "earnings_count": len(data.get("earnings", [])),
                     "news_count": len(data.get("news", [])),
-                    "fundamental_count": len(data.get("fundamental_analysis", []))
+                    "fundamental_count": len(data.get("fundamental_analysis", [])),
                 }
                 for symbol, data in stocks_data.items()
             }
@@ -108,14 +115,18 @@ TASK:
 Begin your analysis now."""
 
             # Execute query with streaming and real-time progress monitoring
-            logger.info(f"Starting Claude analysis with streaming for {len(stocks_data)} stocks")
+            logger.info(
+                f"Starting Claude analysis with streaming for {len(stocks_data)} stocks"
+            )
 
             # Send query and monitor responses in real-time
             await client.query(user_prompt)
 
             response_chunks = []
             last_activity = time.time()
-            message_timeout = 120.0  # Timeout if no message for 2 minutes (indicates hung state)
+            message_timeout = (
+                120.0  # Timeout if no message for 2 minutes (indicates hung state)
+            )
 
             logger.debug("Entering receive_messages() loop to monitor Claude progress")
 
@@ -129,14 +140,17 @@ Begin your analysis now."""
                         error_msg,
                         category=ErrorCategory.SYSTEM,
                         severity=ErrorSeverity.HIGH,
-                        recoverable=False
+                        recoverable=False,
                     )
 
                 last_activity = time.time()
 
                 # Process message based on type for real-time progress tracking
                 try:
-                    from claude_agent_sdk import AssistantMessage, ToolUseBlock, TextBlock, ResultMessage, ToolResultBlock
+                    from claude_agent_sdk import (AssistantMessage,
+                                                  ResultMessage, TextBlock,
+                                                  ToolResultBlock,
+                                                  ToolUseBlock)
 
                     if isinstance(message, AssistantMessage):
                         for block in message.content:
@@ -147,7 +161,9 @@ Begin your analysis now."""
                             elif isinstance(block, TextBlock):
                                 # Claude is responding - RUNNING
                                 response_chunks.append(block.text)
-                                logger.debug(f"Received text chunk ({len(block.text)} chars, {len(response_chunks)} total chunks)")
+                                logger.debug(
+                                    f"Received text chunk ({len(block.text)} chars, {len(response_chunks)} total chunks)"
+                                )
 
                     elif isinstance(message, ToolResultBlock):
                         # Tool completed - STILL RUNNING
@@ -155,7 +171,9 @@ Begin your analysis now."""
 
                     elif isinstance(message, ResultMessage):
                         # Analysis complete - READY
-                        logger.debug("Claude analysis complete (ResultMessage received)")
+                        logger.debug(
+                            "Claude analysis complete (ResultMessage received)"
+                        )
                         break
 
                 except Exception as e:
@@ -163,13 +181,17 @@ Begin your analysis now."""
                     # Continue processing - don't fail on message type issues
                     pass
 
-            logger.debug(f"Exit receive_messages() loop - received {len(response_chunks)} text chunks")
+            logger.debug(
+                f"Exit receive_messages() loop - received {len(response_chunks)} text chunks"
+            )
 
             # Assemble final response from chunks
             response = "\n".join(response_chunks) if response_chunks else ""
             execution_time_ms = int((time.time() - start_time) * 1000)
 
-            logger.debug(f"Final response length: {len(response)} chars, execution time: {execution_time_ms}ms")
+            logger.debug(
+                f"Final response length: {len(response)} chars, execution time: {execution_time_ms}ms"
+            )
 
             # Log Claude analysis completion
             await self.analysis_logger.log_analysis_step(
@@ -179,7 +201,7 @@ Begin your analysis now."""
                 input_data={"response_length": len(str(response))},
                 reasoning=f"Claude analyzed {len(stocks_data)} stocks and provided recommendations",
                 confidence_score=0.0,
-                duration_ms=execution_time_ms
+                duration_ms=execution_time_ms,
             )
 
             # Parse response (Claude SDK returns structured response)
@@ -203,7 +225,7 @@ Begin your analysis now."""
                 "prompt_updates": prompt_updates,
                 "data_assessment": data_assessment,
                 "claude_response": response_text,
-                "execution_time_ms": execution_time_ms
+                "execution_time_ms": execution_time_ms,
             }
 
             return analysis_result
@@ -218,6 +240,6 @@ Begin your analysis now."""
                 input_data={},
                 reasoning="Error occurred during Claude AI analysis",
                 confidence_score=0.0,
-                duration_ms=int((time.time() - start_time) * 1000)
+                duration_ms=int((time.time() - start_time) * 1000),
             )
             raise

@@ -4,7 +4,8 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List
+
 from loguru import logger
 
 from .base import DatabaseConnection
@@ -38,7 +39,10 @@ class ConfigBackupManager:
             try:
                 backup_data = await self._collect_backup_data(backup_type)
                 timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-                backup_file = self.backup_dir / f"config_{backup_type}_{identifier}_{timestamp}.json"
+                backup_file = (
+                    self.backup_dir
+                    / f"config_{backup_type}_{identifier}_{timestamp}.json"
+                )
 
                 # Write to file
                 backup_file.write_text(json.dumps(backup_data, indent=2))
@@ -49,7 +53,12 @@ class ConfigBackupManager:
                     INSERT INTO configuration_backups (backup_type, backup_data, backup_file, created_at)
                     VALUES (?, ?, ?, ?)
                     """,
-                    (backup_type, json.dumps(backup_data), str(backup_file), datetime.now(timezone.utc).isoformat())
+                    (
+                        backup_type,
+                        json.dumps(backup_data),
+                        str(backup_file),
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
                 )
                 await self.db.connection.commit()
 
@@ -69,19 +78,25 @@ class ConfigBackupManager:
             Backup data dict
         """
         if backup_type == "background_tasks":
-            cursor = await self.db.connection.execute("SELECT * FROM background_tasks_config")
+            cursor = await self.db.connection.execute(
+                "SELECT * FROM background_tasks_config"
+            )
         elif backup_type == "ai_agents":
             cursor = await self.db.connection.execute("SELECT * FROM ai_agents_config")
         elif backup_type == "global_settings":
-            cursor = await self.db.connection.execute("SELECT * FROM global_settings_config")
+            cursor = await self.db.connection.execute(
+                "SELECT * FROM global_settings_config"
+            )
         elif backup_type == "ai_prompts":
             cursor = await self.db.connection.execute("SELECT * FROM ai_prompts_config")
         else:  # Full backup
             return {
-                "background_tasks": await self._get_table_data("background_tasks_config"),
+                "background_tasks": await self._get_table_data(
+                    "background_tasks_config"
+                ),
                 "ai_agents": await self._get_table_data("ai_agents_config"),
                 "global_settings": await self._get_table_data("global_settings_config"),
-                "ai_prompts": await self._get_table_data("ai_prompts_config")
+                "ai_prompts": await self._get_table_data("ai_prompts_config"),
             }
 
         rows = await cursor.fetchall()
@@ -112,7 +127,7 @@ class ConfigBackupManager:
                     ORDER BY created_at DESC
                     LIMIT ?
                     """,
-                    (limit,)
+                    (limit,),
                 )
                 rows = await cursor.fetchall()
 
@@ -122,7 +137,7 @@ class ConfigBackupManager:
                         "type": row[1],
                         "file": row[2],
                         "created_at": row[3],
-                        "created_by": row[4]
+                        "created_by": row[4],
                     }
                     for row in rows
                 ]
@@ -144,7 +159,7 @@ class ConfigBackupManager:
             try:
                 cursor = await self.db.connection.execute(
                     "SELECT backup_type, backup_data FROM configuration_backups WHERE id = ?",
-                    (backup_id,)
+                    (backup_id,),
                 )
                 row = await cursor.fetchone()
 
@@ -163,26 +178,36 @@ class ConfigBackupManager:
                 logger.error(f"Failed to restore from backup {backup_id}: {e}")
                 return False
 
-    async def _restore_data(self, backup_type: str, backup_data: Dict[str, Any]) -> None:
+    async def _restore_data(
+        self, backup_type: str, backup_data: Dict[str, Any]
+    ) -> None:
         """Restore data from backup."""
         if backup_type == "full":
             if "background_tasks" in backup_data:
-                await self._restore_table("background_tasks_config", backup_data["background_tasks"])
+                await self._restore_table(
+                    "background_tasks_config", backup_data["background_tasks"]
+                )
             if "ai_agents" in backup_data:
                 await self._restore_table("ai_agents_config", backup_data["ai_agents"])
             if "global_settings" in backup_data:
-                await self._restore_table("global_settings_config", backup_data["global_settings"])
+                await self._restore_table(
+                    "global_settings_config", backup_data["global_settings"]
+                )
             if "ai_prompts" in backup_data:
-                await self._restore_table("ai_prompts_config", backup_data["ai_prompts"])
+                await self._restore_table(
+                    "ai_prompts_config", backup_data["ai_prompts"]
+                )
         else:
             table_map = {
                 "background_tasks": "background_tasks_config",
                 "ai_agents": "ai_agents_config",
                 "global_settings": "global_settings_config",
-                "ai_prompts": "ai_prompts_config"
+                "ai_prompts": "ai_prompts_config",
             }
             if backup_type in table_map:
-                await self._restore_table(table_map[backup_type], backup_data.get(backup_type, []))
+                await self._restore_table(
+                    table_map[backup_type], backup_data.get(backup_type, [])
+                )
 
     async def _restore_table(self, table_name: str, data: List[Dict[str, Any]]) -> None:
         """Restore data to a table."""
@@ -199,7 +224,7 @@ class ConfigBackupManager:
                 values = [row[col] for col in columns]
                 await self.db.connection.execute(
                     f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})",
-                    values
+                    values,
                 )
 
         await self.db.connection.commit()

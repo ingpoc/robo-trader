@@ -7,13 +7,14 @@ Refactored from 196-line monolith into focused coordinators.
 
 from typing import Optional
 
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
-from loguru import logger
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from src.config import Config
+
 from ....auth.claude_auth import ClaudeAuthStatus
 from ..base_coordinator import BaseCoordinator
-from .session_authentication_coordinator import SessionAuthenticationCoordinator
+from .session_authentication_coordinator import \
+    SessionAuthenticationCoordinator
 from .session_lifecycle_coordinator import SessionLifecycleCoordinator
 
 
@@ -27,14 +28,10 @@ class SessionCoordinator(BaseCoordinator):
     - Track authentication and connection status
     """
 
-    def __init__(
-        self,
-        config: Config,
-        options: Optional[ClaudeAgentOptions] = None
-    ):
+    def __init__(self, config: Config, options: Optional[ClaudeAgentOptions] = None):
         super().__init__(config)
         self.options = options
-        
+
         # Focused coordinators
         self.auth_coordinator = SessionAuthenticationCoordinator(config)
         self.lifecycle_coordinator = SessionLifecycleCoordinator(config, options)
@@ -43,10 +40,10 @@ class SessionCoordinator(BaseCoordinator):
     async def initialize(self) -> None:
         """Initialize session coordinator."""
         self._log_info("Initializing SessionCoordinator")
-        
+
         await self.auth_coordinator.initialize()
         await self.lifecycle_coordinator.initialize()
-        
+
         self._initialized = True
 
     def set_broadcast_coordinator(self, broadcast_coordinator) -> None:
@@ -82,7 +79,7 @@ class SessionCoordinator(BaseCoordinator):
             await self.validate_authentication()
 
         status = self.auth_coordinator.get_auth_status()
-        
+
         # Check if we have a valid authentication status
         if status and status.is_valid:
             # Check if SDK client is actually connected to CLI process
@@ -95,24 +92,27 @@ class SessionCoordinator(BaseCoordinator):
                 account_info={
                     **status.account_info,
                     "sdk_connected": is_connected,
-                    "cli_process_running": is_connected
+                    "cli_process_running": is_connected,
                 },
                 checked_at=status.checked_at,
-                rate_limit_info=status.rate_limit_info
+                rate_limit_info=status.rate_limit_info,
             )
 
             # Broadcast status update to UI via broadcast coordinator
             if self._broadcast_coordinator:
                 from datetime import datetime, timezone
+
                 status_data = {
                     "status": "connected/idle" if is_connected else "authenticated",
                     "auth_method": status.account_info.get("auth_method"),
                     "sdk_connected": is_connected,
                     "cli_process_running": is_connected,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "account_info": status.account_info
+                    "account_info": status.account_info,
                 }
-                await self._broadcast_coordinator.broadcast_claude_status_update(status_data)
+                await self._broadcast_coordinator.broadcast_claude_status_update(
+                    status_data
+                )
         else:
             # Not authenticated - broadcast offline status
             if self._broadcast_coordinator:
@@ -122,9 +122,11 @@ class SessionCoordinator(BaseCoordinator):
                     "sdk_connected": False,
                     "cli_process_running": False,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "account_info": {"error": "Not authenticated"}
+                    "account_info": {"error": "Not authenticated"},
                 }
-                await self._broadcast_coordinator.broadcast_claude_status_update(status_data)
+                await self._broadcast_coordinator.broadcast_claude_status_update(
+                    status_data
+                )
 
         return status
 

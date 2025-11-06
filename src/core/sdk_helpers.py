@@ -7,18 +7,13 @@ error handling and timeout protection.
 
 import asyncio
 import logging
-from typing import AsyncIterator, Optional, Any, Dict, Tuple
+from typing import Any, AsyncIterator, Optional, Tuple
 
-from claude_agent_sdk import (
-    ClaudeSDKClient,
-    ClaudeSDKError,
-    CLINotFoundError,
-    CLIConnectionError,
-    ProcessError,
-    CLIJSONDecodeError,
-)
+from claude_agent_sdk import (ClaudeSDKClient, ClaudeSDKError,
+                              CLIConnectionError, CLIJSONDecodeError,
+                              CLINotFoundError, ProcessError)
 
-from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
+from ..core.errors import ErrorCategory, ErrorSeverity, TradingError
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +26,14 @@ def _handle_sdk_error(e: Exception, timeout: Optional[float] = None) -> TradingE
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.MEDIUM,
             recoverable=True,
-            metadata={"timeout": timeout}
+            metadata={"timeout": timeout},
         )
     elif isinstance(e, CLINotFoundError):
         return TradingError(
             "Claude Code CLI not installed",
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.CRITICAL,
-            recoverable=False
+            recoverable=False,
         )
     elif isinstance(e, CLIConnectionError):
         return TradingError(
@@ -46,7 +41,7 @@ def _handle_sdk_error(e: Exception, timeout: Optional[float] = None) -> TradingE
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.HIGH,
             recoverable=True,
-            metadata={"error": str(e)}
+            metadata={"error": str(e)},
         )
     elif isinstance(e, ProcessError):
         return TradingError(
@@ -54,7 +49,7 @@ def _handle_sdk_error(e: Exception, timeout: Optional[float] = None) -> TradingE
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.HIGH,
             recoverable=True,
-            metadata={"exit_code": getattr(e, "exit_code", None)}
+            metadata={"exit_code": getattr(e, "exit_code", None)},
         )
     elif isinstance(e, CLIJSONDecodeError):
         return TradingError(
@@ -62,7 +57,7 @@ def _handle_sdk_error(e: Exception, timeout: Optional[float] = None) -> TradingE
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.MEDIUM,
             recoverable=True,
-            metadata={"error": str(e)}
+            metadata={"error": str(e)},
         )
     elif isinstance(e, ClaudeSDKError):
         return TradingError(
@@ -70,7 +65,7 @@ def _handle_sdk_error(e: Exception, timeout: Optional[float] = None) -> TradingE
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.HIGH,
             recoverable=True,
-            metadata={"error": str(e)}
+            metadata={"error": str(e)},
         )
     else:
         return TradingError(
@@ -78,14 +73,12 @@ def _handle_sdk_error(e: Exception, timeout: Optional[float] = None) -> TradingE
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.HIGH,
             recoverable=False,
-            metadata={"error": str(e)}
+            metadata={"error": str(e)},
         )
 
 
 async def query_with_timeout(
-    client: ClaudeSDKClient,
-    prompt: str,
-    timeout: float = 60.0
+    client: ClaudeSDKClient, prompt: str, timeout: float = 60.0
 ) -> str:
     """
     Execute query with timeout protection and return response.
@@ -107,35 +100,37 @@ async def query_with_timeout(
         response_parts = []
         async for message in client.receive_response():
             # Skip SystemMessage objects - they're session metadata, not content
-            if hasattr(message, 'subtype') and message.subtype == 'init':
+            if hasattr(message, "subtype") and message.subtype == "init":
                 continue
 
-            if hasattr(message, 'content'):
+            if hasattr(message, "content"):
                 for content_block in message.content:
-                    if hasattr(content_block, 'text'):
+                    if hasattr(content_block, "text"):
                         response_parts.append(content_block.text)
-            elif hasattr(message, 'text'):
+            elif hasattr(message, "text"):
                 response_parts.append(message.text)
-            elif hasattr(message, 'data') and isinstance(message.data, dict):
+            elif hasattr(message, "data") and isinstance(message.data, dict):
                 # Handle SystemMessage data objects
-                if message.data.get('type') == 'system':
+                if message.data.get("type") == "system":
                     continue  # Skip system messages
                 else:
                     response_parts.append(str(message.data))
             else:
                 # Only add non-system messages
-                if not (hasattr(message, 'subtype') and message.subtype == 'init'):
+                if not (hasattr(message, "subtype") and message.subtype == "init"):
                     response_parts.append(str(message))
 
-        return "\n".join(response_parts) if response_parts else "No response content received"
+        return (
+            "\n".join(response_parts)
+            if response_parts
+            else "No response content received"
+        )
     except Exception as e:
         raise _handle_sdk_error(e, timeout)
 
 
 async def query_only_with_timeout(
-    client: ClaudeSDKClient,
-    prompt: str,
-    timeout: float = 60.0
+    client: ClaudeSDKClient, prompt: str, timeout: float = 60.0
 ) -> None:
     """
     Send query with timeout protection only (does not receive response).
@@ -157,8 +152,7 @@ async def query_only_with_timeout(
 
 
 async def receive_response_with_timeout(
-    client: ClaudeSDKClient,
-    timeout: float = 120.0
+    client: ClaudeSDKClient, timeout: float = 120.0
 ) -> AsyncIterator[Any]:
     """
     Receive responses with timeout protection.
@@ -181,10 +175,7 @@ async def receive_response_with_timeout(
         iterator = client.receive_response()
         while True:
             try:
-                response = await asyncio.wait_for(
-                    iterator.__anext__(),
-                    timeout=timeout
-                )
+                response = await asyncio.wait_for(iterator.__anext__(), timeout=timeout)
                 yield response
             except StopAsyncIteration:
                 break
@@ -201,7 +192,7 @@ async def sdk_operation_with_retry(
     max_retries: int = 3,
     initial_backoff: float = 1.0,
     max_backoff: float = 30.0,
-    **kwargs
+    **kwargs,
 ) -> Any:
     """
     Execute SDK operation with exponential backoff retry.
@@ -244,7 +235,7 @@ async def sdk_operation_with_retry(
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
                 recoverable=False,
-                metadata={"error": str(e), "attempt": attempt + 1}
+                metadata={"error": str(e), "attempt": attempt + 1},
             )
 
     raise TradingError(
@@ -252,7 +243,7 @@ async def sdk_operation_with_retry(
         category=ErrorCategory.SYSTEM,
         severity=ErrorSeverity.HIGH,
         recoverable=False,
-        metadata={"max_retries": max_retries, "last_error": str(last_error)}
+        metadata={"max_retries": max_retries, "last_error": str(last_error)},
     )
 
 
@@ -269,7 +260,9 @@ def estimate_token_count(text: str) -> int:
     return len(text) // 4
 
 
-def validate_system_prompt_size(prompt: str, max_tokens: int = 8000) -> Tuple[bool, int]:
+def validate_system_prompt_size(
+    prompt: str, max_tokens: int = 8000
+) -> Tuple[bool, int]:
     """
     Validate system prompt size.
 

@@ -4,33 +4,46 @@ Robo Trader Main Entry Point
 Starts the autonomous trading system.
 """
 
-import asyncio
 import argparse
+import asyncio
 import os
 from pathlib import Path
 
-from loguru import logger
 from dotenv import load_dotenv
+from loguru import logger
 
 # Load .env file first to get default LOG_LEVEL
 load_dotenv()
 
 from src.config import load_config
-from .core.di import initialize_container, cleanup_container
+
+from .core.di import cleanup_container, initialize_container
 from .core.orchestrator import RoboTraderOrchestrator
 
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Robo Trader - Autonomous Trading System")
+    parser = argparse.ArgumentParser(
+        description="Robo Trader - Autonomous Trading System"
+    )
     parser.add_argument("--config", type=Path, default=None, help="Path to config file")
-    parser.add_argument("--command", choices=["scan", "screen", "monitor", "interactive", "web"],
-                       default="interactive", help="Command to run")
-    parser.add_argument("--env", choices=["paper", "live"], help="Override environment mode")
+    parser.add_argument(
+        "--command",
+        choices=["scan", "screen", "monitor", "interactive", "web"],
+        default="interactive",
+        help="Command to run",
+    )
+    parser.add_argument(
+        "--env", choices=["paper", "live"], help="Override environment mode"
+    )
     parser.add_argument("--host", default="0.0.0.0", help="Web server host")
     parser.add_argument("--port", type=int, default=8000, help="Web server port")
-    parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                       default=None, help="Set logging level (overrides .env config)")
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default=None,
+        help="Set logging level (overrides .env config)",
+    )
 
     args = parser.parse_args()
 
@@ -62,6 +75,7 @@ def main():
     if args.command == "web":
         # Start web server (this will run its own event loop)
         from .web.app import run_web_server
+
         logger.info(f"Starting web server on {args.host}:{args.port}")
         run_web_server()
         return  # Exit here, uvicorn handles the event loop

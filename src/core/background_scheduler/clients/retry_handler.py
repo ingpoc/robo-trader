@@ -2,10 +2,11 @@
 
 import asyncio
 import random
-from typing import Callable, TypeVar, Any, Optional
+from typing import Any, Callable, Optional, TypeVar
+
 from loguru import logger
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class RetryConfig:
@@ -17,7 +18,7 @@ class RetryConfig:
         initial_backoff_seconds: float = 1.0,
         max_backoff_seconds: float = 32.0,
         exponential_base: float = 2.0,
-        jitter: bool = True
+        jitter: bool = True,
     ):
         """Initialize retry configuration.
 
@@ -44,7 +45,7 @@ class RetryConfig:
             Delay in seconds
         """
         # Exponential backoff: initial_backoff * (base ^ attempt)
-        delay = self.initial_backoff * (self.exponential_base ** attempt)
+        delay = self.initial_backoff * (self.exponential_base**attempt)
         delay = min(delay, self.max_backoff)
 
         # Add jitter: ±20% randomness
@@ -57,11 +58,13 @@ class RetryConfig:
 
 class RetryableError(Exception):
     """Exception that can be retried."""
+
     pass
 
 
 class NonRetryableError(Exception):
     """Exception that should not be retried."""
+
     pass
 
 
@@ -70,7 +73,7 @@ async def retry_with_backoff(
     *args,
     config: Optional[RetryConfig] = None,
     retryable_exceptions: tuple = (RetryableError,),
-    **kwargs
+    **kwargs,
 ) -> T:
     """Execute function with exponential backoff retry.
 
@@ -126,10 +129,7 @@ async def retry_with_backoff(
 
 
 async def retry_on_rate_limit(
-    func: Callable[..., Any],
-    *args,
-    max_retries: int = 5,
-    **kwargs
+    func: Callable[..., Any], *args, max_retries: int = 5, **kwargs
 ) -> T:
     """Retry specifically on rate limit errors with longer backoff.
 
@@ -147,14 +147,11 @@ async def retry_on_rate_limit(
         initial_backoff_seconds=2.0,
         max_backoff_seconds=120.0,
         exponential_base=2.0,
-        jitter=True
+        jitter=True,
     )
 
     from openai import RateLimitError
+
     return await retry_with_backoff(
-        func,
-        *args,
-        config=config,
-        retryable_exceptions=(RateLimitError,),
-        **kwargs
+        func, *args, config=config, retryable_exceptions=(RateLimitError,), **kwargs
     )

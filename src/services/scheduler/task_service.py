@@ -1,9 +1,10 @@
 """Scheduler task service for queue management."""
 
 import logging
-from typing import Optional, List, Dict, Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 
-from ...models.scheduler import SchedulerTask, QueueName, TaskType, TaskStatus, QueueStatistics
+from ...models.scheduler import (QueueName, QueueStatistics, SchedulerTask,
+                                 TaskStatus, TaskType)
 from ...stores.scheduler_task_store import SchedulerTaskStore
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class SchedulerTaskService:
         payload: Dict[str, Any],
         priority: int = 5,
         dependencies: Optional[List[str]] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
     ) -> SchedulerTask:
         """Create new scheduler task."""
         task = await self.store.create_task(
@@ -43,7 +44,7 @@ class SchedulerTaskService:
             payload=payload,
             priority=priority,
             dependencies=dependencies,
-            max_retries=max_retries
+            max_retries=max_retries,
         )
         logger.info(f"Created task: {task.task_id} in queue {queue_name.value}")
         return task
@@ -64,14 +65,14 @@ class SchedulerTaskService:
         return stats
 
     async def get_pending_tasks(
-        self,
-        queue_name: QueueName,
-        completed_task_ids: Optional[List[str]] = None
+        self, queue_name: QueueName, completed_task_ids: Optional[List[str]] = None
     ) -> List[SchedulerTask]:
         """Get pending tasks for queue that are ready to run."""
         completed = completed_task_ids or []
         all_pending = await self.store.get_pending_tasks(queue_name)
-        logger.debug(f"get_pending_tasks() for {queue_name.value}: store returned {len(all_pending)} tasks")
+        logger.debug(
+            f"get_pending_tasks() for {queue_name.value}: store returned {len(all_pending)} tasks"
+        )
 
         # Filter by dependency satisfaction
         ready_tasks = [t for t in all_pending if t.is_ready_to_run(completed)]
@@ -128,7 +129,7 @@ class SchedulerTaskService:
             await self.mark_completed(task.task_id)
             return {"success": True, "result": result}
         except asyncio.TimeoutError:
-            error_msg = f"Task execution timed out after 900 seconds"
+            error_msg = "Task execution timed out after 900 seconds"
             await self.mark_failed(task.task_id, error_msg)
             return {"success": False, "error": error_msg}
         except Exception as e:

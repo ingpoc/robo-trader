@@ -9,20 +9,20 @@ Claude self-optimizes Perplexity prompts by:
 5. Saving optimized versions for future use
 """
 
-import asyncio
 import json
 import uuid
-import aiofiles
-import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ..core.event_bus import EventHandler, Event, EventType, EventBus
-from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ..core.background_scheduler.clients.perplexity_client import PerplexityClient
+
+from ..core.background_scheduler.clients.perplexity_client import \
+    PerplexityClient
+from ..core.errors import ErrorCategory, ErrorSeverity, TradingError
+from ..core.event_bus import Event, EventBus, EventHandler, EventType
 
 if TYPE_CHECKING:
-    from ..core.di import DependencyContainer
+    pass
+
 from loguru import logger
 
 
@@ -43,7 +43,7 @@ class PromptOptimizationService(EventHandler):
         config: Dict[str, Any],
         event_bus: EventBus,
         container: Any,  # Will be DependencyContainer at runtime
-        perplexity_client: PerplexityClient
+        perplexity_client: PerplexityClient,
     ):
         """Initialize service."""
         self.config = config
@@ -55,7 +55,9 @@ class PromptOptimizationService(EventHandler):
         # Claude's optimization settings
         self.max_optimization_attempts = config.get("max_optimization_attempts", 3)
         self.quality_threshold = config.get("quality_threshold", 8.0)
-        self.enable_real_time_optimization = config.get("enable_real_time_optimization", True)
+        self.enable_real_time_optimization = config.get(
+            "enable_real_time_optimization", True
+        )
 
     async def initialize(self) -> None:
         """Initialize service and subscribe to events."""
@@ -73,7 +75,7 @@ class PromptOptimizationService(EventHandler):
                 f"PromptOptimizationService initialization failed: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.CRITICAL,
-                recoverable=False
+                recoverable=False,
             )
 
     async def get_optimized_data(
@@ -81,7 +83,7 @@ class PromptOptimizationService(EventHandler):
         data_type: str,
         symbols: List[str],
         session_id: str,
-        force_optimization: bool = False
+        force_optimization: bool = False,
     ) -> Tuple[str, float, str, Dict[str, Any]]:
         """
         Get data using Claude's optimized prompt system.
@@ -102,7 +104,7 @@ class PromptOptimizationService(EventHandler):
             "symbols": symbols,
             "attempts": [],
             "original_prompt": current_prompt,
-            "optimization_triggered": False
+            "optimization_triggered": False,
         }
 
         # 2. Optimization loop - Claude iteratively improves prompt
@@ -110,9 +112,13 @@ class PromptOptimizationService(EventHandler):
             attempt_start = datetime.utcnow()
 
             # Get data with current prompt
-            data = await self._fetch_data_with_prompt(current_prompt, data_type, symbols)
+            data = await self._fetch_data_with_prompt(
+                current_prompt, data_type, symbols
+            )
             if not data:
-                logger.warning(f"Failed to fetch {data_type} data on attempt {attempt + 1}")
+                logger.warning(
+                    f"Failed to fetch {data_type} data on attempt {attempt + 1}"
+                )
                 continue
 
             # Claude analyzes the data quality
@@ -120,7 +126,7 @@ class PromptOptimizationService(EventHandler):
                 data_type=data_type,
                 data=data,
                 prompt_used=current_prompt,
-                attempt_number=attempt + 1
+                attempt_number=attempt + 1,
             )
 
             quality_score = quality_analysis["quality_score"]
@@ -136,13 +142,15 @@ class PromptOptimizationService(EventHandler):
                 "missing_elements": missing_elements,
                 "redundant_elements": redundant_elements,
                 "feedback": feedback,
-                "data_preview": data[:500] + "..." if len(data) > 500 else data
+                "data_preview": data[:500] + "..." if len(data) > 500 else data,
             }
             optimization_metadata["attempts"].append(attempt_metadata)
 
             # Check if Claude is satisfied with data quality
             if quality_score >= self.quality_threshold:
-                logger.info(f"Claude satisfied with {data_type} data quality: {quality_score}/10 on attempt {attempt + 1}")
+                logger.info(
+                    f"Claude satisfied with {data_type} data quality: {quality_score}/10 on attempt {attempt + 1}"
+                )
 
                 # Save successful optimization if we improved the prompt
                 if attempt > 0 or force_optimization:
@@ -152,11 +160,13 @@ class PromptOptimizationService(EventHandler):
                         optimized_prompt=current_prompt,
                         quality_score=quality_score,
                         session_id=session_id,
-                        optimization_attempts=optimization_metadata["attempts"]
+                        optimization_attempts=optimization_metadata["attempts"],
                     )
 
                 # Update usage stats
-                await self._update_prompt_usage_stats(data_type, current_prompt, quality_score, session_id)
+                await self._update_prompt_usage_stats(
+                    data_type, current_prompt, quality_score, session_id
+                )
 
                 optimization_metadata["final_quality"] = quality_score
                 optimization_metadata["optimization_successful"] = attempt > 0
@@ -164,7 +174,9 @@ class PromptOptimizationService(EventHandler):
 
             # If not satisfied and we have more attempts, improve the prompt
             if attempt < self.max_optimization_attempts - 1:
-                logger.info(f"Claude improving {data_type} prompt - quality {quality_score}/10 on attempt {attempt + 1}")
+                logger.info(
+                    f"Claude improving {data_type} prompt - quality {quality_score}/10 on attempt {attempt + 1}"
+                )
 
                 improvement_result = await self._improve_prompt_with_claude(
                     data_type=data_type,
@@ -172,14 +184,16 @@ class PromptOptimizationService(EventHandler):
                     missing_elements=missing_elements,
                     redundant_elements=redundant_elements,
                     quality_feedback=feedback,
-                    attempt_number=attempt + 1
+                    attempt_number=attempt + 1,
                 )
 
                 current_prompt = improvement_result["improved_prompt"]
                 optimization_metadata["optimization_triggered"] = True
 
         # Max attempts reached - use best we got
-        logger.warning(f"Max optimization attempts reached for {data_type}, using best quality: {quality_score}/10")
+        logger.warning(
+            f"Max optimization attempts reached for {data_type}, using best quality: {quality_score}/10"
+        )
 
         # Save the optimization attempt even if not fully successful
         await self._save_optimized_prompt(
@@ -188,7 +202,7 @@ class PromptOptimizationService(EventHandler):
             optimized_prompt=current_prompt,
             quality_score=quality_score,
             session_id=session_id,
-            optimization_attempts=optimization_metadata["attempts"]
+            optimization_attempts=optimization_metadata["attempts"],
         )
 
         optimization_metadata["final_quality"] = quality_score
@@ -197,15 +211,23 @@ class PromptOptimizationService(EventHandler):
 
         return data, quality_score, current_prompt, optimization_metadata
 
-    async def _fetch_data_with_prompt(self, prompt: str, data_type: str, symbols: List[str]) -> Optional[str]:
+    async def _fetch_data_with_prompt(
+        self, prompt: str, data_type: str, symbols: List[str]
+    ) -> Optional[str]:
         """Fetch data from Perplexity using specified prompt."""
         try:
             if data_type == "earnings":
-                return await self.perplexity_client.fetch_earnings_fundamentals(symbols, max_tokens=4000)
+                return await self.perplexity_client.fetch_earnings_fundamentals(
+                    symbols, max_tokens=4000
+                )
             elif data_type == "news":
-                return await self.perplexity_client.fetch_market_news(symbols, max_tokens=3000)
+                return await self.perplexity_client.fetch_market_news(
+                    symbols, max_tokens=3000
+                )
             elif data_type == "fundamentals":
-                return await self.perplexity_client.fetch_deep_fundamentals(symbols, max_tokens=5000)
+                return await self.perplexity_client.fetch_deep_fundamentals(
+                    symbols, max_tokens=5000
+                )
             elif data_type == "metrics":
                 # For metrics, use a custom implementation or extend PerplexityClient
                 return await self._fetch_technical_metrics(symbols, prompt)
@@ -217,22 +239,22 @@ class PromptOptimizationService(EventHandler):
             logger.error(f"Failed to fetch {data_type} data: {e}")
             return None
 
-    async def _fetch_technical_metrics(self, symbols: List[str], prompt: str) -> Optional[str]:
+    async def _fetch_technical_metrics(
+        self, symbols: List[str], prompt: str
+    ) -> Optional[str]:
         """Fetch technical metrics data - placeholder implementation."""
         # This would need to be implemented based on available data sources
         # For now, return a structured response
-        return json.dumps({
-            "symbols": symbols,
-            "technical_data": "Technical metrics would be fetched here",
-            "prompt_used": prompt
-        })
+        return json.dumps(
+            {
+                "symbols": symbols,
+                "technical_data": "Technical metrics would be fetched here",
+                "prompt_used": prompt,
+            }
+        )
 
     async def _analyze_data_quality_with_claude(
-        self,
-        data_type: str,
-        data: str,
-        prompt_used: str,
-        attempt_number: int
+        self, data_type: str, data: str, prompt_used: str, attempt_number: int
     ) -> Dict[str, Any]:
         """Have Claude analyze the quality of received data."""
 
@@ -290,13 +312,13 @@ class PromptOptimizationService(EventHandler):
                     {
                         "element": "enhanced_analysis",
                         "description": "More detailed trading signals",
-                        "importance": "Critical for decision making"
+                        "importance": "Critical for decision making",
                     }
                 ],
                 "redundant_elements": [],
                 "feedback": f"Simulated analysis for {data_type} - attempt {attempt_number}",
                 "strengths": ["Structured format", "Relevant data points"],
-                "improvements_needed": ["Add more specific metrics"]
+                "improvements_needed": ["Add more specific metrics"],
             }
 
         except Exception as e:
@@ -304,11 +326,16 @@ class PromptOptimizationService(EventHandler):
             # Return default analysis
             return {
                 "quality_score": 5.0,
-                "missing_elements": [{"element": "analysis_failed", "description": "Claude analysis unavailable"}],
+                "missing_elements": [
+                    {
+                        "element": "analysis_failed",
+                        "description": "Claude analysis unavailable",
+                    }
+                ],
                 "redundant_elements": [],
                 "feedback": f"Analysis failed: {str(e)}",
                 "strengths": [],
-                "improvements_needed": []
+                "improvements_needed": [],
             }
 
     async def _improve_prompt_with_claude(
@@ -318,7 +345,7 @@ class PromptOptimizationService(EventHandler):
         missing_elements: List[Dict],
         redundant_elements: List[str],
         quality_feedback: str,
-        attempt_number: int
+        attempt_number: int,
     ) -> Dict[str, Any]:
         """Have Claude improve the prompt based on quality analysis."""
 
@@ -350,7 +377,7 @@ ENHANCEMENTS FOR BETTER TRADING ANALYSIS:
 - Request volume confirmation of price movements
 - Ask for volatility measures and risk assessment
 - Include correlation with market indices and sector performance
-            """
+            """,
         }
 
         template = improvement_templates.get(data_type, "")
@@ -383,7 +410,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
             "removed_redundancy": redundant_elements,
             "data_type": data_type,
             "focus_areas": [elem["element"] for elem in missing_elements],
-            "expected_improvement": f"Should improve {data_type} data quality from current feedback"
+            "expected_improvement": f"Should improve {data_type} data quality from current feedback",
         }
 
     async def _get_active_prompt(self, data_type: str) -> Optional[str]:
@@ -393,7 +420,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
             async with database.connect() as db:
                 cursor = await db.execute(
                     "SELECT current_prompt FROM optimized_prompts WHERE data_type = ? AND is_active = TRUE ORDER BY last_optimized_at DESC LIMIT 1",
-                    (data_type,)
+                    (data_type,),
                 )
                 row = await cursor.fetchone()
                 return row[0] if row else None
@@ -409,7 +436,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
             "earnings": await self._get_earnings_prompt_template(),
             "news": await self._get_news_prompt_template(),
             "fundamentals": await self._get_fundamentals_prompt_template(),
-            "metrics": await self._get_metrics_prompt_template()
+            "metrics": await self._get_metrics_prompt_template(),
         }
         return original_prompts.get(data_type, "")
 
@@ -436,7 +463,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
         optimized_prompt: str,
         quality_score: float,
         session_id: str,
-        optimization_attempts: List[Dict]
+        optimization_attempts: List[Dict],
     ) -> str:
         """Save optimized prompt to database with full tracking."""
 
@@ -453,8 +480,17 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                      optimization_version, claude_feedback, session_id, usage_count)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (prompt_id, data_type, original_prompt, optimized_prompt, quality_score,
-                     len(optimization_attempts), optimization_attempts[-1]["feedback"], session_id, 0)
+                    (
+                        prompt_id,
+                        data_type,
+                        original_prompt,
+                        optimized_prompt,
+                        quality_score,
+                        len(optimization_attempts),
+                        optimization_attempts[-1]["feedback"],
+                        session_id,
+                        0,
+                    ),
                 )
 
                 # Save each optimization attempt for full transparency
@@ -466,30 +502,40 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                          quality_score, claude_analysis, missing_elements, redundant_elements)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (str(uuid.uuid4()), prompt_id, attempt["attempt_number"],
-                         attempt["prompt_used"], attempt.get("data_preview", ""),
-                         attempt["quality_score"], attempt["feedback"],
-                         json.dumps(attempt["missing_elements"]),
-                         json.dumps(attempt["redundant_elements"]))
+                        (
+                            str(uuid.uuid4()),
+                            prompt_id,
+                            attempt["attempt_number"],
+                            attempt["prompt_used"],
+                            attempt.get("data_preview", ""),
+                            attempt["quality_score"],
+                            attempt["feedback"],
+                            json.dumps(attempt["missing_elements"]),
+                            json.dumps(attempt["redundant_elements"]),
+                        ),
                     )
 
                 await db.commit()
 
-            logger.info(f"Saved optimized {data_type} prompt with quality score {quality_score}/10")
+            logger.info(
+                f"Saved optimized {data_type} prompt with quality score {quality_score}/10"
+            )
 
             # Emit event for transparency
-            await self.event_bus.publish(Event(
-                id=str(uuid.uuid4()),
-                type=EventType.PROMPT_OPTIMIZED,
-                source="PromptOptimizationService",
-                data={
-                    "prompt_id": prompt_id,
-                    "data_type": data_type,
-                    "quality_score": quality_score,
-                    "attempts": len(optimization_attempts),
-                    "session_id": session_id
-                }
-            ))
+            await self.event_bus.publish(
+                Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.PROMPT_OPTIMIZED,
+                    source="PromptOptimizationService",
+                    data={
+                        "prompt_id": prompt_id,
+                        "data_type": data_type,
+                        "quality_score": quality_score,
+                        "attempts": len(optimization_attempts),
+                        "session_id": session_id,
+                    },
+                )
+            )
 
             return prompt_id
 
@@ -499,15 +545,11 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                 f"Failed to save optimized prompt: {e}",
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.HIGH,
-                recoverable=True
+                recoverable=True,
             )
 
     async def _update_prompt_usage_stats(
-        self,
-        data_type: str,
-        prompt_used: str,
-        quality_score: float,
-        session_id: str
+        self, data_type: str, prompt_used: str, quality_score: float, session_id: str
     ) -> None:
         """Update usage statistics for prompts."""
         try:
@@ -516,14 +558,16 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                 # Find the prompt ID
                 cursor = await db.execute(
                     "SELECT id, usage_count, avg_quality_rating FROM optimized_prompts WHERE current_prompt = ? AND data_type = ?",
-                    (prompt_used, data_type)
+                    (prompt_used, data_type),
                 )
                 row = await cursor.fetchone()
 
                 if row:
                     prompt_id, usage_count, avg_rating = row
                     new_usage_count = usage_count + 1
-                    new_avg_rating = ((avg_rating * usage_count) + quality_score) / new_usage_count
+                    new_avg_rating = (
+                        (avg_rating * usage_count) + quality_score
+                    ) / new_usage_count
 
                     await db.execute(
                         """
@@ -531,7 +575,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                         SET usage_count = ?, avg_quality_rating = ?, last_used = CURRENT_TIMESTAMP
                         WHERE id = ?
                         """,
-                        (new_usage_count, new_avg_rating, prompt_id)
+                        (new_usage_count, new_avg_rating, prompt_id),
                     )
 
                     # Record session usage
@@ -541,7 +585,13 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                         (id, session_id, prompt_id, data_type, quality_achieved)
                         VALUES (?, ?, ?, ?, ?)
                         """,
-                        (str(uuid.uuid4()), session_id, prompt_id, data_type, quality_score)
+                        (
+                            str(uuid.uuid4()),
+                            session_id,
+                            prompt_id,
+                            data_type,
+                            quality_score,
+                        ),
                     )
 
                     await db.commit()
@@ -549,7 +599,9 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
         except Exception as e:
             logger.error(f"Failed to update prompt usage stats: {e}")
 
-    async def get_prompt_history(self, data_type: str, days: int = 30) -> List[Dict[str, Any]]:
+    async def get_prompt_history(
+        self, data_type: str, days: int = 30
+    ) -> List[Dict[str, Any]]:
         """Get optimization history for a data type."""
         try:
             database = await self.container.get("database")
@@ -564,22 +616,24 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                     WHERE data_type = ? AND created_at >= ?
                     ORDER BY created_at DESC
                     """,
-                    (data_type, cutoff_date)
+                    (data_type, cutoff_date),
                 )
                 rows = await cursor.fetchall()
 
                 history = []
                 for row in rows:
-                    history.append({
-                        "prompt_id": row[0],
-                        "quality_score": row[1],
-                        "optimization_version": row[2],
-                        "claude_feedback": row[3],
-                        "usage_count": row[4],
-                        "avg_quality_rating": row[5],
-                        "created_at": row[6],
-                        "last_optimized_at": row[7]
-                    })
+                    history.append(
+                        {
+                            "prompt_id": row[0],
+                            "quality_score": row[1],
+                            "optimization_version": row[2],
+                            "claude_feedback": row[3],
+                            "usage_count": row[4],
+                            "avg_quality_rating": row[5],
+                            "created_at": row[6],
+                            "last_optimized_at": row[7],
+                        }
+                    )
 
                 return history
 
@@ -607,7 +661,7 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                     GROUP BY data_type, DATE(created_at)
                     ORDER BY optimization_date DESC, data_type
                     """,
-                    (cutoff_date,)
+                    (cutoff_date,),
                 )
                 rows = await cursor.fetchall()
 
@@ -617,13 +671,15 @@ Make sure the prompt asks for exactly the type of {data_type} data needed for an
                     if data_type not in trends:
                         trends[data_type] = []
 
-                    trends[data_type].append({
-                        "date": row[5],
-                        "avg_quality": round(row[1], 2),
-                        "min_quality": row[2],
-                        "max_quality": row[3],
-                        "optimization_count": row[4]
-                    })
+                    trends[data_type].append(
+                        {
+                            "date": row[5],
+                            "avg_quality": round(row[1], 2),
+                            "min_quality": row[2],
+                            "max_quality": row[3],
+                            "optimization_count": row[4],
+                        }
+                    )
 
                 return trends
 

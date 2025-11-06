@@ -2,20 +2,20 @@
 
 import logging
 import os
-from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request, Depends
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
 from src.core.errors import TradingError
+
 from ..dependencies import get_container
-from ..utils.error_handlers import (
-    handle_trading_error,
-    handle_unexpected_error,
-)
+from ..utils.error_handlers import (handle_trading_error,
+                                    handle_unexpected_error)
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,9 @@ default_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 
 @router.get("/analytics/portfolio-deep")
 @limiter.limit(default_limit)
-async def portfolio_deep_analytics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def portfolio_deep_analytics(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get deep portfolio analytics."""
 
     try:
@@ -38,8 +40,10 @@ async def portfolio_deep_analytics(request: Request, container: DependencyContai
             return JSONResponse({"error": "No analytics available"}, status_code=404)
 
         return {
-            "portfolio": analytics.to_dict() if hasattr(analytics, 'to_dict') else analytics,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "portfolio": (
+                analytics.to_dict() if hasattr(analytics, "to_dict") else analytics
+            ),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -49,14 +53,16 @@ async def portfolio_deep_analytics(request: Request, container: DependencyContai
 
 @router.get("/analytics/trades")
 @limiter.limit(default_limit)
-async def get_trades_analytics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_trades_analytics(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get trades analytics."""
 
     try:
         return {
             "total_trades": 0,
             "trades": [],
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -66,7 +72,11 @@ async def get_trades_analytics(request: Request, container: DependencyContainer 
 
 @router.get("/alerts")
 @limiter.limit(default_limit)
-async def get_risk_alerts(request: Request, user_id: Optional[str] = None, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_risk_alerts(
+    request: Request,
+    user_id: Optional[str] = None,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
     """Get risk alerts."""
 
     try:
@@ -77,7 +87,7 @@ async def get_risk_alerts(request: Request, user_id: Optional[str] = None, conta
                 "type": "risk_exposure",
                 "message": "Portfolio risk exposure above threshold",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "acknowledged": False
+                "acknowledged": False,
             }
         ]
         return {"alerts": alerts}
@@ -90,9 +100,7 @@ async def get_risk_alerts(request: Request, user_id: Optional[str] = None, conta
 @router.get("/monitor/status")
 @limiter.limit(default_limit)
 async def get_risk_monitoring_status(
-    request: Request,
-    user_id: Optional[str] = None,
-    portfolio_id: Optional[str] = None
+    request: Request, user_id: Optional[str] = None, portfolio_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Get risk monitoring status."""
     if not portfolio_id:
@@ -104,7 +112,7 @@ async def get_risk_monitoring_status(
             "last_check": datetime.now(timezone.utc).isoformat(),
             "risk_score": 2.5,
             "alerts_count": 0,
-            "status": "healthy"
+            "status": "healthy",
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -115,9 +123,7 @@ async def get_risk_monitoring_status(
 @router.get("/portfolio/risk-metrics")
 @limiter.limit(default_limit)
 async def get_portfolio_risk_metrics(
-    request: Request,
-    portfolio_id: str = "portfolio_123",
-    period: str = "1M"
+    request: Request, portfolio_id: str = "portfolio_123", period: str = "1M"
 ) -> Dict[str, Any]:
     """Get portfolio risk metrics."""
     try:
@@ -130,7 +136,7 @@ async def get_portfolio_risk_metrics(
             "var_95": -15000,
             "beta": 0.85,
             "alpha": 2.1,
-            "last_updated": datetime.now(timezone.utc).isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat(),
         }
     except TradingError as e:
         return await handle_trading_error(e)
@@ -140,7 +146,9 @@ async def get_portfolio_risk_metrics(
 
 @router.get("/analytics/performance/30d")
 @limiter.limit(default_limit)
-async def get_performance_30d(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_performance_30d(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get 30-day performance analytics - matches frontend expectation."""
     try:
         performance_data = {
@@ -165,11 +173,11 @@ async def get_performance_30d(request: Request, container: DependencyContainer =
             "topPerformers": [
                 {"symbol": "HDFC", "return": 3.2, "contribution": 0.8},
                 {"symbol": "INFY", "return": 2.8, "contribution": 0.6},
-                {"symbol": "TCS", "return": 2.1, "contribution": 0.4}
+                {"symbol": "TCS", "return": 2.1, "contribution": 0.4},
             ],
             "worstPerformers": [
                 {"symbol": "SBIN", "return": -1.2, "contribution": -0.3},
-                {"symbol": "MARUTI", "return": -0.8, "contribution": -0.2}
+                {"symbol": "MARUTI", "return": -0.8, "contribution": -0.2},
             ],
             "sectorAllocation": {
                 "IT": 35,
@@ -177,9 +185,9 @@ async def get_performance_30d(request: Request, container: DependencyContainer =
                 "Auto": 15,
                 "Energy": 10,
                 "Pharma": 10,
-                "Others": 5
+                "Others": 5,
             },
-            "lastUpdated": datetime.now(timezone.utc).isoformat()
+            "lastUpdated": datetime.now(timezone.utc).isoformat(),
         }
 
         return {"performance": performance_data}
@@ -191,7 +199,9 @@ async def get_performance_30d(request: Request, container: DependencyContainer =
 
 @router.get("/alerts/active")
 @limiter.limit(default_limit)
-async def get_active_alerts(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+async def get_active_alerts(
+    request: Request, container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
     """Get active alerts - matches frontend expectation."""
     try:
         alerts = [
@@ -205,7 +215,7 @@ async def get_active_alerts(request: Request, container: DependencyContainer = D
                 "current": 12.5,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "acknowledged": False,
-                "autoGenerated": True
+                "autoGenerated": True,
             },
             {
                 "id": "alert_2",
@@ -217,7 +227,7 @@ async def get_active_alerts(request: Request, container: DependencyContainer = D
                 "current": 4320,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "acknowledged": False,
-                "autoGenerated": True
+                "autoGenerated": True,
             },
             {
                 "id": "alert_3",
@@ -229,8 +239,8 @@ async def get_active_alerts(request: Request, container: DependencyContainer = D
                 "current": None,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "acknowledged": False,
-                "autoGenerated": True
-            }
+                "autoGenerated": True,
+            },
         ]
 
         return {
@@ -239,7 +249,7 @@ async def get_active_alerts(request: Request, container: DependencyContainer = D
             "critical": len([a for a in alerts if a["severity"] == "high"]),
             "warning": len([a for a in alerts if a["severity"] == "medium"]),
             "info": len([a for a in alerts if a["severity"] == "low"]),
-            "lastUpdated": datetime.now(timezone.utc).isoformat()
+            "lastUpdated": datetime.now(timezone.utc).isoformat(),
         }
     except TradingError as e:
         return await handle_trading_error(e)
