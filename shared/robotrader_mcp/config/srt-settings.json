@@ -1,0 +1,24 @@
+{
+  "network": {
+    "allowedDomains": ["localhost", "127.0.0.1"],
+    "deniedDomains": ["*"],
+    "allowUnixSockets": true,
+    "allowLocalBinding": false
+  },
+  "filesystem": {
+    "allowWrite": ["./shared/robotrader_mcp/tmp/*", "./state/*", "./logs/*"],
+    "denyWrite": ["src/*", "ui/*", "/etc/*", "/usr/*", "/bin/*", "/sbin/*"],
+    "denyRead": ["*/.ssh/*", "*/.aws/*", "*/.env*", "*/secrets/*"]
+  },
+  "process": {
+    "allowExec": ["python3", "python"],
+    "denyExec": ["rm", "mv", "cp", "chmod", "chown", "sudo", "su"],
+    "timeoutSeconds": 30,
+    "memoryLimitMB": 256,
+    "outputSizeLimitMB": 1
+  },
+  "environment": {
+    "allowedVars": ["ROBO_TRADER_API", "ROBO_TRADER_DB", "LOG_DIR", "PATH"],
+    "blockedVars": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "API_KEY", "SECRET_KEY", "TOKEN", "PASSWORD"]
+  }
+}

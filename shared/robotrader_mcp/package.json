@@ -1,0 +1,27 @@
+{
+  "name": "robo-trader-dev-mcp",
+  "version": "1.0.0",
+  "description": "Development MCP server for robo-trader debugging with progressive disclosure and token optimization",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "timeout 10s node dist/index.js"
+  },
+  "keywords": ["mcp", "robo-trader", "development", "debugging", "progressive-disclosure"],
+  "author": "Claude Code",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.4.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
