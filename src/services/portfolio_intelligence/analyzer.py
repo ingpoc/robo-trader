@@ -51,12 +51,14 @@ class PortfolioIntelligenceAnalyzer:
         state_manager,
         config_state,
         analysis_logger,
+        config,
         broadcast_coordinator: Optional[Any] = None,
         status_coordinator: Optional[Any] = None
     ):
         self.state_manager = state_manager
         self.config_state = config_state
         self.analysis_logger = analysis_logger
+        self.config = config
         self.broadcast_coordinator = broadcast_coordinator
         self.status_coordinator = status_coordinator
         self.client_manager = None
@@ -69,14 +71,22 @@ class PortfolioIntelligenceAnalyzer:
             broadcast_coordinator,
             status_coordinator
         )
-        self.storage_handler = PortfolioStorageHandler(config_state)
+        # Pass portfolio_analysis_state for hook events storage
+        self.storage_handler = PortfolioStorageHandler(
+            config_state,
+            state_manager.portfolio_analysis if hasattr(state_manager, 'portfolio_analysis') else None
+        )
         self.analysis_executor = None  # Will be initialized after client_manager
 
     async def initialize(self) -> None:
         """Initialize the analyzer with Claude SDK client."""
         try:
             self.client_manager = await ClaudeSDKClientManager.get_instance()
-            self.analysis_executor = PortfolioAnalysisExecutor(self.client_manager, self.analysis_logger)
+            self.analysis_executor = PortfolioAnalysisExecutor(
+                self.client_manager,
+                self.analysis_logger,
+                self.config
+            )
             logger.info("Portfolio Intelligence Analyzer initialized")
         except Exception as e:
             logger.error(f"Failed to initialize Portfolio Intelligence Analyzer: {e}")
@@ -204,6 +214,11 @@ class PortfolioIntelligenceAnalyzer:
             # Store recommendations if any were extracted
             for rec in analysis_result.get("recommendations", []):
                 await self.storage_handler.store_recommendation(rec, analysis_id)
+
+            # Store hook events for transparency and debugging
+            hook_events = analysis_result.get("hook_events", [])
+            if hook_events:
+                await self.storage_handler.store_hook_events(analysis_id, hook_events)
 
             # Step 10: Log to AI Transparency
             await self.logger_helper.log_to_transparency(

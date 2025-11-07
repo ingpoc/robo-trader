@@ -126,6 +126,7 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
             state_manager=state_manager,
             config_state=config_state,
             analysis_logger=analysis_logger,
+            config=container.config,
             broadcast_coordinator=broadcast_coordinator,
             status_coordinator=status_coordinator
         )
