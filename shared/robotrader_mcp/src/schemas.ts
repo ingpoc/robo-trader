@@ -44,6 +44,23 @@ export const VerifyConfigSchema = z.object({
   include_suggestions: z.boolean().optional().default(true).describe("Include improvement suggestions")
 });
 
+// New monitoring tool schemas
+export const QueueStatusSchema = z.object({
+  use_cache: z.boolean().optional().default(true).describe("Use cached data if available (60s TTL)"),
+  include_details: z.boolean().optional().default(false).describe("Include detailed queue information")
+});
+
+export const CoordinatorStatusSchema = z.object({
+  use_cache: z.boolean().optional().default(true).describe("Use cached data if available (45s TTL)"),
+  check_critical_only: z.boolean().optional().default(false).describe("Check only critical coordinators")
+});
+
+export const TaskExecutionMetricsSchema = z.object({
+  use_cache: z.boolean().optional().default(true).describe("Use cached data if available (120s TTL)"),
+  time_window_hours: z.number().optional().default(24).describe("Time window for metrics analysis (hours)"),
+  include_trends: z.boolean().optional().default(true).describe("Include error trend analysis")
+});
+
 // Response schemas for consistent output
 export const ToolResponseSchema = z.object({
   success: z.boolean(),
@@ -59,3 +76,6 @@ export type QueryPortfolioInput = z.infer<typeof QueryPortfolioSchema>;
 export type DiagnoseLocksInput = z.infer<typeof DiagnoseLocksSchema>;
 export type CheckHealthInput = z.infer<typeof CheckHealthSchema>;
 export type VerifyConfigInput = z.infer<typeof VerifyConfigSchema>;
+export type QueueStatusInput = z.infer<typeof QueueStatusSchema>;
+export type CoordinatorStatusInput = z.infer<typeof CoordinatorStatusSchema>;
+export type TaskExecutionMetricsInput = z.infer<typeof TaskExecutionMetricsSchema>;

@@ -128,7 +128,7 @@ def get_portfolio_stats(cursor: sqlite3.Cursor) -> Dict[str, Any]:
         cursor.execute("""
             SELECT COUNT(*) as count
             FROM recommendations
-            WHERE timestamp > datetime('now', '-24 hours')
+            WHERE created_at > datetime('now', '-24 hours')
         """)
         stats['recommendations_last_24h'] = cursor.fetchone()['count']
 
@@ -261,7 +261,7 @@ def apply_filters_and_query(cursor: sqlite3.Cursor, filters: List[str], limit: i
             GROUP BY symbol
             HAVING symbol NOT IN (
                 SELECT DISTINCT symbol FROM recommendations
-                WHERE timestamp > datetime('now', '-24 hours')
+                WHERE created_at > datetime('now', '-24 hours')
             )
             ORDER BY MAX(timestamp) DESC
             LIMIT ?

@@ -132,6 +132,7 @@ from .routes.logs import router as logs_router
 from .routes.prompt_optimization import router as prompt_optimization_router
 from .routes.symbols import router as symbols_router
 from .routes.database_backups import router as database_backups_router
+from .routes.coordinators import router as coordinators_router
 
 # ============================================================================
 # Global Variables
@@ -505,6 +506,7 @@ app.include_router(configuration_router)
 app.include_router(logs_router)
 app.include_router(prompt_optimization_router)
 app.include_router(database_backups_router)
+app.include_router(coordinators_router)
 
 # ============================================================================
 # Global State (removed - use app.state or dependency injection instead)

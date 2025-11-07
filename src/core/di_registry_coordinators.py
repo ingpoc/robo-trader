@@ -25,6 +25,7 @@ from .coordinators.status.infrastructure_status_coordinator import Infrastructur
 from .coordinators.status.ai_status_coordinator import AIStatusCoordinator
 from .coordinators.status.agent_status_coordinator import AgentStatusCoordinator
 from .coordinators.status.portfolio_status_coordinator import PortfolioStatusCoordinator
+from .coordinators.portfolio.portfolio_analysis_coordinator import PortfolioAnalysisCoordinator
 from .orchestrator import RoboTraderOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,22 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
 
     container._register_singleton("claude_agent_coordinator", create_claude_agent_coordinator)
 
+    async def create_portfolio_analysis_coordinator():
+        state_manager = await container.get("state_manager")
+        config_state = await container.get("configuration_state")
+        task_service = await container.get("task_service")
+        event_bus = await container.get("event_bus")
+        coordinator = PortfolioAnalysisCoordinator(
+            container.config,
+            state_manager,
+            config_state,
+            task_service
+        )
+        coordinator.event_bus = event_bus
+        return coordinator
+
+    container._register_singleton("portfolio_analysis_coordinator", create_portfolio_analysis_coordinator)
+
 
 async def register_orchestrator(container: 'DependencyContainer') -> None:
     """Register orchestrator - created last due to dependencies."""
@@ -217,6 +234,7 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
 
         # Initialize all coordinators BEFORE initializing orchestrator
         logger.info("Initializing coordinators...")
+        portfolio_analysis_coordinator = await container.get("portfolio_analysis_coordinator")
         await asyncio.gather(
             session_coordinator.initialize(),
             query_coordinator.initialize(),
@@ -224,6 +242,7 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
             status_coordinator.initialize(),
             lifecycle_coordinator.initialize(),
             broadcast_coordinator.initialize(),
+            portfolio_analysis_coordinator.initialize(),
         )
 
         # Initialize queue coordinator

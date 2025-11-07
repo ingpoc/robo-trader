@@ -23,10 +23,24 @@ const toolCategories = {
   },
   "system": {
     name: "System Monitoring Tools",
-    description: "Tools for system health and lock issue diagnosis",
-    tools: ["check_system_health", "diagnose_database_locks"],
-    token_efficiency: "97%+ reduction vs manual investigation",
-    use_cases: ["health_monitoring", "troubleshooting", "performance_analysis"]
+    description: "Tools for system health, lock issue diagnosis, queue monitoring, and coordinator health",
+    tools: ["check_system_health", "diagnose_database_locks", "queue_status", "coordinator_status"],
+    token_efficiency: "96-97%+ reduction vs manual investigation",
+    use_cases: ["health_monitoring", "troubleshooting", "performance_analysis", "queue_monitoring", "coordinator_verification"]
+  },
+  "optimization": {
+    name: "Token Optimization Tools",
+    description: "Advanced tools for extreme token efficiency and progressive disclosure",
+    tools: ["differential_analysis", "smart_cache", "context_aware_summarize"],
+    token_efficiency: "99%+ reduction vs traditional data access",
+    use_cases: ["token_optimization", "caching", "differential_analysis", "user_intent"]
+  },
+  "performance": {
+    name: "Performance Monitoring Tools",
+    description: "Real-time system performance monitoring and task metrics with minimal overhead",
+    tools: ["real_time_performance_monitor", "task_execution_metrics"],
+    token_efficiency: "95-97%+ reduction vs manual monitoring",
+    use_cases: ["performance_monitoring", "system_health", "resource_optimization", "task_execution_analysis"]
   }
 };
 
@@ -82,6 +96,27 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         break;
       case 'diagnose_locks':
         traditionalTokens = 40000; // Logs + code analysis
+        break;
+      case 'differential_analysis':
+        traditionalTokens = 50000; // Full portfolio analysis repeatedly
+        break;
+      case 'smart_cache':
+        traditionalTokens = 35000; // Repeated database queries
+        break;
+      case 'context_aware_summarize':
+        traditionalTokens = 40000; // Full data dumps vs smart summaries
+        break;
+      case 'real_time_performance_monitor':
+        traditionalTokens = 20000; // Multiple system monitoring calls
+        break;
+      case 'queue_status':
+        traditionalTokens = 30000; // Queue details + analysis
+        break;
+      case 'coordinator_status':
+        traditionalTokens = 25000; // Coordinator details + diagnostics
+        break;
+      case 'task_execution_metrics':
+        traditionalTokens = 40000; // Task history + database queries + API calls
         break;
       default:
         traditionalTokens = inputTokens * 10; // Conservative estimate
@@ -287,6 +322,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }]
       };
 
+    case "differential_analysis":
+      const differentialResult = await executeTool("differential_analysis", args);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(differentialResult, null, 2)
+        }]
+      };
+
+    case "smart_cache":
+      const cacheResult = await executeTool("smart_cache", args);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(cacheResult, null, 2)
+        }]
+      };
+
+    case "context_aware_summarize":
+      const summarizeResult = await executeTool("context_aware_summarize", args);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(summarizeResult, null, 2)
+        }]
+      };
+
+    case "real_time_performance_monitor":
+      const performanceResult = await executeTool("real_time_performance_monitor", args);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(performanceResult, null, 2)
+        }]
+      };
+
+    case "queue_status":
+      const queueResult = await executeTool("queue_status", args);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(queueResult, null, 2)
+        }]
+      };
+
+    case "coordinator_status":
+      const coordinatorResult = await executeTool("coordinator_status", args);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(coordinatorResult, null, 2)
+        }]
+      };
+
+    case "task_execution_metrics":
+      const metricsResult = await executeTool("task_execution_metrics", args);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(metricsResult, null, 2)
+        }]
+      };
+
     case "mcp_info":
       return {
         content: [{
@@ -295,11 +393,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             name: "Robo-Trader Development MCP Server",
             version: "1.0.0",
             architecture: "Progressive Disclosure with SRT Security",
-            token_savings: "99%+ reduction vs traditional MCP servers",
-            total_tools: 5,
+            token_savings: "95-99%+ reduction vs traditional MCP servers",
+            total_tools: 12,
             categories: Object.keys(toolCategories),
             security: "Anthropic Sandbox Runtime (automatic)",
-            usage: "Start with list_categories to discover tools on-demand"
+            usage: "Start with list_categories to discover tools on-demand",
+            new_tools: ["queue_status", "coordinator_status", "task_execution_metrics"]
           }, null, 2)
         }]
       };

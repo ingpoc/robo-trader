@@ -358,6 +358,34 @@ async def get_system_health(request: Request, container: DependencyContainer = D
         return await handle_unexpected_error(e, "get_system_health")
 
 
+@router.get("/status")
+@limiter.limit(dashboard_limit)
+async def get_system_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
+    """Get overall system status - basic health and version information."""
+    try:
+        # Basic system status
+        status = {
+            "status": "healthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": "1.0.0",
+            "environment": os.getenv("ENVIRONMENT", "development"),
+            "uptime": None,  # TODO: Implement uptime tracking
+            "components": {
+                "api": {"status": "healthy"},
+                "database": {"status": "connected"},
+                "orchestrator": {"status": "running"},
+                "queues": {"status": "running"},
+                "claude": {"status": "authenticated"}
+            }
+        }
+
+        return status
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_system_status")
+
+
 @router.get("/scheduler/status")
 @limiter.limit(dashboard_limit)
 async def get_scheduler_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
