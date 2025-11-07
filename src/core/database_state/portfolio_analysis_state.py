@@ -101,6 +101,35 @@ class PortfolioAnalysisState(BaseState):
                 created_at TEXT NOT NULL
             );
 
+            -- Hook Events Audit Trail (for transparency and debugging)
+            CREATE TABLE IF NOT EXISTS audit_hook_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,  -- 'PreToolUse', 'PostToolUse', 'Stop'
+                tool_name TEXT,
+                tool_input TEXT,  -- JSON blob
+                tool_output TEXT,
+                error TEXT,
+                reason TEXT,
+                event_timestamp REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (analysis_id) REFERENCES portfolio_analysis(id)
+            );
+
+            -- Analysis Checkpoints (for crash recovery and resume)
+            CREATE TABLE IF NOT EXISTS analysis_checkpoints (
+                id TEXT PRIMARY KEY,
+                analysis_id TEXT NOT NULL,
+                session_id TEXT,
+                checkpoint_type TEXT NOT NULL,  -- 'progress', 'completion', 'failure'
+                stocks_completed TEXT NOT NULL,  -- JSON array of completed symbols
+                stocks_pending TEXT NOT NULL,     -- JSON array of pending symbols
+                stocks_total INTEGER NOT NULL,
+                checkpoint_data TEXT,             -- JSON blob with additional state
+                checkpoint_timestamp REAL NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             -- Indexes for performance
             CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_symbol ON portfolio_analysis(symbol);
             CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_date ON portfolio_analysis(analysis_date DESC);
@@ -111,6 +140,12 @@ class PortfolioAnalysisState(BaseState):
             CREATE INDEX IF NOT EXISTS idx_data_quality_symbol ON data_quality_metrics(symbol);
             CREATE INDEX IF NOT EXISTS idx_data_quality_date ON data_quality_metrics(quality_date DESC);
             CREATE INDEX IF NOT EXISTS idx_analysis_performance_date ON analysis_performance(analysis_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_audit_hook_events_analysis_id ON audit_hook_events(analysis_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_hook_events_type ON audit_hook_events(event_type);
+            CREATE INDEX IF NOT EXISTS idx_audit_hook_events_timestamp ON audit_hook_events(event_timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_analysis_checkpoints_analysis_id ON analysis_checkpoints(analysis_id);
+            CREATE INDEX IF NOT EXISTS idx_analysis_checkpoints_type ON analysis_checkpoints(checkpoint_type);
+            CREATE INDEX IF NOT EXISTS idx_analysis_checkpoints_timestamp ON analysis_checkpoints(checkpoint_timestamp DESC);
             """
 
             try:
@@ -503,3 +538,226 @@ Provide comprehensive investment recommendation.""",
             except Exception as e:
                 logger.error(f"Failed to get analysis performance: {e}")
                 return []
+
+    # ===== Hook Events Audit Trail Operations =====
+    async def store_hook_event(self, analysis_id: str, event_type: str,
+                               tool_name: Optional[str] = None,
+                               tool_input: Optional[Dict[str, Any]] = None,
+                               tool_output: Optional[str] = None,
+                               error: Optional[str] = None,
+                               reason: Optional[str] = None,
+                               event_timestamp: Optional[float] = None) -> bool:
+        """Store a hook event for transparency and debugging."""
+        async with self._lock:
+            try:
+                current_time = datetime.now(timezone.utc).isoformat()
+                if event_timestamp is None:
+                    event_timestamp = datetime.now(timezone.utc).timestamp()
+
+                await self.db.connection.execute(
+                    """INSERT INTO audit_hook_events
+                       (analysis_id, event_type, tool_name, tool_input, tool_output,
+                        error, reason, event_timestamp, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (analysis_id, event_type, tool_name,
+                     json.dumps(tool_input) if tool_input else None,
+                     tool_output, error, reason, event_timestamp, current_time)
+                )
+
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store hook event for analysis {analysis_id}: {e}")
+                return False
+
+    async def store_hook_events_batch(self, analysis_id: str, events: List[Dict[str, Any]]) -> bool:
+        """Store multiple hook events in a batch."""
+        async with self._lock:
+            try:
+                current_time = datetime.now(timezone.utc).isoformat()
+
+                for event in events:
+                    await self.db.connection.execute(
+                        """INSERT INTO audit_hook_events
+                           (analysis_id, event_type, tool_name, tool_input, tool_output,
+                            error, reason, event_timestamp, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (analysis_id, event.get("event_type"), event.get("tool_name"),
+                         json.dumps(event.get("tool_input")) if event.get("tool_input") else None,
+                         event.get("tool_output"), event.get("error"),
+                         event.get("reason"), event.get("timestamp", datetime.now(timezone.utc).timestamp()),
+                         current_time)
+                    )
+
+                await self.db.connection.commit()
+                logger.info(f"Stored {len(events)} hook events for analysis {analysis_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store hook events batch for analysis {analysis_id}: {e}")
+                return False
+
+    async def get_hook_events(self, analysis_id: str) -> List[Dict[str, Any]]:
+        """Get hook events for an analysis."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT event_type, tool_name, tool_input, tool_output,
+                          error, reason, event_timestamp, created_at
+                       FROM audit_hook_events
+                       WHERE analysis_id = ?
+                       ORDER BY event_timestamp ASC""",
+                    (analysis_id,)
+                )
+                rows = await cursor.fetchall()
+
+                events = []
+                for row in rows:
+                    events.append({
+                        "event_type": row[0],
+                        "tool_name": row[1],
+                        "tool_input": json.loads(row[2]) if row[2] else None,
+                        "tool_output": row[3],
+                        "error": row[4],
+                        "reason": row[5],
+                        "event_timestamp": row[6],
+                        "created_at": row[7]
+                    })
+                return events
+
+            except Exception as e:
+                logger.error(f"Failed to get hook events for analysis {analysis_id}: {e}")
+                return []
+
+    # ===== Checkpoint Operations (for crash recovery) =====
+    async def create_checkpoint(self, analysis_id: str, checkpoint_type: str,
+                               stocks_completed: List[str], stocks_pending: List[str],
+                               session_id: Optional[str] = None,
+                               checkpoint_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Create a checkpoint for analysis progress."""
+        async with self._lock:
+            try:
+                import uuid
+                checkpoint_id = f"checkpoint_{uuid.uuid4().hex[:12]}"
+                current_time = datetime.now(timezone.utc).isoformat()
+                checkpoint_timestamp = datetime.now(timezone.utc).timestamp()
+
+                await self.db.connection.execute(
+                    """INSERT INTO analysis_checkpoints
+                       (id, analysis_id, session_id, checkpoint_type, stocks_completed,
+                        stocks_pending, stocks_total, checkpoint_data, checkpoint_timestamp, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (checkpoint_id, analysis_id, session_id, checkpoint_type,
+                     json.dumps(stocks_completed), json.dumps(stocks_pending),
+                     len(stocks_completed) + len(stocks_pending),
+                     json.dumps(checkpoint_data) if checkpoint_data else None,
+                     checkpoint_timestamp, current_time)
+                )
+
+                await self.db.connection.commit()
+                logger.info(f"Created {checkpoint_type} checkpoint for analysis {analysis_id}: {len(stocks_completed)} completed, {len(stocks_pending)} pending")
+                return checkpoint_id
+
+            except Exception as e:
+                logger.error(f"Failed to create checkpoint for analysis {analysis_id}: {e}")
+                return None
+
+    async def get_latest_checkpoint(self, analysis_id: str) -> Optional[Dict[str, Any]]:
+        """Get the most recent checkpoint for an analysis."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, session_id, checkpoint_type, stocks_completed, stocks_pending,
+                          stocks_total, checkpoint_data, checkpoint_timestamp, created_at
+                       FROM analysis_checkpoints
+                       WHERE analysis_id = ?
+                       ORDER BY checkpoint_timestamp DESC
+                       LIMIT 1""",
+                    (analysis_id,)
+                )
+                row = await cursor.fetchone()
+
+                if row:
+                    return {
+                        "checkpoint_id": row[0],
+                        "session_id": row[1],
+                        "checkpoint_type": row[2],
+                        "stocks_completed": json.loads(row[3]) if row[3] else [],
+                        "stocks_pending": json.loads(row[4]) if row[4] else [],
+                        "stocks_total": row[5],
+                        "checkpoint_data": json.loads(row[6]) if row[6] else {},
+                        "checkpoint_timestamp": row[7],
+                        "created_at": row[8]
+                    }
+                return None
+
+            except Exception as e:
+                logger.error(f"Failed to get latest checkpoint for analysis {analysis_id}: {e}")
+                return None
+
+    async def get_checkpoints(self, analysis_id: str) -> List[Dict[str, Any]]:
+        """Get all checkpoints for an analysis."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, session_id, checkpoint_type, stocks_completed, stocks_pending,
+                          stocks_total, checkpoint_data, checkpoint_timestamp, created_at
+                       FROM analysis_checkpoints
+                       WHERE analysis_id = ?
+                       ORDER BY checkpoint_timestamp ASC""",
+                    (analysis_id,)
+                )
+                rows = await cursor.fetchall()
+
+                checkpoints = []
+                for row in rows:
+                    checkpoints.append({
+                        "checkpoint_id": row[0],
+                        "session_id": row[1],
+                        "checkpoint_type": row[2],
+                        "stocks_completed": json.loads(row[3]) if row[3] else [],
+                        "stocks_pending": json.loads(row[4]) if row[4] else [],
+                        "stocks_total": row[5],
+                        "checkpoint_data": json.loads(row[6]) if row[6] else {},
+                        "checkpoint_timestamp": row[7],
+                        "created_at": row[8]
+                    })
+                return checkpoints
+
+            except Exception as e:
+                logger.error(f"Failed to get checkpoints for analysis {analysis_id}: {e}")
+                return []
+
+    async def delete_old_checkpoints(self, analysis_id: str, keep_latest: int = 5) -> bool:
+        """Delete old checkpoints, keeping only the latest N."""
+        async with self._lock:
+            try:
+                # Get all checkpoint IDs for this analysis
+                cursor = await self.db.connection.execute(
+                    """SELECT id FROM analysis_checkpoints
+                       WHERE analysis_id = ?
+                       ORDER BY checkpoint_timestamp DESC""",
+                    (analysis_id,)
+                )
+                rows = await cursor.fetchall()
+
+                if len(rows) <= keep_latest:
+                    return True  # Nothing to delete
+
+                # Delete old checkpoints
+                checkpoints_to_delete = [row[0] for row in rows[keep_latest:]]
+                placeholders = ','.join('?' * len(checkpoints_to_delete))
+                await self.db.connection.execute(
+                    f"""DELETE FROM analysis_checkpoints
+                        WHERE id IN ({placeholders})""",
+                    checkpoints_to_delete
+                )
+
+                await self.db.connection.commit()
+                logger.info(f"Deleted {len(checkpoints_to_delete)} old checkpoints for analysis {analysis_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to delete old checkpoints for analysis {analysis_id}: {e}")
+                return False

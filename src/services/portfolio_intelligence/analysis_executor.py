@@ -21,9 +21,45 @@ logger = logging.getLogger(__name__)
 class PortfolioAnalysisExecutor:
     """Executes Claude analysis for portfolio intelligence."""
 
-    def __init__(self, client_manager, analysis_logger):
+    def __init__(self, client_manager, analysis_logger, config):
         self.client_manager = client_manager
         self.analysis_logger = analysis_logger
+        self.config = config
+        self._hook_events = []  # Store hook events for logging
+
+    async def _hook_pre_tool_use(self, tool_name: str, tool_input: Dict[str, Any]) -> None:
+        """Hook called before Claude uses a tool."""
+        event = {
+            "event_type": "PreToolUse",
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+            "timestamp": time.time()
+        }
+        self._hook_events.append(event)
+        logger.debug(f"PreToolUse hook: Claude about to use tool '{tool_name}' with input: {tool_input}")
+
+    async def _hook_post_tool_use(self, tool_name: str, tool_output: Any, error: Optional[str] = None) -> None:
+        """Hook called after Claude uses a tool."""
+        event = {
+            "event_type": "PostToolUse",
+            "tool_name": tool_name,
+            "tool_output": str(tool_output)[:500] if tool_output else None,  # Limit size
+            "error": error,
+            "timestamp": time.time()
+        }
+        self._hook_events.append(event)
+        logger.debug(f"PostToolUse hook: Tool '{tool_name}' completed. Error: {error}")
+
+    async def _hook_stop(self, reason: str) -> None:
+        """Hook called when analysis session stops."""
+        event = {
+            "event_type": "Stop",
+            "reason": reason,
+            "total_events": len(self._hook_events),
+            "timestamp": time.time()
+        }
+        self._hook_events.append(event)
+        logger.debug(f"Stop hook: Analysis session stopped. Reason: {reason}. Total events: {len(self._hook_events)}")
 
     async def execute_claude_analysis(
         self,
@@ -63,13 +99,14 @@ class PortfolioAnalysisExecutor:
                 duration_ms=0
             )
 
-            # Create Claude SDK client with MCP server
+            # Create Claude SDK client with MCP server and environment-specific permission mode
             from claude_agent_sdk import ClaudeAgentOptions
             options = ClaudeAgentOptions(
                 system_prompt=system_prompt,
                 mcp_servers={"portfolio_intelligence": mcp_server},
                 allowed_tools=tool_names,
-                max_turns=15
+                max_turns=10,  # Reduced from 15 - optimized prompts need fewer turns
+                permission_mode=self.config.permission_mode  # Use environment-based permission mode
             )
 
             client = await self.client_manager.get_client("portfolio_analysis", options)
@@ -90,22 +127,75 @@ class PortfolioAnalysisExecutor:
                 for symbol, data in stocks_data.items()
             }
 
-            user_prompt = f"""Analyze the following stocks and their data:
+            user_prompt = f"""Analyze the following stocks and their data. ALL information is provided below - complete your analysis in ONE comprehensive response.
 
-STOCKS SUMMARY:
+═══════════════════════════════════════════════════════════════
+STOCKS SUMMARY (with available data):
+═══════════════════════════════════════════════════════════════
 {json.dumps(stocks_summary, indent=2)}
 
-CURRENT PROMPTS USED FOR DATA FETCHING:
+═══════════════════════════════════════════════════════════════
+CURRENT PROMPTS USED FOR DATA FETCHING (from database):
+═══════════════════════════════════════════════════════════════
 {json.dumps(prompts, indent=2)}
 
-TASK:
-1. Assess data quality and freshness for each stock
-2. Review current prompts using the read_prompt tool
-3. Optimize prompts if needed using the update_prompt tool
-4. Provide investment recommendations for each stock
-5. Use log_analysis_step to document your thinking process
+═══════════════════════════════════════════════════════════════
+YOUR ANALYSIS TASK (complete in ONE response):
+═══════════════════════════════════════════════════════════════
 
-Begin your analysis now."""
+For EACH stock, provide:
+
+**1. DATA QUALITY ASSESSMENT** (is data sufficient and current?)
+   - Earnings: Recent? Complete? Quality score (0-100)
+   - News: Fresh? Relevant? Quality score (0-100)
+   - Fundamentals: Comprehensive? Quality score (0-100)
+   - Overall data quality: SUFFICIENT | NEEDS_UPDATE | INSUFFICIENT
+
+**2. PROMPT OPTIMIZATION** (if data quality is poor)
+   - Which prompt needs updating? (earnings_processor/news_processor/deep_fundamental_processor)
+   - Why is current prompt insufficient?
+   - Optimized prompt (if needed - use update_prompt tool)
+
+**3. INVESTMENT RECOMMENDATION**
+   - Action: BUY | HOLD | SELL | WAIT_FOR_DATA
+   - Confidence: 0-100%
+   - Key reasons: (3-5 bullet points)
+   - Risk factors: (2-3 key risks)
+   - Price target (if applicable)
+
+**FORMAT YOUR RESPONSE AS:**
+```
+STOCK: [Symbol]
+---
+DATA QUALITY:
+- Earnings: [score/100] - [current/outdated] - [comment]
+- News: [score/100] - [fresh/stale] - [comment]
+- Fundamentals: [score/100] - [comprehensive/lacking] - [comment]
+- OVERALL: [SUFFICIENT|NEEDS_UPDATE|INSUFFICIENT]
+
+RECOMMENDATION:
+- ACTION: [BUY|HOLD|SELL|WAIT_FOR_DATA]
+- CONFIDENCE: [X]%
+- REASONING:
+  * [reason 1]
+  * [reason 2]
+  * [reason 3]
+- RISKS:
+  * [risk 1]
+  * [risk 2]
+- PRICE_TARGET: $[XX] (if applicable)
+
+[Repeat for each stock]
+```
+
+**IMPORTANT:**
+- Provide analysis for ALL {len(stocks_summary)} stocks in ONE response
+- Be concise but actionable (2-3 sentences per section maximum)
+- Only use update_prompt tool if data quality is truly insufficient
+- If data is outdated but present, still provide conditional recommendations
+- Focus on the most critical insights - avoid generic advice
+
+Begin your comprehensive analysis now (all stocks, one response)."""
 
             # Execute query with streaming and real-time progress monitoring
             logger.info(f"Starting Claude analysis with streaming for {len(stocks_data)} stocks")
@@ -143,6 +233,11 @@ Begin your analysis now."""
                             if isinstance(block, ToolUseBlock):
                                 # Claude is ACTIVELY using a tool - RUNNING
                                 logger.debug(f"Claude using tool: {block.name}")
+                                # Log PreToolUse hook event
+                                await self._hook_pre_tool_use(
+                                    tool_name=block.name,
+                                    tool_input=getattr(block, 'input', {})
+                                )
 
                             elif isinstance(block, TextBlock):
                                 # Claude is responding - RUNNING
@@ -152,10 +247,21 @@ Begin your analysis now."""
                     elif isinstance(message, ToolResultBlock):
                         # Tool completed - STILL RUNNING
                         logger.debug("Tool result received")
+                        # Log PostToolUse hook event
+                        tool_name = getattr(message, 'tool_use_id', 'unknown')
+                        tool_output = getattr(message, 'content', None)
+                        error = getattr(message, 'error', None) if hasattr(message, 'error') else None
+                        await self._hook_post_tool_use(
+                            tool_name=tool_name,
+                            tool_output=tool_output,
+                            error=error
+                        )
 
                     elif isinstance(message, ResultMessage):
                         # Analysis complete - READY
                         logger.debug("Claude analysis complete (ResultMessage received)")
+                        # Log Stop hook event
+                        await self._hook_stop(reason="analysis_complete")
                         break
 
                 except Exception as e:
@@ -203,8 +309,15 @@ Begin your analysis now."""
                 "prompt_updates": prompt_updates,
                 "data_assessment": data_assessment,
                 "claude_response": response_text,
-                "execution_time_ms": execution_time_ms
+                "execution_time_ms": execution_time_ms,
+                "hook_events": self._hook_events  # Include hook events for transparency
             }
+
+            # Log hook events summary
+            if self._hook_events:
+                pre_tool_count = sum(1 for e in self._hook_events if e["event_type"] == "PreToolUse")
+                post_tool_count = sum(1 for e in self._hook_events if e["event_type"] == "PostToolUse")
+                logger.info(f"Hook events captured: {pre_tool_count} PreToolUse, {post_tool_count} PostToolUse, {len(self._hook_events)} total")
 
             return analysis_result
 

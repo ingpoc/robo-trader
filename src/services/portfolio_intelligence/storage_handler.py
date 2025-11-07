@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 class PortfolioStorageHandler:
     """Handles storage operations for portfolio intelligence analysis."""
 
-    def __init__(self, config_state):
+    def __init__(self, config_state, portfolio_analysis_state=None):
         self.config_state = config_state
+        self.portfolio_analysis_state = portfolio_analysis_state
 
     async def store_analysis_results(
         self,
@@ -90,3 +91,27 @@ class PortfolioStorageHandler:
 
         except Exception as e:
             logger.error(f"Failed to store recommendation: {e}", exc_info=True)
+
+    async def store_hook_events(
+        self,
+        analysis_id: str,
+        hook_events: List[Dict[str, Any]]
+    ) -> None:
+        """Store hook events for transparency and debugging."""
+        if not self.portfolio_analysis_state or not hook_events:
+            return
+
+        try:
+            # Store hook events in batch
+            success = await self.portfolio_analysis_state.store_hook_events_batch(
+                analysis_id=analysis_id,
+                events=hook_events
+            )
+
+            if success:
+                logger.info(f"Stored {len(hook_events)} hook events for analysis {analysis_id}")
+            else:
+                logger.warning(f"Failed to store hook events for analysis {analysis_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to store hook events: {e}", exc_info=True)
