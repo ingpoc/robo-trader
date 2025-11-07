@@ -14,6 +14,23 @@ from src.config import Config
 from src.core.database_state.backup_manager import DatabaseBackupManager
 
 
+class BaseState:
+    """Base class for all state managers providing database access."""
+
+    def __init__(self, db_connection):
+        """
+        Initialize base state with database connection.
+
+        Args:
+            db_connection: DatabaseConnection instance
+        """
+        self.db = db_connection
+
+    async def initialize(self) -> None:
+        """Initialize the state. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement initialize()")
+
+
 class DatabaseConnection:
     """
     Manages database connection and schema for all state managers.
