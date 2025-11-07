@@ -1,4 +1,4 @@
-claude-agent-sdk>=0.1.0
+claude-agent-sdk>=0.1.6  # Latest: Python SDK for Claude Code with MCP 1.21.0
 kiteconnect>=4.3.0
 pandas>=2.0.0
 numpy>=1.24.0

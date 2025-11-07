@@ -48,6 +48,10 @@ const toolCategories = {
 const server = new Server({
   name: "robo-trader-dev",
   version: "1.0.0"
+}, {
+  capabilities: {
+    tools: {}
+  }
 });
 
 // Execute Python tool in SRT sandbox with proper error handling and token tracking

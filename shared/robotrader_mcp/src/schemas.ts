@@ -11,7 +11,7 @@ export const CategorySchema = z.object({
 
 export const ToolInputSchema = z.object({
   tool_name: z.string(),
-  args: z.record(z.any())
+  args: z.record(z.string(), z.any())
 });
 
 // Core tool schemas
