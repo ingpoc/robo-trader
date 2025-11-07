@@ -57,6 +57,14 @@ async def register_sdk_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("claude_sdk_client_manager", create_claude_sdk_client_manager)
 
+    # Workflow SDK Client Manager - for workflow-specific Claude clients
+    async def create_workflow_sdk_manager():
+        from .workflow_sdk_client_manager import get_workflow_sdk_manager
+        manager = await get_workflow_sdk_manager()
+        return manager
+
+    container._register_singleton("workflow_sdk_manager", create_workflow_sdk_manager)
+
     # Claude Agent MCP Server
     async def create_claude_agent_mcp_server():
         from src.services.claude_agent.mcp_server import ClaudeAgentMCPServer

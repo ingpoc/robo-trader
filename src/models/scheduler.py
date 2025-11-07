@@ -16,6 +16,11 @@ class QueueName(str, Enum):
     DATA_FETCHER = "data_fetcher"
     AI_ANALYSIS = "ai_analysis"
 
+    # New workflow-specific queues
+    PORTFOLIO_ANALYSIS = "portfolio_analysis"
+    PAPER_TRADING_RESEARCH = "paper_trading_research"
+    PAPER_TRADING_EXECUTION = "paper_trading_execution"
+
 
 class TaskStatus(str, Enum):
     """Task execution status."""
@@ -47,6 +52,24 @@ class TaskType(str, Enum):
     CLAUDE_NEWS_ANALYSIS = "claude_news_analysis"
     CLAUDE_EARNINGS_REVIEW = "claude_earnings_review"
     CLAUDE_FUNDAMENTAL_ANALYSIS = "claude_fundamental_analysis"
+
+    # Portfolio analysis queue
+    PORTFOLIO_INTELLIGENCE_ANALYSIS = "portfolio_intelligence_analysis"
+    PORTFOLIO_RECOMMENDATION_UPDATE = "portfolio_recommendation_update"
+    PORTFOLIO_DATA_OPTIMIZATION = "portfolio_data_optimization"
+    PROMPT_TEMPLATE_OPTIMIZATION = "prompt_template_optimization"
+
+    # Paper trading research queue
+    MARKET_RESEARCH_PERPLEXITY = "market_research_perplexity"
+    STOCK_SCREENING_ANALYSIS = "stock_screening_analysis"
+    TRADING_STRATEGY_DEVELOPMENT = "trading_strategy_development"
+    RESEARCH_DATA_SYNTHESIS = "research_data_synthesis"
+
+    # Paper trading execution queue
+    PAPER_TRADE_EXECUTION = "paper_trade_execution"
+    STRATEGY_BACKTESTING = "strategy_backtesting"
+    TRADE_RISK_VALIDATION = "trade_risk_validation"
+    PAPER_PERFORMANCE_TRACKING = "paper_performance_tracking"
 
 
 @dataclass

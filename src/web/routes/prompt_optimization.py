@@ -1,20 +1,26 @@
 """
-API Routes for Claude's Prompt Optimization System
+Enhanced Prompt Optimization API Routes.
 
 Provides REST endpoints for:
-- Viewing active optimized prompts
-- Accessing optimization history and trends
-- Triggering manual optimizations
-- Monitoring prompt performance
+- Managing prompt templates and A/B testing experiments
+- Accessing optimization analytics and performance metrics
+- Getting optimal prompts for specific contexts
+- Monitoring prompt optimization dashboard
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import json
+from pydantic import BaseModel, Field
 
 from ..dependencies import get_container
 from ...services.prompt_optimization_service import PromptOptimizationService
+from ...services.enhanced_prompt_optimization_service import (
+    EnhancedPromptOptimizationService,
+    PromptType,
+    OptimizationStatus
+)
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...core.di import DependencyContainer
 from ..utils.error_handlers import (
@@ -24,6 +30,33 @@ from ..utils.error_handlers import (
 from loguru import logger
 
 router = APIRouter(prefix="/api/prompts", tags=["prompt-optimization"])
+
+
+# Pydantic models for enhanced prompt optimization
+class PromptTemplateRequest(BaseModel):
+    """Request model for creating a prompt template."""
+    name: str = Field(..., description="Template name")
+    prompt_type: str = Field(..., description="Prompt type")
+    template: str = Field(..., description="Prompt template text")
+    variables: List[str] = Field(default_factory=list, description="Template variables")
+    context_requirements: List[str] = Field(default_factory=list, description="Required context")
+    parent_template_id: Optional[str] = Field(None, description="Parent template ID")
+
+
+class ExperimentRequest(BaseModel):
+    """Request model for creating an A/B test experiment."""
+    name: str = Field(..., description="Experiment name")
+    control_template_id: str = Field(..., description="Control template ID")
+    variant_template_ids: List[str] = Field(..., description="Variant template IDs")
+    sample_size: int = Field(100, description="Sample size per variant")
+    duration_days: int = Field(7, description="Experiment duration in days")
+
+
+class PromptOptimalRequest(BaseModel):
+    """Request model for getting optimal prompt."""
+    prompt_type: str = Field(..., description="Prompt type")
+    context: Dict[str, Any] = Field(default_factory=dict, description="Context data")
+    variables: Dict[str, Any] = Field(..., description="Template variables")
 
 
 @router.get("/active/{data_type}")

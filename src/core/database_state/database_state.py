@@ -22,6 +22,8 @@ from .intent_state import IntentStateManager
 from .approval_state import ApprovalStateManager
 from .news_earnings_state import NewsEarningsStateManager
 from .analysis_state import AnalysisStateManager
+from .portfolio_analysis_state import PortfolioAnalysisState
+from .paper_trading_state import PaperTradingState
 
 
 class DatabaseStateManager:
@@ -52,6 +54,11 @@ class DatabaseStateManager:
         self.approvals = ApprovalStateManager(self.db, event_bus)
         self.news_earnings = NewsEarningsStateManager(self.db)
         self.analysis = AnalysisStateManager(self.db)
+
+        # Workflow-specific state managers
+        self.portfolio_analysis = PortfolioAnalysisState(self.db)
+        self.paper_trading = PaperTradingState(self.db)
+
         self._stock_state = None  # Lazy initialize to avoid circular imports
 
         # Alert manager (not refactored yet)
@@ -63,6 +70,11 @@ class DatabaseStateManager:
         await self.portfolio.initialize()
         await self.intents.initialize()
         await self.approvals.initialize()
+
+        # Initialize workflow-specific state managers
+        await self.portfolio_analysis.initialize()
+        await self.paper_trading.initialize()
+
         logger.info("Database state manager initialized")
 
     async def cleanup(self) -> None:

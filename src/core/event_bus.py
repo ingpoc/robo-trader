@@ -71,6 +71,19 @@ class EventType(Enum):
     OAUTH_LOGOUT = "oauth.logout"
     OAUTH_TOKEN_EXPIRED = "oauth.token_expired"
     OAUTH_TOKEN_REFRESHED = "oauth.token_refreshed"
+    # Task Scheduler events
+    TASK_CREATED = "task.created"
+    TASK_COMPLETED = "task.completed"
+    TASK_FAILED = "task.failed"
+    TASK_STARTED = "task.started"
+    TASK_CANCELLED = "task.cancelled"
+    # MCP events
+    MCP_TOOL_CALLED = "mcp.tool_called"
+    MCP_TASK_CREATED = "mcp.task_created"
+    MCP_TASK_COMPLETED = "mcp.task_completed"
+    MCP_TASK_FAILED = "mcp.task_failed"
+    MCP_SERVER_STARTED = "mcp.server_started"
+    MCP_SERVER_STOPPED = "mcp.server_stopped"
 
 
 @dataclass

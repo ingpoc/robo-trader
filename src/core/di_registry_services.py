@@ -133,3 +133,24 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         return analyzer
 
     container._register_singleton("portfolio_intelligence_analyzer", create_portfolio_intelligence_analyzer)
+
+    # MCP Handler Registration Service
+    async def create_mcp_handler_service():
+        from src.services.mcp_handler_service import MCPHandlerRegistrationService
+        task_service = await container.get("task_service")
+
+        mcp_handler_service = MCPHandlerRegistrationService(task_service, container)
+        await mcp_handler_service.initialize()
+        return mcp_handler_service
+
+    container._register_singleton("mcp_handler_service", create_mcp_handler_service)
+
+    # Enhanced Prompt Optimization Service
+    async def create_enhanced_prompt_optimization_service():
+        from src.services.enhanced_prompt_optimization_service import EnhancedPromptOptimizationService
+
+        prompt_service = EnhancedPromptOptimizationService(container)
+        await prompt_service.initialize()
+        return prompt_service
+
+    container._register_singleton("enhanced_prompt_optimization_service", create_enhanced_prompt_optimization_service)

@@ -39,6 +39,7 @@ from .di_registry_core import register_core_services
 from .di_registry_services import register_domain_services
 from .di_registry_paper_trading import register_paper_trading_services
 from .di_registry_sdk import register_sdk_services
+from .di_registry_mcp import register_mcp_services
 from .di_registry_coordinators import register_coordinators, register_orchestrator
 
 T = TypeVar('T')
@@ -74,6 +75,9 @@ class DependencyContainer:
 
         # SDK services must be after core services
         await register_sdk_services(self)
+
+        # MCP services must be after SDK services (depends on SDK client manager)
+        await register_mcp_services(self)
 
         # Coordinators must be after all services
         await register_coordinators(self)

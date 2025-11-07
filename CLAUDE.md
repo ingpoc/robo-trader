@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **Last Updated**: 2025-11-04 | **Status**: Production Ready | **Tier**: Reference
+> **Last Updated**: 2025-11-07 | **Status**: Production Ready | **Tier**: Reference
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -587,6 +587,63 @@ curl -X POST 'http://localhost:8000/api/backups/restore/robo_trader_startup_2025
 - `robo_trader_startup_20251101_191015.db`
 - `robo_trader_shutdown_20251102_023045.db`
 - `robo_trader_before_deploy_20251102_150230.db`
+
+## Claude Code Development Guidelines
+
+### Core Principles
+
+- **Fix actual issues**: Make real logic work, not fallbacks or test patches
+- **Be concise**: Prefer clarity over long explanations
+- **Use Context7 MCP**: When uncertain, don't assume - use the Context7 MCP server for documentation
+- **Read patterns first**: Understand existing patterns before changing code to prevent mismatches
+- **Verify in UI**: Use Playwright MCP server to test functionality before concluding it works
+
+### Background Process Management (CRITICAL)
+
+- **Maximum 2 persistent processes**: Backend (port 8000) + Frontend (port 3000) only
+- **No background API tests**: Use `timeout 5 curl ...` instead of background test processes
+- **Targeted process killing**: Kill only processes on ports 3000 and 8000, not all python/node processes
+- **Backend health monitoring**: 5-second timeout on `/api/health`. If dead → kill port 8000 + restart
+- **Check logs first**: Check backend logs before health endpoint for startup issues
+
+### File Management
+
+- **Clean up test files**: Delete test files after testing is complete
+- **Remove unwanted files**: Keep project root clean of unnecessary files
+- **No summary documents**: Present findings directly, don't create analysis documents in tmp folders
+- **Limited markdown creation**: Only create/update CLAUDE.md or existing README.md files
+- **Documentation cleanup**: Remove outdated documentation from tests/ or docs/ folders
+
+### Code Changes & Verification
+
+- **Immediate verification**: Read back and syntax check changes immediately (no batching)
+- **Understand WHY**: Read examples to understand reasoning, not just what code does
+- **Update documentation**: When architecture flaws are discovered, update CLAUDE.md to harden guidelines
+- **UI testing required**: Test functionality from frontend using Playwright MCP server
+- **Use plugins/skills**: Check availability and use appropriate plugins/skills for task types
+
+### MCP Server Debugging (robo-trader-dev)
+
+- **Tool discovery**: Use `list_categories` → `load_category` for progressive tool discovery
+- **Tool execution**: MCP tools execute via `/mcp` commands in Claude Code environment, not bash
+- **Testing pattern**: Discover through MCP interface, verify with local execution
+- **No bash subprocess testing**: Use MCP tools directly from Claude Code environment
+- **Report coverage**: Specify which MCP tools were used and note any that couldn't help
+
+## Architecture Consultation Pattern
+
+### MCP/Architectural Questions
+
+- **For MCP/architectural questions**: Consult `@feature-dev:code-architect` for patterns, sandbox approaches, category structure
+- **For implementation bugs**: Debug with robo-trader-dev MCP tools first, then consult code-architect if patterns unclear
+- **For design decisions**: Seek code-architect validation before major refactors
+
+### Bug Fix & Backend Testing
+
+- **Primary debugging**: Use robo-trader-dev MCP tools (queue_status, coordinator_status, task_execution_metrics, etc.)
+- **Escalation**: If MCP tools can't help, note limitations and use alternative debugging approaches
+- **Architecture consultation**: Only consult `@feature-dev:code-architect` if implementation pattern is unclear
+- **Verification**: Always verify backend changes work through MCP tools before concluding issues are resolved
 
 ## Philosophy
 

@@ -63,7 +63,15 @@ class SequentialQueueManager:
 
             # Execute all queues in PARALLEL (not sequentially!)
             # Each queue processes its tasks sequentially internally
-            queue_names = [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]
+            queue_names = [
+                QueueName.PORTFOLIO_SYNC,
+                QueueName.DATA_FETCHER,
+                QueueName.AI_ANALYSIS,
+                # New workflow-specific queues
+                QueueName.PORTFOLIO_ANALYSIS,
+                QueueName.PAPER_TRADING_RESEARCH,
+                QueueName.PAPER_TRADING_EXECUTION
+            ]
             
             # Create tasks for parallel execution
             tasks = [self._execute_queue(queue_name) for queue_name in queue_names]
