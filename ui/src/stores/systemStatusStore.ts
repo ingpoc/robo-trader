@@ -156,9 +156,34 @@ export const useSystemStatusStore = create<SystemStatusState>()(
           return state
         }
 
+        // Check for failed tasks in queue status
+        const newErrors: string[] = [...state.errors]
+        const totalFailedTasks = status.stats?.total_failed_tasks || 0
+
+        // Detect failed tasks per queue
+        if (status.queues) {
+          Object.entries(status.queues).forEach(([queueName, queue]: [string, any]) => {
+            if (queue.failed_tasks && queue.failed_tasks > 0) {
+              const errorMsg = `Queue "${queueName}" has ${queue.failed_tasks} failed task(s)`
+              if (!newErrors.includes(errorMsg)) {
+                newErrors.push(errorMsg)
+              }
+            }
+          })
+        }
+
+        // Also check overall failed tasks
+        if (totalFailedTasks > 0) {
+          const errorMsg = `System has ${totalFailedTasks} total failed task(s)`
+          if (!newErrors.some(e => e.includes('total failed'))) {
+            newErrors.push(errorMsg)
+          }
+        }
+
         return {
           queueStatus: status,
-          lastUpdate: new Date().toISOString()
+          lastUpdate: new Date().toISOString(),
+          errors: newErrors.length > 5 ? newErrors.slice(-5) : newErrors // Keep last 5 errors
         }
       })
     },

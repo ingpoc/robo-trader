@@ -7,20 +7,43 @@
 
 ### Using the MCP Server
 
-**Discovery Pattern** (Progressive Disclosure):
+**Recommended: Progressive Discovery Pattern**
+
+All 15 tools are immediately callable, but discovery helps agents find them efficiently:
+
 ```bash
-# 1. Start by listing available categories
-call mcp_info        # Get server info
-list_categories      # See all tool categories (logs, database, system, optimization, performance)
+# Step 1: List available tool categories (efficient discovery)
+CallTool("list_categories", {})
+# Returns 5 categories: logs, database, system, optimization, performance
 
-# 2. Load tools from a specific category
-load_category(category="system")  # Get all system monitoring tools
+# Step 2: Load specific category to see tools (progressive disclosure)
+CallTool("load_category", {"category": "system"})
+# Returns 4 system tools: check_system_health, diagnose_database_locks, queue_status, coordinator_status
 
-# 3. Execute a specific tool
-queue_status()       # Real-time queue health
-coordinator_status() # Coordinator initialization status
-task_execution_metrics()  # 24h task statistics
+# Step 3: Execute any tool immediately (no blocking)
+CallTool("queue_status", {})               # ✅ Works
+CallTool("coordinator_status", {})         # ✅ Works
+CallTool("task_execution_metrics", {})     # ✅ Works
 ```
+
+**Direct Tool Calls (Also Works)**
+
+You can skip discovery and call tools directly:
+```bash
+CallTool("queue_status", {})  # ✅ Works immediately (no discovery needed)
+CallTool("analyze_logs", {"patterns": ["ERROR"]})  # ✅ Works immediately
+```
+
+**Alternative: Direct Python Tool Calls**
+
+If you need to bypass MCP entirely:
+```bash
+python3 shared/robotrader_mcp/tools/queue_status.py '{}'
+python3 shared/robotrader_mcp/tools/coordinator_status.py '{}'
+python3 shared/robotrader_mcp/tools/task_execution_metrics.py '{}'
+```
+
+Note: Direct Python calls bypass the MCP server and do NOT require discovery.
 
 ### Tool Locations
 
@@ -33,21 +56,38 @@ task_execution_metrics()  # 24h task statistics
 
 ## Architecture Overview
 
-### Progressive Disclosure Pattern
+### Progressive Disclosure Pattern (Anthropic Approach)
 
-This MCP server implements **progressive discovery** to minimize token usage and improve user experience:
+This MCP server implements **progressive disclosure for efficient discovery** (following Anthropic's approach):
 
+**How It Works**:
+- All 15 tools are immediately callable via `CallTool()`
+- No tool blocking or session state tracking
+- Discovery tools (`list_categories`, `load_category`) help agents find tools efficiently
+- Progressive disclosure is **optional but recommended** for efficiency
+
+**Progressive Discovery Flow** (Recommended):
 ```
-User → list_categories → Load top-level category info (10 categories, ~500 tokens)
-                ↓
-        load_category(system) → Get all system tools (~800 tokens)
-                ↓
-        queue_status(args) → Execute specific tool (~1200 tokens)
+Step 1: list_categories → See 5 categories (~200 tokens)
+          ↓
+Step 2: load_category("system") → See tools in category (~300 tokens)
+          ↓
+Step 3: queue_status({}) → Call tool immediately (~1,200 tokens)
+          ↓
+Total: ~1,700 tokens for discovery + execution
+```
+
+**Direct Execution** (Also Valid):
+```
+queue_status({}) → Call tool directly (~1,200 tokens)
+(Skip discovery if you know what tool you need)
 ```
 
 **Token Efficiency Comparison**:
-- Traditional MCP: User sees all 12 tools at once = 20,000+ tokens of tool descriptions
-- Progressive MCP: User loads only what they need = 99%+ reduction on category loading
+- Traditional MCP: All 15 tool definitions exposed upfront = 20,000+ tokens
+- This MCP (with discovery): Category-based loading = 1,700-2,000 tokens
+- This MCP (direct): Skip discovery = 1,200 tokens per tool
+- **Reduction: 92-97%** token savings from progressive disclosure
 
 ### Tool Categories
 

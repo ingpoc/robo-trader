@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { ChevronDown, ChevronRight, Clock, CheckCircle, AlertCircle, PlayCircle, RefreshCw } from 'lucide-react'
 import { cn } from '@/utils/cn'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
 
 // Types based on backend models
 interface TaskInfo {
@@ -46,59 +47,84 @@ export interface QueueHealthMonitorProps {
   isLoading: boolean
 }
 
-// Custom hook to fetch real queue data
+// Custom hook to get queue data from centralized store (WebSocket-driven)
 const useRealQueueData = () => {
   const [queueData, setQueueData] = useState<QueueInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Get store data from centralized WebSocket-driven store
+  const store = useSystemStatusStore()
+
   useEffect(() => {
-    const fetchQueueData = async () => {
+    // Use WebSocket-driven store data instead of polling
+    if (store.queueStatus && store.queueStatus.queues) {
       try {
-        setLoading(true)
-        setError(null)
-
-        // Fetch real queue data from the enhanced API
-        const response = await fetch('/api/queues/status')
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        const data: QueueStatusResponse = await response.json()
-
-              // Transform API data to component format
-        const transformedQueues: QueueInfo[] = data.queues.map(queue => ({
-          queue_name: queue.name,
-          status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
-          pending_count: queue.pending_tasks,
-          running_count: queue.active_tasks,
-          completed_today: queue.completed_tasks,
-          failed_count: queue.failed_tasks,
-          total_tasks: queue.completed_tasks + queue.failed_tasks + queue.pending_tasks + queue.active_tasks,
-          last_activity: queue.last_activity || '',
-          average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
-        }))
+        const transformedQueues: QueueInfo[] = Object.entries(store.queueStatus.queues).map(
+          ([queueName, queue]: [string, any]) => ({
+            queue_name: queueName,
+            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+            pending_count: queue.pending_tasks || 0,
+            running_count: queue.active_tasks || 0,
+            completed_today: queue.completed_tasks || 0,
+            failed_count: queue.failed_tasks || 0,
+            total_tasks: (queue.completed_tasks || 0) + (queue.failed_tasks || 0) + (queue.pending_tasks || 0) + (queue.active_tasks || 0),
+            last_activity: queue.last_activity || '',
+            average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
+          })
+        )
 
         setQueueData(transformedQueues)
-      } catch (err) {
-        console.error('Failed to fetch queue data:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load queue data')
-        setQueueData([])
-      } finally {
         setLoading(false)
+        setError(null)
+      } catch (err) {
+        console.error('Failed to transform queue data:', err)
+        setError('Failed to parse queue data')
       }
+    } else if (!store.isConnected && !loading) {
+      setError('WebSocket not connected')
     }
+  }, [store.queueStatus, store.isConnected])
 
-    fetchQueueData()
+  // Fallback: Poll API if WebSocket data is unavailable
+  useEffect(() => {
+    if (loading && !store.queueStatus) {
+      const fetchQueueData = async () => {
+        try {
+          setError(null)
+          const response = await fetch('/api/queues/status')
 
-    // Set up polling for real-time updates (every 10 seconds)
-    const interval = setInterval(fetchQueueData, 10000)
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          }
 
-    return () => {
-      clearInterval(interval)
+          const data: QueueStatusResponse = await response.json()
+
+          const transformedQueues: QueueInfo[] = data.queues.map(queue => ({
+            queue_name: queue.name,
+            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+            pending_count: queue.pending_tasks,
+            running_count: queue.active_tasks,
+            completed_today: queue.completed_tasks,
+            failed_count: queue.failed_tasks,
+            total_tasks: queue.completed_tasks + queue.failed_tasks + queue.pending_tasks + queue.active_tasks,
+            last_activity: queue.last_activity || '',
+            average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
+          }))
+
+          setQueueData(transformedQueues)
+          setLoading(false)
+        } catch (err) {
+          console.error('Failed to fetch queue data:', err)
+          setError(err instanceof Error ? err.message : 'Failed to load queue data')
+          setQueueData([])
+          setLoading(false)
+        }
+      }
+
+      fetchQueueData()
     }
-  }, [])
+  }, [loading, store.queueStatus])
 
   return { queueData, loading, error }
 }

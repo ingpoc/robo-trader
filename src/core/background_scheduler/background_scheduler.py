@@ -280,31 +280,47 @@ class BackgroundScheduler:
 
     async def _run_queue_executor(self) -> None:
         """Run SequentialQueueManager for continuous task processing."""
-        logger.debug("Queue executor started - processing queued tasks")
+        logger.info("*** QUEUE EXECUTOR: Starting background loop ***")
+        logger.info(f"*** QUEUE EXECUTOR: _running={self._running}, sequential_queue_manager={self.sequential_queue_manager is not None} ***")
 
+        iteration = 0
         try:
             while self._running:
+                iteration += 1
                 try:
+                    logger.info(f"*** QUEUE EXECUTOR: Iteration {iteration} started ***")
+                    logger.debug(f"Queue executor state: _running={self._running}, queue_manager={'available' if self.sequential_queue_manager else 'unavailable'}")
+
                     # Execute queued tasks through SequentialQueueManager
+                    if self.sequential_queue_manager is None:
+                        logger.error("*** QUEUE EXECUTOR: sequential_queue_manager is None - cannot execute queues ***")
+                        await asyncio.sleep(60)
+                        continue
+
                     logger.debug(f"About to execute queues, _running={self._running}")
                     await self.sequential_queue_manager.execute_queues()
-                    logger.debug("Queue execution cycle completed")
+                    logger.info(f"*** QUEUE EXECUTOR: Iteration {iteration} completed successfully ***")
 
                     # Wait 30 seconds before next cycle
                     await asyncio.sleep(30)
 
+                except asyncio.CancelledError:
+                    logger.info(f"*** QUEUE EXECUTOR: Iteration {iteration} cancelled ***")
+                    raise
                 except Exception as e:
                     import traceback
-                    logger.error(f"Error in queue executor cycle: {e}")
+                    logger.error(f"*** QUEUE EXECUTOR: Error in iteration {iteration}: {e} ***")
                     logger.debug(f"Queue executor error details: {traceback.format_exc()}")
                     await asyncio.sleep(60)  # Wait longer on error
 
         except asyncio.CancelledError:
-            logger.info("Queue executor cancelled")
+            logger.info("*** QUEUE EXECUTOR: Cancelled ***")
         except Exception as e:
-            logger.error(f"Queue executor failed: {e}")
+            import traceback
+            logger.error(f"*** QUEUE EXECUTOR: Fatal error: {e} ***")
+            logger.error(f"*** QUEUE EXECUTOR: Traceback: {traceback.format_exc()} ***")
         finally:
-            logger.info("Queue executor stopped")
+            logger.info("*** QUEUE EXECUTOR: Stopped ***")
 
     def _create_async_handler(self, handler, event: Event, *args):
         """Create async handler wrapper for event subscription.

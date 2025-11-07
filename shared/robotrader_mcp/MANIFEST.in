@@ -1,0 +1,12 @@
+include README.md
+include CLAUDE.md
+include IMPLEMENTATION_SUMMARY.md
+include requirements.txt
+include pyproject.toml
+recursive-include src *.py
+recursive-include tools *.py
+recursive-include docs *.md
+global-exclude __pycache__
+global-exclude *.pyc
+global-exclude .DS_Store
+global-exclude *.so

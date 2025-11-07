@@ -42,6 +42,8 @@ interface SchedulerInfo {
   execution_history?: ExecutionRecord[]
   total_executions?: number
   jobs: SchedulerJob[]
+  pending_tasks?: number
+  queue_name?: string
 }
 
 export interface SchedulerStatusProps {
@@ -113,12 +115,19 @@ const SchedulerCard: React.FC<{
   }
 
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString()
+    if (!timestamp || timestamp === '') return 'Never'
+    try {
+      const date = new Date(timestamp)
+      if (isNaN(date.getTime())) return 'Never'
+      return date.toLocaleTimeString()
+    } catch {
+      return 'Never'
+    }
   }
 
   const successRate = scheduler.jobs_processed > 0
     ? ((scheduler.jobs_processed - scheduler.jobs_failed) / scheduler.jobs_processed * 100).toFixed(1)
-    : '100'
+    : scheduler.jobs_failed > 0 ? '0' : 'N/A'
 
   return (
     <Card className={cn(
@@ -150,10 +159,10 @@ const SchedulerCard: React.FC<{
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-4 text-sm text-warmgray-600">
-              {scheduler.active_jobs > 0 && (
+              {(scheduler.active_jobs > 0 || (scheduler.pending_tasks || 0) > 0) && (
                 <span className="flex items-center gap-1 text-blue-600 font-medium">
                   <Activity className="w-4 h-4" />
-                  {scheduler.active_jobs}
+                  {scheduler.active_jobs + (scheduler.pending_tasks || 0)} active
                 </span>
               )}
               <span>{scheduler.completed_jobs} done</span>
