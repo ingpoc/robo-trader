@@ -27,10 +27,11 @@ class PaperTradingStore:
         await self.initialize_schema()
 
     async def initialize_schema(self) -> None:
-        """Initialize database schema if it doesn't exist."""
+        """Initialize database schema if it doesn't exist, with migrations for legacy schemas."""
         async with self._lock:
             # Use the database connection from state manager (direct connection, not pool)
             db = self.db_connection
+
             # Create accounts table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS paper_trading_accounts (
@@ -51,7 +52,7 @@ class PaperTradingStore:
                 )
             """)
 
-            # Create trades table
+            # Create trades table with current schema
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS paper_trades (
                     trade_id TEXT PRIMARY KEY,
@@ -75,18 +76,91 @@ class PaperTradingStore:
                 )
             """)
 
-            # Create indexes
+            # Check and migrate legacy schemas
+            await self._migrate_legacy_schema(db)
+
+            # Create indexes (these will only succeed if columns exist)
+            await self._create_indexes_safely(db)
+
+            await db.commit()
+            logger.info("Paper trading schema initialized and migrated in database")
+
+    async def _migrate_legacy_schema(self, db) -> None:
+        """Migrate legacy database schemas to current format."""
+        try:
+            # Check if paper_trades table exists and has the required columns
+            cursor = await db.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name='paper_trades'
+            """)
+            table_exists = await cursor.fetchone()
+
+            if table_exists:
+                # Check existing columns
+                cursor = await db.execute("PRAGMA table_info(paper_trades)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+
+                # Migration for account_id column
+                if 'account_id' not in column_names:
+                    logger.info("Migrating paper_trades table: adding account_id column")
+                    await db.execute("""
+                        ALTER TABLE paper_trades
+                        ADD COLUMN account_id TEXT NOT NULL DEFAULT 'paper_swing_main'
+                    """)
+                    logger.info("Added account_id column to paper_trades table")
+
+                # Migration for exit_timestamp column
+                if 'exit_timestamp' not in column_names:
+                    logger.info("Migrating paper_trades table: adding exit_timestamp column")
+                    await db.execute("""
+                        ALTER TABLE paper_trades
+                        ADD COLUMN exit_timestamp TEXT
+                    """)
+                    logger.info("Added exit_timestamp column to paper_trades table")
+
+                # Migration for other missing columns that might be in legacy schemas
+                required_columns = {
+                    'realized_pnl': 'REAL DEFAULT 0.0',
+                    'unrealized_pnl': 'REAL DEFAULT 0.0',
+                    'status': 'TEXT NOT NULL DEFAULT "open"',
+                    'stop_loss': 'REAL',
+                    'target_price': 'REAL',
+                    'claude_session_id': 'TEXT'
+                }
+
+                for column, definition in required_columns.items():
+                    if column not in column_names:
+                        logger.info(f"Migrating paper_trades table: adding {column} column")
+                        await db.execute(f"""
+                            ALTER TABLE paper_trades
+                            ADD COLUMN {column} {definition}
+                        """)
+                        logger.info(f"Added {column} column to paper_trades table")
+
+        except Exception as e:
+            logger.warning(f"Schema migration failed (non-critical): {e}")
+            # Continue anyway - the table might be fine or this might be a fresh install
+
+    async def _create_indexes_safely(self, db) -> None:
+        """Create indexes safely, handling cases where columns might not exist."""
+        try:
+            # Create account_id index (will fail gracefully if column doesn't exist)
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trades_account_id
                 ON paper_trades(account_id)
             """)
+        except Exception as e:
+            logger.warning(f"Failed to create account_id index (column may not exist): {e}")
+
+        try:
+            # Create symbol index
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trades_symbol
                 ON paper_trades(symbol)
             """)
-
-            await db.commit()
-            logger.info("Paper trading schema initialized in database")
+        except Exception as e:
+            logger.warning(f"Failed to create symbol index: {e}")
 
     async def create_account(
         self,

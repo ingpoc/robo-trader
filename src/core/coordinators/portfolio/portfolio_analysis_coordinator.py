@@ -195,7 +195,12 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             now = datetime.now(timezone.utc)
             min_interval = timedelta(seconds=self._min_analysis_interval)
 
-            for symbol in portfolio.holdings.keys():
+            for holding in portfolio.holdings:
+                # Extract symbol from holding dictionary
+                symbol = holding.get("symbol")
+                if not symbol:
+                    continue  # Skip holdings without symbols
+
                 # Priority 1: Never analyzed
                 if symbol not in analyzed_symbols:
                     stocks_with_priority.append({
