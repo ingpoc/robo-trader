@@ -91,7 +91,7 @@ class PortfolioAnalysisState(BaseState):
             );
 
             -- Analysis Performance Tracking
-            CREATE TABLE IF NOT EXISTS analysis_performance (
+            CREATE TABLE IF NOT EXISTS portfolio_analysis_performance (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 analysis_date TEXT NOT NULL,
                 symbols_analyzed INTEGER NOT NULL,
@@ -139,7 +139,7 @@ class PortfolioAnalysisState(BaseState):
             CREATE INDEX IF NOT EXISTS idx_optimization_history_date ON prompt_optimization_history(optimization_date DESC);
             CREATE INDEX IF NOT EXISTS idx_data_quality_symbol ON data_quality_metrics(symbol);
             CREATE INDEX IF NOT EXISTS idx_data_quality_date ON data_quality_metrics(quality_date DESC);
-            CREATE INDEX IF NOT EXISTS idx_analysis_performance_date ON analysis_performance(analysis_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_performance_date ON portfolio_analysis_performance(analysis_date DESC);
             CREATE INDEX IF NOT EXISTS idx_audit_hook_events_analysis_id ON audit_hook_events(analysis_id);
             CREATE INDEX IF NOT EXISTS idx_audit_hook_events_type ON audit_hook_events(event_type);
             CREATE INDEX IF NOT EXISTS idx_audit_hook_events_timestamp ON audit_hook_events(event_timestamp DESC);
@@ -149,19 +149,90 @@ class PortfolioAnalysisState(BaseState):
             """
 
             try:
-                # Split schema into individual statements and execute separately
-                # This avoids issues with executescript() and foreign keys
-                statements = [stmt.strip() for stmt in schema.split(';') if stmt.strip()]
+                # First, split by semicolon to get raw statement chunks
+                raw_chunks = schema.split(';')
 
-                for i, statement in enumerate(statements):
-                    if statement and not statement.startswith('--'):  # Skip comments and PRAGMA
-                        try:
-                            logger.debug(f"Executing statement {i+1}/{len(statements)}: {statement[:100]}...")
-                            await self.db.connection.execute(statement)
-                        except Exception as stmt_error:
-                            logger.error(f"Failed at statement {i+1}: {statement[:200]}")
-                            logger.error(f"Error: {stmt_error}")
-                            raise
+                # Process each chunk to extract clean statements
+                # Handle multi-line statements where comments and SQL are on different lines
+                all_statements = []
+                for chunk in raw_chunks:
+                    # Remove comment lines (lines starting with --) and strip inline comments
+                    lines = chunk.split('\n')
+                    sql_lines = []
+                    for line in lines:
+                        # Remove line if it's a comment-only line
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith('--'):
+                            continue
+                        # Remove inline comments (everything after --)
+                        if '--' in line:
+                            line = line[:line.index('--')]
+                        sql_lines.append(line.strip())
+
+                    if sql_lines:
+                        # Join the SQL lines with spaces and add semicolon
+                        statement = ' '.join(sql_lines).strip()
+                        if statement and not statement.endswith(';'):
+                            statement += ';'
+                        if statement:
+                            all_statements.append(statement)
+
+                logger.debug(f"Total statements parsed: {len(all_statements)}")
+
+                # Separate CREATE TABLE and CREATE INDEX statements
+                create_tables = []
+                create_indexes = []
+                other_statements = []
+
+                for stmt in all_statements:
+                    if stmt.upper().startswith('CREATE TABLE'):
+                        create_tables.append(stmt)
+                        logger.debug(f"Found CREATE TABLE: {stmt[:50]}...")
+                    elif stmt.upper().startswith('CREATE INDEX'):
+                        create_indexes.append(stmt)
+                        logger.debug(f"Found CREATE INDEX: {stmt[:50]}...")
+                    else:
+                        other_statements.append(stmt)
+                        logger.debug(f"Found other statement: {stmt[:50]}...")
+
+                logger.info(f"Statement breakdown: {len(other_statements)} PRAGMA/other, {len(create_tables)} CREATE TABLE, {len(create_indexes)} CREATE INDEX")
+
+                # Execute in order: PRAGMA, CREATE TABLE, CREATE INDEX, other
+                logger.debug(f"Executing {len(other_statements)} PRAGMA/other statements...")
+                for statement in other_statements:
+                    try:
+                        await self.db.connection.execute(statement)
+                    except Exception as stmt_error:
+                        logger.error(f"Failed executing statement: {statement[:200]}")
+                        logger.error(f"Error: {stmt_error}")
+                        raise
+
+                logger.debug(f"Executing {len(create_tables)} CREATE TABLE statements...")
+                for i, statement in enumerate(create_tables):
+                    try:
+                        logger.info(f"Creating table {i+1}/{len(create_tables)}: {statement[:80]}...")
+                        # Log the full statement for debugging
+                        if "analysis_performance" in statement:
+                            logger.info(f"FULL analysis_performance statement: {statement}")
+                        await self.db.connection.execute(statement)
+                    except Exception as stmt_error:
+                        logger.error(f"Failed creating table {i+1}: {statement[:200]}")
+                        logger.error(f"Error: {stmt_error}")
+                        raise
+
+                # Commit tables before creating indexes so they're visible
+                await self.db.connection.commit()
+                logger.info(f"All {len(create_tables)} tables committed successfully")
+
+                logger.debug(f"Executing {len(create_indexes)} CREATE INDEX statements...")
+                for i, statement in enumerate(create_indexes):
+                    try:
+                        logger.info(f"Creating index {i+1}/{len(create_indexes)}: {statement[:80]}...")
+                        await self.db.connection.execute(statement)
+                    except Exception as stmt_error:
+                        logger.error(f"Failed creating index {i+1}: {statement[:200]}")
+                        logger.error(f"Error: {stmt_error}")
+                        raise
 
                 await self.db.connection.commit()
                 logger.info("Portfolio analysis tables initialized successfully")
