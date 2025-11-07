@@ -33,6 +33,8 @@ class PortfolioAnalysisState(BaseState):
         """Initialize portfolio analysis tables."""
         async with self._lock:
             schema = """
+            PRAGMA foreign_keys = OFF;
+
             -- Portfolio Analysis Results
             CREATE TABLE IF NOT EXISTS portfolio_analysis (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,8 +73,7 @@ class PortfolioAnalysisState(BaseState):
                 optimization_reason TEXT NOT NULL,
                 quality_improvement_score REAL,
                 test_results TEXT,  -- JSON blob
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (template_id) REFERENCES portfolio_prompt_templates(id)
+                created_at TEXT NOT NULL
             );
 
             -- Data Quality Tracking
@@ -112,8 +113,7 @@ class PortfolioAnalysisState(BaseState):
                 error TEXT,
                 reason TEXT,
                 event_timestamp REAL NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (analysis_id) REFERENCES portfolio_analysis(id)
+                created_at TEXT NOT NULL
             );
 
             -- Analysis Checkpoints (for crash recovery and resume)
@@ -149,7 +149,20 @@ class PortfolioAnalysisState(BaseState):
             """
 
             try:
-                await self.db.connection.executescript(schema)
+                # Split schema into individual statements and execute separately
+                # This avoids issues with executescript() and foreign keys
+                statements = [stmt.strip() for stmt in schema.split(';') if stmt.strip()]
+
+                for i, statement in enumerate(statements):
+                    if statement and not statement.startswith('--'):  # Skip comments and PRAGMA
+                        try:
+                            logger.debug(f"Executing statement {i+1}/{len(statements)}: {statement[:100]}...")
+                            await self.db.connection.execute(statement)
+                        except Exception as stmt_error:
+                            logger.error(f"Failed at statement {i+1}: {statement[:200]}")
+                            logger.error(f"Error: {stmt_error}")
+                            raise
+
                 await self.db.connection.commit()
                 logger.info("Portfolio analysis tables initialized successfully")
 
