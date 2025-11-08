@@ -241,12 +241,24 @@ class BackgroundScheduler:
             raise RuntimeError(f"BackgroundScheduler initialization failed: {e}") from e
 
     async def stop(self) -> None:
-        """Stop the event-driven background scheduler."""
+        """Stop the event-driven background scheduler.
+
+        Phase 3 Update: Also stops all queue executors with graceful shutdown.
+        """
         if not self._running:
             return
 
         logger.info("Stopping event-driven background scheduler...")
         self._running = False
+
+        # Stop queue executors first (graceful shutdown for worker threads)
+        if self.sequential_queue_manager:
+            logger.info("Stopping SequentialQueueManager and all queue executors...")
+            try:
+                await self.sequential_queue_manager.stop(timeout_seconds=30)
+                logger.info("SequentialQueueManager stopped successfully")
+            except Exception as e:
+                logger.error(f"Error stopping queue manager: {e}")
 
         # Cancel event listener
         if self._event_listener_task and not self._event_listener_task.done():
@@ -256,7 +268,7 @@ class BackgroundScheduler:
             except asyncio.CancelledError:
                 pass
 
-        # Cancel queue executor
+        # Cancel queue executor background task
         if self._queue_executor_task and not self._queue_executor_task.done():
             self._queue_executor_task.cancel()
             try:

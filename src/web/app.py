@@ -682,65 +682,88 @@ async def root():
 
 @app.get("/api/health")
 async def health_check(request: Request) -> Dict[str, Any]:
-    """Health check endpoint to verify system initialization."""
+    """Health check endpoint to verify system initialization.
+
+    Phase 4 Enhancement: Added timeout protection (2 second limit).
+    Health checks must respond quickly even during long-running tasks.
+    With thread-safe queue executors, health checks no longer block.
+    """
     try:
-        container = request.app.state.container
-        if not container:
-            return JSONResponse({
-                "status": "unhealthy",
-                "error": "Container not initialized",
+        # Wrap entire health check in timeout for safety
+        # With non-blocking task execution, this should respond in <100ms
+        # 2 second timeout ensures responsiveness even under high load
+        async def perform_health_check() -> Dict[str, Any]:
+            container = request.app.state.container
+            if not container:
+                return JSONResponse({
+                    "status": "unhealthy",
+                    "error": "Container not initialized",
+                    "initialization_status": initialization_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }, status_code=503)
+
+            # Test orchestrator access (should be instant with new architecture)
+            orchestrator = await container.get_orchestrator()
+            if not orchestrator:
+                return JSONResponse({
+                    "status": "degraded",
+                    "error": "Orchestrator not available",
+                    "initialization_status": initialization_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }, status_code=503)
+
+            # Test state manager access (fast check)
+            if not hasattr(orchestrator, 'state_manager') or not orchestrator.state_manager:
+                return JSONResponse({
+                    "status": "degraded",
+                    "error": "State manager not available",
+                    "initialization_status": initialization_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }, status_code=503)
+
+            # Check initialization status (cached check)
+            if not initialization_status["orchestrator_initialized"]:
+                return JSONResponse({
+                    "status": "degraded",
+                    "error": "Orchestrator initialization incomplete",
+                    "initialization_status": initialization_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }, status_code=503)
+
+            if initialization_status["initialization_errors"]:
+                return JSONResponse({
+                    "status": "degraded",
+                    "error": "Initialization errors detected",
+                    "initialization_status": initialization_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }, status_code=503)
+
+            return {
+                "status": "healthy",
+                "message": "All systems operational",
+                "components": {
+                    "container": "initialized",
+                    "orchestrator": "running",
+                    "state_manager": "available",
+                    "initialization": "complete"
+                },
                 "initialization_status": initialization_status,
                 "timestamp": datetime.now(timezone.utc).isoformat()
-            }, status_code=503)
+            }
 
-        # Test orchestrator access
-        orchestrator = await container.get_orchestrator()
-        if not orchestrator:
-            return JSONResponse({
-                "status": "degraded",
-                "error": "Orchestrator not available",
-                "initialization_status": initialization_status,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }, status_code=503)
+        # Execute health check with 2-second timeout
+        # This ensures health checks respond even under extreme load
+        result = await asyncio.wait_for(perform_health_check(), timeout=2.0)
+        return result
 
-        # Test state manager access
-        if not hasattr(orchestrator, 'state_manager') or not orchestrator.state_manager:
-            return JSONResponse({
-                "status": "degraded",
-                "error": "State manager not available",
-                "initialization_status": initialization_status,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }, status_code=503)
-
-        # Check initialization status
-        if not initialization_status["orchestrator_initialized"]:
-            return JSONResponse({
-                "status": "degraded",
-                "error": "Orchestrator initialization incomplete",
-                "initialization_status": initialization_status,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }, status_code=503)
-
-        if initialization_status["initialization_errors"]:
-            return JSONResponse({
-                "status": "degraded",
-                "error": "Initialization errors detected",
-                "initialization_status": initialization_status,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }, status_code=503)
-
-        return {
-            "status": "healthy",
-            "message": "All systems operational",
-            "components": {
-                "container": "initialized",
-                "orchestrator": "running",
-                "state_manager": "available",
-                "initialization": "complete"
-            },
+    except asyncio.TimeoutError:
+        logger.warning("Health check exceeded timeout (2s) - returning degraded status")
+        return JSONResponse({
+            "status": "degraded",
+            "error": "Health check timeout - system may be overloaded",
             "initialization_status": initialization_status,
             "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+        }, status_code=503)
 
     except Exception as e:
         logger.error(f"Health check failed: {e}")

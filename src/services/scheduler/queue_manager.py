@@ -1,4 +1,15 @@
-"""Sequential queue manager for task execution."""
+"""Sequential queue manager for task execution.
+
+This module implements the parallel queue, sequential task pattern:
+- 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
+- Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time per queue)
+
+Architecture Pattern - NON-BLOCKING EXECUTION:
+- Tasks execute in background threads via ThreadSafeQueueExecutor
+- Main event loop remains responsive for HTTP/WebSocket
+- Status updates callback to main event loop via run_coroutine_threadsafe()
+- Graceful shutdown waits for all executor threads
+"""
 
 import asyncio
 import logging
@@ -7,6 +18,7 @@ from datetime import datetime
 
 from ...models.scheduler import QueueName, SchedulerTask, TaskStatus
 from .task_service import SchedulerTaskService
+from .thread_safe_queue_executor import ThreadSafeQueueExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -34,173 +46,184 @@ class SequentialQueueManager:
         """Initialize manager."""
         self.task_service = task_service
         self._running = False
-        self._current_task: Optional[SchedulerTask] = None
-        self._completed_task_ids: List[str] = []
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # Thread-safe executors for each queue (3 parallel workers)
+        self._executors: Dict[QueueName, ThreadSafeQueueExecutor] = {}
+
+        # Execution tracking (for backward compatibility)
         self._execution_history: List[Dict[str, Any]] = []
+        self._completed_task_ids: List[str] = []
 
     async def execute_queues(self) -> None:
         """
-        Execute all queues in parallel.
-        
-        Architecture Pattern:
-        - 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
-        - Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time)
-        
-        This allows:
-        - Portfolio sync, data fetching, and AI analysis to run simultaneously
-        - Tasks within each queue execute in order (prevents turn limit exhaustion for AI)
+        Execute all queues in parallel using thread-safe executors.
+
+        Architecture Pattern (NON-BLOCKING):
+        - 3+ queues execute in PARALLEL using ThreadSafeQueueExecutor
+        - Each executor runs tasks SEQUENTIALLY in a dedicated worker thread
+        - Main event loop stays responsive for HTTP/WebSocket
+        - Thread callbacks use run_coroutine_threadsafe() to update async state
+
+        Execution Flow:
+        1. Start executor for each queue (spawns worker thread)
+        2. Each thread runs _run_queue_loop() to process tasks sequentially
+        3. Task completion callbacks back to main event loop
+        4. Main loop stays responsive for health checks and broadcasts
+        5. Shutdown waits for all executor threads to finish gracefully
         """
         if self._running:
             logger.warning("Queue execution already in progress")
             return
 
         self._running = True
-        logger.info("Starting parallel queue execution (queues in parallel, tasks within queues sequential)")
+        self._loop = asyncio.get_event_loop()
+        logger.info("Starting parallel queue execution (NON-BLOCKING with ThreadSafeQueueExecutor)")
 
         try:
             # Reload completed tasks from today
             self._completed_task_ids = await self.task_service.store.get_completed_task_ids_today()
 
-            # Execute all queues in PARALLEL (not sequentially!)
-            # Each queue processes its tasks sequentially internally
+            # Define all queues to process in parallel
             queue_names = [
                 QueueName.PORTFOLIO_SYNC,
                 QueueName.DATA_FETCHER,
                 QueueName.AI_ANALYSIS,
-                # New workflow-specific queues
                 QueueName.PORTFOLIO_ANALYSIS,
                 QueueName.PAPER_TRADING_RESEARCH,
                 QueueName.PAPER_TRADING_EXECUTION
             ]
-            
-            # Create tasks for parallel execution
-            tasks = [self._execute_queue(queue_name) for queue_name in queue_names]
-            
-            # Execute all queues concurrently
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Log results
-            for i, queue_name in enumerate(queue_names):
-                result = results[i]
-                if isinstance(result, Exception):
-                    logger.error(f"Queue {queue_name.value} failed: {result}")
-                else:
-                    logger.info(f"Queue {queue_name.value} completed successfully")
+
+            # Create and start executor for each queue
+            for queue_name in queue_names:
+                executor = ThreadSafeQueueExecutor(
+                    queue_name=queue_name.value,
+                    task_service=self.task_service,
+                    loop=self._loop,
+                    on_task_complete=self._on_task_complete,
+                    on_task_failed=self._on_task_failed
+                )
+                self._executors[queue_name] = executor
+                await executor.start()
+
+            logger.info(f"Started {len(self._executors)} queue executors (all running in parallel)")
 
         except Exception as e:
-            logger.error(f"Error in queue execution: {e}")
-        finally:
+            logger.error(f"Error starting queue execution: {e}")
             self._running = False
-            logger.info("Parallel queue execution complete")
 
-    async def _execute_queue(self, queue_name: QueueName) -> None:
-        """Execute all tasks in a queue sequentially."""
-        logger.debug(f"_execute_queue() called for {queue_name.value}")
-        max_iterations = 1000  # Prevent infinite loops
-        iteration = 0
+    async def _on_task_complete(self, task: SchedulerTask) -> None:
+        """Callback when task completes (runs on main event loop).
 
-        while iteration < max_iterations:
-            iteration += 1
-
-            # Get next pending task
-            pending_tasks = await self.task_service.get_pending_tasks(
-                queue_name=queue_name,
-                completed_task_ids=self._completed_task_ids
-            )
-
-            logger.debug(f"{queue_name.value}: Found {len(pending_tasks)} pending tasks")
-            if not pending_tasks:
-                logger.info(f"No more pending tasks in {queue_name.value}")
-                break
-
-            # Execute first task (highest priority)
-            task = pending_tasks[0]
-            logger.debug(f"{queue_name.value}: About to execute task {task.task_id}")
-            logger.debug(f"{queue_name.value}: Task type={task.task_type.value}, payload keys={list(task.payload.keys())}")
-            await self._execute_single_task(task)
-            logger.debug(f"{queue_name.value}: Task execution completed for {task.task_id}")
-
-            # Add to completed list
-            if task.status == TaskStatus.COMPLETED:
-                self._completed_task_ids.append(task.task_id)
-
-    async def _execute_single_task(self, task: SchedulerTask) -> None:
-        """Execute a single task with error handling."""
-        logger.debug(f"_execute_single_task() ENTERED for {task.task_id}")
-        self._current_task = task
-        start_time = datetime.utcnow()
-
-        logger.info(f"Executing task: {task.task_id} ({task.task_type.value})")
-
+        Args:
+            task: Completed task
+        """
         try:
-            logger.debug(f"About to call task_service.execute_task() for {task.task_id}")
-            # Set timeout for task execution (max 15 minutes for AI analysis)
-            # AI analysis on large portfolios can take 5-10+ minutes
-            result = await asyncio.wait_for(
-                self.task_service.execute_task(task),
-                timeout=900.0  # 15 minutes
-            )
-            logger.debug(f"task_service.execute_task() COMPLETED for {task.task_id}")
-
-            end_time = datetime.utcnow()
-            duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-            # Record in history
+            logger.info(f"Task completed callback: {task.task_id}")
+            self._completed_task_ids.append(task.task_id)
             self._execution_history.append({
                 "task_id": task.task_id,
                 "task_type": task.task_type.value,
                 "status": "completed",
-                "duration_ms": duration_ms,
-                "timestamp": end_time.isoformat()
-            })
-
-            logger.info(f"Task completed: {task.task_id} ({duration_ms}ms)")
-
-        except asyncio.TimeoutError:
-            logger.error(f"Task timeout: {task.task_id}")
-            await self.task_service.mark_failed(task.task_id, "Task execution timeout (>900s)")
-            self._execution_history.append({
-                "task_id": task.task_id,
-                "task_type": task.task_type.value,
-                "status": "timeout",
-                "duration_ms": 300000,
                 "timestamp": datetime.utcnow().isoformat()
             })
-
         except Exception as e:
-            logger.error(f"Task execution error: {task.task_id} - {e}")
-            await self.task_service.mark_failed(task.task_id, str(e))
+            logger.error(f"Error in task complete callback: {e}")
+
+    async def _on_task_failed(self, task: SchedulerTask, error_msg: str) -> None:
+        """Callback when task fails (runs on main event loop).
+
+        Args:
+            task: Failed task
+            error_msg: Error message
+        """
+        try:
+            logger.error(f"Task failed callback: {task.task_id} - {error_msg}")
             self._execution_history.append({
                 "task_id": task.task_id,
                 "task_type": task.task_type.value,
-                "status": "error",
-                "error": str(e),
+                "status": "failed",
+                "error": error_msg,
                 "timestamp": datetime.utcnow().isoformat()
             })
+        except Exception as e:
+            logger.error(f"Error in task failed callback: {e}")
 
-        finally:
-            self._current_task = None
+    async def stop(self, timeout_seconds: int = 30) -> None:
+        """Stop all executors and wait for graceful shutdown.
+
+        Args:
+            timeout_seconds: Max seconds to wait for all threads
+        """
+        if not self._running:
+            return
+
+        logger.info(f"Stopping all {len(self._executors)} queue executors...")
+        self._running = False
+
+        # Stop all executors concurrently
+        stop_tasks = [
+            executor.stop(timeout_seconds=timeout_seconds)
+            for executor in self._executors.values()
+        ]
+
+        results = await asyncio.gather(*stop_tasks, return_exceptions=True)
+
+        # Log results
+        for i, (queue_name, executor) in enumerate(self._executors.items()):
+            result = results[i]
+            if isinstance(result, Exception):
+                logger.error(f"Error stopping executor {queue_name.value}: {result}")
+            else:
+                logger.info(f"Queue {queue_name.value} executor stopped")
+
+        logger.info("All queue executors stopped")
 
     def is_running(self) -> bool:
         """Check if queue execution is running."""
         return self._running
 
-    def get_current_task(self) -> Optional[SchedulerTask]:
-        """Get currently executing task."""
-        return self._current_task
+    def get_current_task(self) -> Optional[str]:
+        """Get currently executing task ID (from any executor).
+
+        Returns:
+            Task ID of current task, or None if idle
+        """
+        for executor in self._executors.values():
+            current = executor.get_current_task()
+            if current:
+                return current.task_id
+        return None
 
     def get_execution_history(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get recent execution history."""
+        """Get recent execution history from all executors.
+
+        Args:
+            limit: Max number of records
+
+        Returns:
+            Recent execution history
+        """
         return self._execution_history[-limit:]
 
     async def get_status(self) -> Dict[str, Any]:
-        """Get current queue status."""
+        """Get current queue status from all executors.
+
+        Returns:
+            Status dictionary with executor and queue statistics
+        """
         stats = await self.task_service.get_all_queue_statistics()
+
+        # Get status from each executor
+        executor_status = {}
+        for queue_name, executor in self._executors.items():
+            executor_status[queue_name.value] = await executor.get_status()
 
         return {
             "running": self._running,
-            "current_task": self._current_task.task_id if self._current_task else None,
+            "current_task": self.get_current_task(),
             "completed_tasks_today": len(self._completed_task_ids),
+            "executors": executor_status,
             "queue_statistics": {k: v.to_dict() for k, v in stats.items()},
             "recent_history": self.get_execution_history(limit=10)
         }

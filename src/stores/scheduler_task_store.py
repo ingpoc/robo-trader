@@ -176,7 +176,9 @@ class SchedulerTaskStore:
                 ORDER BY priority DESC, created_at ASC
             """
 
-            cursor = await self.db_connection.execute(query, (queue_name.value,))
+            # Handle queue_name as either enum or string
+            queue_value = queue_name.value if hasattr(queue_name, 'value') else str(queue_name)
+            cursor = await self.db_connection.execute(query, (queue_value,))
             rows = await cursor.fetchall()
             tasks = []
 
@@ -285,12 +287,15 @@ class SchedulerTaskStore:
     async def get_queue_statistics(self, queue_name: QueueName) -> QueueStatistics:
         """Get statistics for a queue."""
         async with self._lock:
+            # Handle queue_name as either enum or string
+            queue_value = queue_name.value if hasattr(queue_name, 'value') else str(queue_name)
+
             # Get pending tasks count
             pending_query = """
                 SELECT COUNT(*) FROM queue_tasks
                 WHERE queue_name = ? AND status = 'pending'
             """
-            cursor = await self.db_connection.execute(pending_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(pending_query, (queue_value,))
             pending_row = await cursor.fetchone()
             pending_count = pending_row[0] if pending_row else 0
 
@@ -299,7 +304,7 @@ class SchedulerTaskStore:
                 SELECT COUNT(*) FROM queue_tasks
                 WHERE queue_name = ? AND status = 'running'
             """
-            cursor = await self.db_connection.execute(running_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(running_query, (queue_value,))
             running_row = await cursor.fetchone()
             running_count = running_row[0] if running_row else 0
 
@@ -309,7 +314,7 @@ class SchedulerTaskStore:
                 WHERE queue_name = ? AND status = 'completed'
                   AND DATE(completed_at) = DATE('now')
             """
-            cursor = await self.db_connection.execute(completed_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(completed_query, (queue_value,))
             completed_row = await cursor.fetchone()
             completed_today = completed_row[0] if completed_row else 0
 
@@ -318,7 +323,7 @@ class SchedulerTaskStore:
                 SELECT COUNT(*) FROM queue_tasks
                 WHERE queue_name = ? AND status = 'failed'
             """
-            cursor = await self.db_connection.execute(failed_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(failed_query, (queue_value,))
             failed_row = await cursor.fetchone()
             failed_count = failed_row[0] if failed_row else 0
 
@@ -328,7 +333,7 @@ class SchedulerTaskStore:
                 WHERE queue_name = ? AND status = 'completed'
                 ORDER BY completed_at DESC LIMIT 1
             """
-            cursor = await self.db_connection.execute(last_completed_query, (queue_name.value,))
+            cursor = await self.db_connection.execute(last_completed_query, (queue_value,))
             last_completed_row = await cursor.fetchone()
             last_completed_task_id = last_completed_row[0] if last_completed_row else None
             last_completed_at = last_completed_row[1] if last_completed_row else None
