@@ -80,7 +80,10 @@ class SchedulerTaskStore:
     ) -> SchedulerTask:
         """Create a new scheduler task."""
         async with self._lock:
-            task_id = f"{queue_name.value}_{task_type.value}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}"
+            # Handle both enum and string inputs for robustness
+            queue_value = queue_name.value if hasattr(queue_name, 'value') else str(queue_name)
+            task_type_value = task_type.value if hasattr(task_type, 'value') else str(task_type)
+            task_id = f"{queue_value}_{task_type_value}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}"
 
             query = """
                 INSERT INTO queue_tasks (
@@ -94,7 +97,7 @@ class SchedulerTaskStore:
 
             self.db_connection.row_factory = aiosqlite.Row
             await self.db_connection.execute(
-                query, (task_id, queue_name.value, task_type.value,
+                query, (task_id, queue_value, task_type_value,
                        priority, payload_json, dependencies_json, max_retries)
             )
             await self.db_connection.commit()

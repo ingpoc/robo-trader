@@ -181,8 +181,44 @@ class QueueCoordinator(BaseCoordinator):
 
             # Broadcast queue status update via WebSocket
             if self._broadcast_coordinator:
+                # Get SequentialQueueManager status for detailed queue data with failed_tasks
+                queue_manager_data = None
+                if self._broadcast_coordinator and self.monitoring_coordinator._sequential_queue_manager:
+                    try:
+                        queue_manager_data = await self.monitoring_coordinator._sequential_queue_manager.get_status()
+                    except Exception as e:
+                        self._log_warning(f"Could not get queue manager status for broadcast: {e}")
+
+                # Extract queue statistics if available
+                queues_for_broadcast = {}
+                if queue_manager_data and "queue_statistics" in queue_manager_data:
+                    # Transform queue_statistics to REST API format for consistency
+                    for queue_name, queue_stats in queue_manager_data["queue_statistics"].items():
+                        if isinstance(queue_stats, dict):
+                            queues_for_broadcast[queue_name] = {
+                                "name": queue_name,
+                                "failed_tasks": queue_stats.get("failed_count", 0),
+                                "pending_tasks": queue_stats.get("pending_count", 0),
+                                "active_tasks": queue_stats.get("running_count", 0),
+                                "completed_tasks": queue_stats.get("completed_today", 0)
+                            }
+                        else:
+                            # Convert QueueStatistics object to dict
+                            stats_dict = queue_stats.to_dict() if hasattr(queue_stats, 'to_dict') else vars(queue_stats)
+                            queues_for_broadcast[queue_name] = {
+                                "name": queue_name,
+                                "failed_tasks": stats_dict.get("failed_count", 0),
+                                "pending_tasks": stats_dict.get("pending_count", 0),
+                                "active_tasks": stats_dict.get("running_count", 0),
+                                "completed_tasks": stats_dict.get("completed_today", 0)
+                            }
+
+                # Use transformed queues if available, otherwise fall back to default
+                if not queues_for_broadcast:
+                    queues_for_broadcast = status_data.get("queues", {})
+
                 queue_data = {
-                    "queues": status_data.get("queues", {}),
+                    "queues": queues_for_broadcast,
                     "stats": status_data.get("stats", {}),
                     "timestamp": status_data.get("timestamp")
                 }

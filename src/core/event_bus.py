@@ -55,6 +55,7 @@ class EventType(Enum):
     SYSTEM_HEALTH_CHECK = "system.health_check"
     SYSTEM_ERROR = "system.error"
     SYSTEM_MAINTENANCE = "system.maintenance"
+    SYSTEM_STATUS = "system.status"
     # Prompt Optimization events
     PROMPT_OPTIMIZED = "prompt.optimized"
     PROMPT_QUALITY_ANALYSIS = "prompt.quality_analysis"

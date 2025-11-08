@@ -136,8 +136,18 @@ def check_database_health(db_path: str) -> Dict[str, Any]:
         # Get basic statistics
         stats = {}
         try:
-            cursor.execute("SELECT COUNT(DISTINCT symbol) as count FROM portfolio")
-            stats["portfolio_size"] = cursor.fetchone()[0]
+            # Count portfolio records (not distinct symbols since data is in JSON)
+            cursor.execute("SELECT COUNT(*) as count FROM portfolio")
+            stats["portfolio_records"] = cursor.fetchone()[0]
+
+            # Count total holdings from JSON data
+            cursor.execute("SELECT COUNT(*) as count FROM portfolio")
+            portfolio_count = cursor.fetchone()[0]
+            stats["portfolio_size"] = portfolio_count  # Keep name for compatibility
+
+            # Add queue tasks count
+            cursor.execute("SELECT COUNT(*) as count FROM queue_tasks")
+            stats["queue_tasks"] = cursor.fetchone()[0]
 
             cursor.execute("SELECT COUNT(*) as count FROM analysis_history")
             stats["total_analyses"] = cursor.fetchone()[0]
@@ -170,7 +180,10 @@ def check_database_health(db_path: str) -> Dict[str, Any]:
                 "stats": stats
             }
 
-        if stats.get("portfolio_size", 0) == 0:
+        # Consider database empty only if it has no meaningful data
+        if (stats.get("portfolio_size", 0) == 0 and
+            stats.get("total_analyses", 0) == 0 and
+            stats.get("queue_tasks", 0) == 0):
             return {
                 "status": "WARNING",
                 "integrity_check": "ok",

@@ -254,7 +254,7 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
 
                 self._log_info(
                     f"Queued analysis task for {symbol} "
-                    f"(priority={priority}, reason={reason}, task_id={task.get('id', 'unknown')})"
+                    f"(priority={priority}, reason={reason}, task_id={task.task_id})"
                 )
 
             except Exception as e:

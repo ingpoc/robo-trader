@@ -45,7 +45,9 @@ class SchedulerTaskService:
             dependencies=dependencies,
             max_retries=max_retries
         )
-        logger.info(f"Created task: {task.task_id} in queue {queue_name.value}")
+        # Handle both enum and string inputs for robustness
+        queue_value = queue_name.value if hasattr(queue_name, 'value') else str(queue_name)
+        logger.info(f"Created task: {task.task_id} in queue {queue_value}")
         return task
 
     async def get_task(self, task_id: str) -> Optional[SchedulerTask]:
@@ -60,7 +62,8 @@ class SchedulerTaskService:
         """Get statistics for all queues."""
         stats = {}
         for queue_name in QueueName:
-            stats[queue_name.value] = await self.get_queue_statistics(queue_name)
+            queue_value = queue_name.value if hasattr(queue_name, 'value') else str(queue_name)
+            stats[queue_value] = await self.get_queue_statistics(queue_name)
         return stats
 
     async def get_pending_tasks(
@@ -71,7 +74,8 @@ class SchedulerTaskService:
         """Get pending tasks for queue that are ready to run."""
         completed = completed_task_ids or []
         all_pending = await self.store.get_pending_tasks(queue_name)
-        logger.debug(f"get_pending_tasks() for {queue_name.value}: store returned {len(all_pending)} tasks")
+        queue_value = queue_name.value if hasattr(queue_name, 'value') else str(queue_name)
+        logger.debug(f"get_pending_tasks() for {queue_value}: store returned {len(all_pending)} tasks")
 
         # Filter by dependency satisfaction
         ready_tasks = [t for t in all_pending if t.is_ready_to_run(completed)]
@@ -117,7 +121,8 @@ class SchedulerTaskService:
         # Get handler
         handler = self._task_handlers.get(task.task_type)
         if not handler:
-            error = f"No handler registered for task type: {task.task_type.value}"
+            task_type_value = task.task_type.value if hasattr(task.task_type, 'value') else str(task.task_type)
+            error = f"No handler registered for task type: {task_type_value}"
             await self.mark_failed(task.task_id, error)
             return {"success": False, "error": error}
 

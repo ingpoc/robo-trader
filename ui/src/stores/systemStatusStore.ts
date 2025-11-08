@@ -158,13 +158,24 @@ export const useSystemStatusStore = create<SystemStatusState>()(
 
         // Check for failed tasks in queue status
         const newErrors: string[] = [...state.errors]
-        const totalFailedTasks = status.stats?.total_failed_tasks || 0
+
+        // Handle both array format (from REST API) and object format (from WebSocket)
+        let queuesData = status.queues
+
+        // If queues is an array (REST API format), convert to object for processing
+        if (Array.isArray(queuesData)) {
+          queuesData = queuesData.reduce((acc: any, queue: any) => {
+            acc[queue.name] = queue
+            return acc
+          }, {})
+        }
 
         // Detect failed tasks per queue
-        if (status.queues) {
-          Object.entries(status.queues).forEach(([queueName, queue]: [string, any]) => {
-            if (queue.failed_tasks && queue.failed_tasks > 0) {
+        if (queuesData && typeof queuesData === 'object') {
+          Object.entries(queuesData).forEach(([queueName, queue]: [string, any]) => {
+            if (queue && queue.failed_tasks && queue.failed_tasks > 0) {
               const errorMsg = `Queue "${queueName}" has ${queue.failed_tasks} failed task(s)`
+              // Avoid duplicate errors
               if (!newErrors.includes(errorMsg)) {
                 newErrors.push(errorMsg)
               }
@@ -172,7 +183,16 @@ export const useSystemStatusStore = create<SystemStatusState>()(
           })
         }
 
-        // Also check overall failed tasks
+        // Calculate total failed tasks from queue data
+        let totalFailedTasks = status.stats?.total_failed_tasks || 0
+        if (totalFailedTasks === 0 && queuesData && typeof queuesData === 'object') {
+          // Sum up failed tasks from individual queues
+          totalFailedTasks = Object.values(queuesData).reduce((sum: number, queue: any) => {
+            return sum + (queue.failed_tasks || 0)
+          }, 0)
+        }
+
+        // Add total failed tasks error if there are any
         if (totalFailedTasks > 0) {
           const errorMsg = `System has ${totalFailedTasks} total failed task(s)`
           if (!newErrors.some(e => e.includes('total failed'))) {
