@@ -65,13 +65,9 @@ class ThreadSafeQueueExecutor:
         self._running = False
         self._stop_event = threading.Event()
 
-        # Current task tracking
+        # Current task tracking (needed for thread coordination)
         self._current_task: Optional[SchedulerTask] = None
         self._lock = threading.Lock()  # Thread-safe access to _current_task
-
-        # Execution history
-        self._execution_history: list = []
-        self._history_lock = threading.Lock()
 
     async def start(self) -> None:
         """Start the executor thread asynchronously.
@@ -189,16 +185,6 @@ class ThreadSafeQueueExecutor:
             end_time = datetime.utcnow()
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-            # Log execution
-            with self._history_lock:
-                self._execution_history.append({
-                    "task_id": task.task_id,
-                    "task_type": task.task_type.value,
-                    "status": "completed",
-                    "duration_ms": duration_ms,
-                    "timestamp": end_time.isoformat()
-                })
-
             logger.info(f"Task completed: {task.task_id} ({duration_ms}ms)")
 
             # Call on_complete callback if provided
@@ -212,28 +198,10 @@ class ThreadSafeQueueExecutor:
             logger.error(f"Task timeout: {task.task_id} (>900s)")
             self._schedule_callback_mark_failed(task, "Task execution timeout (>900s)")
 
-            with self._history_lock:
-                self._execution_history.append({
-                    "task_id": task.task_id,
-                    "task_type": task.task_type.value,
-                    "status": "timeout",
-                    "duration_ms": 900000,
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-
         except Exception as e:
             logger.error(f"Task execution error: {task.task_id} - {e}")
             traceback.print_exc()
             self._schedule_callback_mark_failed(task, str(e))
-
-            with self._history_lock:
-                self._execution_history.append({
-                    "task_id": task.task_id,
-                    "task_type": task.task_type.value,
-                    "status": "error",
-                    "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat()
-                })
 
         finally:
             with self._lock:
@@ -293,20 +261,10 @@ class ThreadSafeQueueExecutor:
         """
         return self._running and (self._thread is not None and self._thread.is_alive())
 
-    def get_execution_history(self, limit: int = 100) -> list:
-        """Get execution history (thread-safe).
-
-        Args:
-            limit: Max number of records to return
-
-        Returns:
-            Recent execution history
-        """
-        with self._history_lock:
-            return self._execution_history[-limit:]
-
     async def get_status(self) -> Dict[str, Any]:
         """Get executor status.
+
+        Phase 3: Removed in-memory history tracking - use repository instead.
 
         Returns:
             Status dictionary
@@ -315,6 +273,5 @@ class ThreadSafeQueueExecutor:
             "queue_name": self.queue_name,
             "running": self.is_running(),
             "current_task": self.get_current_task().task_id if self.get_current_task() else None,
-            "thread_alive": self._thread is not None and self._thread.is_alive(),
-            "recent_history": self.get_execution_history(limit=10)
+            "thread_alive": self._thread is not None and self._thread.is_alive()
         }

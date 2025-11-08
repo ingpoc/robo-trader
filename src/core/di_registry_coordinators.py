@@ -165,7 +165,14 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
     container._register_singleton("lifecycle_coordinator", create_lifecycle_coordinator)
 
     async def create_broadcast_coordinator():
-        return BroadcastCoordinator(container.config)
+        # Phase 3: Inject QueueStateRepository for consistent WebSocket broadcasts
+        queue_state_repository = None
+        try:
+            queue_state_repository = await container.get("queue_state_repository")
+        except Exception as e:
+            logger.debug(f"QueueStateRepository not available for BroadcastCoordinator: {e}")
+
+        return BroadcastCoordinator(container.config, queue_state_repository)
 
     container._register_singleton("broadcast_coordinator", create_broadcast_coordinator)
 

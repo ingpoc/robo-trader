@@ -9,6 +9,8 @@ Architecture Pattern - NON-BLOCKING EXECUTION:
 - Main event loop remains responsive for HTTP/WebSocket
 - Status updates callback to main event loop via run_coroutine_threadsafe()
 - Graceful shutdown waits for all executor threads
+
+Phase 3: Uses QueueStateRepository for status queries (single source of truth)
 """
 
 import asyncio
@@ -17,6 +19,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from ...models.scheduler import QueueName, SchedulerTask, TaskStatus
+from ...models.dto import QueueStatusDTO
 from .task_service import SchedulerTaskService
 from .thread_safe_queue_executor import ThreadSafeQueueExecutor
 
@@ -26,25 +29,36 @@ logger = logging.getLogger(__name__)
 class SequentialQueueManager:
     """
     Manage queue execution with parallel queues and sequential tasks.
-    
+
     Architecture Pattern:
     - 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
     - Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time per queue)
-    
+
     This prevents:
     - Turn limit exhaustion (AI_ANALYSIS tasks run sequentially)
     - Database contention (PORTFOLIO_SYNC tasks run sequentially)
     - Resource conflicts (each queue manages its own sequential execution)
-    
+
     While allowing:
     - Parallel processing across different queue types
     - Better resource utilization
     - Independent queue execution
+
+    Phase 3 Update:
+    - Uses QueueStateRepository for status queries (single source of truth)
+    - Returns unified DTOs consistent with REST API
+    - Eliminates dual sources of truth
     """
 
-    def __init__(self, task_service: SchedulerTaskService):
-        """Initialize manager."""
+    def __init__(self, task_service: SchedulerTaskService, queue_state_repository=None):
+        """Initialize manager.
+
+        Args:
+            task_service: Task service for task operations
+            queue_state_repository: Repository for status queries (Phase 3)
+        """
         self.task_service = task_service
+        self.queue_state_repository = queue_state_repository
         self._running = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -209,12 +223,25 @@ class SequentialQueueManager:
     async def get_status(self) -> Dict[str, Any]:
         """Get current queue status from all executors.
 
-        Returns:
-            Status dictionary with executor and queue statistics
-        """
-        stats = await self.task_service.get_all_queue_statistics()
+        Phase 3: Uses QueueStateRepository for consistent status data.
 
-        # Get status from each executor
+        Returns:
+            Status dictionary with executor and queue DTOs
+        """
+        # Phase 3: Use repository as single source of truth
+        if self.queue_state_repository:
+            all_queue_states = await self.queue_state_repository.get_all_statuses()
+
+            # Convert to DTOs (consistent with REST API)
+            queue_dtos = []
+            for queue_state in all_queue_states.values():
+                dto = QueueStatusDTO.from_queue_state(queue_state)
+                queue_dtos.append(dto.to_dict())
+        else:
+            # Fallback if repository not available
+            queue_dtos = []
+
+        # Get status from each executor (for backward compatibility)
         executor_status = {}
         for queue_name, executor in self._executors.items():
             executor_status[queue_name.value] = await executor.get_status()
@@ -224,6 +251,5 @@ class SequentialQueueManager:
             "current_task": self.get_current_task(),
             "completed_tasks_today": len(self._completed_task_ids),
             "executors": executor_status,
-            "queue_statistics": {k: v.to_dict() for k, v in stats.items()},
-            "recent_history": self.get_execution_history(limit=10)
+            "queues": queue_dtos  # Phase 3: Unified DTOs (history available from repository)
         }

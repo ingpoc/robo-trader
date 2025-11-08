@@ -552,7 +552,13 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     async def create_sequential_queue_manager():
         from ..services.scheduler.queue_manager import SequentialQueueManager
         task_service = await container.get("task_service")
-        return SequentialQueueManager(task_service)
+        # Phase 3: Inject QueueStateRepository for status queries
+        queue_state_repository = None
+        try:
+            queue_state_repository = await container.get("queue_state_repository")
+        except Exception as e:
+            logger.debug(f"QueueStateRepository not available for SequentialQueueManager: {e}")
+        return SequentialQueueManager(task_service, queue_state_repository)
 
     container._register_singleton("sequential_queue_manager", create_sequential_queue_manager)
 
