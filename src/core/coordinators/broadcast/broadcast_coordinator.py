@@ -1,15 +1,17 @@
 """
-Broadcast Coordinator (Refactored)
+Broadcast Coordinator (Phase 3 Refactored)
 
 Thin orchestrator that delegates to focused broadcast coordinators.
-Refactored from 326-line monolith into focused coordinators.
+Uses repository layer for consistent data across WebSocket and REST API.
 """
 
 from typing import Dict, Any, Optional, Callable
+from datetime import datetime, timezone
 
 from loguru import logger
 
 from src.config import Config
+from src.models.dto import QueueStatusDTO
 from ..base_coordinator import BaseCoordinator
 from .broadcast_health_coordinator import BroadcastHealthCoordinator
 from .broadcast_execution_coordinator import BroadcastExecutionCoordinator
@@ -19,22 +21,36 @@ class BroadcastCoordinator(BaseCoordinator):
     """
     Coordinates UI broadcasting with health monitoring.
 
+    Phase 3 Update:
+    - Uses QueueStateRepository for consistent data
+    - Broadcasts unified DTOs (same schema as REST API)
+    - Eliminates WebSocket vs REST format differences (fixes Issue #6)
+
     Responsibilities:
     - Orchestrate broadcast operations from focused coordinators
     - Provide unified broadcast API
     - Track broadcast metrics
     """
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, queue_state_repository=None):
+        """Initialize broadcast coordinator.
+
+        Args:
+            config: Application configuration
+            queue_state_repository: QueueStateRepository for consistent data (Phase 3)
+        """
         super().__init__(config)
-        
+
         # Focused coordinators
         self.health_coordinator = BroadcastHealthCoordinator(config)
         self.execution_coordinator = BroadcastExecutionCoordinator(config, self.health_coordinator)
 
+        # Phase 3: Repository for consistent data
+        self.queue_state_repository = queue_state_repository
+
     async def initialize(self) -> None:
         """Initialize broadcast coordinator."""
-        self._log_info("Initializing BroadcastCoordinator")
+        self._log_info("Initializing BroadcastCoordinator (Phase 3 - with repository)")
 
         await self.health_coordinator.initialize()
         await self.execution_coordinator.initialize()
@@ -51,7 +67,7 @@ class BroadcastCoordinator(BaseCoordinator):
             message,
             self.health_coordinator.is_circuit_breaker_open
         )
-        
+
         # Record metrics based on result
         if result:
             # Get broadcast time from message if available, otherwise use 0
@@ -62,7 +78,7 @@ class BroadcastCoordinator(BaseCoordinator):
             class BroadcastError(Exception):
                 pass
             self.health_coordinator.record_broadcast_failure(BroadcastError("Broadcast failed"))
-        
+
         return result
 
     async def broadcast_claude_status_update(self, status_data: Dict[str, Any]) -> None:
@@ -93,18 +109,68 @@ class BroadcastCoordinator(BaseCoordinator):
         await self.broadcast_to_ui(message)
         self._log_info(f"System health broadcast: {health_data.get('status', 'unknown')}")
 
-    async def broadcast_queue_status_update(self, queue_data: Dict[str, Any]) -> None:
-        """Broadcast queue status updates to UI."""
-        message = {
-            "type": "queue_status_update",
-            "queues": queue_data.get("queues", {}),
-            "stats": queue_data.get("stats", {}),
-            "timestamp": queue_data.get("timestamp"),
-            "data": queue_data
-        }
+    async def broadcast_queue_status_update(self, queue_data: Dict[str, Any] = None) -> None:
+        """Broadcast queue status updates to UI.
 
-        await self.broadcast_to_ui(message)
-        self._log_info(f"Queue status broadcast: {len(queue_data.get('queues', {}))} queues")
+        Phase 3: Uses QueueStateRepository for consistent data.
+        WebSocket message now has IDENTICAL schema to REST API response.
+
+        Args:
+            queue_data: Optional pre-fetched queue data (legacy support)
+        """
+        try:
+            # Phase 3: Get fresh data from repository if available
+            if self.queue_state_repository:
+                # Get all queue statuses (efficient - 1-2 queries)
+                all_queue_states = await self.queue_state_repository.get_all_statuses()
+                summary = await self.queue_state_repository.get_queue_statistics_summary()
+
+                # Convert to DTOs (same as REST API)
+                queue_dtos = []
+                for queue_name, queue_state in all_queue_states.items():
+                    dto = QueueStatusDTO.from_queue_state(queue_state)
+                    queue_dtos.append(dto.to_dict())
+
+                # Build stats (same format as REST API)
+                stats = {
+                    "total_queues": summary["total_queues"],
+                    "total_pending_tasks": summary["total_pending"],
+                    "total_active_tasks": summary["total_running"],
+                    "total_completed_tasks": summary["total_completed_today"],
+                    "total_failed_tasks": summary["total_failed"],
+                    "last_updated": datetime.now(timezone.utc).isoformat()
+                }
+
+                # ✅ WebSocket message now IDENTICAL to REST API response
+                message = {
+                    "type": "queue_status_update",
+                    "queues": queue_dtos,  # ✅ Array of DTOs (same as REST)
+                    "stats": stats,        # ✅ Same format as REST
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+
+                await self.broadcast_to_ui(message)
+                self._log_info(f"Queue status broadcast (Phase 3): {len(queue_dtos)} queues with unified schema")
+
+            elif queue_data:
+                # Legacy fallback if repository not available
+                message = {
+                    "type": "queue_status_update",
+                    "queues": queue_data.get("queues", {}),
+                    "stats": queue_data.get("stats", {}),
+                    "timestamp": queue_data.get("timestamp"),
+                    "data": queue_data
+                }
+
+                await self.broadcast_to_ui(message)
+                self._log_info(f"Queue status broadcast (legacy): {len(queue_data.get('queues', {}))} queues")
+            else:
+                self._log_warning("No queue data available and repository not configured")
+
+        except Exception as e:
+            self._log_error(f"Failed to broadcast queue status: {e}")
+            import traceback
+            self._log_error(f"Traceback: {traceback.format_exc()}")
 
     def get_health_metrics(self, monitor_metrics: Dict[str, Any] = None) -> Dict[str, Any]:
         """Get comprehensive health metrics."""

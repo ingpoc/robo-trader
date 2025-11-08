@@ -84,6 +84,33 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("configuration_state", create_configuration_state)
 
+    # ========================================
+    # REPOSITORY LAYER (Phase 1)
+    # ========================================
+    # Repositories provide single source of truth for data access
+
+    # Queue State Repository - singleton (efficient queue status queries)
+    async def create_queue_state_repository():
+        from ..repositories import QueueStateRepository
+        database = await container.get("database")
+        repo = QueueStateRepository(database)
+        await repo.initialize()
+        logger.info("QueueStateRepository initialized")
+        return repo
+
+    container._register_singleton("queue_state_repository", create_queue_state_repository)
+
+    # Task Repository - singleton (task-level queries)
+    async def create_task_repository():
+        from ..repositories import TaskRepository
+        database = await container.get("database")
+        repo = TaskRepository(database)
+        await repo.initialize()
+        logger.info("TaskRepository initialized")
+        return repo
+
+    container._register_singleton("task_repository", create_task_repository)
+
     # AI Planner
     async def create_ai_planner():
         from .ai_planner import AIPlanner
@@ -525,7 +552,13 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     async def create_sequential_queue_manager():
         from ..services.scheduler.queue_manager import SequentialQueueManager
         task_service = await container.get("task_service")
-        return SequentialQueueManager(task_service)
+        # Phase 3: Inject QueueStateRepository for status queries
+        queue_state_repository = None
+        try:
+            queue_state_repository = await container.get("queue_state_repository")
+        except Exception as e:
+            logger.debug(f"QueueStateRepository not available for SequentialQueueManager: {e}")
+        return SequentialQueueManager(task_service, queue_state_repository)
 
     container._register_singleton("sequential_queue_manager", create_sequential_queue_manager)
 
