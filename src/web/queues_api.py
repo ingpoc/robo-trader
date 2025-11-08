@@ -1,89 +1,88 @@
 """Queue Management API endpoints for the Robo Trader system.
 
+Phase 2: Refactored to use QueueStateRepository and unified DTOs.
+
 Provides queue status, task management, and monitoring capabilities.
-Follows the FastAPI microservice pattern used by other services.
+Uses single source of truth (repository) instead of dual sources.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Query, Depends
 from loguru import logger
 from datetime import datetime, timezone
 
 from src.web.dependencies import get_container
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.models.dto import QueueStatusDTO
 
 router = APIRouter(prefix="/queues", tags=["Queue Management"])
 
 
 @router.get("/status", summary="Get all queue statuses")
 async def get_queue_statuses(container: Any = Depends(get_container)) -> Dict[str, Any]:
-    """Get detailed status of all queues in the system."""
-    logger.info("Retrieving all queue statuses")
+    """Get detailed status of all queues in the system.
+
+    Phase 2: Uses QueueStateRepository as single source of truth.
+    Returns unified QueueStatusDTO objects.
+
+    Returns:
+        Dictionary with:
+        - queues: List of QueueStatusDTO dictionaries
+        - stats: Summary statistics
+        - status: Overall status
+    """
+    logger.info("Retrieving all queue statuses (Phase 2 - with repository)")
 
     try:
-        # Get real queue statistics from the task service
-        task_service = await container.get("task_service")
+        # Get repository (single source of truth)
+        queue_repo = await container.get("queue_state_repository")
 
-        if not task_service:
-            logger.warning("Task service not available")
+        if not queue_repo:
+            logger.warning("QueueStateRepository not available")
             return {
                 "queues": [],
                 "stats": {},
                 "status": "service_unavailable",
-                "error": "Task service not available"
+                "error": "QueueStateRepository not available"
             }
 
-        # Get real queue statistics
-        queue_stats = await task_service.get_all_queue_statistics()
+        # Get all queue statuses efficiently (1-2 queries total)
+        all_queue_states = await queue_repo.get_all_statuses()
 
-        # Get queue manager for additional status info
-        queue_manager = await container.get("sequential_queue_manager")
-        is_running = queue_manager.is_running() if queue_manager else False
-        current_task = queue_manager.get_current_task() if queue_manager else None
+        # Get summary statistics
+        summary = await queue_repo.get_queue_statistics_summary()
 
-        # Transform queue statistics to API format
-        queues = []
-        for queue_name, stats in queue_stats.items():
-            # Determine queue status based on activity
-            if stats.running_count > 0:
-                status = "running"
-            elif stats.pending_count > 0:
-                status = "active"
-            else:
-                status = "idle"
+        # Convert to DTOs
+        queue_dtos: List[Dict[str, Any]] = []
+        for queue_name, queue_state in all_queue_states.items():
+            dto = QueueStatusDTO.from_queue_state(queue_state)
+            queue_dtos.append(dto.to_dict())
 
-            queue_info = {
-                "name": queue_name,
-                "status": status,
-                "running": is_running,
-                "type": "task_queue",
-                "details": {},
-                "current_task_id": current_task.task_id if current_task and current_task.queue_name == queue_name else None,
-                "pending_tasks": stats.pending_count,
-                "active_tasks": stats.running_count,
-                "completed_tasks": stats.completed_today,
-                "failed_tasks": stats.failed_count,
-                "average_execution_time": stats.average_duration_ms / 1000.0 if stats.average_duration_ms > 0 else 0.0,
-                "last_activity": stats.last_completed_at or datetime.now(timezone.utc).isoformat()
-            }
-            queues.append(queue_info)
-
-        # Calculate overall stats
+        # Build summary stats
         stats = {
-            "total_queues": len(queues),
-            "active_queues": len([q for q in queues if q["running"]]),
-            "idle_queues": len([q for q in queues if not q["running"]]),
-            "total_pending_tasks": sum(q["pending_tasks"] for q in queues),
-            "total_active_tasks": sum(q["active_tasks"] for q in queues),
-            "total_completed_tasks": sum(q["completed_tasks"] for q in queues),
-            "total_failed_tasks": sum(q["failed_tasks"] for q in queues),
+            "total_queues": summary["total_queues"],
+            "total_pending_tasks": summary["total_pending"],
+            "total_active_tasks": summary["total_running"],
+            "total_completed_tasks": summary["total_completed_today"],
+            "total_failed_tasks": summary["total_failed"],
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 
+        # Determine overall status
+        has_failed = any(q["failed_count"] > 0 for q in queue_dtos)
+        has_running = any(q["running_count"] > 0 for q in queue_dtos)
+
+        if has_failed:
+            overall_status = "degraded"
+        elif has_running:
+            overall_status = "operational"
+        else:
+            overall_status = "idle"
+
         return {
-            "queues": queues,
+            "queues": queue_dtos,
             "stats": stats,
-            "status": "operational"
+            "status": overall_status
         }
 
     except TradingError as e:
@@ -97,6 +96,8 @@ async def get_queue_statuses(container: Any = Depends(get_container)) -> Dict[st
         }
     except Exception as e:
         logger.error(f"Failed to get queue statuses: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return {
             "queues": [],
             "stats": {},
@@ -105,74 +106,222 @@ async def get_queue_statuses(container: Any = Depends(get_container)) -> Dict[st
         }
 
 
-@router.get("/status/{queue_type}", summary="Get specific queue status")
-async def get_queue_status(queue_type: str) -> Dict[str, Any]:
-    """Get status of a specific queue."""
-    logger.info(f"Retrieving status for queue: {queue_type}")
-    return {
-        "queue": {
-            "name": queue_type.upper(),
-            "status": "active",
-            "task_count": 0,
-            "active_tasks": 0,
-            "failed_tasks": 0,
-            "completed_tasks": 0,
-            "last_activity": None
+@router.get("/status/{queue_name}", summary="Get specific queue status")
+async def get_queue_status(
+    queue_name: str,
+    container: Any = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get status of a specific queue.
+
+    Phase 2: Uses QueueStateRepository.
+
+    Args:
+        queue_name: Name of the queue (e.g., "ai_analysis")
+
+    Returns:
+        Dictionary with queue status or error
+    """
+    logger.info(f"Retrieving status for queue: {queue_name}")
+
+    try:
+        queue_repo = await container.get("queue_state_repository")
+
+        if not queue_repo:
+            return {
+                "error": "QueueStateRepository not available",
+                "status": "service_unavailable"
+            }
+
+        # Get queue state from repository
+        queue_state = await queue_repo.get_status(queue_name)
+
+        # Convert to DTO
+        dto = QueueStatusDTO.from_queue_state(queue_state)
+
+        return {
+            "queue": dto.to_dict(),
+            "status": "success"
         }
-    }
+
+    except Exception as e:
+        logger.error(f"Failed to get queue status for {queue_name}: {e}")
+        return {
+            "error": str(e),
+            "status": "error"
+        }
 
 
 @router.get("/tasks", summary="Get queue tasks with filtering")
 async def get_queue_tasks(
-    queue_type: Optional[str] = Query(None),
+    queue_name: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
-    priority: Optional[str] = Query(None),
-    task_type: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    container: Any = Depends(get_container)
 ) -> Dict[str, Any]:
-    """Get queue tasks with optional filtering."""
-    logger.info(f"Retrieving queue tasks - queue_type: {queue_type}, status: {status}, limit: {limit}")
-    return {
-        "tasks": [],
-        "total": 0,
-        "limit": limit,
-        "offset": offset,
-        "filters": {
-            "queue_type": queue_type,
-            "status": status,
-            "priority": priority,
-            "task_type": task_type
+    """Get queue tasks with optional filtering.
+
+    Phase 2: Uses TaskRepository for queries.
+
+    Args:
+        queue_name: Optional queue filter
+        status: Optional status filter
+        limit: Maximum tasks to return
+        offset: Pagination offset
+
+    Returns:
+        Dictionary with tasks and metadata
+    """
+    logger.info(f"Retrieving queue tasks - queue: {queue_name}, status: {status}, limit: {limit}")
+
+    try:
+        task_repo = await container.get("task_repository")
+
+        if not task_repo:
+            return {
+                "tasks": [],
+                "total": 0,
+                "limit": limit,
+                "offset": offset
+            }
+
+        # Get tasks based on filters
+        if status:
+            tasks = await task_repo.get_tasks_by_status(
+                status=status,
+                queue_name=queue_name,
+                limit=limit
+            )
+        elif queue_name:
+            tasks = await task_repo.get_pending_tasks(
+                queue_name=queue_name,
+                limit=limit
+            )
+        else:
+            # Get recent task history
+            tasks = await task_repo.get_task_history(
+                queue_name=queue_name,
+                limit=limit
+            )
+
+        # Convert to dictionaries
+        task_dicts = [task.to_dict() for task in tasks]
+
+        return {
+            "tasks": task_dicts,
+            "total": len(task_dicts),
+            "limit": limit,
+            "offset": offset,
+            "filters": {
+                "queue_name": queue_name,
+                "status": status
+            }
         }
-    }
+
+    except Exception as e:
+        logger.error(f"Failed to get queue tasks: {e}")
+        return {
+            "tasks": [],
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "error": str(e)
+        }
 
 
 @router.get("/history", summary="Get task execution history")
 async def get_task_history(
-    queue_type: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500)
+    queue_name: Optional[str] = Query(None),
+    hours: int = Query(24, ge=1, le=168),
+    limit: int = Query(100, ge=1, le=500),
+    container: Any = Depends(get_container)
 ) -> Dict[str, Any]:
-    """Get task execution history."""
-    logger.info(f"Retrieving task history - queue_type: {queue_type}, limit: {limit}")
-    return {
-        "history": [],
-        "total": 0,
-        "limit": limit
-    }
+    """Get task execution history.
+
+    Args:
+        queue_name: Optional queue filter
+        hours: Look back period in hours
+        limit: Maximum tasks to return
+
+    Returns:
+        Dictionary with execution history
+    """
+    logger.info(f"Retrieving task history - queue: {queue_name}, hours: {hours}, limit: {limit}")
+
+    try:
+        task_repo = await container.get("task_repository")
+
+        if not task_repo:
+            return {"history": [], "total": 0}
+
+        # Get task history
+        tasks = await task_repo.get_task_history(
+            queue_name=queue_name,
+            hours=hours,
+            limit=limit
+        )
+
+        # Convert to dictionaries
+        history = [task.to_dict() for task in tasks]
+
+        return {
+            "history": history,
+            "total": len(history),
+            "limit": limit,
+            "hours": hours
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get task history: {e}")
+        return {
+            "history": [],
+            "total": 0,
+            "error": str(e)
+        }
 
 
 @router.get("/metrics", summary="Get queue performance metrics")
 async def get_performance_metrics(
-    queue_type: Optional[str] = Query(None),
-    hours: int = Query(24, ge=1, le=720)
+    queue_name: Optional[str] = Query(None),
+    hours: int = Query(24, ge=1, le=720),
+    container: Any = Depends(get_container)
 ) -> Dict[str, Any]:
-    """Get queue performance metrics."""
-    logger.info(f"Retrieving queue metrics - queue_type: {queue_type}, hours: {hours}")
-    return {
-        "metrics": [],
-        "time_period_hours": hours,
-        "queue_type": queue_type
-    }
+    """Get queue performance metrics.
+
+    Args:
+        queue_name: Optional queue filter
+        hours: Time period for metrics
+
+    Returns:
+        Dictionary with performance metrics
+    """
+    logger.info(f"Retrieving queue metrics - queue: {queue_name}, hours: {hours}")
+
+    try:
+        task_repo = await container.get("task_repository")
+
+        if not task_repo:
+            return {"metrics": {}, "error": "TaskRepository not available"}
+
+        # Get task statistics
+        stats = await task_repo.get_task_statistics(
+            queue_name=queue_name,
+            hours=hours
+        )
+
+        return {
+            "metrics": stats,
+            "time_period_hours": hours,
+            "queue_name": queue_name
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get performance metrics: {e}")
+        return {
+            "metrics": {},
+            "time_period_hours": hours,
+            "error": str(e)
+        }
 
 
 @router.post("/trigger", summary="Trigger manual task execution")
@@ -281,12 +430,36 @@ async def clear_completed_tasks(request: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/health", summary="Queue management health check")
-async def queue_health() -> Dict[str, Any]:
-    """Check queue management health."""
+async def queue_health(container: Any = Depends(get_container)) -> Dict[str, Any]:
+    """Check queue management health.
+
+    Returns:
+        Dictionary with health status
+    """
     logger.info("Queue management health check")
 
-    return {
-        "status": "healthy",
-        "queues_running": 3,
-        "timestamp": None
-    }
+    try:
+        queue_repo = await container.get("queue_state_repository")
+
+        if not queue_repo:
+            return {
+                "status": "unhealthy",
+                "reason": "QueueStateRepository not available"
+            }
+
+        # Get summary to verify repository works
+        summary = await queue_repo.get_queue_statistics_summary()
+
+        return {
+            "status": "healthy",
+            "queues_running": summary["total_queues"],
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Queue health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
