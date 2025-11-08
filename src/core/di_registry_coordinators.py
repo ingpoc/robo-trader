@@ -66,9 +66,17 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
     # Create focused status coordinators first (nested coordinators for SystemStatusCoordinator)
     async def create_scheduler_status_coordinator():
         background_scheduler = await container.get("background_scheduler")
+        # Try to get queue manager for real queue status
+        queue_manager = None
+        try:
+            queue_manager = await container.get("sequential_queue_manager")
+        except Exception as e:
+            logger.debug(f"Sequential queue manager not available for SchedulerStatusCoordinator: {e}")
+
         return SchedulerStatusCoordinator(
             container.config,
-            background_scheduler
+            background_scheduler,
+            queue_manager
         )
 
     container._register_singleton("scheduler_status_coordinator", create_scheduler_status_coordinator)

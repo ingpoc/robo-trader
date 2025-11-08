@@ -274,7 +274,7 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             }
 
             event = Event(
-                id="portfolio_analysis_monitor",
+                id=f"portfolio_analysis_monitor_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
                 type=EventType.SYSTEM_STATUS,
                 source="PortfolioAnalysisCoordinator",
                 timestamp=datetime.now(timezone.utc),

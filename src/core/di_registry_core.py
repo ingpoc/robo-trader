@@ -393,6 +393,102 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         task_service.register_handler(TaskType.VALIDATE_PORTFOLIO_RISKS, handle_validate_portfolio_risks)
         logger.info("Registered VALIDATE_PORTFOLIO_RISKS task handler")
 
+        # Register NEWS_MONITORING handler (CRITICAL FIX)
+        async def handle_news_monitoring(task):
+            """Handle news monitoring tasks for multiple symbols."""
+            try:
+                # Get the symbols to monitor from payload
+                symbols = task.payload.get("symbols", [])
+                if not symbols:
+                    return {"status": "skipped", "reason": "no_symbols"}
+
+                logger.info(f"Processing news monitoring for {len(symbols)} symbols: {symbols}")
+
+                # Get fundamental executor for news processing
+                from ..core.background_scheduler.executors.fundamental_executor import FundamentalExecutor
+                fundamental_executor = await container.get("fundamental_executor")
+
+                # Process news for each symbol
+                results = await fundamental_executor.execute_market_news_analysis(symbols, {"source": "news_monitoring_task"})
+
+                logger.info(f"News monitoring completed for {len(symbols)} symbols")
+                return {
+                    "status": "completed",
+                    "symbols_processed": len(symbols),
+                    "results": results
+                }
+            except Exception as e:
+                logger.error(f"Error in news monitoring handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.NEWS_MONITORING, handle_news_monitoring)
+        logger.info("Registered NEWS_MONITORING task handler")
+
+        # Register EARNINGS_CHECK handler (MISSING)
+        async def handle_earnings_check(task):
+            """Handle earnings check tasks for multiple symbols."""
+            try:
+                # Get the symbols to check from payload
+                symbols = task.payload.get("symbols", [])
+                if not symbols:
+                    return {"status": "skipped", "reason": "no_symbols"}
+
+                logger.info(f"Processing earnings check for {len(symbols)} symbols: {symbols}")
+
+                # Get fundamental executor for earnings processing
+                from ..core.background_scheduler.executors.fundamental_executor import FundamentalExecutor
+                fundamental_executor = await container.get("fundamental_executor")
+
+                # Check earnings data for each symbol
+                results = await fundamental_executor.execute_earnings_fundamentals(symbols, {"source": "earnings_check_task"})
+
+                logger.info(f"Earnings check completed for {len(symbols)} symbols")
+                return {
+                    "status": "completed",
+                    "symbols_processed": len(symbols),
+                    "results": results
+                }
+            except Exception as e:
+                logger.error(f"Error in earnings check handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.EARNINGS_CHECK, handle_earnings_check)
+        logger.info("Registered EARNINGS_CHECK task handler")
+
+        # Register EARNINGS_SCHEDULER handler (MISSING)
+        async def handle_earnings_scheduler(task):
+            """Handle earnings scheduler tasks for upcoming earnings."""
+            try:
+                logger.info("Processing earnings scheduler task")
+
+                # Get fundamental executor for earnings scheduling
+                from ..core.background_scheduler.executors.fundamental_executor import FundamentalExecutor
+                fundamental_executor = await container.get("fundamental_executor")
+
+                # Schedule earnings monitoring for portfolio symbols
+                # Get all portfolio symbols for earnings monitoring
+                from ..services.portfolio_service import PortfolioService
+                portfolio_service = await container.get("portfolio_service")
+                portfolio = await portfolio_service.get_portfolio()
+
+                if portfolio and hasattr(portfolio, 'holdings'):
+                    symbols = list(portfolio.holdings.keys())[:10]  # Limit to top 10 for scheduler
+                    results = await fundamental_executor.execute_earnings_fundamentals(symbols, {"source": "earnings_scheduler_task"})
+                else:
+                    results = {"message": "No portfolio available for earnings scheduling"}
+
+                logger.info(f"Earnings scheduler completed: {results}")
+                return {
+                    "status": "completed",
+                    "results": results
+                }
+            except Exception as e:
+                logger.error(f"Error in earnings scheduler handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.EARNINGS_SCHEDULER, handle_earnings_scheduler)
+        logger.info("Registered EARNINGS_SCHEDULER task handler")
+
         return task_service
 
     # Execution Tracker Service

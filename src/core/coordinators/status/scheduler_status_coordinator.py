@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 
 from src.config import Config
+from src.models.scheduler import QueueName
 from ...background_scheduler import BackgroundScheduler
 from ..base_coordinator import BaseCoordinator
 
@@ -24,10 +25,12 @@ class SchedulerStatusCoordinator(BaseCoordinator):
     def __init__(
         self,
         config: Config,
-        background_scheduler: BackgroundScheduler
+        background_scheduler: BackgroundScheduler,
+        queue_manager=None
     ):
         super().__init__(config)
         self.background_scheduler = background_scheduler
+        self.queue_manager = queue_manager
 
     async def initialize(self) -> None:
         """Initialize scheduler status coordinator."""
@@ -35,67 +38,79 @@ class SchedulerStatusCoordinator(BaseCoordinator):
         self._initialized = True
 
     async def get_scheduler_status(self) -> Dict[str, Any]:
-        """Get scheduler status information."""
+        """Get scheduler status information from real queue data."""
         try:
+            # Get background scheduler status
             scheduler_status = await self.background_scheduler.get_scheduler_status()
-            
+
             schedulers = []
-            try:
-                main_scheduler = {
-                    "scheduler_id": "main_background_scheduler",
-                    "name": "Main Background Scheduler",
-                    "status": "running" if scheduler_status and scheduler_status.get("running") else "stopped",
-                    "event_driven": True,
-                    "uptime_seconds": 86400,
-                    "jobs_processed": scheduler_status.get("tasks_processed", 0) if scheduler_status else 0,
-                    "jobs_failed": scheduler_status.get("tasks_failed", 0) if scheduler_status else 0,
-                    "active_jobs": scheduler_status.get("active_jobs", 0) if scheduler_status else 0,
-                    "completed_jobs": scheduler_status.get("completed_jobs", 0) if scheduler_status else 0,
-                    "last_run_time": scheduler_status.get("last_run_time", datetime.now(timezone.utc).isoformat()) if scheduler_status else datetime.now(timezone.utc).isoformat(),
-                    "jobs": [
-                        {
-                            "job_id": "job_portfolio_sync",
-                            "name": "portfolio_sync_job",
-                            "status": "running" if scheduler_status and scheduler_status.get("running") else "idle",
-                            "last_run": scheduler_status.get("last_run_time", datetime.now(timezone.utc).isoformat()) if scheduler_status else datetime.now(timezone.utc).isoformat(),
-                            "next_run": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
-                            "execution_count": 24,
-                            "average_duration_ms": 1200
-                        }
-                    ]
-                }
-                schedulers.append(main_scheduler)
 
-                monitoring_scheduler = {
-                    "scheduler_id": "health_monitor_scheduler",
-                    "name": "System Health Monitor",
-                    "status": "running",
-                    "event_driven": True,
-                    "uptime_seconds": 86400,
-                    "jobs_processed": 96,
-                    "jobs_failed": 1,
-                    "active_jobs": 1,
-                    "completed_jobs": 95,
-                    "last_run_time": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
-                    "jobs": [
-                        {
-                            "job_id": "job_health_check",
-                            "name": "health_monitor_job",
-                            "status": "running",
-                            "last_run": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
-                            "next_run": (datetime.now(timezone.utc) + timedelta(minutes=4)).isoformat(),
-                            "execution_count": 96,
-                            "average_duration_ms": 450
-                        }
-                    ]
-                }
-                schedulers.append(monitoring_scheduler)
-            except Exception as e:
-                self._log_warning(f"Could not create detailed scheduler info: {e}")
+            # Get real queue status from queue manager if available
+            queue_status = {}
+            executors_status = {}
+            if self.queue_manager:
+                try:
+                    queue_status = await self.queue_manager.get_status()
+                    # Extract executor status (which contains the actual queue data)
+                    executors_status = queue_status.get("executors", {})
+                except Exception as e:
+                    self._log_warning(f"Could not get queue manager status: {e}")
 
+            # Create scheduler entries for each queue
+            queue_names = [
+                (QueueName.PORTFOLIO_SYNC, "Portfolio Sync", "Portfolio and account synchronization"),
+                (QueueName.DATA_FETCHER, "Data Fetcher", "Market data and news fetching"),
+                (QueueName.AI_ANALYSIS, "AI Analysis", "Claude AI analysis and recommendations"),
+                (QueueName.PORTFOLIO_ANALYSIS, "Portfolio Analysis", "Portfolio performance analysis"),
+                (QueueName.PAPER_TRADING_RESEARCH, "Paper Trading Research", "Research for paper trading"),
+                (QueueName.PAPER_TRADING_EXECUTION, "Paper Trading Execution", "Paper trade execution")
+            ]
+
+            for queue_name, display_name, description in queue_names:
+                queue_key = queue_name.value
+                # Get executor data for this queue
+                queue_data = executors_status.get(queue_key, {})
+
+                # Determine status based on queue data
+                is_running = queue_data.get("is_running", False)
+                current_task = queue_data.get("current_task")
+
+                scheduler = {
+                    "scheduler_id": queue_key,
+                    "name": display_name,
+                    "description": description,
+                    "status": "running" if is_running else "idle",
+                    "event_driven": True,
+                    "queue_name": queue_key,
+                    "uptime_seconds": 86400,  # Placeholder - could be calculated
+                    "jobs_processed": queue_data.get("total_processed", 0),
+                    "jobs_failed": queue_data.get("total_failed", 0),
+                    "active_jobs": 1 if current_task else 0,
+                    "completed_jobs": queue_data.get("total_completed", 0),
+                    "last_run_time": queue_data.get("last_processed_at", datetime.now(timezone.utc).isoformat()),
+                    "current_task": current_task,
+                    "jobs": []
+                }
+
+                # Add current task as a job if present
+                if current_task:
+                    job = {
+                        "job_id": current_task.get("task_id", "unknown"),
+                        "name": current_task.get("task_type", "unknown"),
+                        "status": current_task.get("status", "unknown"),
+                        "last_run": current_task.get("started_at", datetime.now(timezone.utc).isoformat()),
+                        "next_run": None,
+                        "execution_count": 1,
+                        "average_duration_ms": current_task.get("duration_ms", 0)
+                    }
+                    scheduler["jobs"].append(job)
+
+                schedulers.append(scheduler)
+
+            # Calculate overall status
             if schedulers:
                 running_schedulers = [s for s in schedulers if s.get("status") == "running"]
-                overall_status = "healthy" if running_schedulers else "stopped"
+                overall_status = "healthy" if running_schedulers else "idle"
             else:
                 overall_status = "stopped"
 
@@ -106,7 +121,8 @@ class SchedulerStatusCoordinator(BaseCoordinator):
                 "completedJobs": sum(s.get("completed_jobs", 0) for s in schedulers),
                 "schedulers": schedulers,
                 "totalSchedulers": len(schedulers),
-                "runningSchedulers": len([s for s in schedulers if s.get("status") == "running"])
+                "runningSchedulers": len([s for s in schedulers if s.get("status") == "running"]),
+                "queueStatus": queue_status
             }
         except Exception as e:
             self._log_error(f"Failed to get scheduler status: {e}")

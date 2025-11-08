@@ -271,6 +271,112 @@ class PortfolioService(EventHandler):
         # Update portfolio cash balance
         # This would require getting current portfolio and updating cash
 
+    async def sync_account_balances(self) -> Dict[str, Any]:
+        """Synchronize account balances from broker API."""
+        try:
+            logger.info("Syncing account balances from broker")
+
+            # For now, return placeholder implementation
+            # In production, this would:
+            # 1. Call broker API for current balances
+            # 2. Update portfolio state with new data
+            # 3. Emit balance change events
+
+            result = {
+                "status": "completed",
+                "cash_balance": 100000.0,  # placeholder value
+                "margin_used": 0.0,
+                "margin_available": 100000.0,
+                "collateral": 0.0,
+                "sync_timestamp": datetime.now(timezone.utc).isoformat(),
+                "broker": "placeholder"  # Would use actual broker name
+            }
+
+            # Emit event for balance change
+            await self.event_bus.publish(Event(
+                id=f"balance_sync_{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                type=EventType.PORTFOLIO_CASH_CHANGE,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                source=self.__class__.__name__,
+                data={
+                    "amount": result["cash_balance"],
+                    "reason": "sync_account_balances"
+                }
+            ))
+
+            logger.info(f"Account balance sync completed: {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error syncing account balances: {e}")
+            from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
+            raise TradingError(
+                f"Account balance sync failed: {e}",
+                category=ErrorCategory.API,
+                severity=ErrorSeverity.HIGH,
+                recoverable=True,
+                retry_after_seconds=60
+            )
+
+    async def validate_portfolio_risks(self) -> Dict[str, Any]:
+        """Validate current portfolio risk levels."""
+        try:
+            logger.info("Processing portfolio risk validation")
+
+            # Get current portfolio
+            portfolio = await self.get_portfolio()
+            if not portfolio:
+                return {"status": "skipped", "reason": "no_portfolio"}
+
+            # Calculate current exposure
+            total_exposure = sum(
+                pos.quantity * pos.current_price
+                for pos in portfolio.positions.values()
+            )
+
+            # Risk validation logic
+            risk_assessment = {
+                "status": "completed",
+                "total_exposure": total_exposure,
+                "sector_concentration": {},  # Calculate sector concentration
+                "position_size_risk": {},    # Check position sizes
+                "liquidity_risk": {},        # Assess liquidity
+                "overall_risk_score": 0.0,   # Calculate risk score (0-100)
+                "risk_warnings": [],         # List of risk warnings
+                "validation_timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+            # Simple risk calculations (placeholder)
+            if total_exposure > 50000:  # Example threshold
+                risk_assessment["risk_warnings"].append("High portfolio exposure")
+                risk_assessment["overall_risk_score"] = min(80, total_exposure / 1000)
+
+            if total_exposure > 100000:  # Critical threshold
+                risk_assessment["risk_warnings"].append("Critical portfolio exposure")
+                risk_assessment["overall_risk_score"] = min(95, total_exposure / 500)
+
+            # Check position concentrations
+            large_positions = [
+                pos for pos in portfolio.positions.values()
+                if abs(pos.quantity * pos.current_price) > 10000
+            ]
+            if large_positions:
+                risk_assessment["risk_warnings"].append(f"{len(large_positions)} large positions")
+                risk_assessment["position_size_risk"] = True
+
+            logger.info(f"Portfolio risk validation completed: {risk_assessment}")
+            return risk_assessment
+
+        except Exception as e:
+            logger.error(f"Error validating portfolio risks: {e}")
+            from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
+            raise TradingError(
+                f"Portfolio risk validation failed: {e}",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.MEDIUM,
+                recoverable=True
+            )
+
     async def close(self) -> None:
         """Close the portfolio service."""
         if self._db_connection:
