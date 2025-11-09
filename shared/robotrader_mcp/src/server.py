@@ -32,6 +32,7 @@ from .schemas import (
     GetCoordinatorStatusInput, RealTimePerformanceMonitorInput,
     GetTaskExecutionMetricsInput, DifferentialAnalysisInput,
     SmartCacheAnalyzeInput, ContextAwareSummarizeInput,
+    SmartFileReadInput, FindRelatedFilesInput, SuggestFixInput, KnowledgeQueryInput,
     ExecutePythonInput, ExecuteAnalysisInput,
     ToolResponse, ErrorResponse, FileTreeNode, SearchMatch
 )
@@ -49,8 +50,12 @@ from .tools.performance.task_execution_metrics import get_task_execution_metrics
 from .tools.optimization.differential_analysis import differential_analysis
 from .tools.optimization.smart_cache import smart_cache_analyze
 from .tools.optimization.context_aware_summarize import context_aware_summarize
+from .tools.optimization.smart_file_read import smart_file_read
+from .tools.optimization.find_related_files import find_related_files
+from .tools.optimization.suggest_fix import suggest_fix
 from .tools.execution.execute_python import execute_python
 from .tools.execution.execute_analysis import execute_analysis
+from .tools.integration.knowledge_query import query_knowledge
 
 # Import MCP SDK
 from mcp.server.models import InitializationOptions
@@ -152,6 +157,34 @@ SERVERS_STRUCTURE = {
                 "description": "Context-aware data summarization based on user intent",
                 "token_efficiency": "99%+ reduction",
                 "file_path": "optimization/context_aware_summarize.py"
+            },
+            "smart_file_read": {
+                "function": smart_file_read,
+                "input_schema": SmartFileReadInput,
+                "description": "Read files with progressive context loading (summary/targeted/full)",
+                "token_efficiency": "87-95% reduction vs always reading full files",
+                "file_path": "optimization/smart_file_read.py"
+            },
+            "find_related_files": {
+                "function": find_related_files,
+                "input_schema": FindRelatedFilesInput,
+                "description": "Find files related by imports, name similarity, or git history",
+                "token_efficiency": "90% reduction vs blind directory traversal",
+                "file_path": "optimization/find_related_files.py"
+            },
+            "suggest_fix": {
+                "function": suggest_fix,
+                "input_schema": SuggestFixInput,
+                "description": "Suggest fixes for errors based on known patterns and architectural guidelines",
+                "token_efficiency": "95% reduction vs full file exploration",
+                "file_path": "optimization/suggest_fix.py"
+            },
+            "knowledge_query": {
+                "function": query_knowledge,
+                "input_schema": KnowledgeQueryInput,
+                "description": "Unified knowledge query combining session cache + sandbox analysis (95-98% token reduction)",
+                "token_efficiency": "95-98% reduction with session persistence",
+                "file_path": "integration/knowledge_query.py"
             }
         }
     },

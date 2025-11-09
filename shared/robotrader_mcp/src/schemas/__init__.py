@@ -35,6 +35,12 @@ __all__ = [
     "SmartCacheAnalyzeInput",
     "ContextAwareSummarizeInput",
 
+    # Token optimization tools
+    "SmartFileReadInput",
+    "FindRelatedFilesInput",
+    "SuggestFixInput",
+    "KnowledgeQueryInput",
+
     # Execution tools (95-98% token efficiency)
     "ExecutePythonInput",
     "ExecuteAnalysisInput",
