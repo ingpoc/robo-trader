@@ -87,6 +87,53 @@ Specialized queues for task execution via `SequentialQueueManager`:
 
 **Why**: Analyzing all 81 stocks in one Claude session hits turn limits (~15 turns before optimization completes). Queue system batches requests automatically - each task analyzes 2-3 stocks in its own session with plenty of turns available.
 
+**Queue-Based Analysis Implementation Pattern (CRITICAL)**:
+
+**Rule**: NEVER call analysis services directly. ALWAYS submit to AI_ANALYSIS queue to prevent turn limit exhaustion.
+
+**❌ VIOLATION - Direct Service Call**:
+```python
+# NEVER DO THIS - Bypasses queue system
+analyzer = await container.get("portfolio_intelligence_analyzer")
+result = await analyzer.analyze_portfolio_intelligence(
+    agent_name="scan",
+    symbols=None
+)
+```
+
+**✅ CORRECT - Queue-Based Implementation**:
+```python
+# ALWAYS DO THIS - Uses queue system
+task_service = await container.get("task_service")
+await task_service.create_task(
+    queue_name=QueueName.AI_ANALYSIS,
+    task_type=TaskType.RECOMMENDATION_GENERATION,
+    payload={"agent_name": "scan", "symbols": None},
+    priority=7
+)
+```
+
+**Task Handler Registration**:
+```python
+# In task service initialization
+task_service.register_handler(
+    TaskType.RECOMMENDATION_GENERATION,
+    async def handle_recommendation_generation(task: SchedulerTask):
+        analyzer = await container.get("portfolio_intelligence_analyzer")
+        await analyzer.analyze_portfolio_intelligence(
+            agent_name=task.payload["agent_name"],
+            symbols=task.payload.get("symbols")
+        )
+```
+
+**Key Benefits**:
+- **Turn Limit Protection**: Each task gets fresh Claude session with full turn allowance
+- **Fair Resource Allocation**: Sequential execution prevents resource contention
+- **Graceful Error Handling**: Failed tasks can be retried via queue
+- **Scalability**: System can handle 81+ stocks by batching into 40+ manageable tasks
+
+**Verification**: Check that analysis appears in AI Transparency tabs and System Health shows proper queue execution.
+
 ### AI Integration: Claude Agent SDK
 
 **CRITICAL**: All AI functionality uses Claude Agent SDK only. NO direct Anthropic API calls.

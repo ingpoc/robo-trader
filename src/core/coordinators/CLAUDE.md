@@ -1,7 +1,7 @@
 # Coordinators Directory Guidelines
 
 > **Scope**: Applies to `src/core/coordinators/` directory. Read `src/core/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-09 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 
@@ -84,6 +84,101 @@ Each domain has:
 - ❌ **Access services directly** - Use dependency injection
 - ❌ **Exceed line limits** - Refactor if coordinator exceeds 150 lines
 - ❌ **Create orphaned files** - All coordinators must have a clear purpose and location
+
+## BaseCoordinator Implementation Pattern
+
+**Rule**: All coordinators MUST inherit from `BaseCoordinator` and follow the established lifecycle pattern.
+
+### Implementation Template
+```python
+from src.core.coordinators.base_coordinator import BaseCoordinator
+from src.core.event_bus import EventHandler, Event, EventType
+from typing import Dict, Any, Optional
+from datetime import datetime
+import uuid
+
+class MyCoordinator(BaseCoordinator, EventHandler):
+    """Example coordinator following the established pattern."""
+
+    def __init__(self, container: 'DependencyContainer', event_bus: 'EventBus'):
+        super().__init__(container, event_bus)
+        self.container = container
+        self.event_bus = event_bus
+        self._initialized = False
+        self.service = None  # Will be injected in initialize()
+
+    async def initialize(self) -> None:
+        """Initialize coordinator dependencies and subscriptions."""
+        if self._initialized:
+            return
+
+        self._log_info("Initializing MyCoordinator")
+
+        # Get dependencies from container
+        self.service = await self.container.get("my_service")
+
+        # Subscribe to relevant events
+        self.event_bus.subscribe(EventType.MY_EVENT, self)
+
+        self._initialized = True
+        self._log_info("MyCoordinator initialized successfully")
+
+    async def cleanup(self) -> None:
+        """Cleanup resources and event subscriptions."""
+        if not self._initialized:
+            return
+
+        self._log_info("Cleaning up MyCoordinator")
+
+        # Unsubscribe from events
+        self.event_bus.unsubscribe(EventType.MY_EVENT, self)
+
+        self._initialized = False
+        self._log_info("MyCoordinator cleanup complete")
+
+    async def handle_event(self, event: Event) -> None:
+        """Handle incoming events based on type."""
+        try:
+            if event.type == EventType.MY_EVENT:
+                await self._handle_my_event(event)
+        except Exception as e:
+            self._log_error(f"Failed to handle {event.type.value}: {e}")
+
+    async def _handle_my_event(self, event: Event) -> None:
+        """Handle specific event type."""
+        # Event handling logic here
+        data = event.get("data", {})
+        self._log_info(f"Processing my_event: {data}")
+
+        # Use injected service
+        result = await self.service.process(data)
+
+        # Emit completion event if needed
+        await self.event_bus.publish(Event(
+            id=str(uuid.uuid4()),
+            type=EventType.MY_EVENT_COMPLETED,
+            source="MyCoordinator",
+            timestamp=datetime.utcnow(),
+            data={"result": result}
+        ))
+```
+
+### Key Requirements
+- ✅ **Inherit from BaseCoordinator**: Provides logging and lifecycle management
+- ✅ **Implement EventHandler**: For event-driven communication
+- ✅ **Initialize() method**: Get dependencies and subscribe to events
+- ✅ **Cleanup() method**: Unsubscribe from events and cleanup resources
+- ✅ **Logging**: Use `_log_info()`, `_log_warning()`, `_log_error()` for structured logging
+- ✅ **Event Handling**: Handle specific events in dedicated private methods
+- ✅ **Dependency Injection**: Use `container.get()` for all dependencies
+- ✅ **Error Handling**: Wrap event handling in try/catch with proper logging
+
+### Common Pitfalls to Avoid
+- ❌ **Direct Service Calls**: Never call other coordinators directly, use events
+- ❌ **Missing Cleanup**: Always implement cleanup() to prevent memory leaks
+- ❌ **Blocking Operations**: All coordinator methods must be async
+- ❌ **Global State**: Don't use global variables, use container-injected dependencies
+- ❌ **Large Files**: Keep coordinators under 150 lines, split if needed
 
 ## File Organization
 

@@ -1,7 +1,7 @@
 # Web Routes Directory Guidelines
 
 > **Scope**: Applies to `src/web/routes/` directory. Read `src/web/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-09 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 
@@ -148,6 +148,37 @@ async def get_endpoint(request: Request, ...):
     """Rate-limited endpoint."""
     pass
 ```
+
+## Scheduler Monitoring Pattern (CRITICAL)
+
+**Rule**: Scheduler execution history must map scheduler IDs to actual task names in `execution_history` table.
+
+**Critical Issue**: UI displays schedulers with IDs like `portfolio_analysis_scheduler`, but database records use task names like `portfolio_analyzer`. Incorrect mapping causes "No jobs or executions" errors.
+
+**Pattern**:
+```python
+# In monitoring endpoints (like /api/system-health)
+# Map scheduler IDs to task names in execution_history
+processor_mapping = {
+    "portfolio_sync_scheduler": "portfolio_sync",
+    "data_fetcher_scheduler": ["earnings_processor", "news_processor", "fundamental_analyzer"],
+    "ai_analysis_scheduler": "ai_analysis_scheduler",
+    "portfolio_analysis_scheduler": "portfolio_analyzer",  # CRITICAL: Maps UI ID to DB task name
+    "paper_trading_research_scheduler": "paper_trading_research_scheduler",
+    "paper_trading_execution_scheduler": "paper_trading_execution_scheduler"
+}
+```
+
+**Key Points**:
+- **UI Scheduler IDs**: Generated as `f"{queue_name}_scheduler"` in monitoring.py:94
+- **Database Task Names**: Actual `task_name` values stored in execution_history table
+- **Mapping Required**: Always map UI IDs → database task names for execution history display
+- **Verification**: Test by triggering schedulers via API and verifying "Recent Executions" appear in UI
+
+**Common Pitfalls**:
+- ❌ Mapping to wrong task names (e.g., `portfolio_analyzer` instead of `portfolio_analysis_scheduler`)
+- ❌ Missing mappings for new schedulers
+- ❌ Using processor names instead of task names from database
 
 ## Best Practices
 
