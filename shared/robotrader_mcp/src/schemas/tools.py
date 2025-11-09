@@ -566,3 +566,55 @@ class SuggestFixInput(BaseToolInput):
         if not v or not v.strip():
             raise ValueError("error_message must not be empty")
         return v
+
+
+class KnowledgeQueryInput(BaseToolInput):
+    """Input for unified knowledge query (session cache + sandbox analysis)."""
+    query_type: str = Field(
+        description="Type of query: 'error', 'file', 'logs', 'workflow', 'insights'"
+    )
+    error_message: Optional[str] = Field(
+        default=None,
+        description="Error message to analyze (for query_type='error')"
+    )
+    context_file: Optional[str] = Field(
+        default=None,
+        description="File where error occurred (for query_type='error')"
+    )
+    file_path: Optional[str] = Field(
+        default=None,
+        description="File to analyze (for query_type='file')"
+    )
+    analysis_type: Optional[str] = Field(
+        default="structure",
+        description="Type of file analysis: 'structure', 'database', 'imports'"
+    )
+    log_path: Optional[str] = Field(
+        default="logs/robo-trader.log",
+        description="Path to log file (for query_type='logs')"
+    )
+    time_window_hours: Optional[int] = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Time window in hours for log analysis"
+    )
+    issue_type: Optional[str] = Field(
+        default=None,
+        description="Issue type for debugging workflow (for query_type='workflow')"
+    )
+
+    @validator('query_type')
+    def validate_query_type(cls, v):
+        """Validate query type."""
+        valid_types = ["error", "file", "logs", "workflow", "insights"]
+        if v not in valid_types:
+            raise ValueError(f"query_type must be one of: {', '.join(valid_types)}")
+        return v
+
+    @validator('analysis_type')
+    def validate_analysis_type(cls, v):
+        """Validate analysis type."""
+        if v and v not in ["structure", "database", "imports"]:
+            raise ValueError("analysis_type must be 'structure', 'database', or 'imports'")
+        return v

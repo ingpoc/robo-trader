@@ -39,6 +39,7 @@ __all__ = [
     "SmartFileReadInput",
     "FindRelatedFilesInput",
     "SuggestFixInput",
+    "KnowledgeQueryInput",
 
     # Execution tools (95-98% token efficiency)
     "ExecutePythonInput",

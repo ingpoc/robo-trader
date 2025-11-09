@@ -32,7 +32,7 @@ from .schemas import (
     GetCoordinatorStatusInput, RealTimePerformanceMonitorInput,
     GetTaskExecutionMetricsInput, DifferentialAnalysisInput,
     SmartCacheAnalyzeInput, ContextAwareSummarizeInput,
-    SmartFileReadInput, FindRelatedFilesInput, SuggestFixInput,
+    SmartFileReadInput, FindRelatedFilesInput, SuggestFixInput, KnowledgeQueryInput,
     ExecutePythonInput, ExecuteAnalysisInput,
     ToolResponse, ErrorResponse, FileTreeNode, SearchMatch
 )
@@ -55,6 +55,7 @@ from .tools.optimization.find_related_files import find_related_files
 from .tools.optimization.suggest_fix import suggest_fix
 from .tools.execution.execute_python import execute_python
 from .tools.execution.execute_analysis import execute_analysis
+from .tools.integration.knowledge_query import query_knowledge
 
 # Import MCP SDK
 from mcp.server.models import InitializationOptions
@@ -177,6 +178,13 @@ SERVERS_STRUCTURE = {
                 "description": "Suggest fixes for errors based on known patterns and architectural guidelines",
                 "token_efficiency": "95% reduction vs full file exploration",
                 "file_path": "optimization/suggest_fix.py"
+            },
+            "knowledge_query": {
+                "function": query_knowledge,
+                "input_schema": KnowledgeQueryInput,
+                "description": "Unified knowledge query combining session cache + sandbox analysis (95-98% token reduction)",
+                "token_efficiency": "95-98% reduction with session persistence",
+                "file_path": "integration/knowledge_query.py"
             }
         }
     },
