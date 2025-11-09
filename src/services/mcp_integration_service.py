@@ -286,10 +286,19 @@ class MCPIntegrationService:
         }
 
     async def _get_queue_status(self) -> Dict[str, Any]:
-        """Get status of MCP-related queues."""
+        """Get status of MCP-related queues.
+
+        Phase 3: Updated to use QueueStateRepository instead of task_service.
+        """
         try:
-            # Get queue statistics for MCP queues
-            stats = await self.task_service.get_all_queue_statistics()
+            # Phase 3: Use repository as single source of truth
+            queue_state_repository = await self.container.get("queue_state_repository")
+            if not queue_state_repository:
+                logger.warning("QueueStateRepository not available")
+                return {}
+
+            # Get all queue statuses
+            all_queue_states = await queue_state_repository.get_all_statuses()
 
             mcp_queues = [
                 "portfolio_analysis",
@@ -299,13 +308,13 @@ class MCPIntegrationService:
 
             queue_status = {}
             for queue_name in mcp_queues:
-                if queue_name in stats:
-                    stat = stats[queue_name]
+                if queue_name in all_queue_states:
+                    queue_state = all_queue_states[queue_name]
                     queue_status[queue_name] = {
-                        "pending_count": stat.pending_count,
-                        "running_count": stat.running_count,
-                        "completed_today": stat.completed_today,
-                        "failed_count": stat.failed_count
+                        "pending_count": queue_state.pending_tasks,
+                        "running_count": queue_state.running_tasks,
+                        "completed_today": queue_state.completed_tasks,
+                        "failed_count": queue_state.failed_tasks
                     }
 
             return queue_status

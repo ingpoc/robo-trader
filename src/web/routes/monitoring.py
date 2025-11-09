@@ -78,25 +78,24 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
             })
 
         # 2. Queue-based Schedulers (Three Queue Architecture)
-        task_service = await container.get("task_service")
-        if task_service:
-            from ...models.scheduler import QueueName
+        # Phase 3: Use QueueStateRepository as single source of truth
+        queue_state_repository = await container.get("queue_state_repository")
+        if queue_state_repository:
+            # Get all queue statuses efficiently (1-2 queries)
+            all_queue_states = await queue_state_repository.get_all_statuses()
 
-            # Get statistics for all queues
-            queue_stats = await task_service.get_all_queue_statistics()
-
-            for queue_name, stats in queue_stats.items():
+            for queue_name, queue_state in all_queue_states.items():
                 schedulers.append({
                     "scheduler_id": f"{queue_name}_scheduler",
                     "name": f"{queue_name.replace('_', ' ').title()} Scheduler",
-                    "status": "running",  # Queues are always running if service is available
+                    "status": queue_state.status.value,  # Use actual status from queue state
                     "event_driven": False,
                     "uptime_seconds": 0,  # TODO: Track queue uptime
-                    "jobs_processed": stats.completed_today,
-                    "jobs_failed": stats.failed_count,
-                    "active_jobs": stats.running_count,
-                    "completed_jobs": stats.completed_today,
-                    "last_run_time": stats.last_completed_at or "",
+                    "jobs_processed": queue_state.completed_tasks,
+                    "jobs_failed": queue_state.failed_tasks,
+                    "active_jobs": queue_state.running_tasks,
+                    "completed_jobs": queue_state.completed_tasks,
+                    "last_run_time": queue_state.last_activity_ts or "",
                     "jobs": []  # TODO: Could add recent tasks if needed
                 })
 

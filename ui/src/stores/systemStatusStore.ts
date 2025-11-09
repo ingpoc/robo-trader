@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { wsClient } from '@/api/websocket'
+import { QueueStatusDTO } from '@/types/queue'
 
 // Types for system status
 interface ComponentStatus {
@@ -48,16 +49,18 @@ interface ClaudeStatus {
   data?: any
 }
 
+// Phase 3: Updated to match backend WebSocket message schema
 interface QueueStatus {
-  queues: Record<string, any>
+  queues: QueueStatusDTO[]  // Array of DTOs matching backend
   stats: {
-    totalTasks?: number
-    runningQueues?: number
-    totalQueues?: number
-    [key: string]: any
+    total_queues: number
+    total_pending_tasks: number
+    total_active_tasks: number
+    total_completed_tasks: number
+    total_failed_tasks: number
+    last_updated: string
   }
   timestamp: string
-  data?: any
 }
 
 interface SystemStatusState {

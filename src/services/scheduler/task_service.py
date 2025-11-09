@@ -58,13 +58,7 @@ class SchedulerTaskService:
         """Get queue statistics."""
         return await self.store.get_queue_statistics(queue_name)
 
-    async def get_all_queue_statistics(self) -> Dict[str, QueueStatistics]:
-        """Get statistics for all queues."""
-        stats = {}
-        for queue_name in QueueName:
-            queue_value = queue_name.value if hasattr(queue_name, 'value') else str(queue_name)
-            stats[queue_value] = await self.get_queue_statistics(queue_name)
-        return stats
+    # Phase 3: Removed get_all_queue_statistics() - use QueueStateRepository.get_all_statuses() instead
 
     async def get_pending_tasks(
         self,

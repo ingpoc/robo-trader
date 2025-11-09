@@ -5,6 +5,34 @@ export type TaskStatus = 'pending' | 'executing' | 'completed' | 'failed' | 'can
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'critical';
 
+// Phase 3: Backend-aligned DTOs matching Python QueueStatusDTO and CurrentTaskDTO
+// These match the exact schema returned by /api/queues/status and WebSocket messages
+
+export interface CurrentTaskDTO {
+  task_id: string
+  task_type: string
+  queue_name: string
+  started_at: string
+  duration_ms?: number
+}
+
+export interface QueueStatusDTO {
+  queue_name: string
+  status: string  // "running" | "active" | "idle" | "error"
+  pending_count: number
+  running_count: number
+  completed_today: number
+  failed_count: number
+  average_duration_ms: number
+  last_activity?: string
+  current_task?: CurrentTaskDTO
+  total_tasks: number
+  is_healthy: boolean
+  is_active: boolean
+  success_rate: number
+  snapshot_ts?: string
+}
+
 export interface TaskMetadata {
   [key: string]: string | number | boolean | string[] | undefined;
 }

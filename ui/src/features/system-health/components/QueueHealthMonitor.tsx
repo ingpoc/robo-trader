@@ -8,8 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { ChevronDown, ChevronRight, Clock, CheckCircle, AlertCircle, PlayCircle, RefreshCw } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useSystemStatusStore } from '@/stores/systemStatusStore'
+import { QueueStatusDTO } from '@/types/queue'
 
-// Types based on backend models
+// Phase 3: Using QueueStatusDTO directly from backend (no transformation needed)
+
 interface TaskInfo {
   task_id: string
   task_type: string
@@ -24,32 +26,21 @@ interface TaskInfo {
   duration_ms?: number
 }
 
-interface QueueInfo {
-  queue_name: string
-  status: 'healthy' | 'idle' | 'error'
-  pending_count: number
-  running_count: number
-  completed_today: number
-  failed_count: number
-  total_tasks: number
-  last_activity: string
-  average_duration_ms: number
-}
-
 export interface QueueHealthMonitorProps {
   health: {
     healthy: boolean
     totalTasks: number
     runningQueues: number
     totalQueues: number
-    queues?: QueueInfo[]
+    queues?: QueueStatusDTO[]
   } | null
   isLoading: boolean
 }
 
 // Custom hook to get queue data from centralized store (WebSocket-driven)
+// Phase 3: No transformation needed - DTOs match backend exactly
 const useRealQueueData = () => {
-  const [queueData, setQueueData] = useState<QueueInfo[]>([])
+  const [queueData, setQueueData] = useState<QueueStatusDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -57,30 +48,12 @@ const useRealQueueData = () => {
   const store = useSystemStatusStore()
 
   useEffect(() => {
-    // Use WebSocket-driven store data instead of polling
+    // Use WebSocket-driven store data directly (no transformation)
     if (store.queueStatus && store.queueStatus.queues) {
-      try {
-        const transformedQueues: QueueInfo[] = Object.entries(store.queueStatus.queues).map(
-          ([queueName, queue]: [string, any]) => ({
-            queue_name: queueName,
-            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
-            pending_count: queue.pending_tasks || 0,
-            running_count: queue.active_tasks || 0,
-            completed_today: queue.completed_tasks || 0,
-            failed_count: queue.failed_tasks || 0,
-            total_tasks: (queue.completed_tasks || 0) + (queue.failed_tasks || 0) + (queue.pending_tasks || 0) + (queue.active_tasks || 0),
-            last_activity: queue.last_activity || '',
-            average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
-          })
-        )
-
-        setQueueData(transformedQueues)
-        setLoading(false)
-        setError(null)
-      } catch (err) {
-        console.error('Failed to transform queue data:', err)
-        setError('Failed to parse queue data')
-      }
+      // Phase 3: Data already in QueueStatusDTO format from backend
+      setQueueData(store.queueStatus.queues)
+      setLoading(false)
+      setError(null)
     } else if (!store.isConnected && !loading) {
       setError('WebSocket not connected')
     }
@@ -98,21 +71,10 @@ const useRealQueueData = () => {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`)
           }
 
-          const data: QueueStatusResponse = await response.json()
+          const data = await response.json()
 
-          const transformedQueues: QueueInfo[] = data.queues.map(queue => ({
-            queue_name: queue.name,
-            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
-            pending_count: queue.pending_tasks,
-            running_count: queue.active_tasks,
-            completed_today: queue.completed_tasks,
-            failed_count: queue.failed_tasks,
-            total_tasks: queue.completed_tasks + queue.failed_tasks + queue.pending_tasks + queue.active_tasks,
-            last_activity: queue.last_activity || '',
-            average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
-          }))
-
-          setQueueData(transformedQueues)
+          // Phase 3: API returns QueueStatusDTO[] directly (no transformation)
+          setQueueData(data.queues || [])
           setLoading(false)
         } catch (err) {
           console.error('Failed to fetch queue data:', err)
@@ -129,62 +91,47 @@ const useRealQueueData = () => {
   return { queueData, loading, error }
 }
 
-// API response types
-interface QueueStatusResponse {
-  queues: Array<{
-    name: string
-    status: 'healthy' | 'idle' | 'error' | 'stopped' | 'running'
-    running: boolean
-    type: string
-    current_task_id?: string
-    pending_tasks: number
-    active_tasks: number
-    completed_tasks: number
-    failed_tasks: number
-    average_execution_time: number
-    last_execution_time?: string
-    registered_handlers: string[]
-    details: any
-  }>
-  stats: {
-    total_queues: number
-    active_queues: number
-    total_tasks: number
-    active_tasks: number
-    completed_tasks: number
-    failed_tasks: number
-  }
-  coordinator_status: {
-    coordinator_running: boolean
-    queues_running: boolean
-    event_router_status: string
-  }
-}
-
-const QueueCard: React.FC<{ queue: QueueInfo; isExpanded: boolean; onToggle: () => void }> = ({
+// Phase 3: QueueCard now uses QueueStatusDTO directly (removed old QueueStatusResponse interface)
+const QueueCard: React.FC<{ queue: QueueStatusDTO; isExpanded: boolean; onToggle: () => void }> = ({
   queue, isExpanded, onToggle
 }) => {
   const getStatusIcon = (status: string) => {
+    // Phase 3: Handle backend QueueStatus enum values
     switch (status) {
-      case 'healthy':
+      case 'running':
+        return <PlayCircle className="w-4 h-4 text-blue-600 animate-pulse" />
+      case 'active':
         return <CheckCircle className="w-4 h-4 text-emerald-600" />
       case 'idle':
-        return <Clock className="w-4 h-4 text-amber-600" />
+        return <Clock className="w-4 h-4 text-warmgray-400" />
       case 'error':
         return <AlertCircle className="w-4 h-4 text-red-600" />
+      case 'stopped':
+        return <AlertCircle className="w-4 h-4 text-orange-600" />
+      // Legacy support
+      case 'healthy':
+        return <CheckCircle className="w-4 h-4 text-emerald-600" />
       default:
         return <Clock className="w-4 h-4 text-warmgray-400" />
     }
   }
 
   const getStatusColor = (status: string) => {
+    // Phase 3: Handle backend QueueStatus enum values
     switch (status) {
-      case 'healthy':
+      case 'running':
+        return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'active':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200'
       case 'idle':
-        return 'bg-amber-100 text-amber-800 border-amber-200'
+        return 'bg-warmgray-100 text-warmgray-600 border-warmgray-200'
       case 'error':
         return 'bg-red-100 text-red-800 border-red-200'
+      case 'stopped':
+        return 'bg-orange-100 text-orange-800 border-orange-200'
+      // Legacy support
+      case 'healthy':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200'
       default:
         return 'bg-warmgray-100 text-warmgray-800 border-warmgray-200'
     }

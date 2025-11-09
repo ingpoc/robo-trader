@@ -21,10 +21,11 @@ class SchedulerStatusCoordinator(BaseCoordinator):
     """
     Coordinates scheduler status aggregation.
 
-    Phase 2 Update:
+    Phase 3 Update:
     - Uses QueueStateRepository as single source of truth
     - No more dual sources (executor status vs queue statistics)
-    - Returns unified QueueStatusDTO objects
+    - Returns scheduler objects with embedded QueueStatusDTO
+    - Consistent field naming across all responses
 
     Responsibilities:
     - Get scheduler status information from repository
@@ -57,11 +58,11 @@ class SchedulerStatusCoordinator(BaseCoordinator):
     async def get_scheduler_status(self) -> Dict[str, Any]:
         """Get scheduler status information from repository.
 
-        Phase 2: Uses QueueStateRepository as single source of truth.
-        No more mixing executor status and queue statistics.
+        Phase 3: Uses QueueStateRepository as single source of truth.
+        Returns scheduler objects with embedded QueueStatusDTO for consistency.
 
         Returns:
-            Dictionary with scheduler status and queue information
+            Dictionary with scheduler status and queue DTOs
         """
         try:
             # Get background scheduler status
@@ -98,22 +99,28 @@ class SchedulerStatusCoordinator(BaseCoordinator):
                 queue_state = all_queue_states.get(queue_name)
 
                 if queue_state:
-                    # Build scheduler entry from queue state
+                    # Phase 3: Use QueueStatusDTO for consistent schema
+                    queue_dto = QueueStatusDTO.from_queue_state(queue_state)
+
+                    # Build scheduler entry with DTO data
                     scheduler = {
                         "scheduler_id": queue_name,
                         "name": display_name,
                         "description": description,
-                        "status": queue_state.status.value,
+                        "status": queue_dto.status,
                         "event_driven": True,
                         "queue_name": queue_name,
                         "uptime_seconds": 86400,  # Placeholder
-                        "jobs_processed": queue_state.completed_tasks,
-                        "jobs_failed": queue_state.failed_tasks,
-                        "active_jobs": queue_state.running_tasks,
-                        "completed_jobs": queue_state.completed_tasks,
-                        "last_run_time": queue_state.last_activity_ts or datetime.now(timezone.utc).isoformat(),
-                        "current_task": self._build_current_task_info(queue_state),
-                        "jobs": self._build_jobs_list(queue_state)
+                        # Use DTO field names for consistency
+                        "jobs_processed": queue_dto.completed_today,
+                        "jobs_failed": queue_dto.failed_count,
+                        "active_jobs": queue_dto.running_count,
+                        "completed_jobs": queue_dto.completed_today,
+                        "last_run_time": queue_dto.last_activity or datetime.now(timezone.utc).isoformat(),
+                        "current_task": queue_dto.current_task.to_dict() if queue_dto.current_task else None,
+                        "jobs": self._build_jobs_list(queue_state),
+                        # Include full DTO for clients that want complete data
+                        "queue_status": queue_dto.to_dict()
                     }
                 else:
                     # Fallback if queue not in repository (shouldn't happen)
@@ -131,7 +138,8 @@ class SchedulerStatusCoordinator(BaseCoordinator):
                         "completed_jobs": 0,
                         "last_run_time": datetime.now(timezone.utc).isoformat(),
                         "current_task": None,
-                        "jobs": []
+                        "jobs": [],
+                        "queue_status": None
                     }
 
                 schedulers.append(scheduler)
@@ -166,26 +174,6 @@ class SchedulerStatusCoordinator(BaseCoordinator):
                 "runningSchedulers": 0,
                 "error": str(e)
             }
-
-    def _build_current_task_info(self, queue_state) -> Optional[Dict[str, Any]]:
-        """Build current task information from queue state.
-
-        Args:
-            queue_state: QueueState from repository
-
-        Returns:
-            Current task dictionary or None
-        """
-        if not queue_state.current_task_id:
-            return None
-
-        return {
-            "task_id": queue_state.current_task_id,
-            "task_type": queue_state.current_task_type,
-            "queue_name": queue_state.name,
-            "started_at": queue_state.current_task_started_at,
-            "status": "running"
-        }
 
     def _build_jobs_list(self, queue_state) -> list:
         """Build jobs list from queue state.
