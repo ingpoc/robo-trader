@@ -478,3 +478,91 @@ class AnalysisExecutionOutput(ExecutionOutput):
         },
         description="Token savings vs traditional reasoning"
     )
+
+
+# Token Optimization Tools
+
+class SmartFileReadInput(BaseToolInput):
+    """Input for smart file reading with progressive context loading."""
+    file_path: str = Field(
+        description="Path to file relative to project root (e.g., 'src/services/analyzer.py')"
+    )
+    context: str = Field(
+        default="summary",
+        description="Context level: 'summary' (150 tokens), 'targeted' (800 tokens), or 'full' (complete file)"
+    )
+    search_term: Optional[str] = Field(
+        default=None,
+        description="Optional search term to focus on (for targeted mode)"
+    )
+    line_range: Optional[List[int]] = Field(
+        default=None,
+        description="Optional [start, end] line range for full mode"
+    )
+
+    @validator('context')
+    def validate_context(cls, v):
+        """Validate context level."""
+        if v not in ["summary", "targeted", "full"]:
+            raise ValueError("context must be 'summary', 'targeted', or 'full'")
+        return v
+
+    @validator('line_range')
+    def validate_line_range(cls, v):
+        """Validate line range format."""
+        if v is not None:
+            if not isinstance(v, list) or len(v) != 2:
+                raise ValueError("line_range must be [start, end]")
+            if v[0] < 1 or v[1] < v[0]:
+                raise ValueError("Invalid line range: start must be >= 1, end must be >= start")
+        return v
+
+
+class FindRelatedFilesInput(BaseToolInput):
+    """Input for finding files related to a reference file or concept."""
+    reference: str = Field(
+        description="File path or concept name (e.g., 'BroadcastCoordinator' or 'src/core/di.py')"
+    )
+    relation_type: str = Field(
+        default="all",
+        description="Type of relation: 'imports', 'similar', 'git_related', or 'all'"
+    )
+    max_results: Optional[int] = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum results per category"
+    )
+    include_tests: Optional[bool] = Field(
+        default=False,
+        description="Include test files in results"
+    )
+
+    @validator('relation_type')
+    def validate_relation_type(cls, v):
+        """Validate relation type."""
+        if v not in ["imports", "similar", "git_related", "all"]:
+            raise ValueError("relation_type must be 'imports', 'similar', 'git_related', or 'all'")
+        return v
+
+
+class SuggestFixInput(BaseToolInput):
+    """Input for suggesting fixes based on error patterns."""
+    error_message: str = Field(
+        description="The error message or stack trace to analyze"
+    )
+    context_file: Optional[str] = Field(
+        default=None,
+        description="Optional file where error occurred for targeted suggestions"
+    )
+    include_examples: Optional[bool] = Field(
+        default=True,
+        description="Include code examples in suggestions"
+    )
+
+    @validator('error_message')
+    def validate_error_message(cls, v):
+        """Validate error message is not empty."""
+        if not v or not v.strip():
+            raise ValueError("error_message must not be empty")
+        return v
