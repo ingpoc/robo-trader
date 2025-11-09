@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any, TypeVar, Generic
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
-from ..core.database import Database
+from ..core.database_wrapper import DatabaseWrapper as Database
 
 logger = logging.getLogger(__name__)
 

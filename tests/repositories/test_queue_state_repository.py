@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 
 from src.repositories import QueueStateRepository
 from src.models.domain import QueueState, QueueStatus
-from src.core.database import Database
+from src.core.database_wrapper import DatabaseWrapper as Database
 
 
 class TestQueueStateRepository:
@@ -40,8 +40,12 @@ class TestQueueStateRepository:
         """)
         await connection.commit()
 
-        # Create Database wrapper
-        db = Database(connection=connection)
+        # Create simple database wrapper for testing
+        class TestDatabase:
+            def __init__(self, conn):
+                self.connection = conn
+
+        db = TestDatabase(connection)
 
         yield db
 

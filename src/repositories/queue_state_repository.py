@@ -336,7 +336,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
         """
         if queue_name:
             query = """
-                SELECT task_id, task_type, queue_name,
+                SELECT task_id, task_type, queue_name, status,
                        started_at, error_message, retry_count
                 FROM scheduler_tasks
                 WHERE queue_name = :queue_name
@@ -347,7 +347,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
             params = {"queue_name": queue_name, "limit": limit}
         else:
             query = """
-                SELECT task_id, task_type, queue_name,
+                SELECT task_id, task_type, queue_name, status,
                        started_at, error_message, retry_count
                 FROM scheduler_tasks
                 WHERE status = 'failed'

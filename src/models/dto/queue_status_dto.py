@@ -10,7 +10,7 @@ Critical: Any changes here must be reflected in frontend TypeScript types.
 
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -132,7 +132,7 @@ class QueueStatusDTO:
 
         try:
             start = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             duration = (now - start).total_seconds() * 1000
             return int(duration)
         except (ValueError, AttributeError):
