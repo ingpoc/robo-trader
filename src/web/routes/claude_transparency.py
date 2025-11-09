@@ -133,6 +133,7 @@ async def get_analysis_transparency(request: Request, container: DependencyConta
         analysis_data = {
             "portfolio_analyses": portfolio_analyses,
             "portfolio_stats": portfolio_stats,
+            "recent_decisions": portfolio_analyses,  # Frontend compatibility alias
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 

@@ -86,18 +86,23 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
             queue_stats = await task_service.get_all_queue_statistics()
 
             for queue_name, stats in queue_stats.items():
+                # Calculate success rate (backend should own this calculation)
+                total_jobs = stats.completed_today + stats.failed_count
+                success_rate = ((stats.completed_today / total_jobs) * 100) if total_jobs > 0 else 100.0
+
                 schedulers.append({
                     "scheduler_id": f"{queue_name}_scheduler",
                     "name": f"{queue_name.replace('_', ' ').title()} Scheduler",
                     "status": "running",  # Queues are always running if service is available
                     "event_driven": False,
-                    "uptime_seconds": 0,  # TODO: Track queue uptime
+                    "uptime_seconds": 0,  # TODO: Track queue uptime (Phase 3)
                     "jobs_processed": stats.completed_today,
                     "jobs_failed": stats.failed_count,
+                    "success_rate": round(success_rate, 1),  # Pre-calculated success rate
                     "active_jobs": stats.running_count,
                     "completed_jobs": stats.completed_today,
                     "last_run_time": stats.last_completed_at or "",
-                    "jobs": []  # TODO: Could add recent tasks if needed
+                    "jobs": []  # TODO: Could add recent tasks if needed (Phase 3)
                 })
 
         # Add execution history for each processor type from execution tracker
