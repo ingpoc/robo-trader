@@ -124,14 +124,14 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
                 for scheduler in schedulers:
                     scheduler_id = scheduler["scheduler_id"]
 
-                    # Map scheduler IDs to processor names
+                    # Map scheduler IDs to task names in execution_history
                     processor_mapping = {
                         "portfolio_sync_scheduler": "portfolio_sync",
                         "data_fetcher_scheduler": ["earnings_processor", "news_processor", "fundamental_analyzer"],
-                        "ai_analysis_scheduler": "ai_analysis",
-                        "portfolio_analysis_scheduler": "portfolio_analysis",
-                        "paper_trading_research_scheduler": "paper_trading_research",
-                        "paper_trading_execution_scheduler": "paper_trading_execution"
+                        "ai_analysis_scheduler": "ai_analysis_scheduler",
+                        "portfolio_analysis_scheduler": "portfolio_analyzer",
+                        "paper_trading_research_scheduler": "paper_trading_research_scheduler",
+                        "paper_trading_execution_scheduler": "paper_trading_execution_scheduler"
                     }
 
                     if scheduler_id in processor_mapping:
