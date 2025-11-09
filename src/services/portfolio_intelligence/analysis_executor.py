@@ -11,7 +11,7 @@ import logging
 import time
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 

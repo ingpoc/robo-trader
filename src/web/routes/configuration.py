@@ -367,6 +367,8 @@ async def execute_scheduler_manually(
         "data_fetcher_scheduler": ("trigger_data_fetch", QueueName.DATA_FETCHER, TaskType.FUNDAMENTALS_UPDATE),
         "ai_analysis_scheduler": ("trigger_ai_analysis", QueueName.AI_ANALYSIS, TaskType.RECOMMENDATION_GENERATION),
         "portfolio_analyzer": ("trigger_ai_analysis", QueueName.AI_ANALYSIS, TaskType.RECOMMENDATION_GENERATION),
+        "paper_trading_research_scheduler": ("trigger_paper_trading_research", QueueName.PAPER_TRADING_RESEARCH, TaskType.FUNDAMENTALS_UPDATE),
+        "paper_trading_execution_scheduler": ("trigger_paper_trading_execution", QueueName.PAPER_TRADING_EXECUTION, TaskType.FUNDAMENTALS_UPDATE),
     }
 
     # Check if this is a known scheduler
@@ -394,12 +396,34 @@ async def execute_scheduler_manually(
     # Queue the task using task_service from DI container
     try:
         task_service = await container.get("task_service")
+        # Build payload with required fields for different task types
+        payload = {
+            "symbols": symbols,
+            "manual_trigger": True,
+            "agent_name": "scan"  # Default agent name for portfolio analysis
+        }
         task = await task_service.create_task(
             queue_name=queue_name,
             task_type=task_type,
-            payload={"symbols": symbols, "manual_trigger": True},
+            payload=payload,
             priority=8
         )
+
+        # Record execution in tracker for UI display
+        try:
+            execution_tracker = await container.get("execution_tracker")
+            if execution_tracker:
+                await execution_tracker.record_execution(
+                    task_name=task_name,
+                    task_id=task.task_id,
+                    execution_type="manual",
+                    symbols=symbols,
+                    status="queued",
+                    execution_time=0
+                )
+        except Exception as e:
+            logger.warning(f"Failed to record execution for {task_name}: {e}")
+
         logger.info(f"✅ Task queued: {task_type} with symbols={symbols}")
         return {
             "status": "success",

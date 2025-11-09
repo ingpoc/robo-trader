@@ -1,3 +1,4 @@
+"""
 Portfolio Intelligence Module
 
 Analyzes portfolio stocks with available data (earnings, news, fundamentals),
