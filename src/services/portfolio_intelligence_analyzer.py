@@ -860,17 +860,24 @@ Begin your analysis now."""
             current_time = datetime.now(timezone.utc).isoformat()
 
             for symbol in stocks_data.keys():
+                # Calculate confidence score based on data quality
+                data_quality = {
+                    "has_earnings": len(stocks_data[symbol].get("earnings", [])) > 0,
+                    "has_news": len(stocks_data[symbol].get("news", [])) > 0,
+                    "has_fundamentals": len(stocks_data[symbol].get("fundamental_analysis", [])) > 0,
+                    "last_updates": stocks_data[symbol].get("data_summary", {})
+                }
+                # Confidence based on data availability (0.0 to 1.0)
+                data_count = sum([data_quality["has_earnings"], data_quality["has_news"], data_quality["has_fundamentals"]])
+                confidence_score = data_count / 3.0  # 3 data sources available
+
                 analysis_data = {
                     "symbol": symbol,
                     "analysis_type": "portfolio_intelligence",
                     "claude_response": response_text,
                     "recommendations_count": len(recommendations),
-                    "data_quality": {
-                        "has_earnings": len(stocks_data[symbol].get("earnings", [])) > 0,
-                        "has_news": len(stocks_data[symbol].get("news", [])) > 0,
-                        "has_fundamentals": len(stocks_data[symbol].get("fundamental_analysis", [])) > 0,
-                        "last_updates": stocks_data[symbol].get("data_summary", {})
-                    },
+                    "confidence_score": confidence_score,
+                    "data_quality": data_quality,
                     "execution_metadata": {
                         "analysis_id": analysis_id,
                         "timestamp": current_time

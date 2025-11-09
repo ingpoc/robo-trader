@@ -101,10 +101,10 @@ export function useClaudeTransparency() {
   const fetchAnalysisActivity = async () => {
     try {
       const response = await apiClient.get('/api/claude/transparency/analysis')
-      setAnalysisActivity(response.data)
+      setAnalysisActivity(response.data.analysis)  // FIX: Access nested analysis object
       // Also populate tradeLogs from analysis data for Recommendations tab
-      if (response.data && response.data.recent_decisions) {
-        setTradeLogs(response.data.recent_decisions)
+      if (response.data && response.data.analysis && response.data.analysis.recent_decisions) {
+        setTradeLogs(response.data.analysis.recent_decisions)  // FIX: Correct path
       }
     } catch (err) {
       console.error('Failed to fetch analysis activity:', err)
