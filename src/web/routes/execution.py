@@ -108,6 +108,7 @@ async def portfolio_scan(request: Request, background_tasks: BackgroundTasks, co
         if token_data:
             try:
                 from src.config import load_config
+                from src.mcp.broker import get_broker
                 config = load_config()
                 broker = await get_broker(config)
             except Exception as e:

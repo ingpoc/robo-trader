@@ -18,11 +18,12 @@ from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 class BrokerClient:
     """Real broker client for Zerodha Kite Connect API integration."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, token_refresh_manager=None):
         self.config = config
         self._authenticated = False
         self._kite_client = None
         self._oauth_service = None
+        self._token_refresh_manager = token_refresh_manager
         self._lock = asyncio.Lock()
         self._token_file = "data/zerodha_oauth_token.json"
 
@@ -36,9 +37,27 @@ class BrokerClient:
             async with self._lock:
                 # Check if already authenticated
                 if self._authenticated and self._kite_client:
-                    return True
+                    # Verify token is still valid using token refresh manager
+                    if self._token_refresh_manager:
+                        token_status = await self._token_refresh_manager.get_token_status()
+                        if token_status and token_status.status.value in ["valid", "expiring_soon"]:
+                            return True
+                        else:
+                            logger.warning("Token no longer valid, re-authenticating")
+                            self._authenticated = False
+                            self._kite_client = None
+                    else:
+                        return True
 
-                # Try to get stored token
+                # Check token refresh manager first
+                if self._token_refresh_manager:
+                    token_info = await self._token_refresh_manager.force_token_check()
+                    if token_info and token_info.status.value in ["valid", "expiring_soon"]:
+                        await self._initialize_kite_client(token_info.access_token)
+                        logger.info(f"Successfully authenticated with Zerodha for user: {token_info.user_id}")
+                        return True
+
+                # Fallback to stored token if token refresh manager not available
                 token_data = await self._get_stored_token()
                 if not token_data:
                     logger.warning("No valid OAuth token found for broker authentication")
@@ -283,18 +302,27 @@ class BrokerClient:
             )
 
 
-async def get_broker(config: Config) -> Optional[BrokerClient]:
+async def get_broker(config: Config, container=None) -> Optional[BrokerClient]:
     """
     Get broker client instance.
 
     Args:
         config: Application configuration
+        container: Optional DI container for token refresh manager
 
     Returns:
         Broker client instance or None if not available
     """
     try:
-        broker = BrokerClient(config)
+        # Try to get token refresh manager from container
+        token_refresh_manager = None
+        if container:
+            try:
+                token_refresh_manager = await container.get("token_refresh_manager")
+            except:
+                logger.debug("Token refresh manager not available in container")
+
+        broker = BrokerClient(config, token_refresh_manager)
         if await broker.authenticate():
             logger.info("Broker client initialized successfully")
             return broker

@@ -479,46 +479,42 @@ async def get_analysis_activity(
     2. Stocks with two or more data quality parameters
     3. Recently analyzed stocks
     """
+    portfolio_analyses = []
+
     try:
-        database = await container.get("database")
-        conn = database.connection
+        # Use ConfigurationState's locked method for database access (prevents "database is locked" errors)
+        configuration_state = await container.get("configuration_state")
+        if not configuration_state:
+            logger.warning("ConfigurationState not available")
+            return AnalysisActivityResponse(
+                activities=[],
+                total_analyses=0,
+                avg_confidence_score=0.0,
+                top_performers=[],
+                underperformers=[]
+            )
 
-        # Get all analyses with data quality info, ordered to prioritize complete data
-        cursor = await conn.execute("""
-            SELECT symbol, timestamp, analysis, created_at,
-                   json_extract(analysis, '$.data_quality.has_earnings') as has_earnings,
-                   json_extract(analysis, '$.data_quality.has_news') as has_news,
-                   json_extract(analysis, '$.data_quality.has_fundamentals') as has_fundamentals
-            FROM analysis_history
-            WHERE json_extract(analysis, '$.analysis_type') = 'portfolio_intelligence'
-            ORDER BY
-                CASE
-                    WHEN (json_extract(analysis, '$.data_quality.has_earnings') = 1
-                          AND json_extract(analysis, '$.data_quality.has_news') = 1
-                          AND json_extract(analysis, '$.data_quality.has_fundamentals') = 1) THEN 0
-                    WHEN ((json_extract(analysis, '$.data_quality.has_earnings') = 1)
-                          + (json_extract(analysis, '$.data_quality.has_news') = 1)
-                          + (json_extract(analysis, '$.data_quality.has_fundamentals') = 1)) >= 2 THEN 1
-                    ELSE 2
-                END ASC,
-                created_at DESC
-            LIMIT 100
-        """)
-        rows = await cursor.fetchall()
+        # Get analysis history using locked method
+        analysis_history = await configuration_state.get_analysis_history()
 
-        portfolio_analyses = []
+        # Filter and process analyses
         seen_symbols = set()
 
-        for row in rows:
-            symbol, timestamp, analysis_json, created_at, has_earnings, has_news, has_fundamentals = row
-
-            # Keep only the latest analysis per symbol for recommendations tab
-            if symbol in seen_symbols:
-                continue
-            seen_symbols.add(symbol)
-
+        for symbol, analysis_data_str in analysis_history.items():
             try:
-                analysis_data = json.loads(analysis_json)
+                if isinstance(analysis_data_str, str):
+                    analysis_data = json.loads(analysis_data_str)
+                else:
+                    analysis_data = analysis_data_str
+
+                # Keep only the latest analysis per symbol for recommendations tab
+                if symbol in seen_symbols:
+                    continue
+                seen_symbols.add(symbol)
+
+                if analysis_data.get("analysis_type") != "portfolio_intelligence":
+                    continue
+
                 claude_response = analysis_data.get("claude_response", "")
 
                 # Extract real analysis content (not truncated)
@@ -535,22 +531,23 @@ async def get_analysis_activity(
 
                 portfolio_analyses.append({
                     "symbol": symbol,
-                    "timestamp": timestamp,
-                    "created_at": created_at,
+                    "timestamp": analysis_data.get("timestamp", ""),
+                    "created_at": analysis_data.get("created_at", ""),
                     "analysis_type": analysis_data.get("analysis_type", "portfolio_intelligence"),
                     "confidence_score": analysis_data.get("confidence_score", 0.75),
                     "analysis_summary": analysis_content,  # Full content, not truncated
                     "analysis_content": analysis_content,  # Also expose full content
                     "recommendations_count": analysis_data.get("recommendations_count", 0),
                     "data_quality": {
-                        "has_earnings": bool(has_earnings),
-                        "has_news": bool(has_news),
-                        "has_fundamentals": bool(has_fundamentals),
+                        "has_earnings": analysis_data.get("data_quality", {}).get("has_earnings", False),
+                        "has_news": analysis_data.get("data_quality", {}).get("has_news", False),
+                        "has_fundamentals": analysis_data.get("data_quality", {}).get("has_fundamentals", False),
                         **analysis_data.get("data_quality", {})
                     }
                 })
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError):
                 continue
+
     except Exception as e:
         logger.warning(f"Could not get portfolio analyses: {e}")
         portfolio_analyses = []

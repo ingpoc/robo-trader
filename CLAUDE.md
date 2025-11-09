@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **Last Updated**: 2025-11-07 | **Status**: Production Ready | **Tier**: Reference
+> **Last Updated**: 2025-11-09 | **Status**: Production Ready | **Tier**: Reference
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -226,6 +226,25 @@ python -m src.main --command web
 - **Max 10 methods per class**
 - **Single responsibility per file**
 - No monolithic files or god objects
+
+**Refactoring Strategy**:
+- **Very large files** (600+ lines) are priority for splitting
+- **MCP tools** tend to be complex - split into handler modules:
+  - `server.py` (801 lines) → Split into multiple handler modules
+  - `context_aware_summarize.py` (701 lines) → Separate summarization concerns
+  - `verify_config.py` (587 lines) → Extract validation logic into separate files
+- **React pages** should be split into smaller feature components:
+  - `PaperTrading.tsx` (1,231 lines) → Split into 4 sub-components (page, form, table, metrics)
+  - `NewsEarnings.tsx` (819 lines) → Split into 3 sub-components (page, news, earnings)
+  - Large dashboards → Split by feature (transparency, metrics, sections)
+
+**How to split oversized files**:
+1. Identify distinct responsibilities/features
+2. Extract each into a separate file (keep parent for composition)
+3. Keep parent file as orchestrator/layout component
+4. Update imports and test all features work together
+
+**Current Status**: 107 files exceed 350-line limit (as of 2025-11-09). Prioritize very large files first.
 
 ### Async-First Design (MANDATORY)
 - **All I/O is non-blocking**: Use `async/await`
@@ -652,3 +671,4 @@ curl -X POST 'http://localhost:8000/api/backups/restore/robo_trader_startup_2025
 **Remember**: "Focused coordinators. Injected dependencies. Event-driven communication. Rich error context. Smart scheduling. Resilient APIs. Strategy learning. Three-queue architecture. Event-driven workflows. SDK client manager. Timeout protection. No duplication. Always."
 
 **Data Safety**: "Automatic backups on startup/shutdown. Periodic backups every 24 hours. Automatic rotation keeps latest 7 backups. Manual backups anytime via API. All critical data persisted and recoverable."
+- [Image #1] as part of testing from browser I want you to trigger background scheduler execution and validate the number show up correctly in background scheduler, processed, failed, success rate, jobs which are running should show up here as well. The same with all other scheduler in system health [Image #2]

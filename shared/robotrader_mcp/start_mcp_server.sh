@@ -14,5 +14,5 @@ export ROBO_TRADER_API="${ROBO_TRADER_API:-http://localhost:8000}"
 export ROBO_TRADER_DB="${ROBO_TRADER_DB:-$ROBO_TRADER_PROJECT_ROOT/state/robo_trader.db}"
 export LOG_DIR="${LOG_DIR:-$ROBO_TRADER_PROJECT_ROOT/logs}"
 
-# Execute the MCP server using root venv Python
-exec "$ROBO_TRADER_PROJECT_ROOT/venv/bin/python" -m src.server "$@"
+# Execute the MCP server using robotrader_mcp venv Python
+exec "$SCRIPT_DIR/venv/bin/python" -m src.server "$@"

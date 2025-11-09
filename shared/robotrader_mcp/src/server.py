@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+import inspect
 
 # Import schemas using package-relative imports
 from .schemas import (
@@ -31,6 +32,7 @@ from .schemas import (
     GetCoordinatorStatusInput, RealTimePerformanceMonitorInput,
     GetTaskExecutionMetricsInput, DifferentialAnalysisInput,
     SmartCacheAnalyzeInput, ContextAwareSummarizeInput,
+    ExecutePythonInput, ExecuteAnalysisInput,
     ToolResponse, ErrorResponse, FileTreeNode, SearchMatch
 )
 
@@ -47,6 +49,8 @@ from .tools.performance.task_execution_metrics import get_task_execution_metrics
 from .tools.optimization.differential_analysis import differential_analysis
 from .tools.optimization.smart_cache import smart_cache_analyze
 from .tools.optimization.context_aware_summarize import context_aware_summarize
+from .tools.execution.execute_python import execute_python
+from .tools.execution.execute_analysis import execute_analysis
 
 # Import MCP SDK
 from mcp.server.models import InitializationOptions
@@ -168,6 +172,26 @@ SERVERS_STRUCTURE = {
                 "description": "Aggregate task execution statistics with 95%+ token reduction",
                 "token_efficiency": "95.5%+ reduction",
                 "file_path": "performance/task_execution_metrics.py"
+            }
+        }
+    },
+    "execution": {
+        "name": "Code Execution Tools",
+        "description": "Sandboxed Python code execution with 95-98% token savings",
+        "tools": {
+            "execute_python": {
+                "function": execute_python,
+                "input_schema": ExecutePythonInput,
+                "description": "Execute arbitrary Python code in isolated sandbox for data transformations and analysis",
+                "token_efficiency": "98%+ reduction vs multi-turn reasoning",
+                "file_path": "execution/execute_python.py"
+            },
+            "execute_analysis": {
+                "function": execute_analysis,
+                "input_schema": ExecuteAnalysisInput,
+                "description": "Pre-configured data analysis (filter, aggregate, transform, validate) with 99%+ token savings",
+                "token_efficiency": "99%+ reduction vs traditional analysis patterns",
+                "file_path": "execution/execute_analysis.py"
             }
         }
     }
@@ -739,7 +763,12 @@ async def handle_analysis_tool(name: str, arguments: Dict[str, Any]) -> List[Tex
         import time
         start_time = time.time()
 
-        result = tool_info["function"](**input_dict)
+        # Handle both async and sync tools
+        tool_func = tool_info["function"]
+        if asyncio.iscoroutinefunction(tool_func):
+            result = await tool_func(**input_dict)
+        else:
+            result = tool_func(**input_dict)
 
         execution_time = int((time.time() - start_time) * 1000)
 

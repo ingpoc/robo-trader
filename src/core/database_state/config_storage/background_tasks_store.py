@@ -20,8 +20,8 @@ class BackgroundTasksStore(BaseConfigStore):
         Returns:
             Task configuration dict or None if not found
         """
-        async with self._lock:
-            try:
+        try:
+            async with self._lock:
                 cursor = await self.db.connection.execute(
                     "SELECT * FROM background_tasks_config WHERE task_name = ?",
                     (task_name,)
@@ -38,9 +38,9 @@ class BackgroundTasksStore(BaseConfigStore):
                         "priority": row["priority"],
                     }
                 return None
-            except Exception as e:
-                self._log_error(f"get({task_name})", e)
-                return None
+        except Exception as e:
+            self._log_error(f"get({task_name})", e)
+            return None
 
     async def get_all(self) -> Dict[str, Any]:
         """
@@ -49,8 +49,8 @@ class BackgroundTasksStore(BaseConfigStore):
         Returns:
             Dict with all background tasks configuration
         """
-        async with self._lock:
-            try:
+        try:
+            async with self._lock:
                 cursor = await self.db.connection.execute(
                     "SELECT * FROM background_tasks_config ORDER BY priority DESC, task_name"
                 )
@@ -67,9 +67,9 @@ class BackgroundTasksStore(BaseConfigStore):
                     }
 
                 return {"background_tasks": background_tasks}
-            except Exception as e:
-                self._log_error("get_all", e)
-                return {"background_tasks": {}}
+        except Exception as e:
+            self._log_error("get_all", e)
+            return {"background_tasks": {}}
 
     async def update(self, task_name: str, config_data: Dict[str, Any]) -> bool:
         """
@@ -82,8 +82,8 @@ class BackgroundTasksStore(BaseConfigStore):
         Returns:
             True if successful, False otherwise
         """
-        async with self._lock:
-            try:
+        try:
+            async with self._lock:
                 # Convert frequency to seconds
                 frequency_seconds = config_data.get("frequency", 3600)
                 frequency_unit = config_data.get("frequency_unit", "seconds")
@@ -122,6 +122,6 @@ class BackgroundTasksStore(BaseConfigStore):
                 logger.info(f"Updated background task configuration for {task_name}")
                 return True
 
-            except Exception as e:
-                self._log_error(f"update({task_name})", e)
-                return False
+        except Exception as e:
+            self._log_error(f"update({task_name})", e)
+            return False

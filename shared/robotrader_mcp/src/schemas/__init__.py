@@ -35,6 +35,13 @@ __all__ = [
     "SmartCacheAnalyzeInput",
     "ContextAwareSummarizeInput",
 
+    # Execution tools (95-98% token efficiency)
+    "ExecutePythonInput",
+    "ExecuteAnalysisInput",
+    "ExecutionOutput",
+    "PythonExecutionOutput",
+    "AnalysisExecutionOutput",
+
     # Resource schemas
     "ResourceReadInput",
     "ResourceListInput",

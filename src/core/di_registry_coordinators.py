@@ -59,7 +59,7 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
     async def create_portfolio_coordinator():
         from src.core.coordinators.core.portfolio_coordinator import PortfolioCoordinator
         state_manager = await container.get("state_manager")
-        return PortfolioCoordinator(container.config, state_manager)
+        return PortfolioCoordinator(container.config, state_manager, container)
 
     container._register_singleton("portfolio_coordinator", create_portfolio_coordinator)
 

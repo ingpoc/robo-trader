@@ -10,6 +10,7 @@ from loguru import logger
 from src.config import Config
 from ..core.state_models import PortfolioState
 from ..core.database_state import DatabaseStateManager
+from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
 from .broker_data import get_live_portfolio_data, is_broker_connected
 
 SECTOR_KEYWORDS: Dict[str, Iterable[str]] = {
@@ -417,15 +418,21 @@ async def run_portfolio_scan(
                     "analytics": analytics,
                 }
             else:
-                logger.warning("Broker returned no holdings")
-                raise TradingError(
-                    "Broker returned no portfolio holdings",
-                    category=ErrorCategory.API,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=True,
-                    retry_after_seconds=300,
-                    details={"reason": "no_holdings"}
-                )
+                logger.warning("Broker returned no holdings - using existing portfolio")
+                # Gracefully handle paper trading mode - use existing portfolio
+                portfolio = await state_manager.get_portfolio()
+                if portfolio:
+                    return {
+                        "source": "existing_portfolio",
+                        "portfolio": portfolio.to_dict() if hasattr(portfolio, 'to_dict') else {},
+                        "message": "Using existing portfolio data (broker credentials not configured)"
+                    }
+                else:
+                    logger.warning("No existing portfolio found")
+                    return {
+                        "source": "empty",
+                        "message": "No portfolio data available - please configure broker credentials or add holdings"
+                    }
     except ImportError as e:
         logger.warning(f"Broker module not available: {e}")
         raise TradingError(

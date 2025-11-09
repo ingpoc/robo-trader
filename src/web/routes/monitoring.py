@@ -220,13 +220,40 @@ async def trigger_news_monitoring(request: Request, container: DependencyContain
     """Trigger news monitoring."""
 
     try:
-        orchestrator = await container.get_orchestrator()
-        background_scheduler = await container.get("background_scheduler")
+        # Get task service to create news monitoring task
+        task_service = await container.get("task_service")
+        state_manager = await container.get("state_manager")
 
-        if background_scheduler:
-            await background_scheduler.run_news_monitoring()
+        # Get portfolio symbols from portfolio state manager
+        portfolio_state = await state_manager.portfolio.get_portfolio()
+        if portfolio_state and portfolio_state.holdings:
+            symbols = [holding['symbol'] if isinstance(holding, dict) else holding.symbol
+                      for holding in portfolio_state.holdings]
+        else:
+            symbols = []
 
-        return {"status": "News monitoring triggered"}
+        if task_service and symbols:
+            # Create news monitoring task
+            from ...models.scheduler import QueueName, TaskType
+            await task_service.create_task(
+                queue_name=QueueName.DATA_FETCHER,
+                task_type=TaskType.NEWS_MONITORING,
+                payload={"symbols": symbols, "triggered": "manual"},
+                priority=9
+            )
+
+            # Record execution
+            background_scheduler = await container.get("background_scheduler")
+            if background_scheduler:
+                await background_scheduler.record_execution(
+                    task_name="news_processor",
+                    task_id="manual_trigger",
+                    execution_type="manual",
+                    user="system",
+                    symbols=symbols
+                )
+
+        return {"status": "News monitoring triggered", "symbols_count": len(symbols) if symbols else 0}
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:

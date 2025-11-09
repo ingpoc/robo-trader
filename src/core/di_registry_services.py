@@ -18,6 +18,7 @@ from src.services.strategy_evolution_engine import StrategyEvolutionEngine
 from src.services.market_data_service import MarketDataService
 from src.services.feature_management.service import FeatureManagementService
 from src.services.event_router_service import EventRouterService
+from src.services.token_refresh_manager import TokenRefreshManager
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,15 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         return event_router_service
 
     container._register_singleton("event_router_service", create_event_router_service)
+
+    # Token Refresh Manager
+    async def create_token_refresh_manager():
+        event_bus = await container.get("event_bus")
+        token_manager = TokenRefreshManager(container.config, event_bus)
+        await token_manager.initialize()
+        return token_manager
+
+    container._register_singleton("token_refresh_manager", create_token_refresh_manager)
 
     # Portfolio Intelligence Analyzer Service
     async def create_portfolio_intelligence_analyzer():

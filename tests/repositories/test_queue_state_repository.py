@@ -104,6 +104,7 @@ class TestQueueStateRepository:
                 task
             )
 
+        # Commit transaction after all inserts
         await database.connection.commit()
 
     async def test_get_status_running_queue(self, repository, sample_tasks):

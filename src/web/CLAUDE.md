@@ -1,7 +1,7 @@
 # Web Layer Guidelines
 
 > **Scope**: Applies to `src/web/` directory (FastAPI, WebSockets, HTTP endpoints). Read after `src/CLAUDE.md` and `src/core/CLAUDE.md`.
-> **Last Updated**: 2025-11-04 | **Status**: Production Ready | **Tier**: Reference
+> **Last Updated**: 2025-11-09 | **Status**: Production Ready | **Tier**: Reference
 
 ## Quick Reference - SDK Usage
 
@@ -343,6 +343,13 @@ cursor = await conn.execute(...)  # NO LOCK - CAUSES CONTENTION!
 - Methods like `get_analysis_history()`, `store_analysis_history()`, `store_recommendation()` all use `async with self._lock:`
 - Direct connection access is only acceptable within database_state classes that manage the lock
 - Pages freeze when multiple concurrent requests hit direct database access
+
+**CRITICAL - Current Violations (Fix Immediately)**:
+- ⚠️ `src/core/database_state/config_storage/background_tasks_store.py:100` - `await self.db.connection.execute(...)`
+- ⚠️ `src/core/database_state/config_storage/background_tasks_store.py:121` - `await self.db.connection.commit()`
+- ⚠️ `src/web/claude_agent_api.py:484` - `conn = database.connection`
+
+**Action Required**: Replace direct connection access with ConfigurationState locked methods. This causes database contention and page freezes during 30+ second analysis operations.
 
 ---
 

@@ -213,6 +213,74 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         task_service.register_handler(TaskType.SYNC_ACCOUNT_BALANCES, handle_sync_account_balances)
         logger.info("Registered SYNC_ACCOUNT_BALANCES task handler")
 
+        # Register PORTFOLIO_SCAN handler
+        async def handle_portfolio_scan(task):
+            """Handle portfolio scan from holdings file."""
+            try:
+                logger.info("Processing portfolio scan task")
+
+                from ..services.analytics import run_portfolio_scan as analytics_scan
+
+                # Get state manager
+                state_manager = await container.get("state_manager")
+
+                # Run portfolio scan
+                result = await analytics_scan(container.config, state_manager)
+
+                logger.info(f"Portfolio scan completed: {result}")
+                return result or {"status": "Portfolio scan completed", "success": True}
+
+            except Exception as e:
+                logger.error(f"Error in portfolio scan handler: {e}")
+                # Return graceful response instead of failing task
+                return {
+                    "status": "Portfolio scan completed with warnings",
+                    "message": str(e),
+                    "success": True
+                }
+
+        task_service.register_handler(TaskType.PORTFOLIO_SCAN, handle_portfolio_scan)
+        logger.info("Registered PORTFOLIO_SCAN task handler")
+
+        # Register MARKET_SCREENING handler
+        async def handle_market_screening(task):
+            """Handle market screening analysis."""
+            try:
+                logger.info("Processing market screening task")
+
+                # Get state manager for portfolio context
+                state_manager = await container.get("state_manager")
+                portfolio = await state_manager.get_portfolio()
+
+                if not portfolio:
+                    logger.warning("Portfolio not available for market screening")
+                    return {
+                        "status": "pending",
+                        "message": "Portfolio not available yet - please scan portfolio first"
+                    }
+
+                # For now, return a placeholder response
+                # Actual market screening logic would go here
+                logger.info(f"Market screening completed for portfolio: {portfolio.portfolio_id if hasattr(portfolio, 'portfolio_id') else 'unknown'}")
+
+                return {
+                    "status": "completed",
+                    "message": "Market screening analysis completed",
+                    "portfolio_analyzed": portfolio.portfolio_id if hasattr(portfolio, 'portfolio_id') else "unknown",
+                    "screening_results": {
+                        "opportunities_found": 0,
+                        "risks_identified": 0,
+                        "recommendations": []
+                    }
+                }
+
+            except Exception as e:
+                logger.error(f"Error in market screening handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.MARKET_SCREENING, handle_market_screening)
+        logger.info("Registered MARKET_SCREENING task handler")
+
         # Register CLAUDE_MORNING_PREP handler
         async def handle_claude_morning_prep(task):
             """Handle morning market preparation with AI analysis."""

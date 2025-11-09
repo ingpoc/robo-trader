@@ -48,6 +48,12 @@ class EventType(Enum):
     FEATURE_ENABLED = "feature.enabled"
     FEATURE_DISABLED = "feature.disabled"
     FEATURE_ERROR = "feature.error"
+    # Token Management events
+    TOKEN_STATUS_CHANGED = "token.status_changed"
+    TOKEN_EXPIRY_WARNING = "token.expiry_warning"
+    TOKEN_REFRESH_REQUIRED = "token.refresh_required"
+    TOKEN_EXPIRED = "token.expired"
+    TOKEN_REFRESHED = "token.refreshed"
     FEATURE_HEALTH_CHANGE = "feature.health_change"
     FEATURE_DEPENDENCY_RESOLVED = "feature.dependency_resolved"
     FEATURE_BULK_UPDATE = "feature.bulk_update"

@@ -26,10 +26,11 @@ class PortfolioCoordinator(BaseCoordinator):
     - Results aggregation and event emission
     """
 
-    def __init__(self, config: Any, state_manager: DatabaseStateManager):
+    def __init__(self, config: Any, state_manager: DatabaseStateManager, container=None):
         super().__init__(config, "portfolio_coordinator")
         self.state_manager = state_manager
         self.config = config
+        self.container = container  # Store container reference for task service access
 
     async def initialize(self) -> None:
         """Initialize the portfolio coordinator."""
@@ -45,57 +46,140 @@ class PortfolioCoordinator(BaseCoordinator):
         """
         Run portfolio scan from holdings file.
 
-        Loads holdings CSV file and updates database with current holdings data.
+        Creates a portfolio scan task in the PORTFOLIO_SYNC queue instead of executing directly.
+        This ensures proper tracking via BackgroundScheduler metrics.
 
         Returns:
-            Portfolio scan results with holdings data
+            Portfolio scan task creation status
         """
         try:
-            from ....services.analytics import run_portfolio_scan as analytics_scan
-            from ....config import load_config
+            from ....services.scheduler.task_service import SchedulerTaskService
+            from ....models.scheduler import QueueName, TaskType
 
-            config = load_config()
-            result = await analytics_scan(config, self.state_manager)
+            # Try to get task service from container
+            task_service = None
+            if self.container:
+                try:
+                    task_service = await self.container.get("task_service")
+                    self._log_info("Task service retrieved from container")
+                except Exception as e:
+                    self._log_warning(f"Failed to get task service from container: {e}")
 
-            self._log_info("Portfolio scan completed successfully")
-            return result or {"status": "Portfolio scan completed"}
+            if task_service:
+                # Create portfolio scan task in PORTFOLIO_SYNC queue
+                task = await task_service.create_task(
+                    queue_name=QueueName.PORTFOLIO_SYNC,
+                    task_type=TaskType.PORTFOLIO_SCAN,
+                    payload={"source": "portfolio_coordinator"},
+                    priority=7  # High priority for user-initiated scans
+                )
+
+                self._log_info(f"Portfolio scan task created: {task.task_id}")
+                return {
+                    "status": "task_created",
+                    "task_id": task.task_id,
+                    "queue": QueueName.PORTFOLIO_SYNC.value,
+                    "message": "Portfolio scan queued for execution"
+                }
+            else:
+                self._log_warning("Task service not available, using fallback")
+
+                # Fallback to direct execution if queue system unavailable
+                from ....services.analytics import run_portfolio_scan as analytics_scan
+                from ....config import load_config
+
+                config = load_config()
+                result = await analytics_scan(config, self.state_manager)
+
+                self._log_info("Portfolio scan completed successfully (fallback)")
+                return result or {"status": "Portfolio scan completed (fallback)"}
 
         except Exception as e:
             self._log_error(f"Portfolio scan failed: {e}")
-            return {"error": str(e)}
+            # Final fallback to direct execution
+            try:
+                from ....services.analytics import run_portfolio_scan as analytics_scan
+                from ....config import load_config
+
+                config = load_config()
+                result = await analytics_scan(config, self.state_manager)
+
+                self._log_info("Portfolio scan completed successfully (final fallback)")
+                return result or {"status": "Portfolio scan completed (final fallback)"}
+            except Exception as fallback_error:
+                self._log_error(f"Portfolio scan fallback also failed: {fallback_error}")
+                return {"error": str(e)}
 
     async def run_market_screening(self) -> Dict[str, Any]:
         """
         Run market screening analysis.
 
-        Analyzes market opportunities based on current holdings and criteria.
+        Creates a market screening task in the PORTFOLIO_SYNC queue instead of executing directly.
+        This ensures proper tracking via BackgroundScheduler metrics.
 
         Returns:
-            Market screening results with opportunities
+            Market screening task creation status
         """
         try:
-            self._log_info("Starting market screening analysis")
+            from ....services.scheduler.task_service import SchedulerTaskService
+            from ....models.scheduler import QueueName, TaskType
 
-            # Fetch current portfolio for analysis context
-            portfolio = await self.state_manager.get_portfolio()
+            # Get task service from DI container
+            task_service = None
+            if self.container:
+                try:
+                    task_service = await self.container.get("task_service")
+                    self._log_info("Task service retrieved from container")
+                except Exception as e:
+                    self._log_warning(f"Failed to get task service from container: {e}")
 
-            if not portfolio:
+            if not task_service:
+                self._log_warning("Task service not available, using fallback")
+                # Fallback logic below...
+
+            if task_service:
+                # Create market screening task in PORTFOLIO_SYNC queue
+                task = await task_service.create_task(
+                    queue_name=QueueName.PORTFOLIO_SYNC,
+                    task_type=TaskType.MARKET_SCREENING,
+                    payload={"source": "portfolio_coordinator"},
+                    priority=6  # Medium priority for market screening
+                )
+
+                self._log_info(f"Market screening task created: {task.task_id}")
                 return {
-                    "status": "pending",
-                    "message": "Portfolio not available yet - please scan portfolio first"
+                    "status": "task_created",
+                    "task_id": task.task_id,
+                    "queue": QueueName.PORTFOLIO_SYNC.value,
+                    "message": "Market screening queued for execution"
                 }
 
-            # Return status that screening is in progress
-            # Actual screening happens in background via events
-            return {
-                "status": "started",
-                "message": "Market screening analysis in progress",
-                "portfolio_analyzed": portfolio.portfolio_id if hasattr(portfolio, 'portfolio_id') else "unknown"
-            }
-
         except Exception as e:
-            self._log_error(f"Market screening failed: {e}")
-            return {"error": str(e)}
+            self._log_error(f"Failed to create market screening task: {e}")
+            # Fallback to status response if queue system unavailable
+            try:
+                self._log_info("Starting market screening analysis (fallback)")
+
+                # Fetch current portfolio for analysis context
+                portfolio = await self.state_manager.get_portfolio()
+
+                if not portfolio:
+                    return {
+                        "status": "pending",
+                        "message": "Portfolio not available yet - please scan portfolio first"
+                    }
+
+                # Return status that screening is in progress
+                # Actual screening happens in background via events
+                return {
+                    "status": "started",
+                    "message": "Market screening analysis in progress (fallback)",
+                    "portfolio_analyzed": portfolio.portfolio_id if hasattr(portfolio, 'portfolio_id') else "unknown"
+                }
+
+            except Exception as fallback_error:
+                self._log_error(f"Market screening fallback also failed: {fallback_error}")
+                return {"error": str(e)}
 
     async def run_strategy_review(self) -> Dict[str, Any]:
         """

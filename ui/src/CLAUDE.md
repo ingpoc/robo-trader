@@ -1,7 +1,7 @@
 # Frontend Architecture Guidelines
 
 > **Scope**: Applies to all files under `ui/src/`. Read after root CLAUDE.md for project patterns.
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-09 | **Status**: Active | **Tier**: Reference
 
 ## Quick Reference - SDK Usage
 
@@ -44,6 +44,188 @@ Frontend architecture focuses on component organization, real-time data updates,
 - **PaperTrading.tsx**: Still 59KB monolithic file (needs refactoring to features)
 - **API Response Standardization**: Field name mismatches between frontend/backend
 - **Loading States**: Some components need better loading/empty state handling
+
+---
+
+## Component Size Guidelines (CRITICAL - Max 350 Lines)
+
+**ENFORCED RULE**: Frontend components must not exceed **350 lines** of code. This applies to:
+- ✅ Feature main components (e.g., `DashboardFeature.tsx`) - Max 300 lines
+- ✅ Sub-components in features (e.g., `components/MetricsGrid.tsx`) - Max 200 lines
+- ✅ Shared components (e.g., `components/Card.tsx`) - Max 200 lines
+- ✅ Custom hooks (e.g., `hooks/useWebSocket.ts`) - Max 150 lines
+- ✅ Page components (e.g., `pages/Trading.tsx`) - Max 300 lines
+
+**Why This Limit?**
+- Components over 350 lines become hard to understand and modify
+- Testing becomes difficult (too many responsibilities)
+- Reusability decreases (too specific)
+- Cognitive load for developers increases
+- Refactoring becomes riskier
+
+### Detected Oversized Components (2025-11-09)
+
+10 React components currently exceed the 350-line limit:
+
+1. **`pages/PaperTrading.tsx`** - 1,231 lines (CRITICAL)
+   - Responsibility: Account selection, position viewing, trade forms, history
+   - Refactoring strategy: Split into `features/paper-trading/` with 4 sub-components
+   - Sub-components: AccountSelector, PositionViewer, TradeFormPanel, TradeHistory
+   - Expected result: Main feature ~250 lines, each sub-component <200 lines
+
+2. **`pages/NewsEarnings.tsx`** - 819 lines (CRITICAL)
+   - Responsibility: News feed, earnings reports, symbol selector, analysis
+   - Refactoring strategy: Split into `features/news-earnings/` with 3 sub-components
+   - Sub-components: NewsFeed, EarningsReports, SymbolSelector
+   - Expected result: Main feature ~200 lines, each sub-component <200 lines
+
+3. **`pages/Agents.tsx`** - 687 lines (HIGH PRIORITY)
+   - Responsibility: Agent management, configuration, monitoring
+   - Refactoring strategy: Split into `features/agents/` with multiple sub-components
+
+4. **`pages/OrderManagement.tsx`** - 542 lines (HIGH PRIORITY)
+   - Responsibility: Order execution, order history, order status
+   - Refactoring strategy: Split into `features/order-management/` with sub-components
+
+5. **`pages/RiskConfiguration.tsx`** - 456 lines (MEDIUM PRIORITY)
+   - Responsibility: Risk settings, alerts, thresholds
+   - Refactoring strategy: Split into `features/risk-management/` with sub-components
+
+6. **`pages/Config.tsx`** - 423 lines (MEDIUM PRIORITY)
+   - Responsibility: System configuration, settings UI
+   - Refactoring strategy: Split into `features/configuration/` with sub-components
+
+7-10. Other components (400-420 lines) - LOW PRIORITY
+   - Should be refactored when touching these files
+
+### Refactoring Strategy for Oversized Components
+
+**Step 1: Analyze Responsibilities**
+```typescript
+// BEFORE - Single 1,231-line component
+export const PaperTrading = () => {
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [positions, setPositions] = useState([]);
+  const [trades, setTrades] = useState([]);
+  // 1,000+ lines of JSX and handlers
+};
+```
+
+**Step 2: Extract Sub-Components**
+```typescript
+// AFTER - Feature with focused sub-components
+features/paper-trading/
+├── PaperTradingFeature.tsx       (250 lines)
+├── components/
+│   ├── AccountSelector.tsx       (180 lines)
+│   ├── PositionViewer.tsx        (190 lines)
+│   ├── TradeFormPanel.tsx        (200 lines)
+│   └── TradeHistory.tsx          (180 lines)
+└── hooks/
+    └── usePaperTrading.ts        (120 lines)
+```
+
+**Step 3: Move State Management**
+```typescript
+// Use custom hook to encapsulate data fetching
+export const usePaperTrading = () => {
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [positions, setPositions] = useState([]);
+  const [trades, setTrades] = useState([]);
+
+  // Fetch logic here
+  useEffect(() => {
+    // Load data
+  }, []);
+
+  return { accounts, selectedAccount, positions, trades };
+};
+```
+
+**Step 4: Refactor Main Component**
+```typescript
+// Main feature component becomes thin orchestrator
+export const PaperTradingFeature: React.FC = () => {
+  const {
+    accounts,
+    selectedAccount,
+    positions,
+    trades
+  } = usePaperTrading();
+
+  const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
+
+  return (
+    <div className="space-y-4">
+      <AccountSelector
+        accounts={accounts}
+        selectedAccount={selectedAccount}
+        onSelectAccount={handleSelectAccount}
+      />
+      {activeTab === 'positions' && <PositionViewer positions={positions} />}
+      {activeTab === 'history' && <TradeHistory trades={trades} />}
+      <Tabs value={activeTab} onChange={setActiveTab}>
+        {/* Tab controls */}
+      </Tabs>
+    </div>
+  );
+};
+```
+
+**Step 5: Complete Migration**
+- Update `App.tsx` routing to use new feature
+- Delete old page file
+- Update navigation sidebar
+- Test in browser
+
+### Refactoring Checklist
+
+For each oversized component, follow this checklist:
+
+- [ ] Identify 2-4 distinct responsibilities
+- [ ] Plan sub-component split strategy
+- [ ] Extract shared state to custom hook
+- [ ] Create feature directory structure
+- [ ] Move main component to `FeatureName.tsx`
+- [ ] Create sub-components in `components/` folder
+- [ ] Create/update hook in `hooks/` folder (if needed)
+- [ ] Each file <200 lines (main feature <300 lines)
+- [ ] Update `App.tsx` routing
+- [ ] Update `Navigation.tsx` sidebar links
+- [ ] Test all functionality in browser
+- [ ] Delete old page file
+- [ ] Verify no console errors
+
+### Component Size Verification
+
+**Quick command to check component sizes**:
+```bash
+# Show top 10 largest React components
+find ui/src -name "*.tsx" -exec wc -l {} + | sort -rn | head -10
+```
+
+**Expected output after refactoring**:
+```
+   250 ui/src/features/paper-trading/PaperTradingFeature.tsx
+   200 ui/src/features/paper-trading/components/PositionViewer.tsx
+   200 ui/src/features/paper-trading/components/TradeFormPanel.tsx
+   190 ui/src/features/paper-trading/components/AccountSelector.tsx
+   180 ui/src/features/paper-trading/components/TradeHistory.tsx
+   ...most components <200 lines
+```
+
+**Rules**:
+- ✅ Feature main components: Max 300 lines
+- ✅ Sub-components: Max 200 lines
+- ✅ Hooks: Max 150 lines
+- ✅ If component >200 lines, ask: "Can I extract sub-components?"
+- ✅ If hook >150 lines, extract common logic to utils
+- ❌ Never commit components >350 lines (will fail pre-commit)
+- ❌ Never skip refactoring "I'll do it later" (technical debt multiplies)
+
+---
 
 ## Claude Agent SDK Integration (CRITICAL)
 
@@ -650,7 +832,11 @@ useEffect(() => {
 - [ ] Features self-contained and isolated
 - [ ] No direct API calls in components (use hooks/props)
 - [ ] Proper TypeScript types throughout
-- [ ] Component under 200 lines (split if larger)
+- [ ] **Component size check** (CRITICAL):
+  - [ ] Sub-components: ≤200 lines
+  - [ ] Feature main components: ≤300 lines
+  - [ ] Custom hooks: ≤150 lines
+  - [ ] Page components: ≤300 lines
 - [ ] No unused dependencies or props
 - [ ] Memoization applied only where needed (not over-optimized)
 - [ ] Error handling for async operations

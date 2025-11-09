@@ -38,6 +38,8 @@ class TaskType(str, Enum):
     UPDATE_POSITIONS = "update_positions"
     CALCULATE_OVERNIGHT_PNL = "calculate_overnight_pnl"
     VALIDATE_PORTFOLIO_RISKS = "validate_portfolio_risks"
+    PORTFOLIO_SCAN = "portfolio_scan"
+    MARKET_SCREENING = "market_screening"
 
     # Data fetcher queue
     NEWS_MONITORING = "news_monitoring"

@@ -1,7 +1,7 @@
 # Services Layer Guidelines
 
 > **Scope**: Applies to `src/services/` directory. Read after `src/CLAUDE.md` and `src/core/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-04 | **Status**: Production Ready | **Tier**: Reference
+> **Last Updated**: 2025-11-09 | **Status**: Production Ready | **Tier**: Reference
 
 ## Quick Reference - SDK Usage
 
@@ -191,6 +191,67 @@ async def _handle_portfolio_change(self, event: Event) -> None:
 - ❌ NEVER raise unhandled exceptions
 - ❌ NEVER perform I/O without proper async/await
 - ❌ NEVER directly call other services (emit events instead)
+
+---
+
+## Database Access in Services (CRITICAL)
+
+**Rule**: Always use ConfigurationState's locked methods for database access. Never access database connection directly.
+
+**Why**: Direct database access bypasses `asyncio.Lock()` protection, causing "database is locked" errors during concurrent operations.
+
+**✅ CORRECT Pattern**:
+```python
+class AnalysisService:
+    def __init__(self, container, config):
+        self.container = container
+        self.config = config
+
+    async def store_analysis(self, symbol: str, analysis: dict):
+        """Store analysis using locked state methods."""
+        try:
+            config_state = await self.container.get("configuration_state")
+            success = await config_state.store_analysis_history(
+                symbol=symbol,
+                timestamp=datetime.now().isoformat(),
+                analysis_data=json.dumps(analysis)
+            )
+            if success:
+                logger.info(f"Analysis stored for {symbol}")
+        except Exception as e:
+            raise TradingError(f"Failed to store analysis: {e}")
+
+    async def get_analysis(self, symbol: str):
+        """Retrieve analysis using locked state methods."""
+        try:
+            config_state = await self.container.get("configuration_state")
+            data = await config_state.get_analysis_history()
+            return data.get(symbol)
+        except Exception as e:
+            logger.warning(f"Could not get analysis for {symbol}: {e}")
+            return None
+```
+
+**❌ WRONG Pattern** (causes database locks):
+```python
+async def store_analysis(self, symbol: str, analysis: dict):
+    # NEVER DO THIS:
+    database = await self.container.get("database")
+    conn = database.connection
+    await conn.execute(...)  # NO LOCK - CAUSES CONTENTION!
+    await conn.commit()
+```
+
+**Key Points**:
+- Services must use ConfigurationState's public methods (e.g., `store_analysis_history()`, `store_recommendation()`)
+- All public methods in ConfigurationState use `async with self._lock:` internally
+- Direct connection access is only acceptable within `database_state/` classes
+- Concurrent requests hitting direct DB access cause pages to freeze
+
+**CRITICAL - Current Violations (Fix Immediately)**:
+- ⚠️ `src/core/database_state/config_storage/background_tasks_store.py:100` - `await self.db.connection.execute(...)`
+- ⚠️ `src/core/database_state/config_storage/background_tasks_store.py:121` - `await self.db.connection.commit()`
+- ⚠️ `src/web/claude_agent_api.py:484` - `conn = database.connection`
 
 ---
 
