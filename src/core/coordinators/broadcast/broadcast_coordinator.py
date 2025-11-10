@@ -94,7 +94,7 @@ class BroadcastCoordinator(BaseCoordinator):
         }
 
         await self.broadcast_to_ui(message)
-        self._log_info(f"Claude status broadcast: {status_data.get('status', 'unknown')}")
+        self._log_debug(f"Claude status broadcast: {status_data.get('status', 'unknown')}")
 
     async def broadcast_system_health_update(self, health_data: Dict[str, Any]) -> None:
         """Broadcast system health updates to UI."""
@@ -107,7 +107,7 @@ class BroadcastCoordinator(BaseCoordinator):
         }
 
         await self.broadcast_to_ui(message)
-        self._log_info(f"System health broadcast: {health_data.get('status', 'unknown')}")
+        self._log_debug(f"System health broadcast: {health_data.get('status', 'unknown')}")
 
     async def broadcast_queue_status_update(self, queue_data: Dict[str, Any] = None) -> None:
         """Broadcast queue status updates to UI.
@@ -150,7 +150,7 @@ class BroadcastCoordinator(BaseCoordinator):
                 }
 
                 await self.broadcast_to_ui(message)
-                self._log_info(f"Queue status broadcast (Phase 3): {len(queue_dtos)} queues with unified schema")
+                self._log_debug(f"Queue status broadcast (Phase 3): {len(queue_dtos)} queues with unified schema")
 
             elif queue_data:
                 # Legacy fallback if repository not available
