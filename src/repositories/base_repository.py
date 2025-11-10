@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any, TypeVar, Generic
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
-from ..core.database import Database
+from ..core.database_state.base import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,11 @@ class BaseRepository(Generic[T]):
     Subclasses should implement domain-specific query methods.
     """
 
-    def __init__(self, database: Database):
+    def __init__(self, database: DatabaseConnection):
         """Initialize repository with database connection.
 
         Args:
-            database: Database instance for async queries
+            database: DatabaseConnection instance for async queries
         """
         self.db = database
         self._initialized = False

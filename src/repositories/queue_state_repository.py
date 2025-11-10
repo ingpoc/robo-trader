@@ -31,7 +31,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
     async def initialize(self) -> None:
         """Initialize repository (tables created by SchedulerTaskStore)."""
         await super().initialize()
-        logger.info("QueueStateRepository initialized (uses existing scheduler_tasks table)")
+        logger.info("QueueStateRepository initialized (uses existing queue_tasks table)")
 
     async def get_status(self, queue_name: str) -> QueueState:
         """Get current status for a specific queue.
@@ -71,7 +71,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
 
                 -- Last activity timestamp
                 MAX(CASE WHEN completed_at IS NOT NULL THEN completed_at ELSE NULL END) as last_activity
-            FROM scheduler_tasks
+            FROM queue_tasks
             WHERE queue_name = :queue_name
         """
 
@@ -142,7 +142,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
                     ELSE NULL
                 END) as avg_duration_ms,
                 MAX(CASE WHEN completed_at IS NOT NULL THEN completed_at ELSE NULL END) as last_activity
-            FROM scheduler_tasks
+            FROM queue_tasks
             GROUP BY queue_name
         """
 
@@ -209,7 +209,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
                 SUM(CASE WHEN status = 'completed' AND completed_at >= :today_start
                     THEN 1 ELSE 0 END) as total_completed,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as total_failed
-            FROM scheduler_tasks
+            FROM queue_tasks
         """
 
         result = await self._fetch_one(query, {"today_start": today_start})
@@ -242,7 +242,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
         """
         query = """
             SELECT task_id, task_type, started_at
-            FROM scheduler_tasks
+            FROM queue_tasks
             WHERE queue_name = :queue_name
               AND status = 'running'
             ORDER BY started_at DESC
@@ -260,7 +260,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
         """
         query = """
             SELECT queue_name, task_id, task_type, started_at
-            FROM scheduler_tasks
+            FROM queue_tasks
             WHERE status = 'running'
             ORDER BY started_at DESC
         """
@@ -299,7 +299,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
                 SELECT task_id, task_type, queue_name,
                        started_at, completed_at,
                        (julianday(completed_at) - julianday(started_at)) * 86400000 as duration_ms
-                FROM scheduler_tasks
+                FROM queue_tasks
                 WHERE queue_name = :queue_name
                   AND status = 'completed'
                 ORDER BY completed_at DESC
@@ -311,7 +311,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
                 SELECT task_id, task_type, queue_name,
                        started_at, completed_at,
                        (julianday(completed_at) - julianday(started_at)) * 86400000 as duration_ms
-                FROM scheduler_tasks
+                FROM queue_tasks
                 WHERE status = 'completed'
                 ORDER BY completed_at DESC
                 LIMIT :limit
@@ -338,7 +338,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
             query = """
                 SELECT task_id, task_type, queue_name,
                        started_at, error_message, retry_count
-                FROM scheduler_tasks
+                FROM queue_tasks
                 WHERE queue_name = :queue_name
                   AND status = 'failed'
                 ORDER BY started_at DESC
@@ -349,7 +349,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
             query = """
                 SELECT task_id, task_type, queue_name,
                        started_at, error_message, retry_count
-                FROM scheduler_tasks
+                FROM queue_tasks
                 WHERE status = 'failed'
                 ORDER BY started_at DESC
                 LIMIT :limit

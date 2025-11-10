@@ -13,7 +13,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
 
-from ...sandbox import SandboxManager, SandboxFactory, ExecutionResult
+from src.sandbox import SandboxManager, SandboxFactory, ExecutionResult
 
 # Thread pool for subprocess execution (avoid blocking event loop)
 _executor = ThreadPoolExecutor(max_workers=4)

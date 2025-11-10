@@ -500,8 +500,13 @@ async def get_analysis_activity(
         # Filter and process analyses
         seen_symbols = set()
 
-        for symbol, analysis_data_str in analysis_history.items():
+        # analysis_history is a dict with "analyses" key containing a list
+        analyses_list = analysis_history.get("analyses", [])
+        for analysis_record in analyses_list:
             try:
+                symbol = analysis_record["symbol"]
+                analysis_data_str = analysis_record["analysis"]
+
                 if isinstance(analysis_data_str, str):
                     analysis_data = json.loads(analysis_data_str)
                 else:

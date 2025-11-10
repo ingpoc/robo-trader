@@ -170,7 +170,8 @@ class BroadcastCoordinator(BaseCoordinator):
         except Exception as e:
             self._log_error(f"Failed to broadcast queue status: {e}")
             import traceback
-            self._log_error(f"Traceback: {traceback.format_exc()}")
+            # Use direct logger to avoid format string issues
+            logger.error(f"[{self.__class__.__name__}] Traceback: {traceback.format_exc()}")
 
     def get_health_metrics(self, monitor_metrics: Dict[str, Any] = None) -> Dict[str, Any]:
         """Get comprehensive health metrics."""

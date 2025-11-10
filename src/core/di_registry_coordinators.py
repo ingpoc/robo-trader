@@ -71,7 +71,8 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
         try:
             queue_state_repository = await container.get("queue_state_repository")
         except Exception as e:
-            logger.debug(f"QueueStateRepository not available for SchedulerStatusCoordinator: {e}")
+            logger.warning(f"QueueStateRepository not available for SchedulerStatusCoordinator: {e}")
+            logger.exception("Full exception for QueueStateRepository initialization:")
 
         return SchedulerStatusCoordinator(
             container.config,
