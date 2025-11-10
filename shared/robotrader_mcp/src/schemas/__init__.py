@@ -48,6 +48,12 @@ __all__ = [
     "PythonExecutionOutput",
     "AnalysisExecutionOutput",
 
+    # High-impact token optimization tools
+    "TokenMetricsCollectorInput",
+    "WorkflowOrchestratorInput",
+    "EnhancedDifferentialAnalysisInput",
+    "SessionContextInjectionInput",
+
     # Resource schemas
     "ResourceReadInput",
     "ResourceListInput",

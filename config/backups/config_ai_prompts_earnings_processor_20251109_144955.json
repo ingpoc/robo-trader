@@ -1,0 +1,12 @@
+{
+  "ai_prompts": [
+    {
+      "id": 1,
+      "prompt_name": "earnings_processor",
+      "prompt_content": "Extract comprehensive earnings data for {symbol} including:\n- Most recent quarterly/annual earnings report (last 4 quarters preferred)\n- EPS (actual vs estimated, YoY growth)\n- Revenue (actual vs estimated, YoY growth)\n- Operating margins, net margins\n- Forward guidance (revenue, EPS ranges)\n- Key business segment performance\n- Management commentary highlights\n- Next earnings date and expectations\n\nReturn structured JSON:\n{\n  \"earnings_data\": {\n    \"latest_quarter\": {\n      \"date\": \"YYYY-MM-DD\",\n      \"period\": \"QX YYYY\",\n      \"revenue\": {\"actual\": X, \"estimated\": X, \"yoy_growth\": X},\n      \"eps\": {\"actual\": X.XX, \"estimated\": X.XX, \"yoy_growth\": X},\n      \"margins\": {\"operating\": X.X, \"net\": X.X},\n      \"guidance\": {\"revenue_low\": X, \"revenue_high\": X, \"eps_low\": X.XX, \"eps_high\": X.XX}\n    },\n    \"previous_quarters\": [...],\n    \"key_insights\": [\"insight1\", \"insight2\"],\n    \"next_earnings\": {\"date\": \"YYYY-MM-DD\", \"expectations\": \"brief description\"}\n  }\n}",
+      "description": "Comprehensive earnings data extraction prompt",
+      "created_at": "2025-11-09T14:49:55.112484+00:00",
+      "updated_at": "2025-11-09T14:49:55.112484+00:00"
+    }
+  ]
+}

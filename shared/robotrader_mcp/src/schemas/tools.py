@@ -618,3 +618,225 @@ class KnowledgeQueryInput(BaseToolInput):
         if v and v not in ["structure", "database", "imports"]:
             raise ValueError("analysis_type must be 'structure', 'database', or 'imports'")
         return v
+
+
+# High-Impact Token Optimization Tools
+
+class TokenMetricsCollectorInput(BaseToolInput):
+    """Input for token metrics collection and efficiency analysis."""
+    operation: str = Field(
+        default="get_metrics",
+        description="Operation: 'record', 'get_metrics', or 'reset'"
+    )
+    tool_name: Optional[str] = Field(
+        default=None,
+        description="Tool name for recording usage"
+    )
+    tokens_used: Optional[int] = Field(
+        default=0,
+        ge=0,
+        description="Actual tokens used"
+    )
+    traditional_tokens_estimate: Optional[int] = Field(
+        default=0,
+        ge=0,
+        description="Estimated tokens for traditional approach"
+    )
+    execution_time_ms: Optional[int] = Field(
+        default=0,
+        ge=0,
+        description="Execution time in milliseconds"
+    )
+    success: Optional[bool] = Field(
+        default=True,
+        description="Whether operation succeeded"
+    )
+    time_window_hours: Optional[int] = Field(
+        default=24,
+        ge=1,
+        le=720,
+        description="Time window for metrics analysis (hours)"
+    )
+    group_by_tool: Optional[bool] = Field(
+        default=True,
+        description="Group metrics by tool name"
+    )
+    include_cost_analysis: Optional[bool] = Field(
+        default=True,
+        description="Include cost savings analysis"
+    )
+
+    @validator('operation')
+    def validate_operation(cls, v):
+        """Validate operation type."""
+        if v not in ["record", "get_metrics", "reset"]:
+            raise ValueError("operation must be 'record', 'get_metrics', or 'reset'")
+        return v
+
+
+class WorkflowOrchestratorInput(BaseToolInput):
+    """Input for workflow orchestration and tool chaining."""
+    operation: str = Field(
+        default="execute",
+        description="Operation: 'execute', 'save_template', 'load_template', 'list_templates'"
+    )
+    steps: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Workflow steps with tool, params, condition, context_mapping"
+    )
+    initial_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Initial context for workflow"
+    )
+    stop_on_error: Optional[bool] = Field(
+        default=True,
+        description="Stop workflow on first error"
+    )
+    template_name: Optional[str] = Field(
+        default=None,
+        description="Template name for save/load operations"
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Template description for save operation"
+    )
+
+    @validator('operation')
+    def validate_operation(cls, v):
+        """Validate operation type."""
+        valid_ops = ["execute", "save_template", "load_template", "list_templates"]
+        if v not in valid_ops:
+            raise ValueError(f"operation must be one of: {', '.join(valid_ops)}")
+        return v
+
+
+class EnhancedDifferentialAnalysisInput(BaseToolInput):
+    """Input for enhanced differential analysis showing only changes."""
+    component: str = Field(
+        default="portfolio",
+        description="Component to analyze: portfolio, queues, config, metrics, analysis"
+    )
+    since_timestamp: Optional[str] = Field(
+        default=None,
+        description="Analysis start point (ISO timestamp or '24h ago')"
+    )
+    include_delta_analysis: Optional[bool] = Field(
+        default=True,
+        description="Include detailed delta breakdown"
+    )
+    cache_key_override: Optional[str] = Field(
+        default=None,
+        description="Custom cache key for specific use cases"
+    )
+
+    @validator('component')
+    def validate_component(cls, v):
+        """Validate component type."""
+        valid_components = ["portfolio", "queues", "config", "metrics", "analysis"]
+        if v not in valid_components:
+            raise ValueError(f"component must be one of: {', '.join(valid_components)}")
+        return v
+
+
+class SessionContextInjectionInput(BaseToolInput):
+    """Input for session context injection and progress tracking."""
+    operation: str = Field(
+        default="inject_progress",
+        description="Operation: inject_progress, get_context, clear_context, track_workflow, create_operation, complete_operation"
+    )
+    operation_id: Optional[str] = Field(
+        default=None,
+        description="Unique operation identifier"
+    )
+    status: Optional[str] = Field(
+        default="running",
+        description="Operation status: pending, running, completed, failed"
+    )
+    progress_pct: Optional[int] = Field(
+        default=0,
+        ge=0,
+        le=100,
+        description="Progress percentage (0-100)"
+    )
+    message: Optional[str] = Field(
+        default=None,
+        description="Human-readable progress message"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional metadata"
+    )
+    include_all: Optional[bool] = Field(
+        default=False,
+        description="Include all operations (not just active)"
+    )
+    clear_completed: Optional[bool] = Field(
+        default=False,
+        description="Clear only completed/failed operations"
+    )
+    workflow_id: Optional[str] = Field(
+        default=None,
+        description="Workflow identifier for multi-step tracking"
+    )
+    total_steps: Optional[int] = Field(
+        default=1,
+        ge=1,
+        description="Total steps in workflow"
+    )
+    current_step: Optional[int] = Field(
+        default=1,
+        ge=1,
+        description="Current step number"
+    )
+    step_name: Optional[str] = Field(
+        default="Unknown",
+        description="Name of current step"
+    )
+    step_status: Optional[str] = Field(
+        default="running",
+        description="Status of current step"
+    )
+    step_result: Optional[Any] = Field(
+        default=None,
+        description="Result from completed step"
+    )
+    operation_type: Optional[str] = Field(
+        default="generic",
+        description="Type of operation being tracked"
+    )
+    description: Optional[str] = Field(
+        default="Operation in progress",
+        description="Operation description"
+    )
+    estimated_duration_sec: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Estimated duration in seconds"
+    )
+    success: Optional[bool] = Field(
+        default=True,
+        description="Whether operation succeeded"
+    )
+    result: Optional[Any] = Field(
+        default=None,
+        description="Operation result"
+    )
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message if failed"
+    )
+
+    @validator('operation')
+    def validate_operation(cls, v):
+        """Validate operation type."""
+        valid_ops = ["inject_progress", "get_context", "clear_context", "track_workflow", "create_operation", "complete_operation"]
+        if v not in valid_ops:
+            raise ValueError(f"operation must be one of: {', '.join(valid_ops)}")
+        return v
+
+    @validator('status')
+    def validate_status(cls, v):
+        """Validate status."""
+        if v and v not in ["pending", "running", "completed", "failed"]:
+            raise ValueError("status must be 'pending', 'running', 'completed', or 'failed'")
+        return v

@@ -60,20 +60,40 @@ const useRealQueueData = () => {
     // Use WebSocket-driven store data instead of polling
     if (store.queueStatus && store.queueStatus.queues) {
       try {
-        const transformedQueues: QueueInfo[] = Object.entries(store.queueStatus.queues).map(
-          ([queueName, queue]: [string, any]) => ({
-            queue_name: queueName,
-            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
-            pending_count: queue.pending_tasks || 0,
-            running_count: queue.active_tasks || 0,
-            completed_today: queue.completed_tasks || 0,
-            failed_count: queue.failed_tasks || 0,
-            total_tasks: (queue.completed_tasks || 0) + (queue.failed_tasks || 0) + (queue.pending_tasks || 0) + (queue.active_tasks || 0),
-            last_activity: queue.last_activity || '',
-            average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
-          })
-        )
+        let transformedQueues: QueueInfo[]
 
+        // Handle both array format (from WebSocket) and object format (legacy)
+        if (Array.isArray(store.queueStatus.queues)) {
+          // New format: Array of queue objects with queue_name field
+          transformedQueues = store.queueStatus.queues.map((queue: any) => ({
+            queue_name: queue.queue_name,
+            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+            pending_count: queue.pending_count || 0,
+            running_count: queue.running_count || 0,
+            completed_today: queue.completed_today || 0,
+            failed_count: queue.failed_count || 0,
+            total_tasks: queue.total_tasks || 0,
+            last_activity: queue.last_activity || '',
+            average_duration_ms: Math.round((queue.average_duration_ms || 0))
+          }))
+        } else {
+          // Legacy format: Object with queue names as keys
+          transformedQueues = Object.entries(store.queueStatus.queues).map(
+            ([queueName, queue]: [string, any]) => ({
+              queue_name: queueName,
+              status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+              pending_count: queue.pending_count || 0,
+              running_count: queue.running_count || 0,
+              completed_today: queue.completed_today || 0,
+              failed_count: queue.failed_count || 0,
+              total_tasks: queue.total_tasks || 0,
+              last_activity: queue.last_activity || '',
+              average_duration_ms: Math.round((queue.average_duration_ms || 0))
+            })
+          )
+        }
+
+        console.log('Transformed WebSocket queues:', transformedQueues)
         setQueueData(transformedQueues)
         setLoading(false)
         setError(null)
@@ -100,18 +120,20 @@ const useRealQueueData = () => {
 
           const data: QueueStatusResponse = await response.json()
 
+          console.log('API response data:', data)
           const transformedQueues: QueueInfo[] = data.queues.map(queue => ({
-            queue_name: queue.name,
+            queue_name: queue.queue_name,
             status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
-            pending_count: queue.pending_tasks,
-            running_count: queue.active_tasks,
-            completed_today: queue.completed_tasks,
-            failed_count: queue.failed_tasks,
-            total_tasks: queue.completed_tasks + queue.failed_tasks + queue.pending_tasks + queue.active_tasks,
+            pending_count: queue.pending_count,
+            running_count: queue.running_count,
+            completed_today: queue.completed_today,
+            failed_count: queue.failed_count,
+            total_tasks: queue.total_tasks,
             last_activity: queue.last_activity || '',
-            average_duration_ms: Math.round((queue.average_execution_time || 0) * 1000)
+            average_duration_ms: Math.round((queue.average_duration_ms || 0))
           }))
 
+          console.log('Transformed API queues:', transformedQueues)
           setQueueData(transformedQueues)
           setLoading(false)
         } catch (err) {
@@ -129,35 +151,31 @@ const useRealQueueData = () => {
   return { queueData, loading, error }
 }
 
-// API response types
+// API response types - matches QueueStatusDTO schema from backend
 interface QueueStatusResponse {
   queues: Array<{
-    name: string
-    status: 'healthy' | 'idle' | 'error' | 'stopped' | 'running'
-    running: boolean
-    type: string
-    current_task_id?: string
-    pending_tasks: number
-    active_tasks: number
-    completed_tasks: number
-    failed_tasks: number
-    average_execution_time: number
-    last_execution_time?: string
-    registered_handlers: string[]
-    details: any
+    queue_name: string
+    status: 'running' | 'active' | 'idle' | 'error' | 'stopped'
+    pending_count: number
+    running_count: number
+    completed_today: number
+    failed_count: number
+    total_tasks: number
+    is_healthy: boolean
+    is_active: boolean
+    success_rate: number
+    snapshot_ts: string
+    average_duration_ms: number
+    last_activity?: string
+    current_task?: any
   }>
   stats: {
     total_queues: number
-    active_queues: number
-    total_tasks: number
-    active_tasks: number
-    completed_tasks: number
-    failed_tasks: number
-  }
-  coordinator_status: {
-    coordinator_running: boolean
-    queues_running: boolean
-    event_router_status: string
+    total_pending_tasks: number
+    total_active_tasks: number
+    total_completed_tasks: number
+    total_failed_tasks: number
+    last_updated: string
   }
 }
 
@@ -232,7 +250,7 @@ const QueueCard: React.FC<{ queue: QueueInfo; isExpanded: boolean; onToggle: () 
           <div className="flex items-center gap-3">
             {getStatusIcon(queue.status)}
             <span className="text-lg font-semibold capitalize">
-              {queue.queue_name.replace('_', ' ')}
+              {queue.queue_name ? queue.queue_name.replace('_', ' ') : `Queue ${JSON.stringify(queue).substring(0, 30)}...`}
             </span>
             <span className={cn(
               "px-2 py-1 rounded-full text-xs font-medium border",

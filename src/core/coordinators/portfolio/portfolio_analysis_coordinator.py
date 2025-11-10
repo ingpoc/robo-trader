@@ -9,6 +9,7 @@ from src.core.coordinators.base_coordinator import BaseCoordinator
 from src.core.event_bus import Event, EventType
 from src.core.database_state.database_state import DatabaseStateManager
 from src.core.database_state.configuration_state import ConfigurationState
+from src.models.scheduler import QueueName
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +244,7 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
 
                 # Create analysis task
                 task = await self.task_service.create_task(
-                    queue_name="AI_ANALYSIS",
+                    queue_name=QueueName.AI_ANALYSIS,
                     task_type="RECOMMENDATION_GENERATION",
                     payload={
                         "agent_name": "scan",

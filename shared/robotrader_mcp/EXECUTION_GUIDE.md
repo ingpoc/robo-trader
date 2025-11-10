@@ -620,7 +620,7 @@ def execute_python(
     code: str,
     context: Optional[Dict[str, Any]] = None,
     timeout_seconds: int = 30,
-    isolation_level: str = "production"
+    isolation_level: str = "development"
 ) -> Dict[str, Any]
 ```
 

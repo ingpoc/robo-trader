@@ -1,0 +1,20 @@
+{
+  "ai_prompts": [
+    {
+      "id": 1,
+      "prompt_name": "earnings_processor",
+      "prompt_content": "Extract comprehensive earnings data for {symbol} including:\n- Most recent quarterly/annual earnings report (last 4 quarters preferred)\n- EPS (actual vs estimated, YoY growth)\n- Revenue (actual vs estimated, YoY growth)\n- Operating margins, net margins\n- Forward guidance (revenue, EPS ranges)\n- Key business segment performance\n- Management commentary highlights\n- Next earnings date and expectations\n\nReturn structured JSON:\n{\n  \"earnings_data\": {\n    \"latest_quarter\": {\n      \"date\": \"YYYY-MM-DD\",\n      \"period\": \"QX YYYY\",\n      \"revenue\": {\"actual\": X, \"estimated\": X, \"yoy_growth\": X},\n      \"eps\": {\"actual\": X.XX, \"estimated\": X.XX, \"yoy_growth\": X},\n      \"margins\": {\"operating\": X.X, \"net\": X.X},\n      \"guidance\": {\"revenue_low\": X, \"revenue_high\": X, \"eps_low\": X.XX, \"eps_high\": X.XX}\n    },\n    \"previous_quarters\": [...],\n    \"key_insights\": [\"insight1\", \"insight2\"],\n    \"next_earnings\": {\"date\": \"YYYY-MM-DD\", \"expectations\": \"brief description\"}\n  }\n}",
+      "description": "Comprehensive earnings data extraction prompt",
+      "created_at": "2025-11-09T14:49:55.112484+00:00",
+      "updated_at": "2025-11-09T14:49:55.112484+00:00"
+    },
+    {
+      "id": 2,
+      "prompt_name": "news_processor",
+      "prompt_content": "Extract recent market news and sentiment for {symbol} including:\n- Breaking news (last 24-48 hours priority)\n- Analyst ratings and price target changes\n- Major developments (products, partnerships, regulatory)\n- Market sentiment indicators\n- Competitor news affecting {symbol}\n- Macroeconomic factors impacting the stock\n\nFocus on actionable insights, not generic market updates. Filter out noise and prioritize material events.\n\nReturn structured JSON:\n{\n  \"news_data\": {\n    \"breaking_news\": [\n      {\n        \"headline\": \"headline text\",\n        \"source\": \"source\",\n        \"timestamp\": \"YYYY-MM-DD HH:MM\",\n        \"sentiment\": \"positive|negative|neutral\",\n        \"impact\": \"high|medium|low\",\n        \"summary\": \"1-2 sentence summary of key points\"\n      }\n    ],\n    \"analyst_updates\": [\n      {\n        \"firm\": \"firm name\",\n        \"rating\": \"buy|hold|sell\",\n        \"price_target\": X,\n        \"previous_target\": X,\n        \"timestamp\": \"YYYY-MM-DD\",\n        \"reasoning\": \"brief explanation\"\n      }\n    ],\n    \"key_developments\": [\"development1\", \"development2\"],\n    \"overall_sentiment\": \"positive|negative|neutral\",\n    \"last_updated\": \"YYYY-MM-DD HH:MM\"\n  }\n}",
+      "description": "Comprehensive news and market sentiment extraction prompt",
+      "created_at": "2025-11-09T14:49:55.164272+00:00",
+      "updated_at": "2025-11-09T14:49:55.164272+00:00"
+    }
+  ]
+}

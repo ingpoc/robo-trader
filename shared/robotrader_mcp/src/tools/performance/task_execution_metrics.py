@@ -17,13 +17,39 @@ CACHE_FILE = CACHE_DIR / "task_metrics.json"
 CACHE_TTL_SECONDS = 120  # 2 minutes
 
 
-def get_task_execution_metrics(use_cache: bool = True) -> Dict[str, Any]:
-    """Get task execution metrics with hybrid data access and token efficiency."""
+def get_task_execution_metrics(
+    use_cache: bool = True,
+    time_window_hours: int = 24,
+    include_trends: bool = True,
+    task_type_filter: Optional[str] = None,
+    include_performance_stats: bool = True
+) -> Dict[str, Any]:
+    """Get task execution metrics with hybrid data access and token efficiency.
+
+    Args:
+        use_cache: Whether to use cached results (default: True)
+        time_window_hours: Time window in hours for analysis (default: 24, max: 168)
+        include_trends: Include error trend analysis (default: True)
+        task_type_filter: Filter by specific task type (default: None)
+        include_performance_stats: Include performance statistics (default: True)
+    """
+
+    # Validate time window
+    if not (1 <= time_window_hours <= 168):
+        return {
+            "success": False,
+            "error": "time_window_hours must be between 1 and 168",
+            "suggestion": "Use a smaller time window for better performance"
+        }
+
+    # Create cache key based on parameters
+    cache_key = f"task_metrics_{time_window_hours}h_{task_type_filter or 'all'}_{include_trends}_{include_performance_stats}.json"
+    cache_file = CACHE_DIR / cache_key
 
     # Check cache
-    if use_cache and CACHE_FILE.exists():
+    if use_cache and cache_file.exists():
         try:
-            with open(CACHE_FILE, 'r') as f:
+            with open(cache_file, 'r') as f:
                 cached = json.load(f)
                 cache_time = datetime.fromisoformat(cached['cached_at'])
                 age = (datetime.now(timezone.utc) - cache_time).total_seconds()
@@ -31,6 +57,12 @@ def get_task_execution_metrics(use_cache: bool = True) -> Dict[str, Any]:
                 if age < CACHE_TTL_SECONDS:
                     cached['data_source'] = 'cache'
                     cached['cache_age_seconds'] = int(age)
+                    cached['parameters_used'] = {
+                        'time_window_hours': time_window_hours,
+                        'task_type_filter': task_type_filter,
+                        'include_trends': include_trends,
+                        'include_performance_stats': include_performance_stats
+                    }
                     return cached
         except Exception:
             pass
@@ -47,18 +79,31 @@ def get_task_execution_metrics(use_cache: bool = True) -> Dict[str, Any]:
         }
 
     try:
-        # Get database metrics
-        db_metrics = _get_database_metrics(str(db_file))
+        # Get database metrics with filtering
+        db_metrics = _get_database_metrics(
+            str(db_file),
+            time_window_hours,
+            task_type_filter,
+            include_trends,
+            include_performance_stats
+        )
 
         # Get API metrics for real-time enrichment
         api_metrics = _get_api_metrics()
 
         # Combine and transform
-        result = _transform_metrics(db_metrics, api_metrics)
+        result = _transform_metrics(db_metrics, api_metrics, include_trends, include_performance_stats)
 
-        # Cache
+        # Cache with parameter-aware key
         result['cached_at'] = datetime.now(timezone.utc).isoformat()
-        with open(CACHE_FILE, 'w') as f:
+        result['parameters_used'] = {
+            'time_window_hours': time_window_hours,
+            'task_type_filter': task_type_filter,
+            'include_trends': include_trends,
+            'include_performance_stats': include_performance_stats
+        }
+
+        with open(cache_file, 'w') as f:
             json.dump(result, f, indent=2)
 
         result['data_source'] = 'hybrid'
@@ -72,8 +117,14 @@ def get_task_execution_metrics(use_cache: bool = True) -> Dict[str, Any]:
         }
 
 
-def _get_database_metrics(db_path: str) -> Dict[str, Any]:
-    """Query database for historical task metrics."""
+def _get_database_metrics(
+    db_path: str,
+    time_window_hours: int = 24,
+    task_type_filter: Optional[str] = None,
+    include_trends: bool = True,
+    include_performance_stats: bool = True
+) -> Dict[str, Any]:
+    """Query database for historical task metrics with filtering."""
 
     conn = sqlite3.connect(db_path, timeout=5.0)
     conn.row_factory = sqlite3.Row
@@ -82,77 +133,94 @@ def _get_database_metrics(db_path: str) -> Dict[str, Any]:
     metrics = {}
 
     try:
-        # Total tasks executed (24h)
-        cursor.execute("""
+        # Build time window filter
+        time_filter = f"created_at > datetime('now', '-{time_window_hours} hours')"
+
+        # Add task type filter if specified
+        task_filter = ""
+        if task_type_filter:
+            task_filter = f"AND task_type = '{task_type_filter}'"
+
+        # Total tasks executed
+        query = f"""
             SELECT COUNT(*) as total
             FROM scheduler_tasks
-            WHERE created_at > datetime('now', '-24 hours')
-        """)
-        metrics['total_tasks_24h'] = cursor.fetchone()['total']
+            WHERE {time_filter} {task_filter}
+        """
+        cursor.execute(query)
+        metrics[f'total_tasks_{time_window_hours}h'] = cursor.fetchone()['total']
 
         # Success/failure breakdown
-        cursor.execute("""
+        query = f"""
             SELECT
                 status,
                 COUNT(*) as count
             FROM scheduler_tasks
-            WHERE created_at > datetime('now', '-24 hours')
+            WHERE {time_filter} {task_filter}
             GROUP BY status
-        """)
+        """
+        cursor.execute(query)
         status_breakdown = {}
         for row in cursor.fetchall():
             status_breakdown[row['status']] = row['count']
         metrics['status_breakdown'] = status_breakdown
 
-        # Average execution time by task type
-        cursor.execute("""
-            SELECT
-                task_type,
-                AVG(execution_duration_ms) as avg_ms,
-                COUNT(*) as count
-            FROM scheduler_tasks
-            WHERE created_at > datetime('now', '-24 hours')
-            AND status = 'COMPLETED'
-            GROUP BY task_type
-            ORDER BY count DESC
-            LIMIT 5
-        """)
-        task_types = []
-        for row in cursor.fetchall():
-            task_types.append({
-                "task_type": row['task_type'],
-                "avg_time_ms": int(row['avg_ms']) if row['avg_ms'] else 0,
-                "count": row['count']
-            })
-        metrics['top_task_types'] = task_types
+        # Performance stats (if requested)
+        if include_performance_stats:
+            query = f"""
+                SELECT
+                    task_type,
+                    AVG(execution_duration_ms) as avg_ms,
+                    COUNT(*) as count
+                FROM scheduler_tasks
+                WHERE {time_filter}
+                AND status = 'COMPLETED'
+                {task_filter if task_type_filter else ''}
+                GROUP BY task_type
+                ORDER BY count DESC
+                LIMIT 5
+            """
+            cursor.execute(query)
+            task_types = []
+            for row in cursor.fetchall():
+                task_types.append({
+                    "task_type": row['task_type'],
+                    "avg_time_ms": int(row['avg_ms']) if row['avg_ms'] else 0,
+                    "count": row['count']
+                })
+            metrics['top_task_types'] = task_types
 
-        # Error trends (hourly)
-        cursor.execute("""
-            SELECT
-                strftime('%H', created_at) as hour,
-                COUNT(*) as error_count
-            FROM scheduler_tasks
-            WHERE created_at > datetime('now', '-24 hours')
-            AND status = 'FAILED'
-            GROUP BY hour
-            ORDER BY hour DESC
-        """)
-        error_trends = []
-        for row in cursor.fetchall():
-            error_trends.append({
-                "hour": row['hour'],
-                "failures": row['error_count']
-            })
-        metrics['error_trends'] = error_trends
+        # Error trends (if requested)
+        if include_trends:
+            query = f"""
+                SELECT
+                    strftime('%H', created_at) as hour,
+                    COUNT(*) as error_count
+                FROM scheduler_tasks
+                WHERE {time_filter}
+                AND status = 'FAILED'
+                {task_filter}
+                GROUP BY hour
+                ORDER BY hour DESC
+            """
+            cursor.execute(query)
+            error_trends = []
+            for row in cursor.fetchall():
+                error_trends.append({
+                    "hour": row['hour'],
+                    "failures": row['error_count']
+                })
+            metrics['error_trends'] = error_trends
 
         # Portfolio coverage (unique stocks analyzed)
-        cursor.execute("""
+        query = f"""
             SELECT COUNT(DISTINCT symbol) as count
             FROM analysis_history
-            WHERE timestamp > datetime('now', '-24 hours')
-        """)
+            WHERE timestamp > datetime('now', '-{time_window_hours} hours')
+        """
+        cursor.execute(query)
         result = cursor.fetchone()
-        metrics['unique_symbols_analyzed_24h'] = result['count'] if result else 0
+        metrics[f'unique_symbols_analyzed_{time_window_hours}h'] = result['count'] if result else 0
 
     finally:
         conn.close()
@@ -183,7 +251,12 @@ def _get_api_metrics() -> Dict[str, Any]:
     }
 
 
-def _transform_metrics(db_metrics: Dict, api_metrics: Dict) -> Dict[str, Any]:
+def _transform_metrics(
+    db_metrics: Dict,
+    api_metrics: Dict,
+    include_trends: bool = True,
+    include_performance_stats: bool = True
+) -> Dict[str, Any]:
     """Transform to token-efficient format with insights (95%+ reduction)."""
 
     # Calculate success rate
@@ -207,18 +280,20 @@ def _transform_metrics(db_metrics: Dict, api_metrics: Dict) -> Dict[str, Any]:
         insights.append(f"Low task success rate: {success_rate:.1f}% - investigate failures")
         recommendations.append("Review error logs for failed tasks")
 
-    # Processing volume
-    total_24h = db_metrics.get('total_tasks_24h', 0)
-    if total_24h > 100:
-        insights.append(f"High processing volume: {total_24h} tasks in 24h")
-    elif total_24h > 20:
-        insights.append(f"Moderate processing volume: {total_24h} tasks in 24h")
+    # Processing volume (get the first key that matches total_tasks_*)
+    total_tasks_key = [k for k in db_metrics.keys() if k.startswith('total_tasks_')][0]
+    total_tasks = db_metrics.get(total_tasks_key, 0)
+    if total_tasks > 100:
+        insights.append(f"High processing volume: {total_tasks} tasks")
+    elif total_tasks > 20:
+        insights.append(f"Moderate processing volume: {total_tasks} tasks")
     else:
-        insights.append(f"Low processing volume: {total_24h} tasks in 24h")
+        insights.append(f"Low processing volume: {total_tasks} tasks")
         recommendations.append("Verify queue execution is active")
 
     # Portfolio coverage
-    symbols_analyzed = db_metrics.get('unique_symbols_analyzed_24h', 0)
+    symbols_key = [k for k in db_metrics.keys() if k.startswith('unique_symbols_analyzed_')][0]
+    symbols_analyzed = db_metrics.get(symbols_key, 0)
     if symbols_analyzed > 50:
         insights.append(f"Broad portfolio coverage: {symbols_analyzed} stocks analyzed")
     elif symbols_analyzed < 10:
@@ -231,18 +306,18 @@ def _transform_metrics(db_metrics: Dict, api_metrics: Dict) -> Dict[str, Any]:
         insights.append(f"High backlog: {backlog} pending tasks")
         recommendations.append("Consider increasing queue concurrency or investigate processing delays")
 
-    # Error trends
+    # Error trends (if included)
     error_trends = db_metrics.get('error_trends', [])
-    if len(error_trends) > 5:
+    if include_trends and len(error_trends) > 5:
         recommendations.append("Multiple hours with task failures - investigate error patterns")
 
     if not recommendations:
         recommendations.append("Task execution appears healthy - continue monitoring")
 
-    return {
+    result = {
         "success": True,
         "summary": {
-            "total_tasks_24h": total_24h,
+            "total_tasks": total_tasks,
             "success_rate_pct": round(success_rate, 1),
             "completed_tasks": completed,
             "failed_tasks": failed,
@@ -250,15 +325,23 @@ def _transform_metrics(db_metrics: Dict, api_metrics: Dict) -> Dict[str, Any]:
             "current_backlog": backlog,
             "active_tasks": api_metrics.get('active_tasks', 0)
         },
-        "top_task_types": db_metrics.get('top_task_types', []),
-        "error_trends": error_trends[:5],  # Last 5 hours only
         "insights": insights,
         "recommendations": recommendations,
         "token_efficiency": {
             "compression_ratio": "95%+",
-            "note": "24h of task data aggregated into actionable metrics"
+            "note": "Task data aggregated into actionable metrics"
         }
     }
+
+    # Add performance stats if requested
+    if include_performance_stats:
+        result["top_task_types"] = db_metrics.get('top_task_types', [])
+
+    # Add error trends if requested
+    if include_trends:
+        result["error_trends"] = error_trends[:5]  # Last 5 hours only
+
+    return result
 
 
 def main():
@@ -270,7 +353,18 @@ def main():
             input_data = {}
 
         use_cache = input_data.get("use_cache", True)
-        result = get_task_execution_metrics(use_cache=use_cache)
+        time_window_hours = input_data.get("time_window_hours", 24)
+        include_trends = input_data.get("include_trends", True)
+        task_type_filter = input_data.get("task_type_filter")
+        include_performance_stats = input_data.get("include_performance_stats", True)
+
+        result = get_task_execution_metrics(
+            use_cache=use_cache,
+            time_window_hours=time_window_hours,
+            include_trends=include_trends,
+            task_type_filter=task_type_filter,
+            include_performance_stats=include_performance_stats
+        )
 
         print(json.dumps(result, indent=2))
 

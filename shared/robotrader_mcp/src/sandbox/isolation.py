@@ -26,7 +26,7 @@ class IsolationLevel(Enum):
 class IsolationPolicy:
     """Defines isolation constraints for sandbox execution."""
 
-    level: IsolationLevel = IsolationLevel.PRODUCTION
+    level: IsolationLevel = IsolationLevel.DEVELOPMENT
 
     # Import restrictions
     allowed_imports: List[str] = field(default_factory=lambda: [
@@ -60,6 +60,14 @@ class IsolationPolicy:
             self.max_memory_mb = 512
             self.allow_network = True
             self.allow_file_read = True
+            # Add safe debugging modules for development
+            additional_modules = [
+                "inspect", "ast", "traceback", "pprint", "textwrap",
+                "dis", "hashlib", "uuid", "time", "copyreg", "csv", "pathlib"
+            ]
+            for module in additional_modules:
+                if module not in self.allowed_imports:
+                    self.allowed_imports.append(module)
 
         elif level == IsolationLevel.HARDENED:
             self.max_execution_time_sec = 10
@@ -87,13 +95,13 @@ class IsolationPolicy:
 
 # Default policies for common use cases
 DEFAULT_POLICY = IsolationPolicy(
-    level=IsolationLevel.PRODUCTION,
+    level=IsolationLevel.DEVELOPMENT,
     allow_network=True,
     allowed_domains=["localhost:8000", "127.0.0.1:8000"]
-)
+).apply_level(IsolationLevel.DEVELOPMENT)
 
 ANALYSIS_POLICY = IsolationPolicy(
-    level=IsolationLevel.PRODUCTION,
+    level=IsolationLevel.DEVELOPMENT,
     allowed_imports=[
         # Core data analysis modules
         "json", "math", "statistics", "datetime",
@@ -112,12 +120,12 @@ ANALYSIS_POLICY = IsolationPolicy(
     max_memory_mb=256,
     allow_network=True,
     allowed_domains=["localhost:8000"]
-)
+).apply_level(IsolationLevel.DEVELOPMENT)
 
 FILTERING_POLICY = IsolationPolicy(
-    level=IsolationLevel.PRODUCTION,
+    level=IsolationLevel.DEVELOPMENT,
     allowed_imports=["json", "datetime"],
     max_execution_time_sec=10,
     max_memory_mb=128,
     allow_network=False
-)
+).apply_level(IsolationLevel.DEVELOPMENT)

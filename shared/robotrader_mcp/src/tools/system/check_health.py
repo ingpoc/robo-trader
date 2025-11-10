@@ -322,7 +322,7 @@ def check_disk_health() -> Dict[str, Any]:
     """Check disk space availability."""
     try:
         # Get disk usage statistics
-        total, used, free = shutil.disk_usage(os.getcwd())
+        total, used, free = shutil.disk_usage(os.getenv('ROBO_TRADER_PROJECT_ROOT', os.getcwd()))
 
         total_gb = total // (1024**3)
         used_gb = used // (1024**3)

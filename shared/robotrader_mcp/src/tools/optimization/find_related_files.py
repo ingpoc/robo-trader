@@ -47,7 +47,7 @@ def find_related_files(
         scanning entire directory tree (5k-10k tokens) = 90% reduction
     """
 
-    project_root = Path(os.getcwd())
+    project_root = Path(os.getenv('ROBO_TRADER_PROJECT_ROOT', os.getcwd()))
     results = {
         "reference": reference,
         "relation_type": relation_type,

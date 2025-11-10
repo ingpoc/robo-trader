@@ -170,7 +170,7 @@ def suggest_fix(
         reading multiple files to understand error (5k-10k tokens) = 95% reduction
     """
 
-    project_root = Path(os.getcwd())
+    project_root = Path(os.getenv('ROBO_TRADER_PROJECT_ROOT', os.getcwd()))
 
     results = {
         "error_message": error_message[:200],  # Truncate for display

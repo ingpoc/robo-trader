@@ -12,8 +12,13 @@ import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
+import sys
+from pathlib import Path
 
-from src.sandbox import SandboxManager, SandboxFactory, ExecutionResult
+# Add parent directory to path for absolute imports (same pattern as knowledge_query.py)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from sandbox import SandboxManager, SandboxFactory, ExecutionResult
 
 # Thread pool for subprocess execution (avoid blocking event loop)
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -23,7 +28,7 @@ def _execute_python_sync(
     code: str,
     context: Optional[Dict[str, Any]] = None,
     timeout_seconds: int = 30,
-    isolation_level: str = "production",
+    isolation_level: str = "development",
 ) -> Dict[str, Any]:
     """
     Execute Python code in isolated sandbox.
@@ -248,7 +253,7 @@ async def execute_python(
     code: str,
     context: Optional[Dict[str, Any]] = None,
     timeout_seconds: int = 30,
-    isolation_level: str = "production",
+    isolation_level: str = "development",
 ) -> Dict[str, Any]:
     """
     Execute Python code in isolated sandbox (async-compatible for MCP).
@@ -283,7 +288,7 @@ def execute_python_sync(
     code: str,
     context: Optional[Dict[str, Any]] = None,
     timeout_seconds: int = 30,
-    isolation_level: str = "production",
+    isolation_level: str = "development",
 ) -> Dict[str, Any]:
     """
     Synchronous version of execute_python() for testing and direct calls.

@@ -41,8 +41,8 @@ def smart_file_read(
         - full: Complete file (use only when necessary)
     """
 
-    # Resolve file path
-    project_root = Path(os.getcwd())
+    # Resolve file path - use environment variable if available, otherwise cwd
+    project_root = Path(os.getenv('ROBO_TRADER_PROJECT_ROOT', os.getcwd()))
     file_full_path = project_root / file_path
 
     if not file_full_path.exists():

@@ -1,0 +1,28 @@
+{
+  "ai_prompts": [
+    {
+      "id": 1,
+      "prompt_name": "earnings_processor",
+      "prompt_content": "Extract comprehensive earnings data for {symbol} including:\n- Most recent quarterly/annual earnings report (last 4 quarters preferred)\n- EPS (actual vs estimated, YoY growth)\n- Revenue (actual vs estimated, YoY growth)\n- Operating margins, net margins\n- Forward guidance (revenue, EPS ranges)\n- Key business segment performance\n- Management commentary highlights\n- Next earnings date and expectations\n\nReturn structured JSON:\n{\n  \"earnings_data\": {\n    \"latest_quarter\": {\n      \"date\": \"YYYY-MM-DD\",\n      \"period\": \"QX YYYY\",\n      \"revenue\": {\"actual\": X, \"estimated\": X, \"yoy_growth\": X},\n      \"eps\": {\"actual\": X.XX, \"estimated\": X.XX, \"yoy_growth\": X},\n      \"margins\": {\"operating\": X.X, \"net\": X.X},\n      \"guidance\": {\"revenue_low\": X, \"revenue_high\": X, \"eps_low\": X.XX, \"eps_high\": X.XX}\n    },\n    \"previous_quarters\": [...],\n    \"key_insights\": [\"insight1\", \"insight2\"],\n    \"next_earnings\": {\"date\": \"YYYY-MM-DD\", \"expectations\": \"brief description\"}\n  }\n}",
+      "description": "Comprehensive earnings data extraction prompt",
+      "created_at": "2025-11-09T14:49:55.112484+00:00",
+      "updated_at": "2025-11-09T14:49:55.112484+00:00"
+    },
+    {
+      "id": 2,
+      "prompt_name": "news_processor",
+      "prompt_content": "Extract recent market news and sentiment for {symbol} including:\n- Breaking news (last 24-48 hours priority)\n- Analyst ratings and price target changes\n- Major developments (products, partnerships, regulatory)\n- Market sentiment indicators\n- Competitor news affecting {symbol}\n- Macroeconomic factors impacting the stock\n\nFocus on actionable insights, not generic market updates. Filter out noise and prioritize material events.\n\nReturn structured JSON:\n{\n  \"news_data\": {\n    \"breaking_news\": [\n      {\n        \"headline\": \"headline text\",\n        \"source\": \"source\",\n        \"timestamp\": \"YYYY-MM-DD HH:MM\",\n        \"sentiment\": \"positive|negative|neutral\",\n        \"impact\": \"high|medium|low\",\n        \"summary\": \"1-2 sentence summary of key points\"\n      }\n    ],\n    \"analyst_updates\": [\n      {\n        \"firm\": \"firm name\",\n        \"rating\": \"buy|hold|sell\",\n        \"price_target\": X,\n        \"previous_target\": X,\n        \"timestamp\": \"YYYY-MM-DD\",\n        \"reasoning\": \"brief explanation\"\n      }\n    ],\n    \"key_developments\": [\"development1\", \"development2\"],\n    \"overall_sentiment\": \"positive|negative|neutral\",\n    \"last_updated\": \"YYYY-MM-DD HH:MM\"\n  }\n}",
+      "description": "Comprehensive news and market sentiment extraction prompt",
+      "created_at": "2025-11-09T14:49:55.164272+00:00",
+      "updated_at": "2025-11-09T14:49:55.164272+00:00"
+    },
+    {
+      "id": 3,
+      "prompt_name": "deep_fundamental_processor",
+      "prompt_content": "Provide comprehensive fundamental analysis for {symbol} including:\n\nVALUATION METRICS:\n- P/E ratio (current, 5-year avg, forward)\n- PEG ratio, P/S ratio, P/B ratio\n- EV/EBITDA, EV/Revenue\n- Discounted cash flow estimate (if available)\n- Relative valuation vs peers\n\nFINANCIAL HEALTH:\n- Revenue growth (5-year trend, TTM)\n- Profit margins (gross, operating, net trends)\n- Return on equity (ROE), Return on assets (ROA)\n- Debt-to-equity ratio, interest coverage\n- Free cash flow generation and trends\n- Cash position and burn rate (if applicable)\n\nCOMPETITIVE POSITION:\n- Market share trends\n- Competitive advantages (moat)\n- Product/service diversification\n- Geographic revenue distribution\n- R&D investment as % of revenue\n\nRISK FACTORS:\n- Regulatory risks\n- Competitive threats\n- Cyclical exposure\n- Key person risk\n- Technology disruption risk\n\nReturn structured JSON:\n{\n  \"fundamentals\": {\n    \"valuation\": {\n      \"pe_current\": X.X, \"pe_5yr_avg\": X.X, \"pe_forward\": X.X,\n      \"peg\": X.X, \"ps\": X.X, \"pb\": X.X,\n      \"ev_ebitda\": X.X, \"dcf_estimate\": X\n    },\n    \"financial_health\": {\n      \"revenue_growth_5yr\": X.X,\n      \"margins\": {\"gross\": X.X, \"operating\": X.X, \"net\": X.X},\n      \"returns\": {\"roe\": X.X, \"roa\": X.X},\n      \"debt_ratio\": X.X,\n      \"fcf_ttm\": X,\n      \"cash_position\": X\n    },\n    \"competitive_position\": {\n      \"market_share\": X.X,\n      \"moat_rating\": \"strong|moderate|weak\",\n      \"diversification\": \"high|medium|low\"\n    },\n    \"growth_prospects\": {\n      \"revenue_cagr_3yr\": X.X,\n      \"eps_cagr_3yr\": X.X,\n      \"key_growth_drivers\": [\"driver1\", \"driver2\"]\n    },\n    \"risk_factors\": [\"risk1\", \"risk2\", \"risk3\"],\n    \"overall_quality_score\": X.X,\n    \"last_updated\": \"YYYY-MM-DD\"\n  }\n}",
+      "description": "Comprehensive fundamental analysis prompt with valuation, financial health, and competitive positioning",
+      "created_at": "2025-11-09T14:49:55.202150+00:00",
+      "updated_at": "2025-11-09T14:49:55.202150+00:00"
+    }
+  ]
+}

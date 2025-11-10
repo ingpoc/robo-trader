@@ -16,13 +16,29 @@ CACHE_FILE = CACHE_DIR / "queue_status.json"
 CACHE_TTL_SECONDS = 60  # 1 minute
 
 
-def get_queue_status(use_cache: bool = True) -> Dict[str, Any]:
-    """Get real-time queue status with caching and token efficiency."""
+def get_queue_status(
+    use_cache: bool = True,
+    include_details: bool = False,
+    queue_filter: Optional[str] = None,
+    include_backlog_analysis: bool = True
+) -> Dict[str, Any]:
+    """Get real-time queue status with caching and token efficiency.
+
+    Args:
+        use_cache: Whether to use cached results (default: True)
+        include_details: Include detailed queue information (default: False)
+        queue_filter: Filter by specific queue name (default: None)
+        include_backlog_analysis: Include backlog analysis and recommendations (default: True)
+    """
+
+    # Create cache key based on parameters
+    cache_key = f"queue_status_{queue_filter or 'all'}_{include_details}_{include_backlog_analysis}.json"
+    cache_file = CACHE_DIR / cache_key
 
     # Check cache first
-    if use_cache and CACHE_FILE.exists():
+    if use_cache and cache_file.exists():
         try:
-            with open(CACHE_FILE, 'r') as f:
+            with open(cache_file, 'r') as f:
                 cached = json.load(f)
                 cache_time = datetime.fromisoformat(cached['cached_at'])
                 age = (datetime.now(timezone.utc) - cache_time).total_seconds()
@@ -30,6 +46,11 @@ def get_queue_status(use_cache: bool = True) -> Dict[str, Any]:
                 if age < CACHE_TTL_SECONDS:
                     cached['data_source'] = 'cache'
                     cached['cache_age_seconds'] = int(age)
+                    cached['parameters_used'] = {
+                        'queue_filter': queue_filter,
+                        'include_details': include_details,
+                        'include_backlog_analysis': include_backlog_analysis
+                    }
                     return cached
         except Exception:
             pass  # Cache read failed, fetch fresh
@@ -49,12 +70,27 @@ def get_queue_status(use_cache: bool = True) -> Dict[str, Any]:
 
         api_data = response.json()
 
+        # Apply queue filter if specified
+        if queue_filter:
+            queues = api_data.get('queues', [])
+            filtered_queues = [
+                q for q in queues
+                if q.get('name', '').lower() == queue_filter.lower()
+            ]
+            api_data['queues'] = filtered_queues
+
         # Transform to token-efficient format
-        result = _transform_queue_data(api_data)
+        result = _transform_queue_data(api_data, include_details, include_backlog_analysis)
 
         # Cache for next request
         result['cached_at'] = datetime.now(timezone.utc).isoformat()
-        with open(CACHE_FILE, 'w') as f:
+        result['parameters_used'] = {
+            'queue_filter': queue_filter,
+            'include_details': include_details,
+            'include_backlog_analysis': include_backlog_analysis
+        }
+
+        with open(cache_file, 'w') as f:
             json.dump(result, f, indent=2)
 
         result['data_source'] = 'api'
@@ -80,7 +116,11 @@ def get_queue_status(use_cache: bool = True) -> Dict[str, Any]:
         }
 
 
-def _transform_queue_data(api_data: Dict[str, Any]) -> Dict[str, Any]:
+def _transform_queue_data(
+    api_data: Dict[str, Any],
+    include_details: bool = False,
+    include_backlog_analysis: bool = True
+) -> Dict[str, Any]:
     """Transform API response to token-efficient format (95%+ reduction)."""
 
     queues = api_data.get('queues', [])
@@ -192,7 +232,16 @@ def main():
 
         # Execute
         use_cache = input_data.get("use_cache", True)
-        result = get_queue_status(use_cache=use_cache)
+        include_details = input_data.get("include_details", False)
+        queue_filter = input_data.get("queue_filter")
+        include_backlog_analysis = input_data.get("include_backlog_analysis", True)
+
+        result = get_queue_status(
+            use_cache=use_cache,
+            include_details=include_details,
+            queue_filter=queue_filter,
+            include_backlog_analysis=include_backlog_analysis
+        )
 
         # Output
         print(json.dumps(result, indent=2))
