@@ -1,7 +1,7 @@
 # Core dependencies
 claude-agent-sdk>=0.1.6  # Python SDK for Claude Code with MCP 1.21.0
 pydantic==2.12.4
-python-dotenv==1.0.1
+python-dotenv==1.2.1
 
 # MCP Server dependencies
 mcp==1.21.0
