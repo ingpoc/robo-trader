@@ -805,20 +805,31 @@ async def websocket_endpoint(websocket: WebSocket):
         # Broadcast current status to the newly connected client
         if container:
             try:
+                logger.info(f"Getting orchestrator for initial status broadcast to client {client_id}")
                 orchestrator = await container.get_orchestrator()
                 if orchestrator:
-                    # Trigger status broadcasts for the new client
+                    logger.info(f"Broadcasting system status for client {client_id}")
                     await orchestrator.get_system_status()  # This broadcasts system health
+                    logger.info(f"Broadcasting Claude status for client {client_id}")
                     await orchestrator.get_claude_status()  # This broadcasts Claude status
 
                     # Also broadcast queue status
+                    logger.info(f"Getting queue coordinator for client {client_id}")
                     queue_coordinator = await container.get('queue_coordinator')
                     if queue_coordinator:
+                        logger.info(f"Broadcasting queue status for client {client_id}")
                         await queue_coordinator.get_queue_status()  # This broadcasts queue status
+                        logger.info(f"Queue status broadcast completed for client {client_id}")
+                    else:
+                        logger.warning(f"Queue coordinator not available for client {client_id}")
 
                     logger.info(f"Broadcast initial status updates to client {client_id}")
+                else:
+                    logger.warning(f"Orchestrator not available for client {client_id}")
             except Exception as e:
-                logger.warning(f"Failed to broadcast initial status to client {client_id}: {e}")
+                logger.error(f"Failed to broadcast initial status to client {client_id}: {e}")
+                import traceback
+                logger.error(f"Broadcast failure traceback: {traceback.format_exc()}")
 
         while True:
             data = await websocket.receive_json()
