@@ -10,6 +10,65 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _normalize_enum_value(value: str, enum_class: type, enum_name: str):
+    """
+    Normalize enum value to handle case-insensitive matching.
+
+    Handles both:
+    - Uppercase enum names (e.g., 'RECOMMENDATION_GENERATION')
+    - Lowercase enum values (e.g., 'recommendation_generation')
+
+    This allows backward compatibility with database entries that may have been
+    stored with incorrect casing, while maintaining proper enum validation.
+
+    Args:
+        value: String value to normalize
+        enum_class: Enum class to validate against
+        enum_name: Name of enum class for error messages
+
+    Returns:
+        Validated enum instance
+
+    Raises:
+        ValueError: If value cannot be matched to any enum member
+    """
+    if not value:
+        raise ValueError(f"Empty {enum_name} value")
+
+    # First, try exact match (fast path for correctly stored values)
+    try:
+        return enum_class(value)
+    except ValueError:
+        pass
+
+    # Convert to lowercase for case-insensitive matching
+    normalized_value = value.lower()
+
+    # Try matching against enum values (e.g., 'recommendation_generation')
+    for member in enum_class:
+        if member.value.lower() == normalized_value:
+            if value != member.value:
+                logger.debug(f"Normalized {enum_name} '{value}' to '{member.value}'")
+            return member
+
+    # Try matching against enum names (e.g., 'RECOMMENDATION_GENERATION')
+    # This handles legacy database entries with uppercase names
+    for member in enum_class:
+        if member.name.lower() == normalized_value:
+            logger.warning(
+                f"Found {enum_name} using enum name '{value}' instead of value '{member.value}'. "
+                f"Database should store enum values (lowercase), not enum names (UPPERCASE)."
+            )
+            return member
+
+    # If we get here, no match found - provide helpful error
+    valid_values = [f"'{m.value}'" for m in enum_class]
+    raise ValueError(
+        f"'{value}' is not a valid {enum_name}. "
+        f"Valid values: {', '.join(valid_values)}"
+    )
+
+
 class QueueName(str, Enum):
     """Sequential queue names."""
     PORTFOLIO_SYNC = "portfolio_sync"
@@ -102,15 +161,27 @@ class SchedulerTask:
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'SchedulerTask':
-        """Create from dictionary."""
+        """Create from dictionary with normalized enum values.
+
+        Handles both uppercase enum names and lowercase enum values
+        for backward compatibility with database entries.
+        """
         import ast
         data = data.copy()
-        data['queue_name'] = QueueName(data['queue_name'])
-        data['task_type'] = TaskType(data['task_type'])
-        data['status'] = TaskStatus(data['status'])
+
+        # Normalize enum values (handles both UPPERCASE and lowercase)
+        try:
+            data['queue_name'] = _normalize_enum_value(data['queue_name'], QueueName, 'QueueName')
+            data['task_type'] = _normalize_enum_value(data['task_type'], TaskType, 'TaskType')
+            data['status'] = _normalize_enum_value(data['status'], TaskStatus, 'TaskStatus')
+        except ValueError as e:
+            logger.error(f"Enum normalization failed: {e}")
+            raise
+
         # Parse dependencies from JSON string to list
         if isinstance(data.get('dependencies'), str):
             data['dependencies'] = json.loads(data['dependencies']) if data['dependencies'] else []
+
         # Parse payload from JSON string to dict (CRITICAL: was causing 'str' has no attribute 'keys' error)
         # Handle both JSON format and legacy Python dict string format
         if isinstance(data.get('payload'), str):
@@ -128,6 +199,7 @@ class SchedulerTask:
                         data['payload'] = {}
             else:
                 data['payload'] = {}
+
         return SchedulerTask(**data)
 
     def is_ready_to_run(self, completed_tasks: List[str]) -> bool:

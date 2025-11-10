@@ -270,27 +270,8 @@ export const useSystemStatusStore = create<SystemStatusState>()(
                 metrics: message.metrics
               })
 
-              // Extract queue status from system health components
-              if (message.components && message.components.queue) {
-                const queueComponent = message.components.queue
-                store.setQueueStatus({
-                  queues: {
-                    main_queue: {
-                      status: queueComponent.status,
-                      totalTasks: queueComponent.totalTasks || 0,
-                      runningQueues: queueComponent.runningQueues || 0,
-                      totalQueues: queueComponent.totalQueues || 0
-                    }
-                  },
-                  stats: {
-                    totalTasks: queueComponent.totalTasks || 0,
-                    runningQueues: queueComponent.runningQueues || 0,
-                    totalQueues: queueComponent.totalQueues || 0
-                  },
-                  timestamp: message.timestamp,
-                  data: queueComponent
-                })
-              }
+              // Queue status is handled by dedicated 'queue_status_update' message
+              // No need to extract queue data here as it uses old field names
               break
 
             case 'claude_status_update':
@@ -305,9 +286,21 @@ export const useSystemStatusStore = create<SystemStatusState>()(
               break
 
             case 'queue_status_update':
+              // Map backend field names to frontend expectations
+              const mappedStats = message.stats ? {
+                totalTasks: message.stats.total_pending_tasks || 0,
+                runningQueues: message.stats.total_active_tasks || 0,
+                totalQueues: message.stats.total_queues || 0,
+                total_pending_tasks: message.stats.total_pending_tasks,
+                total_active_tasks: message.stats.total_active_tasks,
+                total_queues: message.stats.total_queues,
+                total_completed_tasks: message.stats.total_completed_tasks,
+                total_failed_tasks: message.stats.total_failed_tasks
+              } : {}
+
               store.setQueueStatus({
                 queues: message.queues,
-                stats: message.stats,
+                stats: mappedStats,
                 timestamp: message.timestamp,
                 data: message.data
               })

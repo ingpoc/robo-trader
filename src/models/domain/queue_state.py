@@ -118,8 +118,8 @@ class QueueState:
 
         Priority:
         1. RUNNING - if any tasks are currently executing
-        2. ERROR - if any tasks have failed
-        3. ACTIVE - if tasks are pending
+        2. ACTIVE - if tasks are pending
+        3. ERROR - if any tasks have failed (only if no running/pending)
         4. IDLE - otherwise
 
         Args:
@@ -132,10 +132,10 @@ class QueueState:
         """
         if running > 0:
             return QueueStatus.RUNNING
-        elif failed > 0:
-            return QueueStatus.ERROR
         elif pending > 0:
             return QueueStatus.ACTIVE
+        elif failed > 0:
+            return QueueStatus.ERROR
         else:
             return QueueStatus.IDLE
 

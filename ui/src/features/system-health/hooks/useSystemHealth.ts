@@ -8,6 +8,7 @@ import { useSystemStatusStore } from '@/stores/systemStatusStore'
 export const useSystemHealth = () => {
   const {
     systemStatus,
+    queueStatus,
     isConnected,
     errors,
     lastUpdate,
@@ -20,11 +21,20 @@ export const useSystemHealth = () => {
 
   // Extract component-specific data
   const schedulerStatus = getComponentHealth('scheduler')
-  const queueHealth = getComponentHealth('queue')
   const dbHealth = getComponentHealth('database')
   const resources = getComponentHealth('resources')
   const websocketHealth = getComponentHealth('websocket')
   const claudeHealth = getComponentHealth('claudeAgent')
+
+  // Queue health comes from dedicated queueStatus property, not from systemStatus.components.queue
+  // The queueStatus is populated by queue_status_update WebSocket messages with proper field mapping
+  const queueHealth = queueStatus ? {
+    status: 'healthy', // queueStatus messages indicate health via data
+    totalTasks: queueStatus.stats?.totalTasks || 0,
+    runningQueues: queueStatus.stats?.runningQueues || 0,
+    totalQueues: queueStatus.stats?.totalQueues || 0,
+    queues: queueStatus.queues
+  } : null
 
   
   // Format data for compatibility with enhanced components

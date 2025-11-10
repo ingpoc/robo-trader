@@ -719,3 +719,5 @@ curl -X POST 'http://localhost:8000/api/backups/restore/robo_trader_startup_2025
 
 **Data Safety**: "Automatic backups on startup/shutdown. Periodic backups every 24 hours. Automatic rotation keeps latest 7 backups. Manual backups anytime via API. All critical data persisted and recoverable."
 - [Image #1] as part of testing from browser I want you to trigger background scheduler execution and validate the number show up correctly in background scheduler, processed, failed, success rate, jobs which are running should show up here as well. The same with all other scheduler in system health [Image #2]
+- Utilize robo-trader-dev mcp server while debugging issues.
+- While using full-stack-debugger skill utilize robo-trader-dev mcp server to help with debugging.

@@ -67,7 +67,7 @@ const useRealQueueData = () => {
           // New format: Array of queue objects with queue_name field
           transformedQueues = store.queueStatus.queues.map((queue: any) => ({
             queue_name: queue.queue_name,
-            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+            status: queue.status === 'running' || queue.status === 'active' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
             pending_count: queue.pending_count || 0,
             running_count: queue.running_count || 0,
             completed_today: queue.completed_today || 0,
@@ -81,13 +81,13 @@ const useRealQueueData = () => {
           transformedQueues = Object.entries(store.queueStatus.queues).map(
             ([queueName, queue]: [string, any]) => ({
               queue_name: queueName,
-              status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+              status: queue.status === 'running' || queue.status === 'active' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
               pending_count: queue.pending_count || 0,
               running_count: queue.running_count || 0,
               completed_today: queue.completed_today || 0,
               failed_count: queue.failed_count || 0,
               total_tasks: queue.total_tasks || 0,
-              last_activity: queue.last_activity || '',
+              last_activity: queue.last_activity || 0,
               average_duration_ms: Math.round((queue.average_duration_ms || 0))
             })
           )
@@ -123,7 +123,7 @@ const useRealQueueData = () => {
           console.log('API response data:', data)
           const transformedQueues: QueueInfo[] = data.queues.map(queue => ({
             queue_name: queue.queue_name,
-            status: queue.status === 'running' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
+            status: queue.status === 'running' || queue.status === 'active' ? 'healthy' : queue.status === 'idle' ? 'idle' : 'error',
             pending_count: queue.pending_count,
             running_count: queue.running_count,
             completed_today: queue.completed_today,
