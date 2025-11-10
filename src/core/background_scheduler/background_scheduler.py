@@ -218,6 +218,22 @@ class BackgroundScheduler:
                 self._log_initialization_step("Creating SequentialQueueManager task")
                 self._queue_executor_task = asyncio.create_task(self._run_queue_executor())
                 self._log_initialization_step("SequentialQueueManager task created")
+
+                # Verify the task actually starts (CRITICAL FIX for issue: task created but never executes)
+                # Give the task a moment to start and potentially log its first message
+                await asyncio.sleep(0.1)
+
+                # Check if the task is running by verifying it hasn't immediately failed
+                if self._queue_executor_task.done():
+                    # Task failed immediately - get the exception
+                    try:
+                        exception = self._queue_executor_task.exception()
+                        raise RuntimeError(f"Queue executor task failed immediately: {exception}") from exception
+                    except Exception as task_exception:
+                        logger.error(f"*** QUEUE EXECUTOR: Failed to start - {task_exception} ***")
+                        raise RuntimeError(f"Queue executor task failed during startup: {task_exception}") from task_exception
+
+                logger.info("*** QUEUE EXECUTOR: Verified task is running ***")
             else:
                 logger.warning("SequentialQueueManager not available - queue tasks will not be processed")
 
