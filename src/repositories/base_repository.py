@@ -187,14 +187,16 @@ class BaseRepository(Generic[T]):
             logger.error(f"Scalar query failed: {e}\nQuery: {query}\nParams: {params}")
             raise
 
-    def _get_today_start(self) -> datetime:
-        """Get start of today in UTC.
+    def _get_today_start(self) -> str:
+        """Get start of today in ISO format for database comparison.
 
         Returns:
-            Datetime representing start of today (00:00:00 UTC)
+            ISO formatted datetime string for start of today (local time)
         """
-        now = datetime.now(timezone.utc)
-        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Use local time to match database timestamp storage
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return today_start.isoformat()
 
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format.

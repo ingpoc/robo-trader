@@ -34,6 +34,7 @@ interface QueueInfo {
   total_tasks: number
   last_activity: string
   average_duration_ms: number
+  current_task?: any | null
 }
 
 export interface QueueHealthMonitorProps {
@@ -74,7 +75,8 @@ const useRealQueueData = () => {
             failed_count: queue.failed_count || 0,
             total_tasks: queue.total_tasks || 0,
             last_activity: queue.last_activity || '',
-            average_duration_ms: Math.round((queue.average_duration_ms || 0))
+            average_duration_ms: Math.round((queue.average_duration_ms || 0)),
+            current_task: queue.current_task || null
           }))
         } else {
           // Legacy format: Object with queue names as keys
@@ -88,12 +90,12 @@ const useRealQueueData = () => {
               failed_count: queue.failed_count || 0,
               total_tasks: queue.total_tasks || 0,
               last_activity: queue.last_activity || 0,
-              average_duration_ms: Math.round((queue.average_duration_ms || 0))
+              average_duration_ms: Math.round((queue.average_duration_ms || 0)),
+              current_task: queue.current_task || null
             })
           )
         }
 
-        console.log('Transformed WebSocket queues:', transformedQueues)
         setQueueData(transformedQueues)
         setLoading(false)
         setError(null)
@@ -130,7 +132,8 @@ const useRealQueueData = () => {
             failed_count: queue.failed_count,
             total_tasks: queue.total_tasks,
             last_activity: queue.last_activity || '',
-            average_duration_ms: Math.round((queue.average_duration_ms || 0))
+            average_duration_ms: Math.round((queue.average_duration_ms || 0)),
+            current_task: queue.current_task || null
           }))
 
           console.log('Transformed API queues:', transformedQueues)
@@ -319,66 +322,64 @@ const QueueCard: React.FC<{ queue: QueueInfo; isExpanded: boolean; onToggle: () 
           )}
 
           {/* Current Tasks */}
-          {queue.current_tasks && queue.current_tasks.length > 0 && (
+          {queue.current_task && (
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-warmgray-700 mb-3">Current Tasks</h4>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {queue.current_tasks.map((task) => (
-                  <div
-                    key={task.task_id}
-                    className="flex items-center justify-between p-3 bg-white dark:bg-warmgray-800 rounded-lg border border-warmgray-200 dark:border-warmgray-700"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {getTaskStatusIcon(task.status)}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">
-                            {task.task_type.replace(/_/g, ' ')}
-                          </span>
-                          <span className="text-xs text-warmgray-500">
-                            Priority: {task.priority}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-warmgray-500 mt-1">
-                          <span>ID: {task.task_id.substring(0, 8)}...</span>
-                          {task.started_at && (
-                            <span>Started: {formatTime(task.started_at)}</span>
-                          )}
-                          {task.duration_ms && (
-                            <span>Duration: {formatDuration(task.duration_ms)}</span>
-                          )}
-                        </div>
-                        {task.error_message && (
-                          <p className="text-xs text-red-600 mt-1 truncate">
-                            {task.error_message}
-                          </p>
+                <div
+                  key={queue.current_task.task_id}
+                  className="flex items-center justify-between p-3 bg-white dark:bg-warmgray-800 rounded-lg border border-warmgray-200 dark:border-warmgray-700"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {getTaskStatusIcon(queue.current_task.status)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">
+                          {queue.current_task.task_type.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-xs text-warmgray-500">
+                          Priority: {queue.current_task.priority}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-warmgray-500 mt-1">
+                        <span>ID: {queue.current_task.task_id.substring(0, 8)}...</span>
+                        {queue.current_task.started_at && (
+                          <span>Started: {formatTime(queue.current_task.started_at)}</span>
+                        )}
+                        {queue.current_task.duration_ms && (
+                          <span>Duration: {formatDuration(queue.current_task.duration_ms)}</span>
                         )}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 ml-2">
-                      <span className={cn(
-                        "px-2 py-1 rounded text-xs font-medium",
-                        task.status === 'running' && "bg-blue-100 text-blue-800",
-                        task.status === 'completed' && "bg-emerald-100 text-emerald-800",
-                        task.status === 'failed' && "bg-red-100 text-red-800",
-                        task.status === 'retrying' && "bg-amber-100 text-amber-800",
-                        task.status === 'pending' && "bg-warmgray-100 text-warmgray-800"
-                      )}>
-                        {task.status}
-                      </span>
-                      {task.retry_count > 0 && (
-                        <span className="text-xs text-amber-600 font-medium">
-                          {task.retry_count}/{task.max_retries}
-                        </span>
+                      {queue.current_task.error_message && (
+                        <p className="text-xs text-red-600 mt-1 truncate">
+                          {queue.current_task.error_message}
+                        </p>
                       )}
                     </div>
                   </div>
-                ))}
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className={cn(
+                      "px-2 py-1 rounded text-xs font-medium",
+                      queue.current_task.status === 'running' && "bg-blue-100 text-blue-800",
+                      queue.current_task.status === 'completed' && "bg-emerald-100 text-emerald-800",
+                      queue.current_task.status === 'failed' && "bg-red-100 text-red-800",
+                      queue.current_task.status === 'retrying' && "bg-amber-100 text-amber-800",
+                      queue.current_task.status === 'pending' && "bg-warmgray-100 text-warmgray-800"
+                    )}>
+                      {queue.current_task.status}
+                    </span>
+                    {queue.current_task.retry_count > 0 && (
+                      <span className="text-xs text-amber-600 font-medium">
+                        {queue.current_task.retry_count}/{queue.current_task.max_retries}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
-          {(!queue.current_tasks || queue.current_tasks.length === 0) && (
+          {!queue.current_task && (
             <div className="text-center py-8 text-warmgray-500">
               <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No active tasks in this queue</p>

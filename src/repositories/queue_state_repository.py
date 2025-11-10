@@ -49,7 +49,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
         """
         self._log_query("get_status", f"Getting status for queue: {queue_name}")
 
-        today_start = self._get_today_start().isoformat()
+        today_start = self._get_today_start()
         snapshot_ts = self._get_timestamp()
 
         # Single aggregation query for all counts
@@ -58,13 +58,13 @@ class QueueStateRepository(BaseRepository[QueueState]):
                 -- Task counts by status
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
                 SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count,
-                SUM(CASE WHEN status = 'completed' AND completed_at >= :today_start
+                SUM(CASE WHEN status = 'completed' AND completed_at >= datetime('now', 'localtime', 'start of day')
                     THEN 1 ELSE 0 END) as completed_count,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
 
                 -- Performance metrics
                 AVG(CASE
-                    WHEN status = 'completed' AND completed_at >= :today_start
+                    WHEN status = 'completed' AND completed_at >= datetime('now', 'localtime', 'start of day')
                     THEN (julianday(completed_at) - julianday(started_at)) * 86400000
                     ELSE NULL
                 END) as avg_duration_ms,
@@ -77,7 +77,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
 
         result = await self._fetch_one(
             query,
-            {"queue_name": queue_name, "today_start": today_start}
+            {"queue_name": queue_name}
         )
 
         if not result:
@@ -124,7 +124,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
         """
         self._log_query("get_all_statuses", "Getting status for all queues")
 
-        today_start = self._get_today_start().isoformat()
+        today_start = self._get_today_start()
         snapshot_ts = self._get_timestamp()
 
         # Single aggregation query for ALL queues
@@ -133,11 +133,11 @@ class QueueStateRepository(BaseRepository[QueueState]):
                 queue_name,
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
                 SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count,
-                SUM(CASE WHEN status = 'completed' AND completed_at >= :today_start
+                SUM(CASE WHEN status = 'completed' AND completed_at >= datetime('now', 'localtime', 'start of day')
                     THEN 1 ELSE 0 END) as completed_count,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
                 AVG(CASE
-                    WHEN status = 'completed' AND completed_at >= :today_start
+                    WHEN status = 'completed' AND completed_at >= datetime('now', 'localtime', 'start of day')
                     THEN (julianday(completed_at) - julianday(started_at)) * 86400000
                     ELSE NULL
                 END) as avg_duration_ms,
@@ -146,7 +146,7 @@ class QueueStateRepository(BaseRepository[QueueState]):
             GROUP BY queue_name
         """
 
-        rows = await self._fetch_all(query, {"today_start": today_start})
+        rows = await self._fetch_all(query)
 
         # Get all current tasks in single query
         current_tasks = await self._get_all_current_tasks()
@@ -199,20 +199,20 @@ class QueueStateRepository(BaseRepository[QueueState]):
             - total_completed_today: Total completed today
             - total_failed: Total failed tasks
         """
-        today_start = self._get_today_start().isoformat()
+        today_start = self._get_today_start()
 
         query = """
             SELECT
                 COUNT(DISTINCT queue_name) as total_queues,
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as total_pending,
                 SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as total_running,
-                SUM(CASE WHEN status = 'completed' AND completed_at >= :today_start
+                SUM(CASE WHEN status = 'completed' AND completed_at >= datetime('now', 'localtime', 'start of day')
                     THEN 1 ELSE 0 END) as total_completed,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as total_failed
             FROM queue_tasks
         """
 
-        result = await self._fetch_one(query, {"today_start": today_start})
+        result = await self._fetch_one(query)
 
         if not result:
             return {
