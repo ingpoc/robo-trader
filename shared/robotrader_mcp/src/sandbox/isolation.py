@@ -101,27 +101,41 @@ DEFAULT_POLICY = IsolationPolicy(
     allowed_domains=["localhost:8000", "127.0.0.1:8000"]
 ).apply_level(IsolationLevel.DEVELOPMENT)
 
-ANALYSIS_POLICY = IsolationPolicy(
-    level=IsolationLevel.DEVELOPMENT,
-    allowed_imports=[
-        # Core data analysis modules
-        "json", "math", "statistics", "datetime",
-        "itertools", "collections", "functools",
-        "decimal", "fractions", "random",
-        "re", "string", "typing", "types",
-        "numbers", "abc", "enum", "copy", "operator",
-        # Additional stdlib modules for comprehensive analysis
-        "heapq", "bisect", "warnings", "sys", "os",
-        # Internal modules needed by standard library (comprehensive set)
-        "_io", "_collections", "_collections_abc", "_functools", "_heapq",
-        "_thread", "_weakref", "_operator", "_stat", "_sre", "_warnings",
-        "_codecs", "_codecs_iso2022", "_ctypes", "_ctypes_test"
-    ],
-    max_execution_time_sec=30,
-    max_memory_mb=256,
-    allow_network=True,
-    allowed_domains=["localhost:8000"]
-).apply_level(IsolationLevel.DEVELOPMENT)
+# Use comprehensive whitelist to prevent all dependency issues
+try:
+    from .comprehensive_whitelist_policy import COMPREHENSIVE_STDLIB_MODULES
+    ANALYSIS_POLICY = IsolationPolicy(
+        level=IsolationLevel.DEVELOPMENT,
+        allowed_imports=COMPREHENSIVE_STDLIB_MODULES,
+        max_execution_time_sec=30,
+        max_memory_mb=512,
+        allow_network=True,
+        allowed_domains=["localhost:8000"]
+    ).apply_level(IsolationLevel.DEVELOPMENT)
+except ImportError:
+    # Fallback to basic policy if comprehensive policy not available
+    ANALYSIS_POLICY = IsolationPolicy(
+        level=IsolationLevel.DEVELOPMENT,
+        allowed_imports=[
+            # Core data analysis modules
+            "json", "math", "statistics", "datetime",
+            "itertools", "collections", "functools",
+            "decimal", "fractions", "random",
+            "re", "string", "typing", "types",
+            "numbers", "abc", "enum", "copy", "operator",
+            # Additional stdlib modules for comprehensive analysis
+            "heapq", "bisect", "warnings", "sys", "os", "io", "linecache", "tokenize",
+            # Internal modules needed by standard library
+            "_io", "_collections", "_collections_abc", "_functools", "_heapq",
+            "_thread", "_weakref", "_operator", "_stat", "_sre", "_warnings",
+            "_codecs", "_codecs_iso2022", "_ctypes", "_ctypes_test",
+            "_random", "_pydatetime", "logging"
+        ],
+        max_execution_time_sec=30,
+        max_memory_mb=256,
+        allow_network=True,
+        allowed_domains=["localhost:8000"]
+    ).apply_level(IsolationLevel.DEVELOPMENT)
 
 DATABASE_READONLY_POLICY = IsolationPolicy(
     level=IsolationLevel.PRODUCTION,
