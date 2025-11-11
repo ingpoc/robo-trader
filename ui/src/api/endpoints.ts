@@ -83,8 +83,23 @@ export const monitoringAPI = {
     }>('/api/monitoring/status'),
   getSchedulerStatus: () =>
     api.get<{
-      running: boolean
-      jobs: Array<{ id: string; next_run: string; enabled: boolean }>
+      status: string
+      schedulers: Array<{
+        scheduler_id: string
+        name: string
+        status: string
+        event_driven: boolean
+        uptime_seconds: number
+        jobs_processed: number
+        jobs_failed: number
+        active_jobs: number
+        completed_jobs: number
+        last_run_time: string
+        execution_history?: Array<any>
+        total_executions?: number
+        jobs?: Array<any>
+      }>
+      total_schedulers: number
     }>('/api/monitoring/scheduler'),
 }
 

@@ -3,6 +3,7 @@
 import logging
 import asyncio
 import traceback
+import json
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timezone, timedelta
 from src.core.coordinators.base_coordinator import BaseCoordinator
@@ -52,6 +53,7 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
         self._check_interval = 300  # 5 minutes
         self._batch_size = 10  # Top 10 stocks per cycle
         self._min_analysis_interval = 3600  # 1 hour
+        self._max_queue_capacity = 20  # Max total tasks in AI Analysis queue
 
     async def initialize(self) -> None:
         """Initialize portfolio analysis coordinator."""
@@ -140,6 +142,15 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             try:
                 self._log_info("Running portfolio analysis check")
 
+                # Check queue capacity before proceeding
+                current_queue_size = await self._get_current_queue_size()
+                if current_queue_size >= self._max_queue_capacity:
+                    self._log_info(
+                        f"AI Analysis queue at capacity ({current_queue_size}/{self._max_queue_capacity}). "
+                        f"Skipping monitoring cycle until tasks are processed."
+                    )
+                    return
+
                 # Get stocks needing analysis
                 stocks_to_analyze = await self._get_stocks_needing_analysis()
 
@@ -147,7 +158,14 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
                     self._log_info("All portfolio stocks have recent analysis")
                     return
 
-                self._log_info(f"Found {len(stocks_to_analyze)} stocks needing analysis")
+                # Calculate how many more tasks we can submit
+                remaining_capacity = self._max_queue_capacity - current_queue_size
+                stocks_to_analyze = stocks_to_analyze[:remaining_capacity]
+
+                self._log_info(
+                    f"Found {len(stocks_to_analyze)} stocks needing analysis "
+                    f"(queue capacity: {current_queue_size}/{self._max_queue_capacity})"
+                )
 
                 # Submit analysis tasks for selected stocks
                 await self._queue_analysis_tasks(stocks_to_analyze)
@@ -157,6 +175,23 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
 
             except Exception as e:
                 logger.error(f"Error checking portfolio for analysis: {e}", exc_info=True)
+
+    async def _get_current_queue_size(self) -> int:
+        """Get current number of pending+running tasks in AI Analysis queue.
+
+        Returns:
+            Current queue size (pending + running tasks)
+        """
+        try:
+            # Get queue statistics for AI_ANALYSIS queue
+            queue_stats = await self.task_service.get_queue_statistics(QueueName.AI_ANALYSIS)
+
+            # Count pending and running tasks
+            return queue_stats.pending_count + queue_stats.running_count
+
+        except Exception as e:
+            logger.warning(f"Failed to get queue status, assuming queue is empty: {e}")
+            return 0  # Assume empty to allow monitoring to continue
 
     async def _get_stocks_needing_analysis(self) -> List[Dict[str, Any]]:
         """Get stocks needing analysis, prioritized by freshness.
@@ -173,6 +208,9 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             if not portfolio or not portfolio.holdings:
                 logger.warning("No portfolio holdings available")
                 return []
+
+            # Get symbols currently in AI Analysis queue (to avoid duplicates)
+            symbols_in_queue = await self._get_symbols_in_queue()
 
             # Get analysis history
             analysis_history = await self.config_state.get_analysis_history()
@@ -202,6 +240,11 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
                 if not symbol:
                     continue  # Skip holdings without symbols
 
+                # Skip if symbol already has a pending/running task in queue
+                if symbol in symbols_in_queue:
+                    logger.debug(f"Skipping {symbol} - already in AI Analysis queue")
+                    continue
+
                 # Priority 1: Never analyzed
                 if symbol not in analyzed_symbols:
                     stocks_with_priority.append({
@@ -229,6 +272,40 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
         except Exception as e:
             logger.error(f"Error getting stocks needing analysis: {e}", exc_info=True)
             return []
+
+    async def _get_symbols_in_queue(self) -> set:
+        """Get symbols that currently have pending or running tasks in AI Analysis queue.
+
+        Returns:
+            Set of symbols currently in queue
+        """
+        try:
+            # Get pending tasks from AI_ANALYSIS queue
+            pending_tasks = await self.task_service.get_pending_tasks(
+                queue_name=QueueName.AI_ANALYSIS,
+                limit=1000  # Get all pending tasks
+            )
+
+            symbols_in_queue = set()
+            for task in pending_tasks:
+                try:
+                    # Extract symbols from task payload
+                    payload = task.payload
+                    if isinstance(payload, str):
+                        payload = json.loads(payload)
+
+                    symbols = payload.get("symbols", [])
+                    if symbols:
+                        symbols_in_queue.add(symbols[0])  # Only one symbol per task
+                except Exception as e:
+                    logger.debug(f"Failed to extract symbols from task {task.task_id}: {e}")
+                    continue
+
+            return symbols_in_queue
+
+        except Exception as e:
+            logger.warning(f"Failed to get symbols in queue, assuming empty: {e}")
+            return set()  # Assume empty to allow monitoring to continue
 
     async def _queue_analysis_tasks(self, stocks: List[Dict[str, Any]]) -> None:
         """Queue analysis tasks for selected stocks.

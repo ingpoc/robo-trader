@@ -13,7 +13,7 @@ import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeatur
 import { AITransparencyFeature } from '@/features/ai-transparency/AITransparencyFeature'
 import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeature'
 import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
-import { PaperTrading } from '@/pages/PaperTrading'
+import { PaperTradingFeature } from '@/features/paper-trading/PaperTradingFeature'
 import { Button } from '@/components/ui/Button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -26,6 +26,58 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// Wrapper for PaperTradingFeature to provide necessary props
+function PaperTradingFeatureWrapper() {
+  const [accountOverview] = useState(null)
+  const [openPositions] = useState([])
+  const [closedTrades] = useState([])
+  const [performanceMetrics] = useState(null)
+  const [dailyReflection] = useState(null)
+  const [strategyInsights] = useState([])
+
+  const handleExecuteBuy = async (request: any) => {
+    console.log('Execute buy:', request)
+    // TODO: Implement MCP tool call
+  }
+
+  const handleExecuteSell = async (request: any) => {
+    console.log('Execute sell:', request)
+    // TODO: Implement MCP tool call
+  }
+
+  const handleClosePosition = async (request: any) => {
+    console.log('Close position:', request)
+    // TODO: Implement MCP tool call
+  }
+
+  const handleModifyPosition = async (tradeId: string, stopLoss?: number, target?: number) => {
+    console.log('Modify position:', { tradeId, stopLoss, target })
+    // TODO: Implement MCP tool call
+  }
+
+  const handleRefresh = async () => {
+    console.log('Refresh paper trading data')
+    // TODO: Implement data refresh
+  }
+
+  return (
+    <PaperTradingFeature
+      accountOverview={accountOverview}
+      openPositions={openPositions}
+      closedTrades={closedTrades}
+      performanceMetrics={performanceMetrics}
+      dailyReflection={dailyReflection}
+      strategyInsights={strategyInsights}
+      onExecuteBuy={handleExecuteBuy}
+      onExecuteSell={handleExecuteSell}
+      onClosePosition={handleClosePosition}
+      onModifyPosition={handleModifyPosition}
+      onRefresh={handleRefresh}
+      isLoading={false}
+    />
+  )
+}
 
 function AppContent() {
   // Initialize WebSocket connection globally for the entire app
@@ -196,7 +248,7 @@ function AppContent() {
               <Route path="/" element={<DashboardErrorBoundary><DashboardFeature /></DashboardErrorBoundary>} />
               <Route path="/news-earnings" element={<NewsEarningsFeature />} />
               <Route path="/configuration" element={<ConfigurationFeature />} />
-              <Route path="/paper-trading" element={<PaperTrading />} />
+              <Route path="/paper-trading" element={<PaperTradingFeatureWrapper />} />
               <Route path="/ai-transparency" element={<AITransparencyFeature />} />
               <Route path="/system-health" element={<SystemHealthFeature />} />
             </Routes>

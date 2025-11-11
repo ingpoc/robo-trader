@@ -5,14 +5,15 @@
 
 import React, { useState } from 'react'
 import { Card } from '@/components/ui/Card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TrendingUp, BarChart3, Lightbulb } from 'lucide-react'
 import { AccountStatusCard } from './components/AccountStatusCard'
 import { PerformanceMetrics } from './components/PerformanceMetrics'
 import { UnrealizedPnLCard } from './components/UnrealizedPnLCard'
 import { PositionsTable } from './components/PositionsTable'
 import { TradeHistoryTable } from './components/TradeHistoryTable'
-import { TradeExecutionForm } from './components/TradeExecutionForm'
+import { MCPTradeExecutor } from './components/MCPTradeExecutor'
+import { RealTimePositionsTable } from './components/RealTimePositionsTable'
 import { AILearningPanel } from './components/AILearningPanel'
 import { ClosePositionDialog } from './components/ClosePositionDialog'
 import { PositionModifierDialog } from './components/PositionModifierDialog'
@@ -194,13 +195,17 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
 
       {/* Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
             <span className="hidden sm:inline">Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="positions" className="flex items-center gap-2">
+          <TabsTrigger value="real-time" className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4" />
+            <span className="hidden sm:inline">Real-Time</span>
+          </TabsTrigger>
+          <TabsTrigger value="positions" className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
             <span className="hidden sm:inline">Positions</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
@@ -229,20 +234,21 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <PositionsTable
-              positions={openPositions}
-              onClosePosition={handleOpenCloseDialog}
-              onModifyLevels={handleOpenModifyDialog}
-              isLoading={isLoading}
-            />
-            <TradeExecutionForm
-              accountOverview={accountOverview}
-              positions={openPositions}
-              onSubmit={handleTradeSubmit}
-              isLoading={isExecuting}
-            />
-          </div>
+          <MCPTradeExecutor
+            accountOverview={accountOverview}
+            onExecuteTrade={executeTrade}
+            isLoading={isExecuting}
+          />
+        </TabsContent>
+
+        {/* Real-Time Tab */}
+        <TabsContent value="real-time" className="space-y-4">
+          <RealTimePositionsTable
+            positions={openPositions}
+            onClosePosition={handleOpenCloseDialog}
+            onModifyLevels={handleOpenModifyDialog}
+            isLoading={isLoading}
+          />
         </TabsContent>
 
         {/* Positions Tab */}

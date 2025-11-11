@@ -91,3 +91,45 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
         return oauth_service
 
     container._register_singleton("zerodha_oauth_service", create_zerodha_oauth_service)
+
+    # Real-Time Trading State
+    async def create_real_time_trading_state():
+        from src.core.database_state.real_time_trading_state import RealTimeTradingState
+        db_path = container.config.state_dir / "robo_trader.db"
+        state = RealTimeTradingState(str(db_path))
+        await state.initialize()
+        logger.info("RealTimeTradingState initialized with enhanced schema")
+        return state
+
+    container._register_singleton("real_time_trading_state", create_real_time_trading_state)
+
+    # Token Storage Service
+    async def create_token_storage_service():
+        from src.services.token_storage_service import TokenStorageService
+        encryption_key = container.config.encryption_key
+        token_storage = TokenStorageService(encryption_key)
+        logger.info("TokenStorageService initialized with encryption")
+        return token_storage
+
+    container._register_singleton("token_storage_service", create_token_storage_service)
+
+    # Kite Connect Service
+    async def create_kite_connect_service():
+        from src.services.kite_connect_service import KiteConnectService
+        real_time_state = await container.get("real_time_trading_state")
+        kite_config = container.config.kite_connect or {}
+        kite_service = KiteConnectService(kite_config, real_time_state)
+        logger.info("KiteConnectService initialized with real-time capabilities")
+        return kite_service
+
+    container._register_singleton("kite_connect_service", create_kite_connect_service)
+
+    # WebSocket Trading Manager
+    async def create_websocket_trading_manager():
+        from src.web.websocket_trading_manager import WebSocketTradingManager, get_websocket_trading_manager
+        real_time_state = await container.get("real_time_trading_state")
+        manager = await get_websocket_trading_manager(real_time_state)
+        logger.info("WebSocketTradingManager initialized for real-time broadcasting")
+        return manager
+
+    container._register_singleton("websocket_trading_manager", create_websocket_trading_manager)
