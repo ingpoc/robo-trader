@@ -209,3 +209,93 @@ class AnalysisStateManager:
             ))
             await self.db.connection.commit()
             return cursor.lastrowid
+
+    async def get_last_analysis_timestamp(self, symbol: str) -> Optional[str]:
+        """Get timestamp of last comprehensive analysis for stock.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            ISO format timestamp of last analysis, or None if never analyzed
+        """
+        async with self._lock:
+            async with self.db.connection.execute("""
+                SELECT MAX(created_at) FROM recommendations
+                WHERE symbol = ? AND analysis_type = 'comprehensive'
+            """, (symbol,)) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row and row[0] else None
+
+    async def get_last_recommendation_timestamp(self, symbol: str) -> Optional[str]:
+        """Get timestamp of last recommendation for stock.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            ISO format timestamp of last recommendation, or None if no recommendations
+        """
+        async with self._lock:
+            async with self.db.connection.execute("""
+                SELECT MAX(created_at) FROM recommendations
+                WHERE symbol = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (symbol,)) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row and row[0] else None
+
+    async def get_stocks_needing_analysis(
+        self,
+        symbols: List[str],
+        hours: int = 24
+    ) -> List[str]:
+        """Get stocks needing analysis (unanalyzed or older than N hours).
+
+        Args:
+            symbols: List of portfolio symbols
+            hours: Minimum hours since last analysis (default 24)
+
+        Returns:
+            List of symbols needing analysis, prioritized by:
+            1. Never analyzed (NULL timestamp)
+            2. Oldest analysis (oldest timestamp first)
+            3. Skipped if analyzed within hours
+        """
+        async with self._lock:
+            if not symbols:
+                return []
+
+            # Calculate cutoff time
+            from datetime import timedelta
+            cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+            # Parameterized query with placeholders
+            placeholders = ",".join("?" * len(symbols))
+            query = f"""
+                SELECT DISTINCT r.symbol
+                FROM (
+                    SELECT symbol, MAX(created_at) as last_analysis
+                    FROM recommendations
+                    WHERE symbol IN ({placeholders}) AND analysis_type = 'comprehensive'
+                    GROUP BY symbol
+                ) r
+                RIGHT JOIN (
+                    SELECT ? as symbol
+                    UNION ALL
+                    {' UNION ALL '.join([f"SELECT ?" for _ in range(len(symbols)-1)])}
+                ) all_symbols ON r.symbol = all_symbols.symbol
+                WHERE r.symbol IS NULL OR r.last_analysis < ?
+                ORDER BY r.last_analysis ASC
+            """
+
+            # Build parameters: symbols for IN clause + all symbols again + cutoff time
+            params = list(symbols) + symbols + [cutoff_time]
+
+            stocks = []
+            async with self.db.connection.execute(query, params) as cursor:
+                async for row in cursor:
+                    stocks.append(row[0])
+
+            return stocks

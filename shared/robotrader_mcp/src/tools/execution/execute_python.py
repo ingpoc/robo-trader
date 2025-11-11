@@ -24,6 +24,51 @@ from sandbox import SandboxManager, SandboxFactory, ExecutionResult
 _executor = ThreadPoolExecutor(max_workers=4)
 
 
+def _validate_database_safety(code: str) -> tuple:
+    """
+    Validate that database code is read-only (no write operations).
+
+    Returns:
+        (is_safe: bool, error_message: str)
+    """
+    # Pattern list for potentially dangerous operations
+    dangerous_patterns = [
+        ".execute(\"INSERT",
+        ".execute('INSERT",
+        ".execute(\"UPDATE",
+        ".execute('UPDATE",
+        ".execute(\"DELETE",
+        ".execute('DELETE",
+        ".execute(\"DROP",
+        ".execute('DROP",
+        ".execute(\"TRUNCATE",
+        ".execute('TRUNCATE",
+        ".executescript(",
+        ".commit()",
+        ".executemany(",
+    ]
+
+    code_lower = code.lower()
+
+    # Check for dangerous patterns
+    for pattern in dangerous_patterns:
+        if pattern.lower() in code_lower:
+            return False, f"Potentially dangerous operation detected: {pattern}. Database access is read-only."
+
+    # Additional check: ensure it's a query operation
+    safe_patterns = [
+        "select",
+        "pragma",
+        "with",
+    ]
+
+    if not any(pattern in code_lower for pattern in safe_patterns):
+        # No obvious read operations - might be okay but warn
+        pass
+
+    return True, ""
+
+
 def _execute_python_sync(
     code: str,
     context: Optional[Dict[str, Any]] = None,
@@ -128,6 +173,17 @@ def _execute_python_sync(
             "result": None,
             "execution_time_ms": 0,
         }
+
+    # Validate database safety (if sqlite3 imported)
+    if "sqlite3" in code or "import sqlite" in code:
+        is_db_safe, db_error_msg = _validate_database_safety(code)
+        if not is_db_safe:
+            return {
+                "success": False,
+                "error": f"Database safety validation failed: {db_error_msg}",
+                "result": None,
+                "execution_time_ms": 0,
+            }
 
     # Create appropriate sandbox
     try:

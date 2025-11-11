@@ -76,33 +76,45 @@ class EventHandlers:
 
         Args:
             event: News fetched event
+
+        NOTE: AI analysis is now handled by AnalysisScheduler (periodic, not event-driven)
+              Event handlers only update stock state, do not create analysis tasks
         """
         symbol = event.data.get('symbol')
         if symbol:
-            logger.info(f"News fetched for {symbol}, triggering AI analysis")
-            await self._trigger_ai_analysis(symbol, "news")
+            logger.info(f"News fetched for {symbol} (analysis will be scheduled periodically)")
+            # Just update state - comprehensive analysis will be scheduled by AnalysisScheduler
+            await self.stock_state_store.update_news_check(symbol)
 
     async def handle_earnings_fetched(self, event: Event) -> None:
         """Handle earnings fetch completion.
 
         Args:
             event: Earnings fetched event
+
+        NOTE: AI analysis is now handled by AnalysisScheduler (periodic, not event-driven)
+              Event handlers only update stock state, do not create analysis tasks
         """
         symbol = event.data.get('symbol')
         if symbol:
-            logger.info(f"Earnings fetched for {symbol}, triggering AI analysis")
-            await self._trigger_ai_analysis(symbol, "earnings")
+            logger.info(f"Earnings fetched for {symbol} (analysis will be scheduled periodically)")
+            # Just update state - comprehensive analysis will be scheduled by AnalysisScheduler
+            await self.stock_state_store.update_earnings_check(symbol)
 
     async def handle_fundamentals_updated(self, event: Event) -> None:
         """Handle fundamentals update completion.
 
         Args:
             event: Fundamentals updated event
+
+        NOTE: AI analysis is now handled by AnalysisScheduler (periodic, not event-driven)
+              Event handlers only update stock state, do not create analysis tasks
         """
         symbol = event.data.get('symbol')
         if symbol:
-            logger.info(f"Fundamentals updated for {symbol}, triggering AI analysis")
-            await self._trigger_ai_analysis(symbol, "fundamentals")
+            logger.info(f"Fundamentals updated for {symbol} (analysis will be scheduled periodically)")
+            # Just update state - comprehensive analysis will be scheduled by AnalysisScheduler
+            await self.stock_state_store.update_fundamentals_check(symbol)
 
     async def handle_market_news(self, event: Event) -> None:
         """Handle significant market news.
@@ -192,24 +204,3 @@ class EventHandlers:
             priority=9
         )
 
-    async def _trigger_ai_analysis(self, symbol: str, trigger_type: str) -> None:
-        """Trigger AI analysis for a symbol.
-
-        Args:
-            symbol: Stock symbol
-            trigger_type: Type of trigger (news, earnings, fundamentals)
-        """
-        task_type_map = {
-            "news": TaskType.CLAUDE_NEWS_ANALYSIS,
-            "earnings": TaskType.CLAUDE_EARNINGS_REVIEW,
-            "fundamentals": TaskType.CLAUDE_FUNDAMENTAL_ANALYSIS
-        }
-
-        task_type = task_type_map.get(trigger_type, TaskType.CLAUDE_NEWS_ANALYSIS)
-
-        await self.task_service.create_task(
-            queue_name=QueueName.AI_ANALYSIS,
-            task_type=task_type,
-            payload={"symbol": symbol, "trigger": trigger_type, "scheduled": True},
-            priority=8
-        )

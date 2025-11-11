@@ -113,6 +113,7 @@ class TaskType(str, Enum):
     CLAUDE_NEWS_ANALYSIS = "claude_news_analysis"
     CLAUDE_EARNINGS_REVIEW = "claude_earnings_review"
     CLAUDE_FUNDAMENTAL_ANALYSIS = "claude_fundamental_analysis"
+    COMPREHENSIVE_STOCK_ANALYSIS = "comprehensive_stock_analysis"
 
     # Portfolio analysis queue
     PORTFOLIO_INTELLIGENCE_ANALYSIS = "portfolio_intelligence_analysis"

@@ -18,6 +18,7 @@ class StockSchedulerState:
     last_earnings_check: Optional[date] = None
     last_fundamentals_check: Optional[date] = None
     last_portfolio_update: Optional[datetime] = None
+    last_analysis_check: Optional[datetime] = None  # For comprehensive stock analysis
     needs_fundamentals_recheck: bool = False
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -29,6 +30,7 @@ class StockSchedulerState:
             "last_earnings_check": self.last_earnings_check.isoformat() if self.last_earnings_check else None,
             "last_fundamentals_check": self.last_fundamentals_check.isoformat() if self.last_fundamentals_check else None,
             "last_portfolio_update": self.last_portfolio_update.isoformat() if self.last_portfolio_update else None,
+            "last_analysis_check": self.last_analysis_check.isoformat() if self.last_analysis_check else None,
             "needs_fundamentals_recheck": self.needs_fundamentals_recheck,
             "updated_at": self.updated_at,
         }
@@ -42,6 +44,7 @@ class StockSchedulerState:
             last_earnings_check=date.fromisoformat(data["last_earnings_check"]) if data.get("last_earnings_check") else None,
             last_fundamentals_check=date.fromisoformat(data["last_fundamentals_check"]) if data.get("last_fundamentals_check") else None,
             last_portfolio_update=datetime.fromisoformat(data["last_portfolio_update"]) if data.get("last_portfolio_update") else None,
+            last_analysis_check=datetime.fromisoformat(data["last_analysis_check"]) if data.get("last_analysis_check") else None,
             needs_fundamentals_recheck=data.get("needs_fundamentals_recheck", False),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
         )
@@ -130,6 +133,19 @@ class StockStateStore:
         state.updated_at = datetime.now().isoformat()
         await self._save_state(symbol)
         logger.info(f"Flagged fundamentals recheck for {symbol} due to material news")
+
+    async def update_analysis_check(self, symbol: str, check_time: Optional[datetime] = None) -> None:
+        """Update last comprehensive analysis check time for a stock.
+
+        Args:
+            symbol: Stock symbol
+            check_time: Analysis check time (defaults to current UTC time)
+        """
+        state = await self.get_state(symbol)
+        state.last_analysis_check = check_time or datetime.now()
+        state.updated_at = datetime.now().isoformat()
+        await self._save_state(symbol)
+        logger.debug(f"Updated analysis check for {symbol}: {state.last_analysis_check}")
 
     async def needs_news_fetch(self, symbol: str) -> bool:
         """Check if news needs fetching for this stock today."""

@@ -584,6 +584,28 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         task_service.register_handler(TaskType.EARNINGS_SCHEDULER, handle_earnings_scheduler)
         logger.info("Registered EARNINGS_SCHEDULER task handler")
 
+        # Register COMPREHENSIVE_STOCK_ANALYSIS handler (Phase 3: Smart periodic analysis)
+        async def handle_comprehensive_analysis(task):
+            """Handle comprehensive stock analysis tasks.
+
+            Analyzes news, earnings, and fundamentals for a stock in a single
+            Claude analysis session. Replaces 3-4 separate tasks.
+            """
+            try:
+                from ..services.portfolio_intelligence.comprehensive_analyzer import handle_comprehensive_analysis as analyzer_handler
+
+                # Call the comprehensive analyzer handler
+                result = await analyzer_handler(task, container)
+
+                logger.info(f"Comprehensive analysis completed: {result}")
+                return result
+            except Exception as e:
+                logger.error(f"Error in comprehensive analysis handler: {e}")
+                raise
+
+        task_service.register_handler(TaskType.COMPREHENSIVE_STOCK_ANALYSIS, handle_comprehensive_analysis)
+        logger.info("Registered COMPREHENSIVE_STOCK_ANALYSIS task handler")
+
         return task_service
 
     # Execution Tracker Service
@@ -611,7 +633,8 @@ async def register_core_services(container: 'DependencyContainer') -> None:
             state_manager.db._connection_pool,
             container.config,
             execution_tracker,
-            sequential_queue_manager
+            sequential_queue_manager,
+            container  # Pass container for AnalysisScheduler initialization
         )
 
     container._register_singleton("background_scheduler", create_background_scheduler)
