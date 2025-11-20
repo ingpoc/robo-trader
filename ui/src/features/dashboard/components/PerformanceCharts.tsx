@@ -31,17 +31,25 @@ export const PerformanceCharts: React.FC<PerformanceChartsProps> = ({ analytics,
 
   if (detailed) {
     return (
-      <div className="grid grid-cols-1 gap-4">
-        <ChartCard title="Performance Trend" type="line" data={chartData} isLoading={false} detailed />
-        <ChartCard title="Asset Allocation" type="pie" data={allocationData} showLegend isLoading={false} detailed />
+      <div className="grid grid-cols-1 gap-6 animate-slide-in-up-luxury">
+        <div style={{ animationDelay: '100ms' }}>
+          <ChartCard title="Performance Trend" type="line" data={chartData} isLoading={false} detailed />
+        </div>
+        <div style={{ animationDelay: '200ms' }}>
+          <ChartCard title="Asset Allocation" type="pie" data={allocationData} showLegend isLoading={false} detailed />
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <ChartCard title="Performance Trend" type="line" data={chartData} isLoading={false} />
-      <ChartCard title="Asset Allocation" type="pie" data={allocationData} showLegend isLoading={false} />
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div style={{ animationDelay: '100ms' }} className="animate-slide-in-up-luxury">
+        <ChartCard title="Performance Trend" type="line" data={chartData} isLoading={false} />
+      </div>
+      <div style={{ animationDelay: '150ms' }} className="animate-slide-in-up-luxury">
+        <ChartCard title="Asset Allocation" type="pie" data={allocationData} showLegend isLoading={false} />
+      </div>
     </div>
   )
 }
