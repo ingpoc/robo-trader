@@ -282,23 +282,22 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
         try:
             # Get pending tasks from AI_ANALYSIS queue
             pending_tasks = await self.task_service.get_pending_tasks(
-                queue_name=QueueName.AI_ANALYSIS,
-                limit=1000  # Get all pending tasks
+                queue_name=QueueName.AI_ANALYSIS
             )
 
             symbols_in_queue = set()
             for task in pending_tasks:
                 try:
-                    # Extract symbols from task payload
+                    # Extract symbol from task payload
                     payload = task.payload
                     if isinstance(payload, str):
                         payload = json.loads(payload)
 
-                    symbols = payload.get("symbols", [])
-                    if symbols:
-                        symbols_in_queue.add(symbols[0])  # Only one symbol per task
+                    symbol = payload.get("symbol")
+                    if symbol:
+                        symbols_in_queue.add(symbol)
                 except Exception as e:
-                    logger.debug(f"Failed to extract symbols from task {task.task_id}: {e}")
+                    logger.debug(f"Failed to extract symbol from task {task.task_id}: {e}")
                     continue
 
             return symbols_in_queue
@@ -325,7 +324,7 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
                     task_type="RECOMMENDATION_GENERATION",
                     payload={
                         "agent_name": "scan",
-                        "symbols": [symbol]
+                        "symbol": symbol
                     },
                     priority=priority
                 )

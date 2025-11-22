@@ -6,6 +6,7 @@ Extracted from BroadcastCoordinator for single responsibility.
 """
 
 import time
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from loguru import logger
@@ -87,7 +88,7 @@ class BroadcastHealthCoordinator(BaseCoordinator):
         """Record successful broadcast metrics."""
         self._health_metrics["total_broadcasts"] += 1
         self._health_metrics["successful_broadcasts"] += 1
-        self._health_metrics["last_broadcast_time"] = broadcast_time
+        self._health_metrics["last_broadcast_time"] = datetime.now(timezone.utc)
 
         # Update average broadcast time
         self._broadcast_times.append(broadcast_time)
