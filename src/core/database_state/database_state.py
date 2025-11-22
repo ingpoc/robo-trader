@@ -222,22 +222,23 @@ class DatabaseStateManager:
         """Save analysis performance."""
         return await self.analysis.save_analysis_performance(performance)
 
-    # Backward compatibility methods for methods not yet migrated
-    # These would need to be implemented based on original file
-    async def update_screening_results(self, results: Optional[Dict[str, Any]]) -> None:
-        """Update screening results - TODO: implement."""
-        logger.warning("update_screening_results not yet implemented in refactored version")
+    # Screening and Planning operations - delegate to AnalysisStateManager
+    async def update_screening_results(self, results: Optional[Dict[str, Any]]) -> bool:
+        """Update screening results in database."""
+        return await self.analysis.update_screening_results(results)
 
-    async def get_screening_results(self) -> Optional[Dict[str, Any]]:
-        """Get screening results - TODO: implement."""
-        logger.warning("get_screening_results not yet implemented in refactored version")
-        return None
+    async def get_screening_results(self, screening_type: str = "default") -> Optional[Dict[str, Any]]:
+        """Get screening results from database."""
+        return await self.analysis.get_screening_results(screening_type)
 
-    async def save_daily_plan(self, plan: Dict) -> None:
-        """Save daily plan - TODO: implement."""
-        logger.warning("save_daily_plan not yet implemented in refactored version")
+    async def save_daily_plan(self, plan: Dict[str, Any]) -> bool:
+        """Save daily trading plan to database."""
+        return await self.analysis.save_daily_plan(plan)
 
-    async def load_weekly_plan(self) -> Optional[Dict]:
-        """Load weekly plan - TODO: implement."""
-        logger.warning("load_weekly_plan not yet implemented in refactored version")
-        return None
+    async def load_weekly_plan(self) -> Optional[Dict[str, Any]]:
+        """Load current week's trading plan from database."""
+        return await self.analysis.load_weekly_plan()
+
+    async def save_weekly_plan(self, plan: Dict[str, Any]) -> bool:
+        """Save weekly trading plan to database."""
+        return await self.analysis.save_weekly_plan(plan)

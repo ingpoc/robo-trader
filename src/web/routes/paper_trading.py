@@ -113,14 +113,13 @@ async def delete_paper_trading_account(
                 "error": f"Cannot delete account with {len(open_trades)} open positions. Close all positions first."
             }
 
-        # Delete account from database
-        await store.db_connection.execute(
-            "DELETE FROM paper_trading_accounts WHERE account_id = ?",
-            (account_id,)
-        )
-        await store.db_connection.commit()
-
-        logger.info(f"Deleted paper trading account: {account_id}")
+        # Delete account using store method (with proper locking)
+        deleted = await store.delete_account(account_id)
+        if not deleted:
+            return {
+                "success": False,
+                "error": f"Failed to delete account {account_id}"
+            }
 
         return {
             "success": True,

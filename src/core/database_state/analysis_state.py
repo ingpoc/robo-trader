@@ -299,3 +299,177 @@ class AnalysisStateManager:
                     stocks.append(row[0])
 
             return stocks
+
+    async def initialize_screening_tables(self) -> None:
+        """Initialize screening and planning tables if they don't exist."""
+        async with self._lock:
+            await self.db.connection.executescript("""
+                -- Screening Results Table
+                CREATE TABLE IF NOT EXISTS screening_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    screening_type TEXT NOT NULL,
+                    results_data TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                -- Trading Plans Table
+                CREATE TABLE IF NOT EXISTS trading_plans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    plan_type TEXT NOT NULL,
+                    plan_date TEXT NOT NULL,
+                    plan_data TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                -- Indexes
+                CREATE INDEX IF NOT EXISTS idx_screening_results_type
+                    ON screening_results(screening_type);
+                CREATE INDEX IF NOT EXISTS idx_trading_plans_date
+                    ON trading_plans(plan_date);
+            """)
+            await self.db.connection.commit()
+
+    async def update_screening_results(self, results: Optional[Dict[str, Any]]) -> bool:
+        """
+        Update screening results in database.
+
+        Args:
+            results: Screening results dictionary
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if results is None:
+            return False
+
+        async with self._lock:
+            try:
+                now = datetime.now(timezone.utc).isoformat()
+                screening_type = results.get("type", "default")
+
+                # Upsert screening results
+                await self.db.connection.execute("""
+                    INSERT INTO screening_results (screening_type, results_data, created_at, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(screening_type) DO UPDATE SET
+                        results_data = excluded.results_data,
+                        updated_at = excluded.updated_at
+                """, (screening_type, json.dumps(results), now, now))
+                await self.db.connection.commit()
+                logger.debug(f"Updated screening results for type: {screening_type}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to update screening results: {e}")
+                return False
+
+    async def get_screening_results(self, screening_type: str = "default") -> Optional[Dict[str, Any]]:
+        """
+        Get screening results from database.
+
+        Args:
+            screening_type: Type of screening to retrieve
+
+        Returns:
+            Screening results dictionary or None
+        """
+        async with self._lock:
+            try:
+                async with self.db.connection.execute("""
+                    SELECT results_data FROM screening_results
+                    WHERE screening_type = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (screening_type,)) as cursor:
+                    row = await cursor.fetchone()
+                    if row and row[0]:
+                        return json.loads(row[0])
+                return None
+            except Exception as e:
+                logger.error(f"Failed to get screening results: {e}")
+                return None
+
+    async def save_daily_plan(self, plan: Dict[str, Any]) -> bool:
+        """
+        Save daily trading plan to database.
+
+        Args:
+            plan: Daily plan dictionary
+
+        Returns:
+            True if successful, False otherwise
+        """
+        async with self._lock:
+            try:
+                now = datetime.now(timezone.utc).isoformat()
+                plan_date = plan.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+
+                await self.db.connection.execute("""
+                    INSERT INTO trading_plans (plan_type, plan_date, plan_data, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, ("daily", plan_date, json.dumps(plan), now, now))
+                await self.db.connection.commit()
+                logger.debug(f"Saved daily plan for date: {plan_date}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to save daily plan: {e}")
+                return False
+
+    async def load_weekly_plan(self) -> Optional[Dict[str, Any]]:
+        """
+        Load current week's trading plan from database.
+
+        Returns:
+            Weekly plan dictionary or None
+        """
+        async with self._lock:
+            try:
+                # Get start of current week (Monday)
+                from datetime import timedelta
+                today = datetime.now(timezone.utc).date()
+                week_start = today - timedelta(days=today.weekday())
+
+                async with self.db.connection.execute("""
+                    SELECT plan_data FROM trading_plans
+                    WHERE plan_type = 'weekly' AND plan_date >= ?
+                    ORDER BY plan_date DESC
+                    LIMIT 1
+                """, (week_start.isoformat(),)) as cursor:
+                    row = await cursor.fetchone()
+                    if row and row[0]:
+                        return json.loads(row[0])
+                return None
+            except Exception as e:
+                logger.error(f"Failed to load weekly plan: {e}")
+                return None
+
+    async def save_weekly_plan(self, plan: Dict[str, Any]) -> bool:
+        """
+        Save weekly trading plan to database.
+
+        Args:
+            plan: Weekly plan dictionary
+
+        Returns:
+            True if successful, False otherwise
+        """
+        async with self._lock:
+            try:
+                now = datetime.now(timezone.utc).isoformat()
+                # Get start of current week (Monday)
+                from datetime import timedelta
+                today = datetime.now(timezone.utc).date()
+                week_start = today - timedelta(days=today.weekday())
+                plan_date = plan.get("date", week_start.isoformat())
+
+                await self.db.connection.execute("""
+                    INSERT INTO trading_plans (plan_type, plan_date, plan_data, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, ("weekly", plan_date, json.dumps(plan), now, now))
+                await self.db.connection.commit()
+                logger.debug(f"Saved weekly plan for week starting: {plan_date}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to save weekly plan: {e}")
+                return False
