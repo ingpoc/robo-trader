@@ -1,7 +1,7 @@
 # Background Scheduler Executors Directory Guidelines
 
 > **Scope**: Applies to `src/core/background_scheduler/executors/` directory. Read `src/core/background_scheduler/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 

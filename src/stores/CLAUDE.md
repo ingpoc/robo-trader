@@ -1,7 +1,7 @@
 # Stores Directory Guidelines
 
 > **Scope**: Applies to `src/stores/` directory. Read `src/CLAUDE.md` and `src/core/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 

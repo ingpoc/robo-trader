@@ -1,7 +1,7 @@
 # Agent Coordinator Guidelines
 
 > **Scope**: Applies to `src/core/coordinators/agent/` directory. Read `src/core/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference
 
 ## Overview
 

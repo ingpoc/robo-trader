@@ -2,7 +2,7 @@
 
 > **Scope**: Applies to `src/models/` directory. Read `src/CLAUDE.md` for context.
 >
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference + Explanation
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference + Explanation
 >
 > **Read in this order**:
 > 1. `src/CLAUDE.md` - Backend architecture overview
@@ -259,5 +259,5 @@ Models typically depend on:
 - ⚠️ Update this file → Run your changes through prompt optimizer tool
 - ⚠️ Share improvements → Commit alongside code changes so team benefits
 
-**Last Review**: 2025-11-03
+**Last Review**: 2025-11-22
 
