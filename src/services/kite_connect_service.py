@@ -81,11 +81,33 @@ class MockKiteConnect:
         self.request_token = None
         self.session_expiry = None
 
-        # Mock data
+        # Mock data - expanded list of common NSE stocks
         self._mock_quotes = {
             "RELIANCE": {"last_price": 2500.0, "change": 50.0, "volume": 1000000},
             "TCS": {"last_price": 3500.0, "change": -30.0, "volume": 500000},
             "INFY": {"last_price": 1500.0, "change": 20.0, "volume": 800000},
+            "HDFCBANK": {"last_price": 1650.0, "change": 15.0, "volume": 750000},
+            "ICICIBANK": {"last_price": 1100.0, "change": -8.0, "volume": 600000},
+            "KOTAKBANK": {"last_price": 1800.0, "change": 25.0, "volume": 400000},
+            "SBIN": {"last_price": 620.0, "change": 5.0, "volume": 1200000},
+            "AXISBANK": {"last_price": 1050.0, "change": -12.0, "volume": 550000},
+            "BHARTIARTL": {"last_price": 1420.0, "change": 18.0, "volume": 450000},
+            "ITC": {"last_price": 465.0, "change": 3.0, "volume": 900000},
+            "LT": {"last_price": 3250.0, "change": 40.0, "volume": 350000},
+            "HINDUNILVR": {"last_price": 2650.0, "change": -20.0, "volume": 300000},
+            "BAJFINANCE": {"last_price": 7200.0, "change": 80.0, "volume": 250000},
+            "MARUTI": {"last_price": 10500.0, "change": 120.0, "volume": 150000},
+            "ASIANPAINT": {"last_price": 2850.0, "change": -15.0, "volume": 200000},
+            "TITAN": {"last_price": 3150.0, "change": 35.0, "volume": 280000},
+            "WIPRO": {"last_price": 480.0, "change": 5.0, "volume": 650000},
+            "HCLTECH": {"last_price": 1380.0, "change": 12.0, "volume": 420000},
+            "SUNPHARMA": {"last_price": 1150.0, "change": -8.0, "volume": 380000},
+            "TATAMOTORS": {"last_price": 720.0, "change": 15.0, "volume": 850000},
+            "TATASTEEL": {"last_price": 145.0, "change": 2.0, "volume": 1100000},
+            "POWERGRID": {"last_price": 285.0, "change": 3.0, "volume": 500000},
+            "NTPC": {"last_price": 350.0, "change": 4.0, "volume": 600000},
+            "ONGC": {"last_price": 265.0, "change": -2.0, "volume": 700000},
+            "COALINDIA": {"last_price": 420.0, "change": 5.0, "volume": 450000},
         }
 
     def set_access_token(self, access_token: str):
@@ -133,26 +155,41 @@ class MockKiteConnect:
         ]
 
     def quote(self, instruments: List[str]) -> Dict[str, QuoteData]:
-        """Get quotes (mock)."""
+        """Get quotes (mock) - handles any symbol with deterministic pricing."""
         result = {}
         for instrument in instruments:
             symbol = instrument.split(":")[-1] if ":" in instrument else instrument
+
             if symbol in self._mock_quotes:
                 data = self._mock_quotes[symbol]
-                result[instrument] = QuoteData(
-                    instrument_token=738561,
-                    timestamp=datetime.now().isoformat(),
-                    last_price=data["last_price"],
-                    last_quantity=100,
-                    last_trade_time=datetime.now().isoformat(),
-                    average_price=data["last_price"],
-                    volume=data["volume"],
-                    buy_quantity=5000,
-                    sell_quantity=3000,
-                    ohlc={"open": data["last_price"] - data["change"], "high": data["last_price"] + 10, "low": data["last_price"] - 20, "close": data["last_price"]},
-                    change=data["change"],
-                    change_percent=(data["change"] / (data["last_price"] - data["change"])) * 100
-                )
+            else:
+                # Generate deterministic mock price for unknown symbols
+                # Use hash to create consistent but varied prices
+                hash_val = abs(hash(symbol)) % 10000
+                base_price = 100.0 + (hash_val / 10.0)  # Range: 100 - 1100
+                change = (hash_val % 100 - 50) / 10.0  # Range: -5 to +5
+                volume = 100000 + (hash_val * 100)
+                data = {"last_price": base_price, "change": change, "volume": volume}
+
+            result[instrument] = QuoteData(
+                instrument_token=abs(hash(symbol)) % 1000000,
+                timestamp=datetime.now().isoformat(),
+                last_price=data["last_price"],
+                last_quantity=100,
+                last_trade_time=datetime.now().isoformat(),
+                average_price=data["last_price"],
+                volume=data["volume"],
+                buy_quantity=5000,
+                sell_quantity=3000,
+                ohlc={
+                    "open": data["last_price"] - data["change"],
+                    "high": data["last_price"] + 10,
+                    "low": data["last_price"] - 20,
+                    "close": data["last_price"]
+                },
+                change=data["change"],
+                change_percent=(data["change"] / max(data["last_price"] - data["change"], 1)) * 100
+            )
         return result
 
     def place_order(self, tradingsymbol: str, exchange: str, transaction_type: str,
@@ -725,3 +762,68 @@ class KiteConnectService:
             self._active_session is not None and
             self._is_session_valid(self._active_session)
         )
+
+    async def get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Get current price for a single symbol from Zerodha.
+
+        Args:
+            symbol: Stock symbol (e.g., "RELIANCE", "TCS")
+
+        Returns:
+            Last traded price or None if unavailable
+        """
+        try:
+            # Format as NSE instrument
+            instrument = f"NSE:{symbol}"
+            quotes = await self.get_quotes([symbol])
+
+            if symbol in quotes:
+                return quotes[symbol].last_price
+
+            # Try with full instrument format
+            if instrument in quotes:
+                return quotes[instrument].last_price
+
+            self.logger.warning(f"No price data available for {symbol}")
+            return None
+
+        except TradingError:
+            # Already logged in get_quotes
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to get price for {symbol}: {e}")
+            return None
+
+    async def get_bulk_prices(self, symbols: List[str]) -> Dict[str, float]:
+        """
+        Get prices for multiple symbols efficiently in a single API call.
+
+        Args:
+            symbols: List of stock symbols
+
+        Returns:
+            Dict mapping symbol to last traded price
+        """
+        if not symbols:
+            return {}
+
+        try:
+            quotes = await self.get_quotes(symbols)
+
+            prices = {}
+            for symbol in symbols:
+                # Try both formats
+                if symbol in quotes:
+                    prices[symbol] = quotes[symbol].last_price
+                elif f"NSE:{symbol}" in quotes:
+                    prices[symbol] = quotes[f"NSE:{symbol}"].last_price
+
+            return prices
+
+        except TradingError:
+            # Already logged in get_quotes
+            return {}
+        except Exception as e:
+            self.logger.error(f"Failed to get bulk prices: {e}")
+            return {}

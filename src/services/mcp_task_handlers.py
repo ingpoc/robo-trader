@@ -287,19 +287,19 @@ Please validate:
 Provide a brief validation assessment (APPROVED/REJECTED with reasoning)."""
 
     async def _get_market_price(self, symbol: str) -> Optional[float]:
-        """Get current market price for a symbol."""
+        """Get current market price for a symbol from Zerodha via KiteConnectService."""
         try:
-            # This would integrate with Zerodha API
-            # For now, return a placeholder price
-            # In production, you'd call the Zerodha API client
+            # Get price from KiteConnectService (Zerodha)
+            kite_service = await self.container.get("kite_connect_service")
+            if kite_service:
+                price = await kite_service.get_current_price(symbol)
+                if price:
+                    logger.debug(f"Got live price for {symbol}: {price}")
+                    return price
 
-            # TODO: Integrate with Zerodha API client
-            # market_data_service = await self.container.get("market_data_service")
-            # return await market_data_service.get_current_price(symbol)
-
-            # Placeholder implementation
-            logger.warning(f"Using placeholder price for {symbol} - integrate with Zerodha API")
-            return 1000.0  # Placeholder price
+            # Fallback warning if service unavailable
+            logger.warning(f"KiteConnectService unavailable for {symbol}")
+            return None
 
         except Exception as e:
             logger.error(f"Error getting market price for {symbol}: {e}")

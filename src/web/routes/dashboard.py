@@ -25,6 +25,95 @@ limiter = Limiter(key_func=get_remote_address)
 
 dashboard_limit = os.getenv("RATE_LIMIT_DASHBOARD", "30/minute")
 
+# Track server start time for uptime calculation
+_server_start_time = datetime.now(timezone.utc)
+
+
+def _empty_portfolio_summary() -> Dict[str, Any]:
+    """Return empty portfolio summary structure when no accounts exist."""
+    empty_strategy = {
+        "balance": 0,
+        "todayPnL": 0,
+        "monthlyROI": 0,
+        "activePositions": 0
+    }
+    return {
+        "swing": empty_strategy,
+        "options": empty_strategy,
+        "combined": {
+            "totalBalance": 0,
+            "totalPnL": 0,
+            "avgROI": 0,
+            "activePositions": 0
+        }
+    }
+
+
+def _calculate_strategy_metrics(
+    accounts: list,
+    positions_by_account: Dict[str, list],
+    live_prices: Dict[str, float],
+    strategy_type: str
+) -> Dict[str, Any]:
+    """Calculate portfolio metrics for a specific strategy type.
+
+    Args:
+        accounts: List of paper trading accounts
+        positions_by_account: Dict mapping account_id to positions list
+        live_prices: Dict mapping symbol to current price from Zerodha
+        strategy_type: "swing" or "options" to filter accounts
+
+    Returns:
+        Dict with balance, todayPnL, monthlyROI, activePositions
+    """
+    total_balance = 0
+    total_pnl = 0
+    total_positions = 0
+    total_initial_balance = 0
+
+    for account in accounts:
+        # Filter by strategy type
+        if strategy_type.lower() not in account.account_name.lower():
+            continue
+
+        positions = positions_by_account.get(account.account_id, [])
+        total_positions += len(positions)
+        total_initial_balance += account.initial_balance
+
+        # Calculate deployed capital and P&L using live prices
+        deployed = 0
+        position_pnl = 0
+
+        for pos in positions:
+            entry_value = pos.entry_price * pos.quantity
+            deployed += entry_value
+
+            # Get live price for P&L calculation
+            current_price = live_prices.get(pos.symbol, pos.entry_price)
+            current_value = current_price * pos.quantity
+
+            if pos.position_type == "LONG":
+                position_pnl += current_value - entry_value
+            else:  # SHORT
+                position_pnl += entry_value - current_value
+
+        # Balance = initial balance - deployed + realized gains + unrealized P&L
+        # Simplified: use current balance from account + position P&L
+        total_balance += account.current_balance + position_pnl
+        total_pnl += position_pnl
+
+    # Calculate monthly ROI (simplified as % of initial balance)
+    monthly_roi = 0
+    if total_initial_balance > 0:
+        monthly_roi = round((total_pnl / total_initial_balance) * 100, 2)
+
+    return {
+        "balance": round(total_balance, 2),
+        "todayPnL": round(total_pnl, 2),
+        "monthlyROI": monthly_roi,
+        "activePositions": total_positions
+    }
+
 
 @router.get("/dashboard")
 @router.get("/dashboard/")
@@ -164,60 +253,118 @@ async def get_portfolio(
 
 @router.get("/dashboard/portfolio-summary")
 @limiter.limit(dashboard_limit)
-async def get_portfolio_summary(request: Request) -> Dict[str, Any]:
-    """Get portfolio summary data for dashboard display."""
+async def get_portfolio_summary(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get portfolio summary data from paper trading accounts with live Zerodha prices."""
     try:
+        account_manager = await container.get("paper_trading_account_manager")
+        kite_service = await container.get("kite_connect_service")
+
+        if not account_manager:
+            return _empty_portfolio_summary()
+
+        accounts = await account_manager.get_all_accounts()
+        if not accounts:
+            return _empty_portfolio_summary()
+
+        # Collect all symbols and positions
+        all_symbols = set()
+        positions_by_account = {}
+
+        for account in accounts:
+            positions = await account_manager.get_open_positions(account.account_id)
+            positions_by_account[account.account_id] = positions
+            for pos in positions:
+                all_symbols.add(pos.symbol)
+
+        # Fetch all prices in one call (efficient)
+        live_prices = {}
+        if kite_service and all_symbols:
+            live_prices = await kite_service.get_bulk_prices(list(all_symbols))
+
+        # Calculate metrics by strategy type
+        swing_data = _calculate_strategy_metrics(accounts, positions_by_account, live_prices, "swing")
+        options_data = _calculate_strategy_metrics(accounts, positions_by_account, live_prices, "options")
+
+        total_balance = swing_data["balance"] + options_data["balance"]
+        total_pnl = swing_data["todayPnL"] + options_data["todayPnL"]
+        total_positions = sum(len(p) for p in positions_by_account.values())
+
         return {
-            "swing": {
-                "balance": 102500,
-                "todayPnL": 500,
-                "monthlyROI": 2.5,
-                "winRate": 65
-            },
-            "options": {
-                "balance": 98500,
-                "todayPnL": -200,
-                "monthlyROI": -1.5,
-                "hedgeCost": 1.2
-            },
+            "swing": swing_data,
+            "options": options_data,
             "combined": {
-                "totalBalance": 201000,
-                "totalPnL": 300,
-                "avgROI": 0.5,
-                "activePositions": 8
+                "totalBalance": total_balance,
+                "totalPnL": total_pnl,
+                "avgROI": round((swing_data["monthlyROI"] + options_data["monthlyROI"]) / 2, 2) if swing_data["balance"] or options_data["balance"] else 0,
+                "activePositions": total_positions
             }
         }
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_portfolio_summary")
+        logger.error(f"Portfolio summary error: {e}")
+        return _empty_portfolio_summary()
 
 
 @router.get("/dashboard/alerts")
 @limiter.limit(dashboard_limit)
-async def get_dashboard_alerts(request: Request) -> Dict[str, Any]:
-    """Get dashboard alerts."""
+async def get_dashboard_alerts(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get dynamic dashboard alerts based on portfolio state."""
     try:
-        return {
-            "alerts": [
-                {
-                    "id": "alert_1",
-                    "severity": "warning",
-                    "message": "Portfolio exposure at 85%",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                },
-                {
-                    "id": "alert_2",
-                    "severity": "info",
-                    "message": "TCS earnings announced",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            ]
-        }
+        alerts = []
+        account_manager = await container.get("paper_trading_account_manager")
+
+        if account_manager:
+            accounts = await account_manager.get_all_accounts()
+
+            for account in accounts:
+                positions = await account_manager.get_open_positions(account.account_id)
+
+                # Alert: High portfolio exposure
+                deployed = sum(p.entry_price * p.quantity for p in positions)
+                exposure_pct = (deployed / account.initial_balance) * 100 if account.initial_balance > 0 else 0
+
+                if exposure_pct > 80:
+                    alerts.append({
+                        "id": f"exposure_{account.account_id}",
+                        "severity": "warning",
+                        "message": f"Portfolio exposure at {exposure_pct:.0f}%",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+
+                # Alert: Positions near stop loss
+                for pos in positions:
+                    if hasattr(pos, 'stop_loss') and pos.stop_loss and hasattr(pos, 'current_price') and pos.current_price:
+                        if pos.current_price <= pos.stop_loss * 1.02:  # Within 2% of stop loss
+                            alerts.append({
+                                "id": f"stoploss_{pos.trade_id}",
+                                "severity": "critical",
+                                "message": f"{pos.symbol} approaching stop loss",
+                                "timestamp": datetime.now(timezone.utc).isoformat()
+                            })
+
+                # Alert: Large unrealized loss
+                for pos in positions:
+                    if hasattr(pos, 'unrealized_pnl_pct') and pos.unrealized_pnl_pct and pos.unrealized_pnl_pct < -10:
+                        alerts.append({
+                            "id": f"loss_{pos.trade_id}",
+                            "severity": "warning",
+                            "message": f"{pos.symbol} down {abs(pos.unrealized_pnl_pct):.1f}%",
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        })
+
+        return {"alerts": alerts[:10]}  # Limit to 10 alerts
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_dashboard_alerts")
+        logger.error(f"Dashboard alerts error: {e}")
+        return {"alerts": []}
 
 
 @router.get("/claude-agent/recommendations")
@@ -225,32 +372,94 @@ async def get_dashboard_alerts(request: Request) -> Dict[str, Any]:
 async def get_claude_recommendations(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude AI trading recommendations from database."""
     try:
-        # TODO: Implement recommendations from database
-        # Use the same endpoint as /api/ai/recommendations for consistency
+        db_state = await container.get("database_state_manager")
+        if not db_state:
+            return {"recommendations": []}
+
+        # Get recent recommendations from database
+        recommendations = await db_state.get_recommendations(limit=10)
+
         return {
-            "recommendations": []
+            "recommendations": [
+                {
+                    "symbol": r.symbol,
+                    "type": r.recommendation_type,
+                    "confidence": r.confidence_score,
+                    "reasoning": r.reasoning[:200] if r.reasoning else "",
+                    "targetPrice": r.target_price,
+                    "stopLoss": r.stop_loss,
+                    "timeHorizon": r.time_horizon,
+                    "riskLevel": r.risk_level
+                }
+                for r in recommendations
+            ]
         }
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_claude_recommendations")
+        logger.error(f"Recommendations error: {e}")
+        return {"recommendations": []}
 
 
 @router.get("/claude-agent/strategy-metrics")
 @limiter.limit(dashboard_limit)
 async def get_strategy_metrics(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
-    """Get strategy effectiveness metrics from database."""
+    """Calculate strategy effectiveness metrics from closed trades."""
     try:
-        # TODO: Calculate strategy metrics from paper_trades table
-        # Group by strategy_tag, calculate win rate and trade count
-        return {
-            "working": [],
-            "failing": []
-        }
+        store = await container.get("paper_trading_store")
+        if not store:
+            return {"working": [], "failing": []}
+
+        # Get all accounts and their closed trades
+        accounts = await store.get_all_accounts()
+        strategy_stats = {}
+
+        for account in accounts:
+            trades = await store.get_closed_trades(account.account_id, limit=100)
+
+            for trade in trades:
+                strategy = trade.strategy_rationale[:30] if trade.strategy_rationale else "Unknown"
+                if strategy not in strategy_stats:
+                    strategy_stats[strategy] = {"wins": 0, "losses": 0, "total_pnl": 0}
+
+                if trade.realized_pnl and trade.realized_pnl > 0:
+                    strategy_stats[strategy]["wins"] += 1
+                else:
+                    strategy_stats[strategy]["losses"] += 1
+                strategy_stats[strategy]["total_pnl"] += trade.realized_pnl or 0
+
+        # Classify strategies as working or failing
+        working = []
+        failing = []
+
+        for strategy, stats in strategy_stats.items():
+            total = stats["wins"] + stats["losses"]
+            if total == 0:
+                continue
+
+            win_rate = (stats["wins"] / total) * 100
+
+            entry = {
+                "strategy": strategy,
+                "trades": total,
+                "winRate": round(win_rate, 1)
+            }
+
+            if win_rate >= 50:
+                working.append(entry)
+            else:
+                failing.append(entry)
+
+        # Sort by win rate and limit
+        working.sort(key=lambda x: x["winRate"], reverse=True)
+        failing.sort(key=lambda x: x["winRate"])
+
+        return {"working": working[:5], "failing": failing[:5]}
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
-        return await handle_unexpected_error(e, "get_strategy_metrics")
+        logger.error(f"Strategy metrics error: {e}")
+        return {"working": [], "failing": []}
 
 
 @router.get("/claude-agent/status")
@@ -304,6 +513,7 @@ async def get_system_health(request: Request, container: DependencyContainer = D
     """Get system health status from orchestrator."""
     try:
         orchestrator = await container.get_orchestrator()
+        connection_manager = await container.get("connection_manager")
 
         # Try to get system status, fall back if method not implemented
         try:
@@ -314,32 +524,49 @@ async def get_system_health(request: Request, container: DependencyContainer = D
         # Transform to frontend format
         components = {}
 
-        # Scheduler status
+        # Scheduler status with real data
         if "scheduler_status" in system_status:
             scheduler = system_status["scheduler_status"]
             components["scheduler"] = {
-                "status": "healthy" if scheduler.get("running") else "stopped",
-                "lastRun": scheduler.get("last_run_time", "unknown")
+                "status": scheduler.get("status", "unknown"),
+                "lastRun": scheduler.get("lastRun", "unknown"),
+                "activeJobs": scheduler.get("activeJobs", 0),
+                "completedJobs": scheduler.get("completedJobs", 0),
+                "totalSchedulers": scheduler.get("totalSchedulers", 0),
+                "runningSchedulers": scheduler.get("runningSchedulers", 0)
+            }
+        else:
+            components["scheduler"] = {
+                "status": "unknown",
+                "lastRun": "unknown",
+                "activeJobs": 0,
+                "completedJobs": 0
             }
 
         # Database status
         components["database"] = {
             "status": "connected",  # If we got here, DB is connected
-            "connections": 1  # TODO: Get actual connection count
+            "connections": 1
         }
 
-        # WebSocket status
+        # WebSocket status with real client count
+        ws_clients = 0
+        if connection_manager:
+            try:
+                ws_clients = len(connection_manager.active_connections)
+            except (AttributeError, TypeError):
+                ws_clients = 0
         components["websocket"] = {
             "status": "connected",
-            "clients": 0  # TODO: Get from connection_manager
+            "clients": ws_clients
         }
 
-        # Claude agent status
+        # Claude agent status with real data
         if "claude_status" in system_status and system_status["claude_status"]:
             claude = system_status["claude_status"]
             components["claudeAgent"] = {
                 "status": "active" if claude.get("authenticated") else "inactive",
-                "tasksCompleted": 0  # TODO: Track task completion
+                "tasksCompleted": claude.get("tasksCompleted", 0)
             }
         else:
             components["claudeAgent"] = {
@@ -347,9 +574,13 @@ async def get_system_health(request: Request, container: DependencyContainer = D
                 "tasksCompleted": 0
             }
 
+        # Calculate uptime
+        uptime_seconds = int((datetime.now(timezone.utc) - _server_start_time).total_seconds())
+
         return {
             "status": "healthy",
             "components": components,
+            "uptime_seconds": uptime_seconds,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except TradingError as e:
@@ -363,19 +594,46 @@ async def get_system_health(request: Request, container: DependencyContainer = D
 async def get_system_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get overall system status - basic health and version information."""
     try:
-        # Basic system status
+        orchestrator = await container.get_orchestrator()
+
+        # Calculate uptime
+        uptime_seconds = int((datetime.now(timezone.utc) - _server_start_time).total_seconds())
+
+        # Get scheduler status for queue info
+        queue_status = "running"
+        try:
+            system_status = await orchestrator.get_system_status()
+            scheduler = system_status.get("scheduler_status", {})
+            if scheduler.get("status") == "error":
+                queue_status = "error"
+            elif scheduler.get("runningSchedulers", 0) == 0:
+                queue_status = "idle"
+        except Exception:
+            queue_status = "unknown"
+
+        # Get Claude status
+        claude_status = "unknown"
+        try:
+            claude_auth = await orchestrator.get_claude_status()
+            if claude_auth and claude_auth.is_valid:
+                claude_status = "authenticated"
+            else:
+                claude_status = "not_configured"
+        except Exception:
+            claude_status = "unknown"
+
         status = {
             "status": "healthy",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": "1.0.0",
             "environment": os.getenv("ENVIRONMENT", "development"),
-            "uptime": None,  # TODO: Implement uptime tracking
+            "uptime_seconds": uptime_seconds,
             "components": {
                 "api": {"status": "healthy"},
                 "database": {"status": "connected"},
                 "orchestrator": {"status": "running"},
-                "queues": {"status": "running"},
-                "claude": {"status": "authenticated"}
+                "queues": {"status": queue_status},
+                "claude": {"status": claude_status}
             }
         }
 
@@ -389,21 +647,57 @@ async def get_system_status(request: Request, container: DependencyContainer = D
 @router.get("/scheduler/status")
 @limiter.limit(dashboard_limit)
 async def get_scheduler_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
-    """Get scheduler status from background scheduler."""
+    """Get scheduler status from background scheduler with detailed metrics."""
     try:
         orchestrator = await container.get_orchestrator()
         system_status = await orchestrator.get_system_status()
 
         scheduler_status = system_status.get("scheduler_status", {})
+        schedulers = scheduler_status.get("schedulers", [])
+
+        # Calculate totals from all schedulers
+        total_processed = sum(s.get("jobs_processed", 0) for s in schedulers)
+        total_failed = sum(s.get("jobs_failed", 0) for s in schedulers)
+        total_active = sum(s.get("active_jobs", 0) for s in schedulers)
+
+        # Calculate success rate
+        total_jobs = total_processed + total_failed
+        success_rate = round((total_processed / total_jobs * 100), 1) if total_jobs > 0 else 100.0
+
+        # Get running jobs
+        running_jobs = []
+        for s in schedulers:
+            if s.get("current_task"):
+                running_jobs.append({
+                    "queue": s.get("name", s.get("scheduler_id", "unknown")),
+                    "task_id": s["current_task"].get("task_id"),
+                    "task_type": s["current_task"].get("task_type"),
+                    "started_at": s["current_task"].get("started_at")
+                })
 
         return {
-            "status": "healthy" if scheduler_status.get("running") else "stopped",
-            "lastRun": scheduler_status.get("last_run_time", None),
-            "nextRun": None,  # TODO: Get next scheduled run time
-            "tasksQueued": 0,  # TODO: Get from queue coordinator
-            "tasksCompleted": 0,  # TODO: Track completed tasks
-            "tasksFailed": 0,  # TODO: Track failed tasks
-            "uptime": None  # TODO: Track scheduler uptime
+            "status": scheduler_status.get("status", "unknown"),
+            "lastRun": scheduler_status.get("lastRun"),
+            "activeJobs": total_active,
+            "tasksQueued": total_active,
+            "tasksProcessed": total_processed,
+            "tasksFailed": total_failed,
+            "successRate": success_rate,
+            "totalSchedulers": scheduler_status.get("totalSchedulers", len(schedulers)),
+            "runningSchedulers": scheduler_status.get("runningSchedulers", 0),
+            "runningJobs": running_jobs,
+            "schedulers": [
+                {
+                    "id": s.get("scheduler_id"),
+                    "name": s.get("name"),
+                    "status": s.get("status"),
+                    "processed": s.get("jobs_processed", 0),
+                    "failed": s.get("jobs_failed", 0),
+                    "active": s.get("active_jobs", 0),
+                    "lastRun": s.get("last_run_time")
+                }
+                for s in schedulers
+            ]
         }
     except TradingError as e:
         return await handle_trading_error(e)
