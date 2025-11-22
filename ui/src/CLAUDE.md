@@ -1,7 +1,7 @@
 # Frontend Architecture Guidelines
 
 > **Scope**: Applies to all files under `ui/src/`. Read after root CLAUDE.md for project patterns.
-> **Last Updated**: 2025-11-09 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference
 
 ## Quick Reference - SDK Usage
 
@@ -63,7 +63,7 @@ Frontend architecture focuses on component organization, real-time data updates,
 - Cognitive load for developers increases
 - Refactoring becomes riskier
 
-### Detected Oversized Components (2025-11-09)
+### Detected Oversized Components (2025-11-22)
 
 10 React components currently exceed the 350-line limit:
 

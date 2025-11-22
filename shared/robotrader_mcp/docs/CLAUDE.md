@@ -1,6 +1,6 @@
 # Robo-Trader MCP Server Documentation
 
-> **Last Updated**: 2025-11-07 | **Status**: Production Ready | **Tier**: Reference + How-To
+> **Last Updated**: 2025-11-22 | **Status**: Production Ready | **Tier**: Reference + How-To
 > **Version**: 1.0.0 | **Architecture**: Progressive Disclosure with SRT Security
 
 ## Quick Start
@@ -202,7 +202,7 @@ CoordinatorStatusInput = {
       "initialized": true,
       "ready": true,
       "error": null,
-      "last_checked": "2025-11-07T05:11:39.790516+00:00"
+      "last_checked": "2025-11-22T05:11:39.790516+00:00"
     }
   },
   "failed_coordinators": null,
@@ -685,6 +685,6 @@ ls -la ~/.robo_trader_mcp_cache/
 
 ---
 
-**Last Updated**: 2025-11-07
+**Last Updated**: 2025-11-22
 **Status**: Production Ready
 **Version**: 1.0.0

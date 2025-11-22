@@ -1,7 +1,7 @@
 # Paper Trading Services Guidelines
 
 > **Scope**: Applies to `src/services/paper_trading/` directory. Read `src/services/CLAUDE.md` for parent context.
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference
 
 ## Purpose
 

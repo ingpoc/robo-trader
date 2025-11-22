@@ -2,7 +2,7 @@
 
 > **Scope**: Applies to `src/core/` directory. Read after `src/CLAUDE.md` for context.
 >
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference + How-To + Explanation
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference + How-To + Explanation
 >
 > **Read in this order**:
 > 1. `src/CLAUDE.md` - Backend architecture overview (read first)
@@ -228,7 +228,7 @@ class RoboTraderOrchestrator:
 - ❌ No more than 150 lines per coordinator
 - ❌ No direct service-to-service calls
 
-**Verification (2025-11-09)**: 41 coordinators found in codebase. Verify all follow:
+**Verification (2025-11-22)**: 41 coordinators found in codebase. Verify all follow:
 - ✅ Max 150 line rule
 - ✅ Inherit from BaseCoordinator
 - ✅ Single responsibility principle
@@ -666,7 +666,7 @@ class MyService(EventHandler):
 - ✅ All AI functionality uses SDK only (never direct API calls)
 - ✅ Background components implement initialization tracking
 
-**Last Review**: 2025-11-03
+**Last Review**: 2025-11-22
 
 ## Pre-Commit Checklist - Core Layer
 

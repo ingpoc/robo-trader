@@ -1,7 +1,7 @@
 # Web Layer Guidelines
 
 > **Scope**: Applies to `src/web/` directory (FastAPI, WebSockets, HTTP endpoints). Read after `src/CLAUDE.md` and `src/core/CLAUDE.md`.
-> **Last Updated**: 2025-11-09 | **Status**: Production Ready | **Tier**: Reference
+> **Last Updated**: 2025-11-22 | **Status**: Production Ready | **Tier**: Reference
 
 ## Quick Reference - SDK Usage
 

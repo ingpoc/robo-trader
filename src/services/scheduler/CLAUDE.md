@@ -2,7 +2,7 @@
 
 > **Scope**: Applies to `src/services/scheduler/` directory. Read `src/services/CLAUDE.md` for context.
 >
-> **Last Updated**: 2025-11-04 | **Status**: Active | **Tier**: Reference + Explanation
+> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference + Explanation
 >
 > **Read in this order**:
 > 1. `src/services/CLAUDE.md` - Services layer overview
@@ -235,5 +235,5 @@ async def test_parallel_queue_execution():
 - ✅ Always use `asyncio.gather()` for queues, `while` loop for tasks
 - ✅ Always document timeout changes with rationale
 
-**Last Review**: 2025-11-03
+**Last Review**: 2025-11-22
 
