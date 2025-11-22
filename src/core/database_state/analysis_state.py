@@ -7,7 +7,7 @@ Manages fundamental analysis, recommendations, market conditions, and performanc
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from src.core.state_models import FundamentalAnalysis, Recommendation, MarketConditions, AnalysisPerformance

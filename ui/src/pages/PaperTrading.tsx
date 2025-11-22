@@ -316,7 +316,7 @@ export function PaperTrading() {
             Account: <span className="font-mono">{selectedAccount?.account_id || 'No account selected'}</span>
           </p>
         </div>
-        <Button onClick={refetchAccountOverview} variant="tertiary" size="sm">
+        <Button onClick={() => refetchAccountOverview()} variant="tertiary" size="sm">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
@@ -646,14 +646,14 @@ export function PaperTrading() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2 sm:col-span-1">
                     <Label>Trade Type</Label>
-                    <Select
+                    <select
                       value={tradeForm.type}
                       onChange={(e) => setTradeForm({ ...tradeForm, type: e.target.value as any })}
-                      options={[
-                        { value: 'BUY', label: 'BUY' },
-                        { value: 'SELL', label: 'SELL' }
-                      ]}
-                    />
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                    </select>
                   </div>
 
                   <div className="col-span-2 sm:col-span-1">
@@ -667,18 +667,18 @@ export function PaperTrading() {
 
                   <div className="col-span-2 sm:col-span-1">
                     <Label>Strategy Tag</Label>
-                    <Select
+                    <select
                       value={tradeForm.strategy || ''}
                       onChange={(e) => setTradeForm({ ...tradeForm, strategy: e.target.value })}
-                      options={[
-                        { value: 'breakout', label: 'Breakout' },
-                        { value: 'mean_reversion', label: 'Mean Reversion' },
-                        { value: 'trend_following', label: 'Trend Following' },
-                        { value: 'rsi_divergence', label: 'RSI Divergence' },
-                        { value: 'support_resistance', label: 'Support/Resistance' },
-                        { value: 'other', label: 'Other' }
-                      ]}
-                    />
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="breakout">Breakout</option>
+                      <option value="mean_reversion">Mean Reversion</option>
+                      <option value="trend_following">Trend Following</option>
+                      <option value="rsi_divergence">RSI Divergence</option>
+                      <option value="support_resistance">Support/Resistance</option>
+                      <option value="other">Other</option>
+                    </select>
                   </div>
 
                   <div className="col-span-1">

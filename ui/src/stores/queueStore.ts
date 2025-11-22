@@ -104,32 +104,47 @@ export const useQueueStore = create<QueueStore>()(
             const queues = event.queues
             const stats = event.stats || {}
 
-            // Update all queues in the store
-            set((state) => ({
+            // Update all queues in the store - cast to partial type since backend format differs
+            set({
               queues: Object.entries(queues).map(([queueName, queueInfo]: [string, any]) => ({
-                queue_type: queueName,
-                running: queueInfo.running || false,
-                status: queueInfo.status || 'unknown',
-                details: queueInfo.details || {},
-                last_updated: event.timestamp || new Date().toISOString()
-              })),
+                queue_type: queueName as QueueType,
+                name: queueName,
+                description: '',
+                is_active: queueInfo.running || false,
+                total_tasks: 0,
+                pending_tasks: 0,
+                executing_tasks: 0,
+                completed_tasks: 0,
+                failed_tasks: 0,
+                average_execution_time_ms: 0,
+                throughput_per_minute: 0,
+                error_rate_percentage: 0,
+                configuration: {} as any,
+                ...queueInfo,
+              })) as QueueStatus[],
               stats: stats,
               lastUpdated: event.timestamp || new Date().toISOString()
-            }))
+            })
           } else if (data && data.queue_type) {
             // Legacy format support
             get().updateQueueStatus(data.queue_type, data)
           }
           break
         case 'task_status_update':
-          get().updateTaskStatus(data.id, data)
+          // Type narrow to QueueTask which has id
+          if ('id' in data) {
+            get().updateTaskStatus(data.id, data as any)
+          }
           break
         case 'performance_metrics_update':
-          set((state) => ({
-            performanceMetrics: state.performanceMetrics.map((metric) =>
-              metric.queue_type === data.queue_type ? data : metric
-            ),
-          }))
+          // Cast data to proper type for performance metrics
+          if ('queue_type' in data) {
+            set((state) => ({
+              performanceMetrics: state.performanceMetrics.map((metric) =>
+                metric.queue_type === data.queue_type ? (data as QueuePerformanceMetrics) : metric
+              ),
+            }))
+          }
           break
         case 'configuration_change':
           // Handle configuration changes if needed

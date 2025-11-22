@@ -35,12 +35,13 @@ interface NewsEarningsStore extends NewsEarningsState {
   getUpcomingEarningsForPortfolio: () => UpcomingEarnings[]
 }
 
-const initialState: Omit<NewsEarningsStore, keyof NewsEarningsState> = {
-  newsData: [],
-  earningsData: [],
-  upcomingEarningsData: [],
-  recommendationsData: [],
-  lastUpdated: null,
+// Data-only initial values (actions are defined inline in the store)
+const initialData = {
+  newsData: [] as NewsItem[],
+  earningsData: [] as EarningsReport[],
+  upcomingEarningsData: [] as UpcomingEarnings[],
+  recommendationsData: [] as Recommendation[],
+  lastUpdated: null as string | null,
 }
 
 export const useNewsEarningsStore = create<NewsEarningsStore>()(
@@ -59,7 +60,7 @@ export const useNewsEarningsStore = create<NewsEarningsStore>()(
     isLoading: false,
     error: null,
 
-    ...initialState,
+    ...initialData,
 
     // Actions
     setSelectedSymbol: (symbol) =>

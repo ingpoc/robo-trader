@@ -76,9 +76,23 @@ class BroadcastExecutionCoordinator(BaseCoordinator):
         self._initialized = True
 
     def set_broadcast_callback(self, callback: Callable) -> None:
-        """Set the broadcast callback function."""
+        """Set the broadcast callback function.
+
+        Also resets the circuit breaker to clear any failures that occurred
+        before the callback was available (startup timing issue).
+        """
         self._broadcast_callback = callback
         self._log_info("Broadcast callback registered")
+
+        # Reset circuit breaker - failures before callback was set shouldn't count
+        if self._health_coordinator:
+            self._health_coordinator.reset_circuit_breaker()
+            self._log_info("Circuit breaker reset after callback registration")
+
+    @property
+    def is_callback_set(self) -> bool:
+        """Check if broadcast callback is set."""
+        return self._broadcast_callback is not None
 
     def set_health_coordinator(self, health_coordinator) -> None:
         """Set health coordinator."""

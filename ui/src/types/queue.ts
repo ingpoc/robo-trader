@@ -93,6 +93,7 @@ export interface QueueManagementState {
   tasks: QueueTask[];
   executionHistory: TaskExecutionHistory[];
   performanceMetrics: QueuePerformanceMetrics[];
+  stats?: Partial<QueueStats>;
   isLoading: boolean;
   error?: string;
   lastUpdated: string;
@@ -143,6 +144,10 @@ export interface QueueWebSocketEvent {
   type: 'queue_status_update' | 'task_status_update' | 'performance_metrics_update' | 'configuration_change';
   data: QueueWebSocketEventData;
   timestamp: string;
+  // Backend sends queues object with all queue statuses
+  queues?: Record<string, { running?: boolean; status?: string; details?: Record<string, unknown> }>;
+  // Backend sends stats object with aggregate statistics
+  stats?: Partial<QueueStats>;
 }
 
 export interface QueueStatusUpdateEvent extends QueueWebSocketEvent {

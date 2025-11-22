@@ -279,9 +279,9 @@ export function NewsEarnings() {
                       <AlertTriangle className="w-12 h-12 text-rose-600 dark:text-rose-400 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold text-rose-900 dark:text-rose-100 mb-2">Unable to load news data</h3>
                       <p className="text-rose-700 dark:text-rose-300 text-sm mb-4">
-                        {error?.message?.includes('404') ? 'Stock data not found. Please select a different stock.' :
-                         error?.message?.includes('500') ? 'Server error. Please try again in a few moments.' :
-                         error?.message?.includes('timeout') ? 'Request timed out. Please check your connection and try again.' :
+                        {(error as Error)?.message?.includes('404') ? 'Stock data not found. Please select a different stock.' :
+                         (error as Error)?.message?.includes('500') ? 'Server error. Please try again in a few moments.' :
+                         (error as Error)?.message?.includes('timeout') ? 'Request timed out. Please check your connection and try again.' :
                          'Failed to fetch news data. Please refresh the page or try again later.'}
                       </p>
                       <Button
@@ -386,9 +386,9 @@ export function NewsEarnings() {
                         <AlertTriangle className="w-12 h-12 text-red-600 dark:text-red-400 mx-auto mb-4" />
                         <h3 className="text-lg font-semibold text-red-900 dark:text-red-100 mb-2">Unable to load earnings data</h3>
                         <p className="text-red-700 dark:text-red-300 text-sm">
-                          {error?.message?.includes('404') ? 'Earnings data not found for this stock.' :
-                           error?.message?.includes('500') ? 'Server error retrieving earnings. Please try again later.' :
-                           error?.message?.includes('timeout') ? 'Request timed out. Please check your connection.' :
+                          {(error as Error)?.message?.includes('404') ? 'Earnings data not found for this stock.' :
+                           (error as Error)?.message?.includes('500') ? 'Server error retrieving earnings. Please try again later.' :
+                           (error as Error)?.message?.includes('timeout') ? 'Request timed out. Please check your connection.' :
                            'Failed to fetch earnings data. Data may not be available yet.'}
                         </p>
                       </div>
@@ -659,7 +659,7 @@ export function NewsEarnings() {
                           <div className="flex items-start justify-between mb-4">
                             <div>
                               <h3 className="font-bold text-xl text-warmgray-900 dark:text-warmgray-100 mb-1">
-                                {rec.recommendation.symbol}
+                                {rec.symbol}
                               </h3>
                               <div className="flex items-center gap-2">
                                 {getStatusIcon(rec.status)}
@@ -668,9 +668,9 @@ export function NewsEarnings() {
                                 </span>
                               </div>
                             </div>
-                            <div className={`px-4 py-2 rounded-full text-sm font-bold border-2 flex items-center gap-2 ${getRecommendationColor(rec.recommendation.action)}`}>
-                              {getRecommendationIcon(rec.recommendation.action)}
-                              <span>{rec.recommendation.action.toUpperCase()}</span>
+                            <div className={`px-4 py-2 rounded-full text-sm font-bold border-2 flex items-center gap-2 ${getRecommendationColor(rec.action)}`}>
+                              {getRecommendationIcon(rec.action)}
+                              <span>{rec.action.toUpperCase()}</span>
                             </div>
                           </div>
 
@@ -679,17 +679,17 @@ export function NewsEarnings() {
                             <div>
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm font-medium text-warmgray-700 dark:text-warmgray-300">Confidence</span>
-                                <span className={`text-sm font-bold ${getConfidenceColor(rec.recommendation.confidence)}`}>
-                                  {(rec.recommendation.confidence * 100).toFixed(0)}%
+                                <span className={`text-sm font-bold ${getConfidenceColor(rec.confidence)}`}>
+                                  {(rec.confidence * 100).toFixed(0)}%
                                 </span>
                               </div>
                               <div className="w-full bg-warmgray-200 dark:bg-warmgray-700 rounded-full h-2">
                                 <div
                                   className={`h-2 rounded-full transition-all duration-300 ${
-                                    rec.recommendation.confidence >= 0.8 ? 'bg-emerald-500' :
-                                    rec.recommendation.confidence >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
+                                    rec.confidence >= 0.8 ? 'bg-emerald-500' :
+                                    rec.confidence >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
                                   }`}
-                                  style={{ width: `${rec.recommendation.confidence * 100}%` }}
+                                  style={{ width: `${rec.confidence * 100}%` }}
                                 />
                               </div>
                             </div>
@@ -697,7 +697,7 @@ export function NewsEarnings() {
                             <div>
                               <h4 className="font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">Analysis</h4>
                               <p className="text-sm text-warmgray-700 dark:text-warmgray-300 leading-relaxed">
-                                {rec.recommendation.reasoning}
+                                {rec.reasoning}
                               </p>
                             </div>
                           </div>

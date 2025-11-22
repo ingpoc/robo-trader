@@ -60,9 +60,6 @@ class StatusCoordinator(BaseCoordinator):
         if broadcast_coordinator:
             self.ai_status_coordinator.set_broadcast_coordinator(broadcast_coordinator)
 
-        # NOTE: Background task removed - using event-driven approach now
-        # AIStatusCoordinator subscribes to CLAUDE_ANALYSIS_STARTED/COMPLETED events
-    
     async def initialize(self) -> None:
         """Initialize status coordinator."""
         self._log_info("Initializing StatusCoordinator")
@@ -70,12 +67,8 @@ class StatusCoordinator(BaseCoordinator):
         await self.aggregation_coordinator.initialize()
         await self.broadcast_coordinator_internal.initialize()
 
-        # NOTE: Claude status polling loop removed - now using event-driven approach
-        # AIStatusCoordinator handles CLAUDE_ANALYSIS_STARTED/COMPLETED events
-        # No need for continuous polling anymore
-
         self._initialized = True
-        self._log_info("StatusCoordinator initialized - using event-driven Claude status tracking")
+        self._log_info("StatusCoordinator initialized")
     
     async def get_ai_status(self) -> Dict[str, Any]:
         """Get current AI activity status."""
@@ -184,15 +177,10 @@ class StatusCoordinator(BaseCoordinator):
             self._log_error(f"Failed to get and broadcast Claude status: {e}")
             return {}
 
-    # NOTE: _broadcast_claude_status_loop method removed - now using event-driven approach
-    # AIStatusCoordinator handles CLAUDE_ANALYSIS_STARTED/COMPLETED events in real-time
-    # No polling needed anymore - more efficient and immediate updates
-
     async def cleanup(self) -> None:
         """Cleanup status coordinator resources."""
-        # NOTE: Background broadcast task cleanup removed - using event-driven approach now
-        # AIStatusCoordinator handles event subscription/unsubscription automatically
+        self._log_info("StatusCoordinator cleanup starting...")
 
         await self.aggregation_coordinator.cleanup()
         await self.broadcast_coordinator_internal.cleanup()
-        self._log_info("StatusCoordinator cleanup complete - event-driven Claude status tracking")
+        self._log_info("StatusCoordinator cleanup complete")

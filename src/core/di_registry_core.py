@@ -142,8 +142,12 @@ async def register_core_services(container: 'DependencyContainer') -> None:
             # If no specific symbols provided, select 2-3 stocks with oldest analysis
             if symbols_to_analyze is None:
                 # Get stocks with oldest analysis (priority: no analysis > oldest analysis)
-                from ..services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
-                symbols_to_analyze = await analyzer._get_stocks_with_updates()
+                from src.services.portfolio_intelligence.data_gatherer import PortfolioDataGatherer
+                data_gatherer = PortfolioDataGatherer(
+                    await container.get("state_manager"),
+                    await container.get("configuration_state")
+                )
+                symbols_to_analyze = await data_gatherer.get_stocks_with_updates()
 
                 # Select only 2-3 stocks with oldest/first analysis
                 # This prevents processing all 81 stocks at once

@@ -48,13 +48,13 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
         # Get event bus from container
         self.event_bus = await self.container.get("event_bus")
 
-        # Subscribe to Claude analysis events
+        # Subscribe to Claude analysis events for event-driven broadcasting
         self.event_bus.subscribe(EventType.CLAUDE_ANALYSIS_STARTED, self)
         self.event_bus.subscribe(EventType.CLAUDE_ANALYSIS_COMPLETED, self)
 
         self._broadcast_coordinator = None
         self._initialized = True
-        self._log_info("AIStatusCoordinator initialized - subscribed to Claude analysis events")
+        self._log_info("AIStatusCoordinator initialized - subscribed to Claude analysis events (event-driven, no polling)")
 
     def set_broadcast_coordinator(self, broadcast_coordinator) -> None:
         """Set broadcast coordinator for Claude status updates."""
@@ -96,7 +96,7 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
     def get_ai_analysis_status(self) -> str:
         """Get current AI analysis scheduler status."""
         try:
-            from ...services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+            from src.services.portfolio_intelligence import PortfolioIntelligenceAnalyzer
             status_info = PortfolioIntelligenceAnalyzer.get_active_analysis_status()
             return status_info.get("status", "idle")
         except Exception as e:
@@ -138,8 +138,8 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
         (whether manually triggered or via background scheduler) and broadcasts
         the appropriate Claude status to the UI.
 
-        - If analysis is running → broadcast 'analyzing' status
-        - If no analysis → broadcast 'connected/idle' status
+        - If analysis is running → broadcast 'CLAUDE_ANALYSIS_STARTED' event
+        - If no analysis → broadcast 'CLAUDE_ANALYSIS_COMPLETED' event
 
         Also ensures Claude is properly authenticated before broadcasting.
         """
@@ -154,7 +154,7 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
                 self._log_debug("Claude not authenticated, skipping status broadcast")
                 return
 
-            from src.services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+            from src.services.portfolio_intelligence import PortfolioIntelligenceAnalyzer
 
             # Get active analysis tasks
             try:
@@ -169,35 +169,32 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
             auth_method = claude_status.get("authMethod", claude_status.get("auth_method", "claude_code"))
 
             if has_running_analysis:
-                # Broadcast 'analyzing' status when Claude analysis is running
-                claude_status_data = {
-                    "status": "analyzing",
-                    "auth_method": auth_method,
-                    "sdk_connected": True,
-                    "cli_process_running": True,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "data": {
-                        "analysis_in_progress": True,
-                        "active_tasks": status_info.get("running_tasks", []),
-                        "analysis_count": len(status_info.get("running_tasks", []))
-                    }
+                # Broadcast CLAUDE_ANALYSIS_STARTED when Claude analysis is running
+                # This triggers the frontend useClaudeStatus hook to set status to 'analyzing'
+                active_task = self.get_ai_analysis_active_task()
+                analysis_event_data = {
+                    "analysis_id": str(uuid.uuid4()),  # Generate unique analysis ID
+                    "agent_name": active_task.get("agent_name") if active_task else "analyzer",
+                    "symbols_count": active_task.get("symbols_count", 0) if active_task else 0,
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "status": "running",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
-                await self._broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
-                self._log_debug("Broadcast Claude status: analyzing")
+                await self._broadcast_coordinator.broadcast_claude_analysis_started(analysis_event_data)
+                self._log_debug(f"Broadcast Claude analysis started: {analysis_event_data.get('agent_name')}")
             else:
-                # Broadcast 'connected/idle' status when no analysis is running but Claude is authenticated
-                claude_status_data = {
-                    "status": "connected/idle",
-                    "auth_method": auth_method,
-                    "sdk_connected": True,
-                    "cli_process_running": True,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "data": {
-                        "analysis_in_progress": False
-                    }
+                # Broadcast CLAUDE_ANALYSIS_COMPLETED when no analysis is running
+                # This clears the analyzing status in the frontend
+                completed_event_data = {
+                    "analysis_id": str(uuid.uuid4()),
+                    "agent_name": "analyzer",
+                    "symbols_count": 0,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "status": "completed",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
-                await self._broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
-                self._log_debug("Broadcast Claude status: connected/idle")
+                await self._broadcast_coordinator.broadcast_claude_analysis_completed(completed_event_data)
+                self._log_debug("Broadcast Claude analysis completed")
 
         except Exception as e:
             self._log_warning(f"Failed to broadcast Claude status based on analysis: {e}")

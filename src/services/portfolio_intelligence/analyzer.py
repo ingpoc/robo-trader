@@ -115,9 +115,6 @@ class PortfolioIntelligenceAnalyzer:
         analysis_id = f"analysis_{int(datetime.now(timezone.utc).timestamp())}"
 
         try:
-            # DEBUG: Log entry point
-            logger.debug(f"PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
-
             # Register active analysis
             PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id] = {
                 "status": "running",

@@ -73,7 +73,7 @@ interface SystemStatusState {
   _webSocketCleanup: (() => void) | null
 
   // Computed getters
-  getOverallHealth: () => 'healthy' | 'degraded' | 'error' | 'unknown'
+  getOverallHealth: () => 'healthy' | 'degraded' | 'error' | 'idle' | 'unknown'
   getComponentHealth: (component: keyof SystemComponents) => ComponentStatus | null
   hasActiveConnections: () => boolean
 

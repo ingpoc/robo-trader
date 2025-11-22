@@ -69,15 +69,17 @@ class BroadcastCoordinator(BaseCoordinator):
         )
 
         # Record metrics based on result
+        # Only count as failure if callback is set (startup failures shouldn't trip circuit breaker)
         if result:
             # Get broadcast time from message if available, otherwise use 0
             broadcast_time = message.get('_broadcast_time', 0.0)
             self.health_coordinator.record_broadcast_success(broadcast_time)
-        else:
-            # Create a generic error for metrics
+        elif self.execution_coordinator.is_callback_set:
+            # Only record failure if callback was set (real failure, not startup timing)
             class BroadcastError(Exception):
                 pass
             self.health_coordinator.record_broadcast_failure(BroadcastError("Broadcast failed"))
+        # If callback not set, don't count as failure - it's expected during startup
 
         return result
 
