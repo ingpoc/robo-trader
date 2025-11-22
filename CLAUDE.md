@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **Last Updated**: 2025-11-09 | **Status**: Production Ready | **Tier**: Reference
+> **Last Updated**: 2025-11-22 | **Status**: Production Ready | **Tier**: Reference
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -169,6 +169,42 @@ response = await query_with_timeout(client, prompt, timeout=60)
 - Timeout values are in `src/core/sdk_helpers.py` - increase if batch analysis times out
 - **Note**: Timeout protection prevents hanging threads; it doesn't extend Claude turn limits
 
+### MCP Server: robo-trader-dev
+
+**Purpose**: Model Context Protocol server for debugging and monitoring the trading system with 95%+ token efficiency.
+
+**Location**: `shared/robotrader_mcp/`
+
+**Key Tools**:
+- `queue_status` - Real-time queue health monitoring
+- `coordinator_status` - Verify coordinator initialization and detect silent failures
+- `task_execution_metrics` - 24-hour task execution statistics
+- `analyze_logs` - Log analysis and error detection
+- `check_system_health` - System-wide health checks
+
+**Usage Pattern (Progressive Discovery)**:
+```bash
+# Step 1: List available categories
+CallTool("list_categories", {})  # Returns: logs, database, system, optimization, performance
+
+# Step 2: Load specific category
+CallTool("load_category", {"category": "system"})
+
+# Step 3: Execute tool
+CallTool("queue_status", {})
+```
+
+**Direct Tool Calls** (skip discovery if you know the tool):
+```bash
+CallTool("queue_status", {})
+CallTool("coordinator_status", {})
+CallTool("task_execution_metrics", {})
+```
+
+**Token Efficiency**: Progressive disclosure reduces context tokens by 92-97% compared to traditional MCP servers.
+
+**See**: `shared/robotrader_mcp/docs/CLAUDE.md` for complete MCP server documentation.
+
 ### Database & State Management
 
 - **Async SQLite**: All database operations are async
@@ -180,12 +216,14 @@ response = await query_with_timeout(client, prompt, timeout=60)
 ### Frontend Architecture
 
 #### Feature-Based Organization (`ui/src/features/`)
-Modular features with self-contained components:
-- `dashboard/` - Portfolio overview, metrics, AI insights
-- `ai-transparency/` - Claude trading transparency interface
-- `system-health/` - Infrastructure monitoring
-- `paper-trading/` - Account management
-- `news-earnings/` - News feed and analysis
+Modular features with self-contained components (7 active features):
+- `dashboard/` - Portfolio overview, metrics, AI insights, luxury landing page
+- `ai-transparency/` - Claude trading transparency with 7 tabs (trades, reflections, recommendations, sessions, performance, pipelines, prompts)
+- `system-health/` - Infrastructure monitoring (schedulers, queues, database, resources, errors)
+- `paper-trading/` - Account management, positions, trade execution
+- `news-earnings/` - News feed, earnings reports, fundamentals analysis
+- `agents/` - Multi-agent coordination monitoring
+- `configuration/` - System settings and background tasks configuration
 
 #### Component Structure
 - **Features**: Self-contained modules with main component + internal components
@@ -212,6 +250,8 @@ Modular features with self-contained components:
 | Background scheduler | `src/core/background_scheduler/` | Task processing and monitoring |
 | Services | `src/services/` | Domain services (trading, analysis, etc.) |
 | Frontend features | `ui/src/features/` | Feature-based component organization |
+| MCP Server | `shared/robotrader_mcp/` | Model Context Protocol debugging server |
+| MCP Server Tools | `shared/robotrader_mcp/src/tools/` | MCP tool implementations |
 | Docker configuration | `docker-compose.yml` | Container orchestration |
 | Dependencies | `requirements.txt` | Python dependencies |
 
@@ -291,7 +331,7 @@ python -m src.main --command web
 3. Keep parent file as orchestrator/layout component
 4. Update imports and test all features work together
 
-**Current Status**: 107 files exceed 350-line limit (as of 2025-11-09). Prioritize very large files first.
+**Current Status**: ~90 files exceed 350-line limit (as of 2025-11-22). Prioritize very large files first.
 
 ### Async-First Design (MANDATORY)
 - **All I/O is non-blocking**: Use `async/await`
@@ -529,6 +569,9 @@ task_service.register_handler(
 | Need to restore from backup | Previous backup available | Retrieve list via `GET /api/backups/list?hours=8760`, restore via API |
 | Claude analysis hits `error_max_turns` | Analyzing too many stocks in one session (e.g., 81 stocks = ~100+ turns needed) | Submit analysis to AI_ANALYSIS queue instead of calling directly. Each queue task analyzes 2-3 stocks in separate session |
 | All analysis requests block each other | Analysis called directly instead of queued | Use `SequentialQueueManager`: queue as `RECOMMENDATION_GENERATION` tasks to `AI_ANALYSIS` queue |
+| MCP tool not responding | Backend API unreachable | Check `curl -m 3 http://localhost:8000/api/health`, restart backend if needed |
+| Coordinator status shows degraded | Coordinator initialization failed | Check backend logs for `[INIT FAILED]` messages, restart server |
+| Queue status shows all idle | No tasks queued or scheduler stopped | Trigger analysis via API or check scheduler status in System Health |
 
 ### Backend Health Check Pattern
 
@@ -718,6 +761,23 @@ curl -X POST 'http://localhost:8000/api/backups/restore/robo_trader_startup_2025
 **Remember**: "Focused coordinators. Injected dependencies. Event-driven communication. Rich error context. Smart scheduling. Resilient APIs. Strategy learning. Three-queue architecture. Event-driven workflows. SDK client manager. Timeout protection. No duplication. Always."
 
 **Data Safety**: "Automatic backups on startup/shutdown. Periodic backups every 24 hours. Automatic rotation keeps latest 7 backups. Manual backups anytime via API. All critical data persisted and recoverable."
-- [Image #1] as part of testing from browser I want you to trigger background scheduler execution and validate the number show up correctly in background scheduler, processed, failed, success rate, jobs which are running should show up here as well. The same with all other scheduler in system health [Image #2]
-- Utilize robo-trader-dev mcp server while debugging issues.
-- While using full-stack-debugger skill utilize robo-trader-dev mcp server to help with debugging.
+
+## Codebase Statistics (as of 2025-11-22)
+
+| Metric | Count | Notes |
+|--------|-------|-------|
+| Total Python files | 305 | Backend source code |
+| Total Python lines | 81,350 | Across all src/ files |
+| Coordinator files | 57 | In `src/core/coordinators/` |
+| Frontend files | 166 | TypeScript/TSX files |
+| CLAUDE.md files | 39 | Layer-specific documentation |
+| Feature modules | 7 | In `ui/src/features/` |
+| Files over 350 lines | ~90 | Target for refactoring |
+| API Routes | 21 | In `src/web/routes/` |
+
+## Additional Guidelines
+
+- Utilize robo-trader-dev MCP server while debugging issues
+- Use `queue_status`, `coordinator_status`, and `task_execution_metrics` tools for system monitoring
+- For browser-based testing, validate numbers show up correctly in System Health schedulers
+- When debugging, check background scheduler processed/failed/success rate metrics
