@@ -147,8 +147,7 @@ class AgentToolCoordinator(BaseCoordinator):
                 "mcp__trading__get_open_positions",
                 "mcp__trading__calculate_risk_metrics"
             ],
-            max_turns=50,
-            system_prompt_optimization=True
+            max_turns=50
         )
 
     async def cleanup(self) -> None:

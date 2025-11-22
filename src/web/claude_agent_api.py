@@ -397,7 +397,7 @@ async def get_claude_status(
                 "client": "initialized" if coordinator.client else "not_initialized",
                 "tool_executor": "initialized" if coordinator.tool_executor else "not_initialized",
                 "validator": "initialized" if coordinator.validator else "not_initialized",
-                "tools_available": len(coordinator._tools),
+                "tools_available": len(coordinator.tool_coordinator._tools) if coordinator.tool_coordinator else 0,
             },
             "timestamp": datetime.utcnow().isoformat(),
         }

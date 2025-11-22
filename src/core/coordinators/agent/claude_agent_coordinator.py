@@ -23,12 +23,12 @@ from ...event_bus import EventBus
 from ....stores.claude_strategy_store import ClaudeStrategyStore
 from ....services.claude_agent.tool_executor import ToolExecutor
 from ....services.claude_agent.response_validator import ResponseValidator
+from .agent_prompt_builder import AgentPromptBuilder
+from .agent_tool_coordinator import AgentToolCoordinator
+from .session.agent_session_coordinator import AgentSessionCoordinator
 
 if TYPE_CHECKING:
-    from .agent_tool_coordinator import AgentToolCoordinator
-    from .agent_prompt_builder import AgentPromptBuilder
     from ...claude_sdk_client_manager import ClaudeSDKClientManager
-    from .session.agent_session_coordinator import AgentSessionCoordinator
 
 logger = logging.getLogger(__name__)
 

@@ -134,6 +134,10 @@ class SequentialQueueManager:
         """
         try:
             logger.info(f"Task completed callback: {task.task_id}")
+
+            # CRITICAL: Mark task as completed in database
+            await self.task_service.mark_completed(task.task_id)
+
             self._completed_task_ids.append(task.task_id)
             self._execution_history.append({
                 "task_id": task.task_id,
@@ -153,6 +157,10 @@ class SequentialQueueManager:
         """
         try:
             logger.error(f"Task failed callback: {task.task_id} - {error_msg}")
+
+            # CRITICAL: Mark task as failed in database
+            await self.task_service.mark_failed(task.task_id, error_msg)
+
             self._execution_history.append({
                 "task_id": task.task_id,
                 "task_type": task.task_type.value,
