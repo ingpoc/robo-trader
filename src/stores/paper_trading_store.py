@@ -219,13 +219,46 @@ class PaperTradingStore:
 
     async def get_all_accounts(self) -> List[PaperTradingAccount]:
         """Get all paper trading accounts."""
-        self.db_connection.row_factory = aiosqlite.Row
-        cursor = await self.db_connection.execute(
-            "SELECT * FROM paper_trading_accounts ORDER BY created_at DESC"
-        )
-        rows = await cursor.fetchall()
-        await cursor.close()
-        return [PaperTradingAccount.from_dict(dict(row)) for row in rows]
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT * FROM paper_trading_accounts ORDER BY created_at DESC"
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+            return [PaperTradingAccount.from_dict(dict(row)) for row in rows]
+
+    async def delete_account(self, account_id: str) -> bool:
+        """
+        Delete a paper trading account.
+
+        Args:
+            account_id: ID of the account to delete
+
+        Returns:
+            True if account was deleted, False if not found
+        """
+        async with self._lock:
+            # First check if account exists
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT account_id FROM paper_trading_accounts WHERE account_id = ?",
+                (account_id,)
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+
+            if not row:
+                return False
+
+            # Delete the account
+            await self.db_connection.execute(
+                "DELETE FROM paper_trading_accounts WHERE account_id = ?",
+                (account_id,)
+            )
+            await self.db_connection.commit()
+            logger.info(f"Deleted paper trading account: {account_id}")
+            return True
 
     async def update_account_balance(self, account_id: str, new_balance: float, buying_power: float) -> None:
         """Update account balance and buying power."""

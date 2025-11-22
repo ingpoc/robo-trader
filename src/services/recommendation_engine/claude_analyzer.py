@@ -25,9 +25,10 @@ logger = logging.getLogger(__name__)
 class ClaudeAnalyzer:
     """AI-powered analysis using Claude Agent SDK."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], kite_service=None):
         self.config = config
         self.client_manager = None
+        self.kite_service = kite_service  # Injected for real-time price fetching
         self.claude_model = config.get('claude_model', 'claude-3-5-sonnet-20241022')
         self.claude_temperature = config.get('temperature', 0.3)
         self.claude_options = ClaudeAgentOptions(
@@ -192,12 +193,17 @@ Please be thorough but concise. Your analysis will be used to generate final inv
             return None
 
     async def get_current_price(self, symbol: str) -> Optional[float]:
-        """Get current market price for symbol."""
+        """Get current market price for symbol from Zerodha via KiteConnectService."""
         try:
-            # This would integrate with market data service
-            # For now, return None
-            # TODO: Implement actual price fetching
-            return None
+            if not self.kite_service:
+                logger.warning(f"KiteConnectService not available for price lookup: {symbol}")
+                return None
+
+            price = await self.kite_service.get_current_price(symbol)
+            if price:
+                logger.debug(f"Got current price for {symbol}: {price}")
+            return price
+
         except Exception as e:
             logger.error(f"Error fetching current price for {symbol}: {e}")
             return None
