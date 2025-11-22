@@ -8,6 +8,7 @@ All activity is logged to AI Transparency.
 
 import logging
 import time
+import uuid
 from datetime import datetime, timezone, timedelta, date
 from typing import Dict, List, Any, Optional
 import json
@@ -15,6 +16,7 @@ import json
 from loguru import logger
 from claude_agent_sdk import tool
 
+from src.core.event_bus import EventBus, Event, EventType
 from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
 from src.core.sdk_helpers import query_with_timeout, receive_response_with_timeout
 from src.core.database_state.database_state import DatabaseStateManager
@@ -48,13 +50,15 @@ class PortfolioIntelligenceAnalyzer:
         config_state: ConfigurationState,
         analysis_logger: AnalysisLogger,
         broadcast_coordinator: Optional[Any] = None,
-        status_coordinator: Optional[Any] = None
+        status_coordinator: Optional[Any] = None,
+        event_bus: Optional[EventBus] = None
     ):
         self.state_manager = state_manager
         self.config_state = config_state
         self.analysis_logger = analysis_logger
         self.broadcast_coordinator = broadcast_coordinator
         self.status_coordinator = status_coordinator
+        self.event_bus = event_bus
         self.client_manager = None
         self._active_analyses: Dict[str, Any] = {}  # Track active analyses for logging
 
@@ -97,15 +101,29 @@ class PortfolioIntelligenceAnalyzer:
             print(f"DEBUG: PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
             logger.info(f"DEBUG: PortfolioIntelligenceAnalyzer.analyze_portfolio_intelligence() called with agent_name={agent_name}, symbols={symbols}")
 
-            # Register active analysis
-            PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id] = {
+            # Emit Claude analysis started event
+            if self.event_bus:
+                await self.event_bus.publish(Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.CLAUDE_ANALYSIS_STARTED,
+                    source="PortfolioIntelligenceAnalyzer",
+                    timestamp=datetime.now(timezone.utc),
+                    data={
+                        "analysis_id": analysis_id,
+                        "agent_name": agent_name,
+                        "symbols_count": len(symbols) if symbols else 0,
+                        "started_at": datetime.now(timezone.utc).isoformat(),
+                        "status": "running"
+                    }
+                ))
+
+            # Keep instance-level tracking for compatibility (transition period)
+            self._active_analyses[analysis_id] = {
                 "status": "running",
                 "started_at": datetime.now(timezone.utc).isoformat(),
-                "symbols_count": 0,
-                "agent_name": agent_name,
-                "queued_for_batch_processing": True
+                "symbols_count": len(symbols) if symbols else 0,
+                "agent_name": agent_name
             }
-            PortfolioIntelligenceAnalyzer._active_analysis_count = len(PortfolioIntelligenceAnalyzer._active_analysis_tasks)
 
             # Broadcast analysis start
             await self._broadcast_analysis_status(
@@ -193,15 +211,30 @@ class PortfolioIntelligenceAnalyzer:
                 analysis_result=analysis_result
             )
 
-            # Unregister active analysis
-            if analysis_id in PortfolioIntelligenceAnalyzer._active_analysis_tasks:
-                PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["status"] = "completed"
-                PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-                PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["recommendations_count"] = len(analysis_result.get("recommendations", []))
-                PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["prompt_updates_count"] = len(analysis_result.get("prompt_updates", []))
-                # Keep completed for a short time, then remove
-                # (Cleanup happens in broadcast or after timeout)
-            PortfolioIntelligenceAnalyzer._active_analysis_count = len([t for t in PortfolioIntelligenceAnalyzer._active_analysis_tasks.values() if t.get("status") == "running"])
+            # Emit Claude analysis completed event
+            if self.event_bus:
+                await self.event_bus.publish(Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.CLAUDE_ANALYSIS_COMPLETED,
+                    source="PortfolioIntelligenceAnalyzer",
+                    timestamp=datetime.now(timezone.utc),
+                    data={
+                        "analysis_id": analysis_id,
+                        "agent_name": agent_name,
+                        "symbols_count": len(symbols) if symbols else 0,
+                        "status": "completed",
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "recommendations_count": len(analysis_result.get("recommendations", [])),
+                        "prompt_updates_count": len(analysis_result.get("prompt_updates", []))
+                    }
+                ))
+
+            # Update instance-level tracking for compatibility (transition period)
+            if analysis_id in self._active_analyses:
+                self._active_analyses[analysis_id]["status"] = "completed"
+                self._active_analyses[analysis_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+                self._active_analyses[analysis_id]["recommendations_count"] = len(analysis_result.get("recommendations", []))
+                self._active_analyses[analysis_id]["prompt_updates_count"] = len(analysis_result.get("prompt_updates", []))
 
             # Broadcast analysis complete
             await self._broadcast_analysis_status(
@@ -227,12 +260,30 @@ class PortfolioIntelligenceAnalyzer:
             logger.error(f"Portfolio intelligence analysis failed: {e}", exc_info=True)
             await self._log_error_to_transparency(analysis_id, agent_name, str(e))
 
-            # Unregister failed analysis
-            if analysis_id in PortfolioIntelligenceAnalyzer._active_analysis_tasks:
-                PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["status"] = "failed"
-                PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["error"] = str(e)[:200]
-                PortfolioIntelligenceAnalyzer._active_analysis_tasks[analysis_id]["failed_at"] = datetime.now(timezone.utc).isoformat()
-            PortfolioIntelligenceAnalyzer._active_analysis_count = len([t for t in PortfolioIntelligenceAnalyzer._active_analysis_tasks.values() if t.get("status") == "running"])
+            # Emit Claude analysis completed event (failed status)
+            if self.event_bus:
+                await self.event_bus.publish(Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.CLAUDE_ANALYSIS_COMPLETED,
+                    source="PortfolioIntelligenceAnalyzer",
+                    timestamp=datetime.now(timezone.utc),
+                    data={
+                        "analysis_id": analysis_id,
+                        "agent_name": agent_name,
+                        "symbols_count": len(symbols) if symbols else 0,
+                        "status": "failed",
+                        "failed_at": datetime.now(timezone.utc).isoformat(),
+                        "error": str(e)[:200],
+                        "error_type": e.__class__.__name__
+                    }
+                ))
+
+            # Update instance-level tracking for compatibility (transition period)
+            if analysis_id in self._active_analyses:
+                self._active_analyses[analysis_id]["status"] = "failed"
+                self._active_analyses[analysis_id]["error"] = str(e)[:200]
+                self._active_analyses[analysis_id]["failed_at"] = datetime.now(timezone.utc).isoformat()
+                self._active_analyses[analysis_id]["error_type"] = e.__class__.__name__
 
             # Broadcast analysis failed
             await self._broadcast_analysis_status(
@@ -774,9 +825,32 @@ Begin your analysis now."""
             return
 
         try:
-            # Broadcast portfolio analysis activity update only
-            # NOTE: Don't call broadcast_claude_status_update() as it conflicts with
-            # the actual Claude SDK status managed by SessionCoordinator
+            # When analysis starts, broadcast 'analyzing' Claude status to UI
+            # This makes the Claude icon in sidebar pulsate during analysis
+            if status == "analyzing":
+                claude_status_data = {
+                    "status": "analyzing",
+                    "auth_method": "claude_code",
+                    "sdk_connected": True,
+                    "cli_process_running": True,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "data": {"analysis_in_progress": True, "analysis_id": analysis_id}
+                }
+                await self.broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
+
+            # When analysis completes/fails, broadcast 'idle' Claude status to restore icon
+            elif status == "idle":
+                claude_status_data = {
+                    "status": "connected/idle",
+                    "auth_method": "claude_code",
+                    "sdk_connected": True,
+                    "cli_process_running": True,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "data": {"analysis_in_progress": False}
+                }
+                await self.broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
+
+            # Broadcast portfolio analysis activity update for monitoring
             activity_message = {
                 "type": "portfolio_analysis_update",
                 "status": status,
@@ -804,19 +878,35 @@ Begin your analysis now."""
     
     @classmethod
     def get_active_analysis_status(cls) -> Dict[str, Any]:
-        """Get status of active AI analysis tasks for system health."""
-        running_tasks = [t for t in cls._active_analysis_tasks.values() if t.get("status") == "running"]
-        
+        """
+        Get status of active AI analysis tasks for system health.
+
+        DEPRECATED: This method will be removed once we fully transition to event-driven status tracking.
+        For now, it returns idle since we're using event-driven approach.
+        """
+        # Return idle since we're now using event-driven status tracking
+        # AIStatusCoordinator should subscribe to CLAUDE_ANALYSIS_STARTED/COMPLETED events instead
+        return {
+            "status": "idle",
+            "active_count": 0,
+            "last_activity": None,
+            "note": "DEPRECATED: Use event-driven status tracking instead"
+        }
+
+    def get_instance_active_analysis_status(self) -> Dict[str, Any]:
+        """Get instance-level active analysis status (for transition period)."""
+        running_tasks = [t for t in self._active_analyses.values() if t.get("status") == "running"]
+
         if not running_tasks:
             return {
                 "status": "idle",
                 "active_count": 0,
                 "last_activity": None
             }
-        
+
         # Get most recent active task
         latest_task = max(running_tasks, key=lambda t: t.get("started_at", ""))
-        
+
         return {
             "status": "running",
             "active_count": len(running_tasks),

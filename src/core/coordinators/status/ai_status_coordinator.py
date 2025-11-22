@@ -3,25 +3,29 @@ AI Status Coordinator
 
 Focused coordinator for AI and Claude agent status.
 Extracted from StatusCoordinator for single responsibility.
+Now uses event-driven architecture instead of polling.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
+import uuid
 
 from src.config import Config
+from src.core.event_bus import EventBus, Event, EventType, EventHandler
 from ..base_coordinator import BaseCoordinator
 from ...ai_planner import AIPlanner
 from ..core.session_coordinator import SessionCoordinator
 
 
-class AIStatusCoordinator(BaseCoordinator):
+class AIStatusCoordinator(BaseCoordinator, EventHandler):
     """
-    Coordinates AI and Claude agent status.
-    
+    Coordinates AI and Claude agent status using event-driven architecture.
+
     Responsibilities:
     - Get AI status
     - Get Claude agent status
-    - Get AI analysis status
+    - Subscribe to Claude analysis events (event-driven instead of polling)
+    - Track active analysis sessions
     """
 
     def __init__(
@@ -33,11 +37,28 @@ class AIStatusCoordinator(BaseCoordinator):
         super().__init__(config)
         self.ai_planner = ai_planner
         self.session_coordinator = session_coordinator
+        self.event_bus: Optional[EventBus] = None
+        self._active_analyses: Set[str] = set()  # Track active analysis IDs
+        self._last_broadcast_status: Optional[str] = None  # Track last broadcast to avoid duplicates
 
     async def initialize(self) -> None:
-        """Initialize AI status coordinator."""
+        """Initialize AI status coordinator and subscribe to events."""
         self._log_info("Initializing AIStatusCoordinator")
+
+        # Get event bus from container
+        self.event_bus = await self.container.get("event_bus")
+
+        # Subscribe to Claude analysis events
+        self.event_bus.subscribe(EventType.CLAUDE_ANALYSIS_STARTED, self)
+        self.event_bus.subscribe(EventType.CLAUDE_ANALYSIS_COMPLETED, self)
+
+        self._broadcast_coordinator = None
         self._initialized = True
+        self._log_info("AIStatusCoordinator initialized - subscribed to Claude analysis events")
+
+    def set_broadcast_coordinator(self, broadcast_coordinator) -> None:
+        """Set broadcast coordinator for Claude status updates."""
+        self._broadcast_coordinator = broadcast_coordinator
 
     async def get_ai_status(self) -> Dict[str, Any]:
         """Get current AI activity status for UI display."""
@@ -109,7 +130,177 @@ class AIStatusCoordinator(BaseCoordinator):
         except Exception:
             return None
 
+    async def broadcast_claude_status_based_on_analysis(self) -> None:
+        """
+        Broadcast Claude status based on active AI analysis tasks.
+
+        This method automatically detects when Claude analysis is running
+        (whether manually triggered or via background scheduler) and broadcasts
+        the appropriate Claude status to the UI.
+
+        - If analysis is running → broadcast 'analyzing' status
+        - If no analysis → broadcast 'connected/idle' status
+
+        Also ensures Claude is properly authenticated before broadcasting.
+        """
+        if not self._broadcast_coordinator:
+            return
+
+        try:
+            # First check if Claude is authenticated
+            claude_status = await self.get_claude_agent_status()
+            if not claude_status or claude_status.get("status") == "inactive":
+                # Don't broadcast if Claude is not authenticated
+                self._log_debug("Claude not authenticated, skipping status broadcast")
+                return
+
+            from src.services.portfolio_intelligence_analyzer import PortfolioIntelligenceAnalyzer
+
+            # Get active analysis tasks
+            try:
+                status_info = PortfolioIntelligenceAnalyzer.get_active_analysis_status()
+                has_running_analysis = status_info.get("status") == "running" or len(status_info.get("running_tasks", [])) > 0
+            except Exception:
+                # If we can't get analysis status, assume no analysis is running
+                has_running_analysis = False
+                status_info = {"running_tasks": []}
+
+            # Determine auth method from Claude status
+            auth_method = claude_status.get("authMethod", claude_status.get("auth_method", "claude_code"))
+
+            if has_running_analysis:
+                # Broadcast 'analyzing' status when Claude analysis is running
+                claude_status_data = {
+                    "status": "analyzing",
+                    "auth_method": auth_method,
+                    "sdk_connected": True,
+                    "cli_process_running": True,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "data": {
+                        "analysis_in_progress": True,
+                        "active_tasks": status_info.get("running_tasks", []),
+                        "analysis_count": len(status_info.get("running_tasks", []))
+                    }
+                }
+                await self._broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
+                self._log_debug("Broadcast Claude status: analyzing")
+            else:
+                # Broadcast 'connected/idle' status when no analysis is running but Claude is authenticated
+                claude_status_data = {
+                    "status": "connected/idle",
+                    "auth_method": auth_method,
+                    "sdk_connected": True,
+                    "cli_process_running": True,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "data": {
+                        "analysis_in_progress": False
+                    }
+                }
+                await self._broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
+                self._log_debug("Broadcast Claude status: connected/idle")
+
+        except Exception as e:
+            self._log_warning(f"Failed to broadcast Claude status based on analysis: {e}")
+
     async def cleanup(self) -> None:
-        """Cleanup AI status coordinator resources."""
+        """Cleanup AI status coordinator resources and unsubscribe from events."""
+        if not self._initialized:
+            return
+
+        # Unsubscribe from events
+        if self.event_bus:
+            self.event_bus.unsubscribe(EventType.CLAUDE_ANALYSIS_STARTED, self)
+            self.event_bus.unsubscribe(EventType.CLAUDE_ANALYSIS_COMPLETED, self)
+
+        self._active_analyses.clear()
         self._log_info("AIStatusCoordinator cleanup complete")
+
+    async def handle_event(self, event: Event) -> None:
+        """
+        Handle Claude analysis events for real-time status tracking.
+
+        Replaces polling-based approach with event-driven updates.
+        """
+        try:
+            if event.type == EventType.CLAUDE_ANALYSIS_STARTED:
+                await self._handle_analysis_started(event)
+            elif event.type == EventType.CLAUDE_ANALYSIS_COMPLETED:
+                await self._handle_analysis_completed(event)
+        except Exception as e:
+            self._log_error(f"Failed to handle Claude analysis event {event.type}: {e}")
+
+    async def _handle_analysis_started(self, event: Event) -> None:
+        """Handle Claude analysis started event."""
+        analysis_id = event.data.get("analysis_id")
+        if analysis_id:
+            self._active_analyses.add(analysis_id)
+            self._log_info(f"Claude analysis started: {analysis_id}")
+
+        # Broadcast 'analyzing' status and specific analysis started event
+        await self._broadcast_claude_status("analyzing", event.data)
+
+        # Also broadcast the specific analysis started event for granular frontend tracking
+        if self._broadcast_coordinator:
+            try:
+                await self._broadcast_coordinator.broadcast_claude_analysis_started(event.data)
+            except Exception as e:
+                self._log_warning(f"Failed to broadcast Claude analysis started event: {e}")
+
+    async def _handle_analysis_completed(self, event: Event) -> None:
+        """Handle Claude analysis completed event."""
+        analysis_id = event.data.get("analysis_id")
+        if analysis_id:
+            self._active_analyses.discard(analysis_id)
+            status = event.data.get("status", "completed")
+            self._log_info(f"Claude analysis completed: {analysis_id} ({status})")
+
+        # Broadcast status based on whether other analyses are active
+        if self._active_analyses:
+            await self._broadcast_claude_status("analyzing", event.data)
+        else:
+            await self._broadcast_claude_status("connected/idle", event.data)
+
+        # Also broadcast the specific analysis completed event for granular frontend tracking
+        if self._broadcast_coordinator:
+            try:
+                await self._broadcast_coordinator.broadcast_claude_analysis_completed(event.data)
+            except Exception as e:
+                self._log_warning(f"Failed to broadcast Claude analysis completed event: {e}")
+
+    async def _broadcast_claude_status(self, status: str, event_data: Dict[str, Any]) -> None:
+        """
+        Broadcast Claude status to UI with change detection to avoid duplicates.
+        """
+        if not self._broadcast_coordinator:
+            return
+
+        # Skip duplicate broadcasts
+        if self._last_broadcast_status == status and len(self._active_analyses) > 0:
+            return
+
+        try:
+            claude_status_data = {
+                "status": status,
+                "auth_method": "claude_code",
+                "sdk_connected": True,
+                "cli_process_running": True,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "data": {
+                    "analysis_in_progress": status == "analyzing",
+                    "active_analyses": len(self._active_analyses),
+                    "latest_analysis": {
+                        "analysis_id": event_data.get("analysis_id"),
+                        "agent_name": event_data.get("agent_name"),
+                        "symbols_count": event_data.get("symbols_count", 0),
+                        "status": event_data.get("status", "running")
+                    }
+                }
+            }
+
+            await self._broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
+            self._last_broadcast_status = status
+            self._log_debug(f"Broadcast Claude status: {status}")
+
+        except Exception as e:
+            self._log_warning(f"Failed to broadcast Claude status: {e}")
 

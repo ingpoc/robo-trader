@@ -41,6 +41,8 @@ class EventType(Enum):
     AI_RECOMMENDATION = "ai.recommendation"
     AI_ANALYSIS_COMPLETE = "ai.analysis_complete"
     AI_LEARNING_UPDATE = "ai.learning_update"
+    CLAUDE_ANALYSIS_STARTED = "claude.analysis_started"
+    CLAUDE_ANALYSIS_COMPLETED = "claude.analysis_completed"
     # Feature Management events
     FEATURE_CREATED = "feature.created"
     FEATURE_UPDATED = "feature.updated"

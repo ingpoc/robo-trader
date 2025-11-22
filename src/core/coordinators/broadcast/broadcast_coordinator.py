@@ -96,6 +96,41 @@ class BroadcastCoordinator(BaseCoordinator):
         await self.broadcast_to_ui(message)
         self._log_debug(f"Claude status broadcast: {status_data.get('status', 'unknown')}")
 
+    async def broadcast_claude_analysis_started(self, event_data: Dict[str, Any]) -> None:
+        """Broadcast Claude analysis started event to UI."""
+        message = {
+            "type": "CLAUDE_ANALYSIS_STARTED",
+            "analysis_id": event_data.get("analysis_id"),
+            "agent_name": event_data.get("agent_name"),
+            "symbols_count": event_data.get("symbols_count", 0),
+            "started_at": event_data.get("started_at"),
+            "status": event_data.get("status", "running"),
+            "timestamp": event_data.get("timestamp")
+        }
+
+        await self.broadcast_to_ui(message)
+        self._log_debug(f"Claude analysis started broadcast: {event_data.get('analysis_id')}")
+
+    async def broadcast_claude_analysis_completed(self, event_data: Dict[str, Any]) -> None:
+        """Broadcast Claude analysis completed event to UI."""
+        message = {
+            "type": "CLAUDE_ANALYSIS_COMPLETED",
+            "analysis_id": event_data.get("analysis_id"),
+            "agent_name": event_data.get("agent_name"),
+            "symbols_count": event_data.get("symbols_count", 0),
+            "status": event_data.get("status", "completed"),
+            "completed_at": event_data.get("completed_at"),
+            "failed_at": event_data.get("failed_at"),
+            "recommendations_count": event_data.get("recommendations_count"),
+            "prompt_updates_count": event_data.get("prompt_updates_count"),
+            "error": event_data.get("error"),
+            "error_type": event_data.get("error_type"),
+            "timestamp": event_data.get("timestamp")
+        }
+
+        await self.broadcast_to_ui(message)
+        self._log_debug(f"Claude analysis completed broadcast: {event_data.get('analysis_id')} ({event_data.get('status')})")
+
     async def broadcast_system_health_update(self, health_data: Dict[str, Any]) -> None:
         """Broadcast system health updates to UI."""
         message = {

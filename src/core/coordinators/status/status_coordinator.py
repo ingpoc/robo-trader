@@ -43,7 +43,10 @@ class StatusCoordinator(BaseCoordinator):
         self.ai_status_coordinator = ai_status_coordinator
         self.agent_status_coordinator = agent_status_coordinator
         self.portfolio_status_coordinator = portfolio_status_coordinator
-        
+
+        # Store the main broadcast coordinator for direct access
+        self.main_broadcast_coordinator = broadcast_coordinator
+
         # Focused coordinators
         self.aggregation_coordinator = StatusAggregationCoordinator(
             config,
@@ -52,6 +55,13 @@ class StatusCoordinator(BaseCoordinator):
             portfolio_status_coordinator
         )
         self.broadcast_coordinator_internal = StatusBroadcastCoordinator(config, broadcast_coordinator)
+
+        # Pass broadcast coordinator to AI status coordinator for Claude status updates
+        if broadcast_coordinator:
+            self.ai_status_coordinator.set_broadcast_coordinator(broadcast_coordinator)
+
+        # NOTE: Background task removed - using event-driven approach now
+        # AIStatusCoordinator subscribes to CLAUDE_ANALYSIS_STARTED/COMPLETED events
     
     async def initialize(self) -> None:
         """Initialize status coordinator."""
@@ -60,9 +70,12 @@ class StatusCoordinator(BaseCoordinator):
         await self.aggregation_coordinator.initialize()
         await self.broadcast_coordinator_internal.initialize()
 
+        # NOTE: Claude status polling loop removed - now using event-driven approach
+        # AIStatusCoordinator handles CLAUDE_ANALYSIS_STARTED/COMPLETED events
+        # No need for continuous polling anymore
+
         self._initialized = True
-        # Note: Initial status broadcast happens after WebSocket callback is wired in app.py
-        # to avoid broadcasting before the callback is ready
+        self._log_info("StatusCoordinator initialized - using event-driven Claude status tracking")
     
     async def get_ai_status(self) -> Dict[str, Any]:
         """Get current AI activity status."""
@@ -78,13 +91,13 @@ class StatusCoordinator(BaseCoordinator):
             self.portfolio_status_coordinator.get_portfolio_status(),
             return_exceptions=True
         )
-        
+
         # Get system components
         components = await self.aggregation_coordinator.aggregate_system_components(
             scheduler_status_data if not isinstance(scheduler_status_data, Exception) else {},
             claude_status_data if not isinstance(claude_status_data, Exception) else {}
         )
-        
+
         status_data = {
             "ai_status": ai_status if not isinstance(ai_status, Exception) else {},
             "scheduler_status": scheduler_status_data if not isinstance(scheduler_status_data, Exception) else {},
@@ -92,13 +105,17 @@ class StatusCoordinator(BaseCoordinator):
             "portfolio_status": portfolio_status if not isinstance(portfolio_status, Exception) else {},
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        
+
         # Broadcast if state changed or forced
         timestamp = status_data["timestamp"]
         await self.broadcast_coordinator_internal.broadcast_system_health(
             components, timestamp, force=force_broadcast
         )
-        
+
+        # Also broadcast Claude status based on active analysis tasks
+        # This ensures the icon pulsates whenever Claude is analyzing (manual or automatic)
+        await self.ai_status_coordinator.broadcast_claude_status_based_on_analysis()
+
         return status_data
     
     async def get_agents_status(self) -> Dict[str, Any]:
@@ -136,9 +153,46 @@ class StatusCoordinator(BaseCoordinator):
         """Broadcast a specific component status change."""
         self._log_info(f"Component {component} status changed to {status}")
         await self.get_system_status(force_broadcast=True)
-    
+
+    async def get_claude_status(self) -> Dict[str, Any]:
+        """Get Claude agent status and broadcast it to connected clients."""
+        try:
+            claude_status_data = await self.ai_status_coordinator.get_claude_agent_status()
+
+            # Broadcast the current Claude status to all connected WebSocket clients
+            if self.main_broadcast_coordinator and claude_status_data:
+                # Map Claude status data to broadcast format
+                broadcast_data = {
+                    "status": claude_status_data.get("status", "inactive"),
+                    "auth_method": claude_status_data.get("authMethod", claude_status_data.get("auth_method", "claude_code")),
+                    "sdk_connected": claude_status_data.get("sdk_connected", False),
+                    "cli_process_running": claude_status_data.get("cli_process_running", False),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "data": {
+                        "tasks_completed": claude_status_data.get("tasksCompleted", 0),
+                        "last_activity": claude_status_data.get("lastActivity")
+                    }
+                }
+
+                # Use the main broadcast coordinator to send the status
+                await self.main_broadcast_coordinator.broadcast_claude_status_update(broadcast_data)
+                self._log_debug(f"Claude status broadcasted: {broadcast_data['status']}")
+
+            return claude_status_data
+
+        except Exception as e:
+            self._log_error(f"Failed to get and broadcast Claude status: {e}")
+            return {}
+
+    # NOTE: _broadcast_claude_status_loop method removed - now using event-driven approach
+    # AIStatusCoordinator handles CLAUDE_ANALYSIS_STARTED/COMPLETED events in real-time
+    # No polling needed anymore - more efficient and immediate updates
+
     async def cleanup(self) -> None:
         """Cleanup status coordinator resources."""
+        # NOTE: Background broadcast task cleanup removed - using event-driven approach now
+        # AIStatusCoordinator handles event subscription/unsubscription automatically
+
         await self.aggregation_coordinator.cleanup()
         await self.broadcast_coordinator_internal.cleanup()
-        self._log_info("StatusCoordinator cleanup complete")
+        self._log_info("StatusCoordinator cleanup complete - event-driven Claude status tracking")
