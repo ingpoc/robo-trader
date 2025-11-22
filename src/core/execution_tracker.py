@@ -106,6 +106,41 @@ class ExecutionTracker:
             except Exception as e:
                 logger.error(f"Failed to record execution: {e}")
 
+    async def update_execution_status(
+        self,
+        task_id: str,
+        status: str,
+        error_message: str = None,
+        execution_time: float = None
+    ) -> bool:
+        """Update execution status for a completed/failed task.
+
+        Args:
+            task_id: Task ID to update
+            status: New status (completed, failed, etc)
+            error_message: Optional error message
+            execution_time: Optional execution time in seconds
+
+        Returns:
+            True if updated, False if not found
+        """
+        async with self._lock:
+            try:
+                await self.db.execute('''
+                    UPDATE execution_history
+                    SET status = ?, error_message = ?, execution_time_seconds = ?
+                    WHERE task_id = ?
+                ''', (status, error_message, execution_time, task_id))
+
+                await self.db.commit()
+
+                logger.info(f"📊 EXECUTION TRACKER: Updated task {task_id} to status={status}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to update execution status for {task_id}: {e}")
+                return False
+
     async def get_execution_history(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get recent execution history."""
         async with self._lock:

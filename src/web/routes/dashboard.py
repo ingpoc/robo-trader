@@ -513,7 +513,7 @@ async def get_system_health(request: Request, container: DependencyContainer = D
     """Get system health status from orchestrator."""
     try:
         orchestrator = await container.get_orchestrator()
-        connection_manager = await container.get("connection_manager")
+        connection_manager = request.app.state.connection_manager
 
         # Try to get system status, fall back if method not implemented
         try:
@@ -586,6 +586,7 @@ async def get_system_health(request: Request, container: DependencyContainer = D
     except TradingError as e:
         return await handle_trading_error(e)
     except Exception as e:
+        logger.exception(f"Error in get_system_health: {e}")
         return await handle_unexpected_error(e, "get_system_health")
 
 

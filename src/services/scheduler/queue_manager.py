@@ -126,6 +126,17 @@ class SequentialQueueManager:
             logger.error(f"Error starting queue execution: {e}")
             self._running = False
 
+    async def _get_execution_tracker(self):
+        """Get execution tracker from container (safe lazy loading)."""
+        try:
+            # Try to get from container if available
+            from src.core.di import DependencyContainer
+            if hasattr(self, '_container') and self._container:
+                return await self._container.get("execution_tracker")
+        except:
+            pass
+        return None
+
     async def _on_task_complete(self, task: SchedulerTask) -> None:
         """Callback when task completes (runs on main event loop).
 
@@ -137,6 +148,17 @@ class SequentialQueueManager:
 
             # CRITICAL: Mark task as completed in database
             await self.task_service.mark_completed(task.task_id)
+
+            # Update execution_history to reflect actual completion (fixes stale status)
+            try:
+                execution_tracker = await self._get_execution_tracker()
+                if execution_tracker:
+                    await execution_tracker.update_execution_status(
+                        task_id=task.task_id,
+                        status="completed"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to update execution_history for {task.task_id}: {e}")
 
             self._completed_task_ids.append(task.task_id)
             self._execution_history.append({
@@ -160,6 +182,18 @@ class SequentialQueueManager:
 
             # CRITICAL: Mark task as failed in database
             await self.task_service.mark_failed(task.task_id, error_msg)
+
+            # Update execution_history to reflect actual failure (fixes stale status)
+            try:
+                execution_tracker = await self._get_execution_tracker()
+                if execution_tracker:
+                    await execution_tracker.update_execution_status(
+                        task_id=task.task_id,
+                        status="failed",
+                        error_message=error_msg
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to update execution_history for {task.task_id}: {e}")
 
             self._execution_history.append({
                 "task_id": task.task_id,

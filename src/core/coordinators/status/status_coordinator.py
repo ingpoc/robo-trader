@@ -86,10 +86,14 @@ class StatusCoordinator(BaseCoordinator):
         )
 
         # Get system components
-        components = await self.aggregation_coordinator.aggregate_system_components(
-            scheduler_status_data if not isinstance(scheduler_status_data, Exception) else {},
-            claude_status_data if not isinstance(claude_status_data, Exception) else {}
-        )
+        try:
+            components = await self.aggregation_coordinator.aggregate_system_components(
+                scheduler_status_data if not isinstance(scheduler_status_data, Exception) else {},
+                claude_status_data if not isinstance(claude_status_data, Exception) else {}
+            )
+        except Exception as e:
+            self._log_error(f"Error aggregating system components: {e}")
+            components = {}
 
         status_data = {
             "ai_status": ai_status if not isinstance(ai_status, Exception) else {},
@@ -107,7 +111,10 @@ class StatusCoordinator(BaseCoordinator):
 
         # Also broadcast Claude status based on active analysis tasks
         # This ensures the icon pulsates whenever Claude is analyzing (manual or automatic)
-        await self.ai_status_coordinator.broadcast_claude_status_based_on_analysis()
+        try:
+            await self.ai_status_coordinator.broadcast_claude_status_based_on_analysis()
+        except Exception as e:
+            self._log_warning(f"Failed to broadcast Claude status: {e}")
 
         return status_data
     

@@ -377,11 +377,10 @@ class AnalysisStateManager:
         async with self._lock:
             try:
                 async with self.db.connection.execute("""
-                    SELECT results_data FROM screening_results
-                    WHERE screening_type = ?
+                    SELECT results FROM screening_results
                     ORDER BY updated_at DESC
                     LIMIT 1
-                """, (screening_type,)) as cursor:
+                """) as cursor:
                     row = await cursor.fetchone()
                     if row and row[0]:
                         return json.loads(row[0])
