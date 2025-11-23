@@ -1,0 +1,190 @@
+# Token-Efficient MCP & Hook System Configuration
+# Main configuration file for production deployment
+
+project:
+  name: "{{PROJECT_NAME}}"
+  type: "{{PROJECT_TYPE}}"
+  version: "1.0.0"
+  description: "Token-efficient ecosystem with smart caching and MCP server"
+
+# Hook System Configuration
+hooks:
+  enabled: true
+  pre_tool_use:
+    enabled: true
+    script_path: "hooks/pre_tool_use/advisor.sh"
+    timeout_seconds: 5
+    token_suggestions: true
+    security_validation: true
+
+  context_injection:
+    enabled: true
+    script_path: "hooks/context_injection/manager.py"
+    progressive_loading: true
+    default_level: "summary"
+    levels:
+      summary:
+        token_limit: 150
+        compression_ratio: 0.9
+      targeted:
+        token_limit: 800
+        compression_ratio: 0.7
+      full:
+        token_limit: 2000
+        compression_ratio: 0.3
+
+  session_management:
+    enabled: true
+    script_path: "hooks/session_management/manager.py"
+    default_timeout: 1800  # 30 minutes
+    max_sessions: 100
+    resource_limits:
+      max_memory_mb: 512
+      max_execution_time: 300
+
+# MCP Server Configuration
+mcp_server:
+  enabled: true
+  host: "localhost"
+  port: 8080
+  worker_processes: 4
+  categories:
+    - logs
+    - system
+    - database
+    - performance
+    - execution
+    - optimization
+
+  # Tool-specific configurations
+  tool_configs:
+    analyze_logs:
+      cache_ttl: 60
+      max_log_size_mb: 100
+      pattern_detection: true
+      error_correlation: true
+
+    health_check:
+      cache_ttl: 120
+      components:
+        - cpu
+        - memory
+        - disk
+        - network
+
+    execute_python:
+      timeout_seconds: 30
+      sandbox_enabled: true
+      allowed_modules:
+        - json
+        - math
+        - statistics
+        - datetime
+        - itertools
+        - collections
+
+# Token Efficiency Configuration
+token_efficiency:
+  target_reduction: "95%+"
+  caching_strategy: "smart"
+
+  # Cache Configuration
+  cache:
+    enabled: true
+    default_ttl: 300  # 5 minutes
+    max_size: 1000
+    compression_enabled: true
+    background_refresh: true
+
+    # Category-specific TTLs
+    category_ttls:
+      logs: 60        # 1 minute
+      system: 120     # 2 minutes
+      database: 300   # 5 minutes
+      performance: 60 # 1 minute
+      execution: 180  # 3 minutes
+      optimization: 600 # 10 minutes
+
+  # Progressive Loading
+  progressive_loading:
+    enabled: true
+    auto_upgrade: true
+    search_sensitivity: 0.8
+
+  # Differential Analysis
+  differential_analysis:
+    enabled: true
+    baseline_storage: "file"
+    compression: true
+    change_detection_threshold: 0.1
+
+# Security Configuration
+security:
+  sandbox:
+    enabled: true
+    isolation_level: "medium"
+    resource_limits:
+      max_memory_mb: 256
+      max_cpu_percent: 50
+      max_execution_time: 30
+
+  authentication:
+    enabled: false  # Set to true for production
+    method: "token"
+    secret_key: "{{AUTH_SECRET_KEY}}"
+
+  access_control:
+    allowed_domains:
+      - "localhost"
+      - "127.0.0.1"
+    rate_limiting:
+      enabled: true
+      requests_per_minute: 100
+
+# Monitoring & Logging
+monitoring:
+  enabled: true
+  metrics_collection: true
+  performance_tracking: true
+
+  logging:
+    level: "INFO"
+    file_path: "logs/mcp_server.log"
+    max_file_size_mb: 100
+    backup_count: 5
+    format: "json"
+
+  health_checks:
+    enabled: true
+    interval_seconds: 60
+    endpoints:
+      - "/health"
+      - "/metrics"
+      - "/status"
+
+# Development Configuration
+development:
+  debug_mode: true
+  auto_reload: true
+  verbose_logging: true
+  mock_external_services: true
+
+# Production Configuration
+production:
+  debug_mode: false
+  auto_reload: false
+  verbose_logging: false
+  mock_external_services: false
+
+  # Production-specific settings
+  worker_processes: 8
+  max_connections: 1000
+  keepalive_timeout: 65
+
+# Environment Variables
+environment:
+  NODE_ENV: "production"
+  PYTHONPATH: "."
+  LOG_LEVEL: "INFO"
+  CACHE_REDIS_URL: "{{REDIS_URL}}"
+  DATABASE_URL: "{{DATABASE_URL}}"

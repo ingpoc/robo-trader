@@ -1,8 +1,8 @@
 # Services Layer - src/services/
 
-**Last Updated**: 2025-11-22
+Max 400 lines per file. Inherit from EventHandler, event-driven comms via EventBus.
 
-## Service Structure (Max 400 lines per file)
+## Service Pattern
 
 ```python
 class MyService(EventHandler):
@@ -12,11 +12,8 @@ class MyService(EventHandler):
         event_bus.subscribe(EventType.RELEVANT_EVENT, self)
 
     async def handle_event(self, event: Event):
-        try:
-            if event.type == EventType.RELEVANT_EVENT:
-                await self._handle(event)
-        except TradingError as e:
-            logger.error(f"Error: {e.context.code}")
+        if event.type == EventType.RELEVANT_EVENT:
+            await self._handle(event)
 
     async def cleanup(self):
         self.event_bus.unsubscribe(EventType.RELEVANT_EVENT, self)
@@ -24,99 +21,48 @@ class MyService(EventHandler):
 
 ## Critical Rules
 
-| Rule | Reason |
-|------|--------|
-| Use locked state methods | Prevents "database is locked" errors |
-| Never call services directly | Must emit events instead |
-| Inherit from EventHandler | For event-driven communication |
+| Rule | Why |
+|------|-----|
+| Use locked state methods | Prevents "database is locked" |
+| Never call services directly | Emit events instead |
 | Implement cleanup() | Prevents memory leaks |
+| Async/await throughout | Non-blocking I/O |
+| Queue AI analysis tasks | Prevents turn limit exhaustion |
 | Use error hierarchy | Structured error context |
-| Async/await throughout | Non-blocking operations |
 
-## Database Access in Services
+## Database Access
 
-✅ **CORRECT** - Use ConfigurationState locked methods:
-```python
-config_state = await container.get("configuration_state")
-await config_state.store_analysis_history(symbol, timestamp, analysis)
-```
+✅ `await config_state.store_analysis_history(symbol, ts, data)` (locked)
+❌ Never: `db.connection.execute()` (no lock!)
 
-❌ **WRONG** - Direct database access:
-```python
-database = await container.get("database")
-await database.connection.execute(...)  # NO LOCK!
-```
-
-## Event Handler Pattern
-
-```python
-async def handle_event(self, event: Event):
-    try:
-        if event.type == EventType.ORDER_FILLED:
-            await self._handle_order_filled(event)
-        elif event.type == EventType.PORTFOLIO_CHANGE:
-            await self._handle_portfolio_change(event)
-    except TradingError as e:
-        logger.error(f"Error: {e.context.code}")
-
-    # Emit follow-up event
-    await self.event_bus.publish(Event(
-        id=str(uuid.uuid4()),
-        type=EventType.ANALYSIS_COMPLETE,
-        source=self.__class__.__name__,
-        data={"result": result}
-    ))
-```
-
-## Current Services
-
-| Service | Purpose |
-|---------|---------|
-| `portfolio_service.py` | Portfolio operations |
-| `risk_service.py` | Risk management |
-| `execution_service.py` | Order execution |
-| `analytics_service.py` | Data analysis |
-| `learning_service.py` | Learning engine |
-| `paper_trading/` | Paper trading metrics |
-
-## Common Mistakes
-
-| Mistake | Fix |
-|---------|-----|
-| Direct service calls | Emit events instead |
-| No cleanup() | Implement unsubscribe in cleanup |
-| Synchronous I/O | Use `aiofiles` with `async with` |
-| No error handling | Wrap in try/except with TradingError |
-| Hardcoded config | Load from DI container |
-
-## File I/O Pattern
+## File I/O
 
 ```python
 async with aiofiles.open(path, 'r') as f:
     content = await f.read()
-
 # Atomic writes
-async with aiofiles.open(temp_path, 'w') as f:
+async with aiofiles.open(temp, 'w') as f:
     await f.write(data)
-os.replace(temp_path, final_path)
+os.replace(temp, final)
 ```
 
-## Queue-Based Claude Analysis (MANDATORY)
+## Queue AI Analysis (MANDATORY)
 
-✅ **DO** - Queue analysis tasks:
 ```python
 await task_service.create_task(
     queue_name=QueueName.AI_ANALYSIS,
     task_type=TaskType.RECOMMENDATION_GENERATION,
-    payload={"agent_name": "scan", "symbols": ["AAPL"]},
-    priority=7
+    payload={"agent_name": "scan", "symbols": ["AAPL"]}
 )
 ```
 
-❌ **DON'T** - Call analyzer directly:
-```python
-analyzer = await container.get("portfolio_intelligence_analyzer")
-await analyzer.analyze_portfolio_intelligence(...)
-```
+❌ Never direct analyzer calls—turn limits exhaust on large portfolios.
 
-Why: Direct calls exhaust turn limits on large portfolios. Queue system batches work.
+## Common Mistakes
+| Mistake | Fix |
+|---------|-----|
+| Direct service calls | Emit events |
+| No cleanup() | Unsubscribe in cleanup |
+| Sync I/O | Use `aiofiles` |
+| No error handling | TradingError with context |
+| Hardcoded config | Load from DI container |

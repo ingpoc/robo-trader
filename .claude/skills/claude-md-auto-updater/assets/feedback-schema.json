@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CLAUDE.md Recommendation Feedback Schema",
+  "description": "Schema for tracking feedback on CLAUDE.md auto-update recommendations",
+  "type": "object",
+  "required": ["timestamp", "records", "history"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp when database was last updated"
+    },
+    "records": {
+      "type": "object",
+      "description": "Map of recommendation_id -> FeedbackRecord",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["recommendation_id", "category", "type"],
+        "properties": {
+          "recommendation_id": {
+            "type": "string",
+            "description": "Unique identifier for the recommendation"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "database_access",
+              "sdk_usage",
+              "async_usage",
+              "modularization",
+              "queue_handler",
+              "coordinator",
+              "component_size",
+              "error_handling",
+              "event_emission",
+              "other"
+            ],
+            "description": "Category of the recommendation"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "new_pattern",
+              "violation",
+              "staleness",
+              "anti_pattern"
+            ],
+            "description": "Type of finding"
+          },
+          "total_feedback_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total number of feedback entries"
+          },
+          "accepted_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of times recommendation was accepted"
+          },
+          "rejected_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of times recommendation was rejected"
+          },
+          "acceptance_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Acceptance rate (0.0 to 1.0)"
+          },
+          "confidence_adjustment": {
+            "type": "number",
+            "minimum": -30,
+            "maximum": 30,
+            "description": "Confidence score adjustment based on feedback (-30 to +30)"
+          },
+          "last_feedback": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO timestamp of last feedback"
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "maxItems": 100,
+      "description": "Recent feedback history (limited to 100 most recent entries)",
+      "items": {
+        "type": "object",
+        "required": ["recommendation_id", "accepted", "timestamp"],
+        "properties": {
+          "recommendation_id": {
+            "type": "string",
+            "description": "Recommendation this feedback is for"
+          },
+          "accepted": {
+            "type": "boolean",
+            "description": "Was the recommendation accepted?"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional user notes about the feedback"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this feedback was recorded"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "timestamp": "2025-11-09T10:30:00Z",
+      "records": {
+        "violation_database_access_0": {
+          "recommendation_id": "violation_database_access_0",
+          "category": "database_access",
+          "type": "violation",
+          "total_feedback_count": 3,
+          "accepted_count": 3,
+          "rejected_count": 0,
+          "acceptance_rate": 1.0,
+          "confidence_adjustment": 15,
+          "last_feedback": "2025-11-09T10:25:00Z"
+        },
+        "anti_pattern_async_usage_2": {
+          "recommendation_id": "anti_pattern_async_usage_2",
+          "category": "async_usage",
+          "type": "anti_pattern",
+          "total_feedback_count": 5,
+          "accepted_count": 3,
+          "rejected_count": 2,
+          "acceptance_rate": 0.6,
+          "confidence_adjustment": -5,
+          "last_feedback": "2025-11-09T10:20:00Z"
+        }
+      },
+      "history": [
+        {
+          "recommendation_id": "violation_database_access_0",
+          "accepted": true,
+          "notes": "Found and fixed 2 instances in web routes",
+          "timestamp": "2025-11-09T10:25:00Z"
+        },
+        {
+          "recommendation_id": "anti_pattern_async_usage_2",
+          "accepted": false,
+          "notes": "This was intentional blocking in test setup",
+          "timestamp": "2025-11-09T10:20:00Z"
+        }
+      ]
+    }
+  ]
+}

@@ -1,121 +1,41 @@
-# Queue Coordinator Guidelines
+# Queue Coordinator - src/core/coordinators/queue/
 
-> **Scope**: Applies to `src/core/coordinators/queue/` directory. Read `src/core/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference
+Manages 3 parallel queues. Tasks within queue execute sequentially.
 
-## Overview
+## Critical: Queue Execution Model
+**3 queues in PARALLEL**, tasks within queue SEQUENTIAL:
+- PORTFOLIO_SYNC - Portfolio ops, trading
+- DATA_FETCHER - Market data, analysis
+- AI_ANALYSIS - Claude requests (MANDATORY for all AI)
 
-Queue coordinators manage task queue execution and event routing. The architecture follows an orchestrator pattern where `QueueCoordinator` delegates to focused queue coordinators.
+Why: Prevents turn limit exhaustion, database contention, parallel cross-queue processing.
 
-## Architecture Pattern
+## Pattern
+Orchestrator + focused coordinators. Max 200 lines (orchestrator), max 150 (focused).
 
-### Orchestrator + Focused Coordinators
+```python
+await lifecycle_coordinator.start_queues()
+await execution_coordinator.execute_parallel()
+status = await monitoring_coordinator.get_queue_status()
+```
 
-- **`QueueCoordinator`**: Main orchestrator (max 200 lines)
-  - Delegates to focused queue coordinators
-  - Provides unified queue management API
-  - Manages queue lifecycle
-
-- **Focused Coordinators** (max 150 lines each):
-  - `QueueLifecycleCoordinator` - Start/stop queues
-  - `QueueExecutionCoordinator` - Queue execution (sequential/concurrent)
-  - `QueueMonitoringCoordinator` - Queue status and health checks
-  - `QueueEventCoordinator` - Event routing and handlers
-
-## Queue Architecture (CRITICAL)
-
-### Parallel Queue Execution
-
-**3 queues execute in PARALLEL**:
-- `PORTFOLIO_SYNC` - Portfolio operations and trading
-- `DATA_FETCHER` - Market data fetching and analysis
-- `AI_ANALYSIS` - Claude-powered analysis (MUST use for all Claude requests)
-
-**Tasks WITHIN each queue execute SEQUENTIALLY** (one-at-a-time per queue).
-
-### Why This Matters
-
-- Prevents turn limit exhaustion (AI_ANALYSIS tasks run sequentially)
-- Prevents database contention (PORTFOLIO_SYNC tasks run sequentially)
-- Allows parallel processing across different queue types
-- Better resource utilization
+## Coordinators
+| Coordinator | Purpose |
+|-------------|---------|
+| QueueLifecycleCoordinator | Start/stop queues |
+| QueueExecutionCoordinator | Sequential execution per queue |
+| QueueMonitoringCoordinator | Health checks, status |
+| QueueEventCoordinator | Event routing |
 
 ## Rules
-
-### ✅ DO
-
-- ✅ Inherit from `BaseCoordinator`
-- ✅ Delegate execution to `SequentialQueueManager`
-- ✅ Use `QueueName` enum for queue identification
-- ✅ Implement health checks
-- ✅ Emit queue lifecycle events
-- ✅ Handle queue failures gracefully
-- ✅ Keep orchestrators under 200 lines
-- ✅ Keep focused coordinators under 150 lines
-
-### ❌ DON'T
-
-- ❌ Execute queues sequentially (use parallel execution)
-- ❌ Implement queue logic directly (delegate to `SequentialQueueManager`)
-- ❌ Block on queue operations
-- ❌ Exceed line limits
-
-## Implementation Pattern
-
-```python
-from src.core.coordinators.base_coordinator import BaseCoordinator
-from src.core.coordinators.queue.queue_lifecycle_coordinator import QueueLifecycleCoordinator
-from src.core.coordinators.queue.queue_execution_coordinator import QueueExecutionCoordinator
-from src.models.scheduler import QueueName
-
-class QueueCoordinator(BaseCoordinator):
-    """Orchestrates queue operations."""
-    
-    def __init__(self, config: Config, container: DependencyContainer):
-        super().__init__(config)
-        self.lifecycle_coordinator = QueueLifecycleCoordinator(config)
-        self.execution_coordinator = QueueExecutionCoordinator(config)
-        # ... other focused coordinators
-    
-    async def start_queues(self) -> None:
-        """Start all queues."""
-        await self.lifecycle_coordinator.start_queues()
-    
-    async def execute_queues_sequential(self) -> Dict[str, Any]:
-        """Execute all queues in sequence."""
-        return await self.execution_coordinator.execute_queues_sequential()
-```
-
-## Queue Execution Patterns
-
-### Sequential Execution
-
-Use for testing or when strict ordering is required:
-
-```python
-result = await queue_coordinator.execute_queues_sequential()
-```
-
-### Concurrent Execution
-
-Use for production (default):
-
-```python
-# Delegates to SequentialQueueManager which executes in parallel
-result = await queue_coordinator.execute_queues_concurrent(max_concurrent=2)
-```
-
-## Event Routing
-
-- Use `QueueEventCoordinator` for event handling
-- Route market events to appropriate handlers
-- Trigger event routing for high-impact events (impact_score > 0.7)
-- Handle event routing failures gracefully
+| DO | DON'T |
+|----|-------|
+| Delegate to SequentialQueueManager | Execute queues sequentially |
+| Use QueueName enum | Implement queue logic directly |
+| Emit lifecycle events | Block on I/O |
+| Async throughout | Exceed 200/150 lines |
+| Health checks | Direct service calls |
 
 ## Dependencies
-
-Queue coordinators typically depend on:
-- `SequentialQueueManager` - For queue execution and task management
-- `EventBus` - For event-driven communication
-- `BroadcastCoordinator` - For UI updates
+SequentialQueueManager, EventBus, BroadcastCoordinator
 

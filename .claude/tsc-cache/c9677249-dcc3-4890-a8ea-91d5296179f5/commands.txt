@@ -1,0 +1,2 @@
+ui:build:cd /Users/gurusharan/Documents/remote-claude/robo-trader/ui && npm run build
+ui:tsc:cd /Users/gurusharan/Documents/remote-claude/robo-trader/ui && npx tsc --noEmit

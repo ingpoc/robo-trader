@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "skills": {
+    "full-stack-debugger": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": ["debug", "error", "broken", "not working", "fix", "issue"],
+        "intentPatterns": ["failed to fetch", "connection refused", "error", "crash", "500"]
+      }
+    },
+    "token-efficient-mcp-template": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": ["mcp", "performance", "tokens", "efficiency", "optimize"],
+        "intentPatterns": ["too many tokens", "save tokens", "efficient", "slow response"]
+      }
+    },
+    "claude-md-auto-updater": {
+      "type": "guardrail",
+      "enforcement": "suggest",
+      "priority": "medium",
+      "promptTriggers": {
+        "keywords": ["claude.md", "documentation", "architecture", "guidelines"],
+        "intentPatterns": ["update docs", "new pattern", "add rule", "document"]
+      }
+    }
+  }
+}

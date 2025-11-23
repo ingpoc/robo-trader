@@ -39,11 +39,9 @@ logs/
 Thumbs.db
 
 # NEW: AI and Development Tools (currently untracked)
-.claude/
 .docs/
 .kilocode/
 .kilocodemodes
-.mcp.json
 .playwright-mcp/
 
 # NEW: Test and Demo Files

@@ -552,9 +552,9 @@ async def modify_trade(
                 }
             )
 
-        # Get paper trading state manager
+        # Get state manager and paper trading state
         state_manager = await container.get_state_manager()
-        paper_trading_state = state_manager.paper_trading_state
+        paper_trading_state = state_manager.paper_trading
 
         # Modify the trade
         result = await paper_trading_state.modify_trade(

@@ -1,200 +1,56 @@
-# Web Routes Directory Guidelines
+# Web Routes - src/web/routes/
 
-> **Scope**: Applies to `src/web/routes/` directory. Read `src/web/CLAUDE.md` for context.
-> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference
-
-## Purpose
-
-The `web/routes/` directory contains FastAPI route definitions for HTTP endpoints. Routes handle request validation, delegate to coordinators/services, and return structured responses.
-
-## Architecture Pattern
-
-### Route Handlers
-
-Routes in this directory:
-- **Validate Requests** - Input validation before processing
-- **Delegate to Coordinators** - Routes delegate to coordinators, not services directly
-- **Return Structured Responses** - Consistent response format
-- **Handle Errors** - Use error middleware for consistent error handling
-- **Apply Rate Limiting** - All endpoints have rate limiting
-
-### Route Pattern
-
-Each route file should follow this pattern:
-
+## Route Pattern
 ```python
 from fastapi import APIRouter, Depends, Request
 from src.core.di import DependencyContainer
 from src.web.dependencies import get_container
-from src.core.errors import TradingError
 
 router = APIRouter(prefix="/api/domain", tags=["domain"])
 
 @router.get("/endpoint")
-async def get_endpoint(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
-):
-    """
-    Endpoint description.
-    
-    Returns structured response.
-    """
+async def get_endpoint(request: Request, container = Depends(get_container)):
     try:
-        # Get coordinator from container
         coordinator = await container.get("domain_coordinator")
-        
-        # Delegate to coordinator
         result = await coordinator.get_data()
-        
-        return {
-            "success": True,
-            "data": result,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    
+        return {"success": True, "data": result}
     except TradingError as e:
-        # TradingError is handled by middleware
-        raise
-    
+        raise  # Middleware handles TradingError
     except Exception as e:
-        # Wrap unexpected errors
-        raise TradingError(
-            f"Failed to get data: {str(e)}",
-            category=ErrorCategory.SYSTEM,
-            severity=ErrorSeverity.MEDIUM
-        )
+        raise TradingError(f"Failed: {e}", category=ErrorCategory.SYSTEM)
 ```
 
-## Rules
-
-### ✅ DO
-
-- ✅ Use FastAPI routers with proper prefixes
-- ✅ Validate request input with Pydantic models
-- ✅ Delegate to coordinators (not services directly)
-- ✅ Use dependency injection for container access
-- ✅ Return structured responses
-- ✅ Apply tags for API documentation
-- ✅ Max 350 lines per route file
-
-### ❌ DON'T
-
-- ❌ Access services directly (use coordinators)
-- ❌ Skip input validation
-- ❌ Return unstructured responses
-- ❌ Handle errors directly (use middleware)
-- ❌ Skip rate limiting
-- ❌ Exceed file size limits
-
-## Request Validation Pattern
-
-Use Pydantic models for validation:
-
+## Request Validation
 ```python
-from pydantic import BaseModel, Field
-
 class OrderRequest(BaseModel):
-    """Order request model."""
     symbol: str = Field(..., min_length=1, max_length=10)
     quantity: float = Field(..., gt=0)
-    order_type: str = Field(..., regex="^(buy|sell)$")
-
-@router.post("/orders")
-async def create_order(
-    request: OrderRequest,
-    container: DependencyContainer = Depends(get_container)
-):
-    """Create trading order."""
-    # Request is automatically validated by FastAPI
-    coordinator = await container.get("portfolio_coordinator")
-    result = await coordinator.create_order(
-        symbol=request.symbol,
-        quantity=request.quantity,
-        order_type=request.order_type
-    )
-    return {"success": True, "data": result}
+    order_type: str = Field(..., pattern="^(buy|sell)$")
 ```
 
-## Error Handling Pattern
-
-Let middleware handle errors:
-
+## Rate Limiting
 ```python
-@router.get("/data")
-async def get_data(container: DependencyContainer = Depends(get_container)):
-    """Get data."""
-    coordinator = await container.get("data_coordinator")
-    
-    # TradingError is automatically handled by middleware
-    result = await coordinator.get_data()
-    
-    return {"success": True, "data": result}
-```
-
-## Rate Limiting Pattern
-
-Rate limiting is applied at router level:
-
-```python
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-
-@router.get("/endpoint")
-@limiter.limit("10/minute")  # Rate limit applied
-async def get_endpoint(request: Request, ...):
-    """Rate-limited endpoint."""
+@limiter.limit("10/minute")
+async def get_endpoint(request: Request):
     pass
 ```
 
-## Scheduler Monitoring Pattern (CRITICAL)
+## Rules
+| Rule | Requirement |
+|------|-------------|
+| Validation | Use Pydantic models |
+| Delegation | Routes → coordinators (NOT services) |
+| Errors | Middleware handles, DON'T catch |
+| Responses | {"success": true, "data": ...} |
+| Max size | 350 lines per route file |
+| Rate limiting | Apply @limiter.limit() |
 
-**Rule**: Scheduler execution history must map scheduler IDs to actual task names in `execution_history` table.
-
-**Critical Issue**: UI displays schedulers with IDs like `portfolio_analysis_scheduler`, but database records use task names like `portfolio_analyzer`. Incorrect mapping causes "No jobs or executions" errors.
-
-**Pattern**:
+## CRITICAL: Scheduler ID → Task Name Mapping
 ```python
-# In monitoring endpoints (like /api/system-health)
-# Map scheduler IDs to task names in execution_history
 processor_mapping = {
     "portfolio_sync_scheduler": "portfolio_sync",
-    "data_fetcher_scheduler": ["earnings_processor", "news_processor", "fundamental_analyzer"],
-    "ai_analysis_scheduler": "ai_analysis_scheduler",
-    "portfolio_analysis_scheduler": "portfolio_analyzer",  # CRITICAL: Maps UI ID to DB task name
-    "paper_trading_research_scheduler": "paper_trading_research_scheduler",
-    "paper_trading_execution_scheduler": "paper_trading_execution_scheduler"
+    "portfolio_analysis_scheduler": "portfolio_analyzer",  # Map UI ID to DB name
+    "ai_analysis_scheduler": "ai_analysis_scheduler"
 }
 ```
-
-**Key Points**:
-- **UI Scheduler IDs**: Generated as `f"{queue_name}_scheduler"` in monitoring.py:94
-- **Database Task Names**: Actual `task_name` values stored in execution_history table
-- **Mapping Required**: Always map UI IDs → database task names for execution history display
-- **Verification**: Test by triggering schedulers via API and verifying "Recent Executions" appear in UI
-
-**Common Pitfalls**:
-- ❌ Mapping to wrong task names (e.g., `portfolio_analyzer` instead of `portfolio_analysis_scheduler`)
-- ❌ Missing mappings for new schedulers
-- ❌ Using processor names instead of task names from database
-
-## Best Practices
-
-1. **Validation**: Always validate input with Pydantic models
-2. **Delegation**: Delegate to coordinators, not services
-3. **Error Handling**: Let middleware handle errors
-4. **Response Structure**: Return consistent response format
-5. **Documentation**: Provide clear endpoint descriptions
-6. **Rate Limiting**: Apply appropriate rate limits
-7. **Tags**: Use tags for API documentation organization
-
-## Dependencies
-
-Routes depend on:
-- `fastapi` - For route definitions
-- `src/web/dependencies` - For container access
-- `src/core/coordinators` - For business logic delegation
-- `src/core/errors` - For error handling
 
