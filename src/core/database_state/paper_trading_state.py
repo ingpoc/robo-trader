@@ -330,6 +330,78 @@ class PaperTradingState(BaseState):
                 logger.error(f"Failed to close paper trade {trade_id}: {e}")
                 return False
 
+    async def modify_trade(
+        self,
+        trade_id: str,
+        stop_loss: Optional[float] = None,
+        target_price: Optional[float] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Modify stop loss and/or target price for an open trade.
+
+        Args:
+            trade_id: The trade to modify
+            stop_loss: New stop loss price (optional)
+            target_price: New target price (optional)
+
+        Returns:
+            Updated trade dict or None if failed
+        """
+        async with self._lock:
+            try:
+                # Get current trade and risk_metrics
+                cursor = await self.db.connection.execute(
+                    """SELECT id, symbol, side, quantity, entry_price, risk_metrics, status
+                       FROM paper_trades WHERE id = ?""",
+                    (trade_id,)
+                )
+                row = await cursor.fetchone()
+
+                if not row:
+                    logger.warning(f"Trade {trade_id} not found")
+                    return None
+
+                if row[6] != 'OPEN':
+                    logger.warning(f"Trade {trade_id} is not open (status: {row[6]})")
+                    return None
+
+                # Parse existing risk_metrics
+                risk_metrics = json.loads(row[5]) if row[5] else {}
+
+                # Update stop_loss and target_price
+                if stop_loss is not None:
+                    risk_metrics["stop_loss"] = stop_loss
+                if target_price is not None:
+                    risk_metrics["target_price"] = target_price
+
+                current_time = datetime.now(timezone.utc).isoformat()
+
+                # Update in database
+                await self.db.connection.execute(
+                    """UPDATE paper_trades
+                       SET risk_metrics = ?, updated_at = ?
+                       WHERE id = ?""",
+                    (json.dumps(risk_metrics), current_time, trade_id)
+                )
+                await self.db.connection.commit()
+
+                logger.info(f"Modified trade {trade_id}: stop_loss={stop_loss}, target_price={target_price}")
+
+                return {
+                    "trade_id": row[0],
+                    "symbol": row[1],
+                    "side": row[2],
+                    "quantity": row[3],
+                    "entry_price": row[4],
+                    "stop_loss": risk_metrics.get("stop_loss"),
+                    "target_price": risk_metrics.get("target_price"),
+                    "updated_at": current_time
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to modify trade {trade_id}: {e}")
+                return None
+
     async def get_open_trades(self) -> List[Dict[str, Any]]:
         """Get all open paper trades."""
         async with self._lock:

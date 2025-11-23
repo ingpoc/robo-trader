@@ -9,14 +9,25 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from typing import Optional
+from pydantic import BaseModel
+
 from src.core.di import DependencyContainer
 from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest, CloseTradeRequest
 from src.core.errors import TradingError
 from ..dependencies import get_container
+
+
 from ..utils.error_handlers import (
     handle_trading_error,
     handle_unexpected_error,
 )
+
+
+class ModifyTradeRequest(BaseModel):
+    """Request model for modifying trade stop loss and target."""
+    stop_loss: Optional[float] = None
+    target_price: Optional[float] = None
 
 logger = logging.getLogger(__name__)
 
@@ -508,3 +519,69 @@ async def close_trade(
         return await handle_trading_error(e)
     except Exception as e:
         return await handle_unexpected_error(e, "close_trade")
+
+
+@router.patch("/paper-trading/accounts/{account_id}/trades/{trade_id}")
+@limiter.limit(paper_trading_limit)
+async def modify_trade(
+    request: Request,
+    account_id: str,
+    trade_id: str,
+    body: ModifyTradeRequest,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """
+    Modify stop loss and/or target price for an open trade.
+
+    Args:
+        account_id: Paper trading account ID
+        trade_id: Trade ID to modify
+        body: ModifyTradeRequest with stop_loss and/or target_price
+
+    Returns:
+        Updated trade information
+    """
+    try:
+        # Validate at least one field is provided
+        if body.stop_loss is None and body.target_price is None:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": "At least one of stop_loss or target_price must be provided"
+                }
+            )
+
+        # Get paper trading state manager
+        state_manager = await container.get_state_manager()
+        paper_trading_state = state_manager.paper_trading_state
+
+        # Modify the trade
+        result = await paper_trading_state.modify_trade(
+            trade_id=trade_id,
+            stop_loss=body.stop_loss,
+            target_price=body.target_price
+        )
+
+        if result is None:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": f"Trade {trade_id} not found or is not open"
+                }
+            )
+
+        logger.info(f"Modified trade {trade_id} in account {account_id}: "
+                   f"stop_loss={body.stop_loss}, target_price={body.target_price}")
+
+        return {
+            "success": True,
+            "trade": result,
+            "message": f"Trade {trade_id} modified successfully"
+        }
+
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "modify_trade")

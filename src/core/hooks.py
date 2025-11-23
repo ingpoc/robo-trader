@@ -233,18 +233,157 @@ def _is_market_open() -> bool:
     return market_open <= current_time <= market_close
 
 
-def create_safety_hooks(config: Config, state_manager: DatabaseStateManager) -> Dict[str, List[HookMatcher]]:
-    """Create safety hooks configuration."""
+async def session_start_hook(session_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SessionStart hook - automatically inject trading context at session start.
 
-    # Inject context into hook function
-    async def hook_with_context(input_data: Dict[str, Any], tool_use_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    Provides Claude with:
+    - Current portfolio state
+    - Market conditions
+    - Trading rules and constraints
+    - Paper trading mode flag
+    """
+    config: Config = context.get("config")
+    state_manager: DatabaseStateManager = context.get("state_manager")
+
+    if not config or not state_manager:
+        logger.warning("SessionStart hook: Missing config or state_manager in context")
+        return {}
+
+    try:
+        # Get portfolio state
+        portfolio_data = {}
+        try:
+            paper_trading_state = getattr(state_manager, 'paper_trading_state', None)
+            if paper_trading_state:
+                account = await paper_trading_state.get_account()
+                if account:
+                    portfolio_data = {
+                        "cash_balance": account.get("current_cash", 0),
+                        "total_equity": account.get("total_equity", 0),
+                        "total_pnl": account.get("total_pnl", 0),
+                        "day_pnl": account.get("day_pnl", 0)
+                    }
+
+                open_trades = await paper_trading_state.get_open_trades()
+                portfolio_data["open_positions"] = len(open_trades) if open_trades else 0
+        except Exception as e:
+            logger.warning(f"SessionStart: Failed to get portfolio: {e}")
+
+        # Get market conditions
+        market_context = {
+            "is_market_open": _is_market_open(),
+            "session_type": "regular" if _is_market_open() else "closed",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        # Get trading rules from config
+        trading_rules = {
+            "paper_trading_only": True,  # Always paper trading
+            "max_position_size_pct": getattr(config.execution, 'max_position_percent', 15),
+            "require_stop_loss": getattr(config.execution, 'require_stop_loss', True),
+            "environment": config.environment
+        }
+
+        logger.info(f"SessionStart hook: Injected context for session {session_id}")
+
+        return {
+            "portfolio_context": portfolio_data,
+            "market_context": market_context,
+            "trading_rules": trading_rules,
+            "session_id": session_id
+        }
+
+    except Exception as e:
+        logger.error(f"SessionStart hook error: {e}")
+        return {}
+
+
+async def post_tool_use_hook(
+    tool_name: str,
+    tool_input: Dict[str, Any],
+    tool_output: Dict[str, Any],
+    context: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    PostToolUse hook - automatic logging and event emission after tool execution.
+
+    Responsibilities:
+    - Log tool executions for transparency/audit
+    - Emit events for UI updates
+    - Track token usage
+    """
+    config: Config = context.get("config")
+    state_manager: DatabaseStateManager = context.get("state_manager")
+
+    if not config or not state_manager:
+        return {}
+
+    try:
+        # Log tool execution for transparency
+        execution_log = {
+            "tool": tool_name,
+            "input_summary": _summarize_input(tool_input),
+            "success": "error" not in str(tool_output).lower(),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        logger.debug(f"PostToolUse: {tool_name} executed successfully={execution_log['success']}")
+
+        # Could emit events here for real-time UI updates
+        # await event_bus.publish(Event(type=EventType.MCP_TOOL_EXECUTED, data=execution_log))
+
+        return {"logged": True, "execution_log": execution_log}
+
+    except Exception as e:
+        logger.error(f"PostToolUse hook error: {e}")
+        return {}
+
+
+def _summarize_input(tool_input: Dict[str, Any]) -> str:
+    """Create a brief summary of tool input for logging."""
+    if not tool_input:
+        return "(empty)"
+
+    # Extract key fields for summary
+    summary_parts = []
+    for key in ["symbol", "action", "quantity", "account_id"]:
+        if key in tool_input:
+            summary_parts.append(f"{key}={tool_input[key]}")
+
+    return ", ".join(summary_parts) if summary_parts else f"{len(tool_input)} params"
+
+
+def create_safety_hooks(config: Config, state_manager: DatabaseStateManager) -> Dict[str, List[HookMatcher]]:
+    """Create safety hooks configuration with PreToolUse, SessionStart, and PostToolUse hooks."""
+
+    # Inject context into PreToolUse hook function
+    async def pre_tool_hook_with_context(input_data: Dict[str, Any], tool_use_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
         context = context or {}
         context.update({"config": config, "state_manager": state_manager})
         return await pre_tool_use_hook(input_data, tool_use_id, context)
 
+    # Inject context into SessionStart hook
+    async def session_start_hook_with_context(session_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        context = context or {}
+        context.update({"config": config, "state_manager": state_manager})
+        return await session_start_hook(session_id, context)
+
+    # Inject context into PostToolUse hook
+    async def post_tool_hook_with_context(tool_name: str, tool_input: Dict[str, Any], tool_output: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        context = context or {}
+        context.update({"config": config, "state_manager": state_manager})
+        return await post_tool_use_hook(tool_name, tool_input, tool_output, context)
+
     return {
         "PreToolUse": [
-            HookMatcher(matcher="mcp__broker__*", hooks=[hook_with_context]),
-            HookMatcher(matcher="mcp__agents__*", hooks=[hook_with_context]),
+            HookMatcher(matcher="mcp__broker__*", hooks=[pre_tool_hook_with_context]),
+            HookMatcher(matcher="mcp__agents__*", hooks=[pre_tool_hook_with_context]),
+        ],
+        "SessionStart": [
+            HookMatcher(matcher="", hooks=[session_start_hook_with_context]),
+        ],
+        "PostToolUse": [
+            HookMatcher(matcher="mcp__*", hooks=[post_tool_hook_with_context]),
         ],
     }

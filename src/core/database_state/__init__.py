@@ -8,6 +8,7 @@ Original monolithic database_state.py (1,412 lines, 62 methods) refactored into:
 - approval_state.py: Approval workflow management
 - news_earnings_state.py: News and earnings data
 - analysis_state.py: Analysis and recommendations
+- event_trigger_state.py: Event trigger persistence for EventRouterService
 - database_state.py: Facade coordinating all managers
 
 Backward compatible exports maintain existing imports:
@@ -21,6 +22,7 @@ from .intent_state import IntentStateManager
 from .approval_state import ApprovalStateManager
 from .news_earnings_state import NewsEarningsStateManager
 from .analysis_state import AnalysisStateManager
+from .event_trigger_state import EventTriggerStateManager
 
 __all__ = [
     "DatabaseStateManager",  # Main facade - backward compatible
@@ -30,4 +32,5 @@ __all__ = [
     "ApprovalStateManager",
     "NewsEarningsStateManager",
     "AnalysisStateManager",
+    "EventTriggerStateManager",
 ]
