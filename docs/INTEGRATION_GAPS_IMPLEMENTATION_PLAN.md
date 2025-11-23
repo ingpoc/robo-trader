@@ -1038,7 +1038,7 @@ Phase 1 (Critical) - Start Immediately
 
 Phase 2 (High) - After Phase 1
 ├── 2.1 Agent Task Tracking
-├── 2.2 Broker Integration
+├── 2.2 Zerodha Portfolio Sync
 ├── 2.3 Account Management
 ├── 2.4 Field Standardization
 └── 2.5 Portfolio Intelligence
@@ -1059,7 +1059,27 @@ Phase 4 (Maintenance) - Ongoing
 ├── 4.3 Queue Monitoring
 ├── 4.4 Analytics Improvements
 └── 4.5 Event Standardization
+
+Phase 5 (SDK Optimization) - HIGH PRIORITY, Parallel with Phase 2
+├── 5.1 SessionStart Hooks (Quick Win - 2 days)
+├── 5.2 PostToolUse Hooks (3 days)
+├── 5.3 PostResponse Hooks (3 days)
+├── 5.4 Skills System (4 skills - 5 days)
+├── 5.5 EventBus-SDK Bridge (2 days)
+├── 5.6 Coordinator Refactoring (7 days)
+└── 5.7 MCP Resource Enhancements (2 days)
 ```
+
+### Priority Matrix
+
+| Phase | Priority | Impact | Dependency |
+|-------|----------|--------|------------|
+| Phase 1 | CRITICAL | Blocking fixes | None |
+| Phase 5.1-5.3 | HIGH | 40% code reduction | Phase 1 |
+| Phase 2 | HIGH | Feature completion | Phase 1 |
+| Phase 5.4-5.7 | HIGH | AI-native transformation | Phase 5.1-5.3 |
+| Phase 3 | MEDIUM | Polish & metrics | Phase 2 |
+| Phase 4 | LOW | Maintenance | Ongoing |
 
 ---
 
@@ -1093,6 +1113,525 @@ Phase 4 (Maintenance) - Ongoing
 
 ---
 
+## Phase 5: SDK Optimization (AI-Native Transformation)
+
+**Priority**: HIGH
+**Impact**: Transform app from "using SDK" to "SDK-native"
+**Goal**: Maximize Claude Agent SDK potential with hooks, skills, and MCP enhancements
+
+> **Current State**: Good SDK foundation with MCP tools and PreToolUse hooks
+> **Gap**: SessionStart, PostToolUse, PostResponse hooks not implemented; Skills not used
+
+### 5.1 Implement SessionStart Hooks
+
+**Current**: Manual session initialization scattered across coordinators
+**Target**: Automatic context injection at session start
+
+#### Implementation Steps
+
+1. **Create SessionStart Hook**
+   ```
+   File: src/core/hooks.py (extend existing)
+   ```
+   ```python
+   async def session_start_hook(session_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+       """Initialize Claude session with trading context automatically."""
+       state_manager = context.get("state_manager")
+       config = context.get("config")
+
+       # Auto-inject portfolio context
+       portfolio = await state_manager.get_portfolio()
+
+       # Auto-inject market conditions
+       market_status = await get_market_conditions()
+
+       # Auto-inject trading rules
+       rules = config.execution.rules
+
+       return {
+           "portfolio_context": {
+               "holdings": portfolio.holdings,
+               "cash_balance": portfolio.cash,
+               "total_value": portfolio.total_value,
+               "risk_exposure": portfolio.risk_metrics
+           },
+           "market_context": {
+               "is_market_open": market_status.is_open,
+               "session_type": market_status.session,
+               "volatility_index": market_status.vix
+           },
+           "trading_rules": {
+               "max_position_size": rules.max_position_pct,
+               "stop_loss_required": rules.require_stop_loss,
+               "paper_trading_only": True
+           }
+       }
+   ```
+
+2. **Register Hook in Settings**
+   ```
+   File: .claude/settings.json
+   ```
+   ```json
+   {
+     "hooks": {
+       "SessionStart": [
+         {
+           "matcher": "",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "python -m src.core.hooks session_start"
+             }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+
+3. **Remove Manual Initialization**
+   - Refactor `session_coordinator.py` to use hook output
+   - Remove duplicate context building in `query_coordinator.py`
+   - Eliminate boilerplate in agent coordinators
+
+#### Benefits
+- **40% reduction** in session initialization code
+- Consistent context across all agent sessions
+- Automatic portfolio/market awareness
+
+---
+
+### 5.2 Implement PostToolUse Hooks
+
+**Current**: Manual logging after each tool call
+**Target**: Automatic transparency logging, event emission, and audit trails
+
+#### Implementation Steps
+
+1. **Create PostToolUse Hook**
+   ```python
+   async def post_tool_use_hook(
+       tool_name: str,
+       tool_input: Dict[str, Any],
+       tool_output: Dict[str, Any],
+       context: Dict[str, Any]
+   ) -> Dict[str, Any]:
+       """Automatic logging and event emission after tool execution."""
+
+       # 1. Log to transparency system
+       await analysis_logger.log_tool_execution({
+           "tool": tool_name,
+           "input": tool_input,
+           "output": tool_output,
+           "timestamp": datetime.now(timezone.utc).isoformat(),
+           "session_id": context.get("session_id")
+       })
+
+       # 2. Emit event for UI updates
+       await event_bus.publish(Event(
+           type=EventType.MCP_TOOL_EXECUTED,
+           source="PostToolUseHook",
+           data={
+               "tool": tool_name,
+               "success": "error" not in str(tool_output).lower()
+           }
+       ))
+
+       # 3. Track token usage if available
+       if "usage" in tool_output:
+           await state_manager.record_token_usage(
+               tool=tool_name,
+               tokens=tool_output["usage"]
+           )
+
+       return {"logged": True}
+   ```
+
+2. **Hook Configuration**
+   ```json
+   {
+     "hooks": {
+       "PostToolUse": [
+         {
+           "matcher": "mcp__*",
+           "hooks": [{"type": "command", "command": "python -m src.core.hooks post_tool_use"}]
+         }
+       ]
+     }
+   }
+   ```
+
+3. **Remove Manual Logging**
+   - Remove explicit logging calls in `tool_executor.py`
+   - Remove duplicate event publishing in coordinators
+   - Consolidate transparency logging
+
+#### Benefits
+- Automatic audit trail for all tool executions
+- Real-time UI updates via event emission
+- Token tracking without manual instrumentation
+
+---
+
+### 5.3 Implement PostResponse Hooks
+
+**Current**: Manual response parsing in 5+ coordinators
+**Target**: Automatic response processing, storage, and broadcasting
+
+#### Implementation Steps
+
+1. **Create PostResponse Hook**
+   ```python
+   async def post_response_hook(
+       response: Dict[str, Any],
+       context: Dict[str, Any]
+   ) -> Dict[str, Any]:
+       """Process and store AI responses automatically."""
+
+       # 1. Parse structured data from response
+       analysis_data = parse_analysis_response(response)
+
+       # 2. Store in database
+       if analysis_data:
+           stored_id = await state_manager.store_analysis(analysis_data)
+
+       # 3. Broadcast to connected clients
+       await broadcast_coordinator.send_update({
+           "type": "analysis_complete",
+           "data": analysis_data,
+           "id": stored_id
+       })
+
+       # 4. Trigger follow-up actions if needed
+       if analysis_data.get("requires_action"):
+           await event_bus.publish(Event(
+               type=EventType.ACTION_REQUIRED,
+               data=analysis_data
+           ))
+
+       return {"processed": True, "stored_id": stored_id}
+   ```
+
+2. **Refactor Response Handling**
+   - Remove manual parsing in `analysis_executor.py`
+   - Remove duplicate storage logic in coordinators
+   - Standardize response format expectations
+
+---
+
+### 5.4 Implement Skills System
+
+**Current**: No skills defined
+**Target**: Domain-specific "always-on" expertise for Claude
+
+#### Skill Definitions
+
+1. **Portfolio Analysis Skill**
+   ```
+   File: .claude/skills/portfolio-analysis/SKILL.md
+   ```
+   ```markdown
+   # Portfolio Analysis Skill
+
+   ## Description
+   Expert portfolio analysis with Indian market context (NSE/BSE).
+
+   ## When to Use
+   - User asks about portfolio performance
+   - Analyzing holdings or positions
+   - Risk assessment requests
+   - Rebalancing recommendations
+
+   ## System Prompt
+   You are an expert Indian equity portfolio analyst. Follow these guidelines:
+
+   ### Analysis Framework
+   - Use NIFTY 50 as primary benchmark
+   - Consider sector exposure (max 40% single sector)
+   - Factor in INR denomination for all calculations
+   - Apply Indian market trading hours (9:15 AM - 3:30 PM IST)
+
+   ### Risk Rules
+   - Maximum single stock: 15% of portfolio
+   - Minimum diversification: 10 stocks
+   - Stop loss recommendation: 5-10% based on volatility
+   - Paper trading mode: Always simulate, never real execution
+
+   ### Output Format
+   Always structure analysis as:
+   1. Current State Summary
+   2. Risk Assessment (1-10 scale)
+   3. Recommendations (prioritized)
+   4. Action Items (specific trades)
+   ```
+
+2. **Trade Execution Skill**
+   ```
+   File: .claude/skills/trade-execution/SKILL.md
+   ```
+   ```markdown
+   # Trade Execution Skill
+
+   ## Description
+   Paper trading execution with proper validation and risk checks.
+
+   ## When to Use
+   - User wants to buy/sell stocks
+   - Position modification requests
+   - Order placement scenarios
+
+   ## System Prompt
+   You execute paper trades with strict validation:
+
+   ### Pre-Trade Checks
+   1. Verify symbol exists on NSE/BSE
+   2. Check market hours (reject if closed)
+   3. Validate position size ≤ 15% portfolio
+   4. Ensure sufficient paper balance
+   5. Calculate and display risk metrics
+
+   ### Execution Rules
+   - ALWAYS use paper_trading_buy/sell tools
+   - NEVER suggest real broker execution
+   - Include stop loss for every trade
+   - Log reasoning for audit trail
+
+   ### Post-Trade
+   - Confirm execution with trade ID
+   - Show updated portfolio state
+   - Calculate impact on risk metrics
+   ```
+
+3. **Market Monitor Skill**
+   ```
+   File: .claude/skills/market-monitor/SKILL.md
+   ```
+   ```markdown
+   # Market Monitor Skill
+
+   ## Description
+   Real-time market awareness and alert generation.
+
+   ## When to Use
+   - Market condition queries
+   - Price movement alerts
+   - Technical signal detection
+
+   ## System Prompt
+   Monitor Indian equity markets with these capabilities:
+
+   ### Data Sources
+   - Use Zerodha API for real-time prices
+   - Reference NIFTY/BANKNIFTY for market direction
+   - Track FII/DII flows when available
+
+   ### Alert Conditions
+   - Price crosses key support/resistance
+   - Volume spike (>2x average)
+   - RSI overbought (>70) / oversold (<30)
+   - MACD crossovers
+
+   ### Response Format
+   For market queries, always include:
+   - Current index levels
+   - Market sentiment (bullish/bearish/neutral)
+   - Key levels to watch
+   - Relevant news if any
+   ```
+
+#### Skills Directory Structure
+```
+.claude/skills/
+├── portfolio-analysis/
+│   ├── SKILL.md
+│   └── templates/
+│       └── analysis_report.md
+├── trade-execution/
+│   ├── SKILL.md
+│   └── checklists/
+│       └── pre_trade_checklist.md
+├── market-monitor/
+│   ├── SKILL.md
+│   └── reference/
+│       └── technical_indicators.md
+└── risk-management/
+    ├── SKILL.md
+    └── rules/
+        └── position_sizing.md
+```
+
+---
+
+### 5.5 EventBus-SDK Bridge
+
+**Current**: Manual event publishing in coordinators
+**Target**: Automatic event emission via SDK hooks
+
+#### Implementation
+
+```python
+# File: src/core/sdk_event_bridge.py
+
+def create_event_publishing_hooks(event_bus: EventBus) -> Dict[str, List[HookMatcher]]:
+    """Create hooks that automatically publish events."""
+
+    async def on_tool_call(input_data, tool_use_id, context):
+        """Emit event when tool is called."""
+        await event_bus.publish(Event(
+            type=EventType.MCP_TOOL_CALLED,
+            source="SDKHook",
+            data={
+                "tool": input_data["tool_name"],
+                "tool_use_id": tool_use_id
+            }
+        ))
+        return {}
+
+    async def on_tool_complete(tool_name, output, context):
+        """Emit event when tool completes."""
+        await event_bus.publish(Event(
+            type=EventType.MCP_TOOL_COMPLETED,
+            source="SDKHook",
+            data={
+                "tool": tool_name,
+                "success": "error" not in str(output).lower()
+            }
+        ))
+        return {}
+
+    async def on_analysis_complete(response, context):
+        """Emit event when AI analysis completes."""
+        await event_bus.publish(Event(
+            type=EventType.AI_ANALYSIS_COMPLETE,
+            source="SDKHook",
+            data={"response_id": context.get("response_id")}
+        ))
+        return {}
+
+    return {
+        "PreToolUse": [
+            HookMatcher(matcher="mcp__*", hooks=[on_tool_call])
+        ],
+        "PostToolUse": [
+            HookMatcher(matcher="mcp__*", hooks=[on_tool_complete])
+        ],
+        "PostResponse": [
+            HookMatcher(matcher="*", hooks=[on_analysis_complete])
+        ]
+    }
+```
+
+---
+
+### 5.6 Refactor Large Coordinators Using SDK Patterns
+
+**Target Files**:
+| File | Current Lines | Target | Strategy |
+|------|---------------|--------|----------|
+| `portfolio_analysis_coordinator.py` | 16,638 | <500 | Extract to Skills + Hooks |
+| `queue_execution_coordinator.py` | 6,618 | <300 | SDK task management |
+| `prompt_optimization_tools.py` | 625 | <400 | Convert to MCP tool |
+
+#### Refactoring Strategy
+
+1. **Extract Common Patterns to Hooks**
+   - Response parsing → PostResponse hook
+   - Logging/audit → PostToolUse hook
+   - Context setup → SessionStart hook
+
+2. **Convert Workflows to Skills**
+   - Portfolio analysis workflow → `portfolio-analysis` skill
+   - Trade execution workflow → `trade-execution` skill
+   - Market monitoring → `market-monitor` skill
+
+3. **Leverage SDK Task Management**
+   - Replace manual queue orchestration
+   - Use SDK's built-in conversation management
+   - Let SDK handle retries and error recovery
+
+---
+
+### 5.7 MCP Resource Enhancements
+
+**Current Resources** (in `mcp_server.py`):
+- `portfolio_status`
+- `trading_history`
+- `market_context`
+- `strategy_learnings`
+- `monthly_performance`
+
+**Additional Resources to Add**:
+
+```python
+# File: src/services/claude_agent/mcp_server.py (extend)
+
+_additional_resources = {
+    "market.intraday": {
+        "uri": "claude://market/intraday/{symbol}",
+        "name": "Intraday Market Data",
+        "description": "Real-time candles from Zerodha",
+        "mimeType": "application/json"
+    },
+    "risk.portfolio": {
+        "uri": "claude://risk/portfolio",
+        "name": "Portfolio Risk Metrics",
+        "description": "Current risk exposure, VaR, concentration",
+        "mimeType": "application/json"
+    },
+    "alerts.active": {
+        "uri": "claude://alerts/active",
+        "name": "Active Price Alerts",
+        "description": "User-defined price and condition alerts",
+        "mimeType": "application/json"
+    },
+    "paper.positions": {
+        "uri": "claude://paper/positions",
+        "name": "Paper Trading Positions",
+        "description": "Current simulated positions and P&L",
+        "mimeType": "application/json"
+    }
+}
+```
+
+---
+
+### SDK Optimization Summary
+
+| Component | Current | After Optimization |
+|-----------|---------|-------------------|
+| **Hooks Implemented** | 1 (PreToolUse) | 4 (+ SessionStart, PostToolUse, PostResponse) |
+| **Skills Defined** | 0 | 4 (portfolio, trade, market, risk) |
+| **MCP Resources** | 5 | 9 |
+| **Manual Orchestration** | 41 coordinators | ~15 (SDK handles rest) |
+| **Code in Large Files** | 23,000+ lines | <3,000 lines |
+
+### Files to Create (SDK Phase)
+
+```
+.claude/skills/portfolio-analysis/SKILL.md
+.claude/skills/trade-execution/SKILL.md
+.claude/skills/market-monitor/SKILL.md
+.claude/skills/risk-management/SKILL.md
+.claude/settings.json (hooks config)
+src/core/sdk_event_bridge.py
+src/core/hooks_extended.py
+```
+
+### Files to Refactor (SDK Phase)
+
+```
+src/core/hooks.py (extend with new hooks)
+src/core/coordinators/portfolio/portfolio_analysis_coordinator.py (major refactor)
+src/core/coordinators/queue/queue_execution_coordinator.py (major refactor)
+src/services/claude_agent/mcp_server.py (add resources)
+src/services/portfolio_intelligence/analysis_executor.py (use hooks)
+src/core/coordinators/core/session_coordinator.py (use SessionStart hook)
+src/core/coordinators/core/query_coordinator.py (use PostResponse hook)
+```
+
+---
+
 ## Risk Mitigation
 
 | Risk | Mitigation |
@@ -1102,10 +1641,14 @@ Phase 4 (Maintenance) - Ongoing
 | Frontend/backend mismatch | Shared type definitions, contract tests |
 | Performance degradation | Load testing, caching strategies |
 | Authentication bypass | Security audit after implementation |
+| SDK hook failures | Fallback to manual processing, circuit breakers |
+| Skill misinterpretation | Clear skill boundaries, explicit "When to Use" |
 
 ---
 
 ## Success Metrics
+
+### Integration Gaps
 
 | Metric | Current | Target |
 |--------|---------|--------|
@@ -1114,6 +1657,18 @@ Phase 4 (Maintenance) - Ongoing
 | Frontend features blocked | 5 | 0 |
 | Component size violations | 8 | 0 |
 | Console.log in production | 28 files | 0 |
+
+### SDK Optimization
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| Hooks implemented | 1 | 4 |
+| Skills defined | 0 | 4 |
+| MCP resources | 5 | 9 |
+| Large coordinator files (>500 lines) | 3 | 0 |
+| Manual event publishing calls | 50+ | <10 |
+| Session initialization boilerplate | ~40% of coordinator code | <10% |
+| SDK-native patterns adoption | 40% | 85% |
 
 ---
 
