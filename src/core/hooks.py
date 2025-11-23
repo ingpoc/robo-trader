@@ -235,13 +235,17 @@ def _is_market_open() -> bool:
 
 async def session_start_hook(session_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    SessionStart hook - automatically inject trading context at session start.
+    SessionStart hook - MINIMAL context injection (Progressive Discovery Pattern).
 
-    Provides Claude with:
-    - Current portfolio state
-    - Market conditions
-    - Trading rules and constraints
-    - Paper trading mode flag
+    Token Budget: <50 tokens (was ~200 tokens - 75% reduction)
+
+    Only injects:
+    - Account balance (1 number)
+    - Open positions count (1 number)
+    - Market status (1 word)
+    - Paper trading flag (1 bool)
+
+    Agent should use search_tools to discover tools for detailed data.
     """
     config: Config = context.get("config")
     state_manager: DatabaseStateManager = context.get("state_manager")
@@ -251,47 +255,32 @@ async def session_start_hook(session_id: str, context: Dict[str, Any]) -> Dict[s
         return {}
 
     try:
-        # Get portfolio state
-        portfolio_data = {}
+        # Minimal portfolio data (just counts and balance)
+        bal = 0
+        pos_count = 0
+
         try:
             paper_trading_state = getattr(state_manager, 'paper_trading_state', None)
             if paper_trading_state:
                 account = await paper_trading_state.get_account()
                 if account:
-                    portfolio_data = {
-                        "cash_balance": account.get("current_cash", 0),
-                        "total_equity": account.get("total_equity", 0),
-                        "total_pnl": account.get("total_pnl", 0),
-                        "day_pnl": account.get("day_pnl", 0)
-                    }
+                    bal = account.get("current_cash", 0)
 
                 open_trades = await paper_trading_state.get_open_trades()
-                portfolio_data["open_positions"] = len(open_trades) if open_trades else 0
+                pos_count = len(open_trades) if open_trades else 0
         except Exception as e:
             logger.warning(f"SessionStart: Failed to get portfolio: {e}")
 
-        # Get market conditions
-        market_context = {
-            "is_market_open": _is_market_open(),
-            "session_type": "regular" if _is_market_open() else "closed",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+        # Ultra-minimal context (~30 tokens)
+        mkt = "open" if _is_market_open() else "closed"
 
-        # Get trading rules from config
-        trading_rules = {
-            "paper_trading_only": True,  # Always paper trading
-            "max_position_size_pct": getattr(config.execution, 'max_position_percent', 15),
-            "require_stop_loss": getattr(config.execution, 'require_stop_loss', True),
-            "environment": config.environment
-        }
+        logger.info(f"SessionStart hook: Minimal context for {session_id}")
 
-        logger.info(f"SessionStart hook: Injected context for session {session_id}")
-
+        # Progressive discovery: minimal initial context
+        # Agent uses search_tools("balance", "full") for detailed data
         return {
-            "portfolio_context": portfolio_data,
-            "market_context": market_context,
-            "trading_rules": trading_rules,
-            "session_id": session_id
+            "ctx": f"bal:{bal}|pos:{pos_count}|mkt:{mkt}|paper:true",
+            "hint": "use search_tools for details"
         }
 
     except Exception as e:
