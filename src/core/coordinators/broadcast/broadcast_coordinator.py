@@ -48,6 +48,9 @@ class BroadcastCoordinator(BaseCoordinator):
         # Phase 3: Repository for consistent data
         self.queue_state_repository = queue_state_repository
 
+        # Broadcast state tracking for throttling (avoid duplicate logs)
+        self._last_broadcast_states: Dict[str, Any] = {}
+
     async def initialize(self) -> None:
         """Initialize broadcast coordinator."""
         self._log_info("Initializing BroadcastCoordinator (Phase 3 - with repository)")
@@ -99,7 +102,12 @@ class BroadcastCoordinator(BaseCoordinator):
         }
 
         await self.broadcast_to_ui(message)
-        self._log_debug(f"Claude status broadcast: {status_data.get('status', 'unknown')}")
+
+        # Only log if status changed
+        current_status = status_data.get("status", "unknown")
+        if self._last_broadcast_states.get("claude_status") != current_status:
+            self._log_info(f"Claude status changed: {current_status}")
+            self._last_broadcast_states["claude_status"] = current_status
 
     async def broadcast_claude_analysis_started(self, event_data: Dict[str, Any]) -> None:
         """Broadcast Claude analysis started event to UI."""
@@ -114,7 +122,7 @@ class BroadcastCoordinator(BaseCoordinator):
         }
 
         await self.broadcast_to_ui(message)
-        self._log_debug(f"Claude analysis started broadcast: {event_data.get('analysis_id')}")
+        # Log analysis start at INFO level only when agent completes significant work (logged elsewhere)
 
     async def broadcast_claude_analysis_completed(self, event_data: Dict[str, Any]) -> None:
         """Broadcast Claude analysis completed event to UI."""
@@ -134,7 +142,11 @@ class BroadcastCoordinator(BaseCoordinator):
         }
 
         await self.broadcast_to_ui(message)
-        self._log_debug(f"Claude analysis completed broadcast: {event_data.get('analysis_id')} ({event_data.get('status')})")
+
+        # Only log if analysis failed or has errors
+        status = event_data.get("status", "completed")
+        if status == "failed" or event_data.get("error"):
+            self._log_warning(f"Claude analysis failed: {event_data.get('analysis_id')} - {event_data.get('error')}")
 
     async def broadcast_system_health_update(self, health_data: Dict[str, Any]) -> None:
         """Broadcast system health updates to UI."""
@@ -147,7 +159,15 @@ class BroadcastCoordinator(BaseCoordinator):
         }
 
         await self.broadcast_to_ui(message)
-        self._log_debug(f"System health broadcast: {health_data.get('status', 'unknown')}")
+
+        # Only log if health status changed
+        current_health = health_data.get("status", "unknown")
+        if self._last_broadcast_states.get("system_health") != current_health:
+            if current_health != "healthy":
+                self._log_warning(f"System health degraded: {current_health}")
+            else:
+                self._log_info(f"System health recovered: {current_health}")
+            self._last_broadcast_states["system_health"] = current_health
 
     async def broadcast_queue_status_update(self, queue_data: Dict[str, Any] = None) -> None:
         """Broadcast queue status updates to UI.
@@ -190,7 +210,14 @@ class BroadcastCoordinator(BaseCoordinator):
                 }
 
                 await self.broadcast_to_ui(message)
-                self._log_debug(f"Queue status broadcast (Phase 3): {len(queue_dtos)} queues with unified schema")
+
+                # Only log if queue count changed significantly (reduce log spam)
+                pending_count = summary.get("total_pending", 0)
+                last_pending = self._last_broadcast_states.get("queue_pending", -1)
+                # Log only if pending task count changed by more than 5 or became 0
+                if abs(pending_count - last_pending) > 5 or (pending_count == 0 and last_pending > 0):
+                    self._log_info(f"Queue status update: {len(queue_dtos)} queues, {pending_count} pending tasks")
+                    self._last_broadcast_states["queue_pending"] = pending_count
 
             elif queue_data:
                 # Legacy fallback if repository not available

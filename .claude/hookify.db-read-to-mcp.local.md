@@ -6,8 +6,9 @@ conditions:
   - field: command
     operator: regex_match
     pattern: sqlite3\s+.*robo_trader\.db|\.read.*state/|cat\s+.*\.db
-action: warn
+action: block
 ---
 
-⚡ Use `query_portfolio(aggregation_only=True)` MCP tool instead.
-Pre-aggregated insights with 95%+ token reduction.
+🚫 BLOCKED: Use MCP for database reads.
+Run `search_tools(query="portfolio", category_filter="data")` to discover tools.
+95%+ token reduction with pre-aggregated insights.

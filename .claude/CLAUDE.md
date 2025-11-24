@@ -12,7 +12,7 @@
 | Health checks | 5sec timeout on /api/health. Check logs first. |
 | AI analysis | MUST use AI_ANALYSIS queue (prevents token exhaustion) |
 | Database access | Use locked state methods, never direct connection |
-| Queues | 3 parallel, sequential tasks within each |
+| Queues | 3 parallel, 20 max capacity, sequential tasks within each |
 
 ## File Management
 - Delete test files after testing. Remove unwanted files from root.
@@ -26,6 +26,8 @@
 ## MCP & Architecture
 - MCP discovery: `list_categories` → `load_category`
 - MCP execution: via `/mcp` commands, not bash subprocesses
+- **Debugging**: Use robo-trader-dev MCP tools for 95%+ token reduction
+- **Prevention**: Hookify rules prevent common mistakes automatically
 - Architecture questions: Consult `@feature-dev:code-architect`
 - Bugs: Debug with robo-trader-dev MCP first
 

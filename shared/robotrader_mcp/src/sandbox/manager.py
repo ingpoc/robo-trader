@@ -98,32 +98,86 @@ class SandboxManager:
             # Execute in subprocess with timeout
             timeout = timeout_override or self.config.max_execution_time_sec
 
-            # Build restricted environment
+            # Execute code with project directory context
+            import os
+            import sys
+            from pathlib import Path
+
+            # Determine project directory (CLAUDE_PROJECT_DIR may not be set)
+            claude_project_dir = os.environ.get('CLAUDE_PROJECT_DIR')
+            if claude_project_dir and claude_project_dir.strip():
+                project_dir = Path(claude_project_dir)
+            else:
+                # Fallback: use current working directory since Claude is in the project
+                current_dir = Path(os.getcwd())
+                project_dir = current_dir
+
+                # If we're in the MCP directory, look for project markers
+                if "robotrader_mcp" in str(current_dir):
+                    # We're in MCP directory, look up to find project root
+                    search_dirs = [current_dir] + list(current_dir.parents)[:10]
+                    for parent_dir in search_dirs:
+                        if (parent_dir / "src").exists() or (parent_dir / ".claude").exists() or (parent_dir / "pyproject.toml").exists():
+                            project_dir = parent_dir
+                            break
+
+            # Build restricted environment FIRST
             env = self._build_restricted_env()
 
-            # Execute code
+            # THEN set project directory variables (these won't be filtered out)
+            env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+            env["ROBO_TRADER_PROJECT_ROOT"] = str(project_dir)
+            env["PWD"] = str(project_dir)  # Override PWD for subprocess
+
             result = subprocess.run(
                 ["python3", script_path],
                 capture_output=True,
                 timeout=timeout,
                 text=True,
                 env=env,
+                cwd=str(project_dir),  # Execute in the actual project directory
             )
 
             execution_time = int((time.time() - start_time) * 1000)
 
             if result.returncode == 0:
-                # Parse JSON output from stdout
+                # Parse JSON output from stdout (handle multiple JSON objects)
                 try:
-                    output = json.loads(result.stdout)
-                    return ExecutionResult(
-                        success=True,
-                        output=output,
-                        stdout=result.stdout,
-                        stderr=result.stderr,
-                        execution_time_ms=execution_time,
-                        execution_code=wrapper if capture_execution else None,
-                    )
+                    # Find all JSON objects in stdout and use the last valid one
+                    json_objects = []
+                    lines = result.stdout.strip().split('\n')
+
+                    for line in lines:
+                        line = line.strip()
+                        if line:
+                            try:
+                                parsed = json.loads(line)
+                                json_objects.append(parsed)
+                            except json.JSONDecodeError:
+                                # Not a JSON line, skip
+                                continue
+
+                    if json_objects:
+                        output = json_objects[-1]  # Use the last valid JSON object
+                        return ExecutionResult(
+                            success=True,
+                            output=output,
+                            stdout=result.stdout,
+                            stderr=result.stderr,
+                            execution_time_ms=execution_time,
+                            execution_code=wrapper if capture_execution else None,
+                        )
+                    else:
+                        # No valid JSON found, try parsing entire stdout
+                        output = json.loads(result.stdout)
+                        return ExecutionResult(
+                            success=True,
+                            output=output,
+                            stdout=result.stdout,
+                            stderr=result.stderr,
+                            execution_time_ms=execution_time,
+                            execution_code=wrapper if capture_execution else None,
+                        )
                 except json.JSONDecodeError:
                     return ExecutionResult(
                         success=False,
@@ -259,24 +313,49 @@ builtins.__import__ = _restricted_import
         """Build restricted environment variables for subprocess."""
         import os
 
-        # Start with minimal environment
-        env = {
-            "PATH": os.environ.get("PATH", ""),
-            "HOME": os.environ.get("HOME", ""),
-            "PYTHONUNBUFFERED": "1",
-        }
+        # Start with Claude's environment to get project-related variables
+        env = dict(os.environ)
 
-        # Restrict sensitive paths
+        # Ensure Python execution works well
+        env["PYTHONUNBUFFERED"] = "1"
+
+        # Allow project and development related environment variables
+        allowed_patterns = [
+            "CLAUDE_PROJECT_DIR",
+            "ROBO_TRADER_PROJECT_ROOT",
+            "PYTHONPATH",
+            "VIRTUAL_ENV",
+            "CONDA_DEFAULT_ENV",
+            "PATH",
+            "HOME",
+            "USER",
+            "SHELL",
+            "PWD",
+            "LANG",
+            "LC_ALL",
+            "TERM"
+        ]
+
+        # Keep only safe environment variables
+        filtered_env = {}
+        for key, value in env.items():
+            # Keep variables that match allowed patterns
+            if any(pattern in key.upper() for pattern in allowed_patterns):
+                filtered_env[key] = value
+
+        # Remove sensitive variables
         for blocked_var in [
             "AWS_SECRET_ACCESS_KEY",
             "AWS_ACCESS_KEY_ID",
             "ZERODHA_API_SECRET",
             "API_KEY",
             "SECRET_KEY",
+            "TOKEN",
+            "PASSWORD",
         ]:
-            env.pop(blocked_var, None)
+            filtered_env.pop(blocked_var, None)
 
-        return env
+        return filtered_env
 
     @staticmethod
     def validate_code(code: str) -> tuple[bool, Optional[str]]:

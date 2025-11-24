@@ -109,11 +109,12 @@ class TaskType(str, Enum):
     # AI analysis queue
     CLAUDE_MORNING_PREP = "claude_morning_prep"
     CLAUDE_EVENING_REVIEW = "claude_evening_review"
-    RECOMMENDATION_GENERATION = "recommendation_generation"
+    STOCK_ANALYSIS = "stock_analysis"  # Unified single-stock analysis (Phase 1 consolidation)
+    RECOMMENDATION_GENERATION = "recommendation_generation"  # Legacy - use STOCK_ANALYSIS
     CLAUDE_NEWS_ANALYSIS = "claude_news_analysis"
     CLAUDE_EARNINGS_REVIEW = "claude_earnings_review"
     CLAUDE_FUNDAMENTAL_ANALYSIS = "claude_fundamental_analysis"
-    COMPREHENSIVE_STOCK_ANALYSIS = "comprehensive_stock_analysis"
+    COMPREHENSIVE_STOCK_ANALYSIS = "comprehensive_stock_analysis"  # Legacy - use STOCK_ANALYSIS
 
     # Portfolio analysis queue
     PORTFOLIO_INTELLIGENCE_ANALYSIS = "portfolio_intelligence_analysis"

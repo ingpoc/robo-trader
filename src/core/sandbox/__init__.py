@@ -17,7 +17,8 @@ from .sandbox_context import (
     SandboxBoundary,
     SandboxContext,
     get_sandbox_context,
-    create_default_sandbox_boundary
+    create_default_sandbox_boundary,
+    initialize_sandbox
 )
 from .analysis_cache import (
     AnalysisCache,
@@ -33,6 +34,7 @@ __all__ = [
     'SandboxContext',
     'get_sandbox_context',
     'create_default_sandbox_boundary',
+    'initialize_sandbox',
     'AnalysisCache',
     'get_analysis_cache',
     'PaperTradingSandbox',

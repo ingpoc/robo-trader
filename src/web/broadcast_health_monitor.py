@@ -124,7 +124,10 @@ class BroadcastHealthMonitor:
         self._recovery_timeout = self.config.get('recovery_timeout', 60)
         self._success_threshold = self.config.get('success_threshold', 3)
         self._backpressure_threshold = self.config.get('backpressure_threshold', 2.0)  # seconds
-        self._health_check_interval = self.config.get('health_check_interval', 30)
+        self._health_check_interval = self.config.get('health_check_interval', 60)
+
+        # Track last logged health status to avoid duplicate logs
+        self._last_logged_health_status: Optional[str] = None
 
         # Background tasks
         self._health_check_task: Optional[asyncio.Task] = None
@@ -365,10 +368,17 @@ class BroadcastHealthMonitor:
         self._metrics.update_success_rate()
         self._metrics.update_error_rate()
 
-        # Log health status
-        logger.debug(f"Broadcast health: {self._metrics.successful_broadcasts} successful, "
-                    f"{self._metrics.failed_broadcasts} failed, "
-                    f"success rate: {self._metrics.recent_success_rate:.1f}%")
+        # Log health status only when health degrades or improves (not every check)
+        current_status = f"{self._metrics.recent_success_rate:.0f}%"
+
+        # Only log if status changed or health is below threshold
+        if current_status != self._last_logged_health_status:
+            if self._metrics.recent_success_rate < 95:  # Log warning if below 95%
+                logger.warning(f"Broadcast health degraded: {self._metrics.recent_success_rate:.1f}% "
+                              f"({self._metrics.successful_broadcasts}S/{self._metrics.failed_broadcasts}F)")
+            elif self._last_logged_health_status and self._metrics.recent_success_rate >= 95:
+                logger.info(f"Broadcast health recovered: {self._metrics.recent_success_rate:.1f}%")
+            self._last_logged_health_status = current_status
 
     async def _monitor_backpressure(self) -> None:
         """Monitor backpressure and attempt resolution."""

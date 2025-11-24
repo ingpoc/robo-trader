@@ -85,7 +85,8 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             self._monitoring_task = asyncio.create_task(self._monitoring_loop())
             self._log_init_step("Monitoring task created")
 
-            # Mark complete only after first successful iteration (happens in monitoring loop)
+            # Mark initialization complete immediately (monitoring loop will run in background)
+            self._initialization_complete = True
             logger.info("Portfolio Analysis Coordinator initialized successfully")
 
         except Exception as e:
@@ -96,19 +97,15 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             raise RuntimeError(f"Portfolio Analysis Coordinator initialization failed: {e}") from e
 
     def _log_init_step(self, step: str, success: bool = True, error: Optional[Exception] = None) -> None:
-        """Log initialization step to stdout and logger."""
+        """Log initialization step to logger (outputs to both console and files)."""
         if success:
-            msg = f"[INIT] {step}"
-            print(f"*** {msg} - OK ***")  # Print to stdout
+            msg = f"[INIT] {step} - OK"
             logger.info(msg)
         else:
-            msg = f"[INIT FAILED] {step}"
-            print(f"*** {msg}: {error} ***")
-            logger.error(f"{msg}: {error}")
+            msg = f"[INIT FAILED] {step}: {error}"
+            logger.error(msg)
             if error:
-                tb = traceback.format_exc()
-                print(f"*** TRACEBACK: {tb} ***")
-                logger.error(f"Traceback: {tb}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
 
     async def _monitoring_loop(self) -> None:
         """Run the portfolio analysis monitoring loop."""
@@ -121,11 +118,6 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
 
                 # Run portfolio analysis check
                 await self._run_portfolio_analysis_check()
-
-                # Mark initialization complete after first successful iteration
-                if not self._initialization_complete:
-                    self._log_init_step("First monitoring iteration completed successfully")
-                    self._initialization_complete = True
 
             except asyncio.CancelledError:
                 logger.info("Portfolio analysis monitoring loop cancelled")
@@ -253,16 +245,29 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
                         "reason": "never_analyzed"
                     })
 
-                # Priority 2: Analysis is stale
+                # Rule 1: Skip if already analyzed this month (one analysis per month max)
                 else:
                     last_analysis = analyzed_symbols[symbol]
+
+                    # Check if analysis was done this month
+                    if last_analysis.year == now.year and last_analysis.month == now.month:
+                        logger.debug(f"Skipping {symbol} - already analyzed this month on {last_analysis.strftime('%Y-%m-%d')}")
+                        continue
+
+                    # Rule 2: Only analyze if data is fresh (check for updated fundamentals, earnings, news)
+                    if not await self._has_fresh_data(symbol, last_analysis):
+                        logger.debug(f"Skipping {symbol} - no fresh data since last analysis")
+                        continue
+
+                    # Priority 2: Analysis is stale and meets both rules
                     age = now - last_analysis
                     if age > min_interval:
                         stocks_with_priority.append({
                             "symbol": symbol,
                             "priority": 5,
-                            "reason": "stale_analysis",
-                            "age_hours": age.total_seconds() / 3600
+                            "reason": "eligible_for_analysis",
+                            "age_hours": age.total_seconds() / 3600,
+                            "last_analysis": last_analysis.strftime('%Y-%m-%d')
                         })
 
             # Sort by priority (highest first) and return top batch
@@ -288,14 +293,21 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             symbols_in_queue = set()
             for task in pending_tasks:
                 try:
-                    # Extract symbol from task payload
+                    # Extract symbol(s) from task payload (Phase 3: support batch)
                     payload = task.payload
                     if isinstance(payload, str):
                         payload = json.loads(payload)
 
-                    symbol = payload.get("symbol")
-                    if symbol:
-                        symbols_in_queue.add(symbol)
+                    # Check for batch symbols (Phase 3)
+                    if "symbols" in payload and isinstance(payload.get("symbols"), list):
+                        for symbol in payload.get("symbols", []):
+                            if symbol:
+                                symbols_in_queue.add(symbol)
+                    # Check for single symbol (legacy)
+                    elif "symbol" in payload:
+                        symbol = payload.get("symbol")
+                        if symbol:
+                            symbols_in_queue.add(symbol)
                 except Exception as e:
                     logger.debug(f"Failed to extract symbol from task {task.task_id}: {e}")
                     continue
@@ -307,36 +319,48 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
             return set()  # Assume empty to allow monitoring to continue
 
     async def _queue_analysis_tasks(self, stocks: List[Dict[str, Any]]) -> None:
-        """Queue analysis tasks for selected stocks.
+        """Queue analysis tasks for selected stocks with batch processing (Phase 3).
+
+        Phase 3: Batch 3-5 stocks per task to reduce queue length and API calls.
+        Batches are ordered by priority (highest first) and reason.
 
         Args:
             stocks: List of stocks with priority and reason
         """
-        for stock in stocks:
-            try:
-                symbol = stock["symbol"]
-                priority = stock["priority"]
-                reason = stock["reason"]
+        # Phase 3: Batch size = 3 stocks per task (balances efficiency and isolation)
+        batch_size = 3
 
-                # Create analysis task
+        # Sort by priority (highest first) for consistent batching
+        sorted_stocks = sorted(stocks, key=lambda s: s["priority"], reverse=True)
+
+        # Batch stocks together
+        for i in range(0, len(sorted_stocks), batch_size):
+            batch_stocks = sorted_stocks[i:i + batch_size]
+            batch_symbols = [s["symbol"] for s in batch_stocks]
+
+            try:
+                # Use highest priority in batch
+                priority = max(s["priority"] for s in batch_stocks)
+
+                # Create batch analysis task (Phase 3)
                 task = await self.task_service.create_task(
                     queue_name=QueueName.AI_ANALYSIS,
-                    task_type="RECOMMENDATION_GENERATION",
+                    task_type=TaskType.STOCK_ANALYSIS,
                     payload={
-                        "agent_name": "scan",
-                        "symbol": symbol
+                        "symbols": batch_symbols  # Phase 3: batch processing
                     },
                     priority=priority
                 )
 
+                reasons = ", ".join(set(s["reason"] for s in batch_stocks))
                 self._log_info(
-                    f"Queued analysis task for {symbol} "
-                    f"(priority={priority}, reason={reason}, task_id={task.task_id})"
+                    f"Queued batch task for {len(batch_symbols)} symbols {batch_symbols} "
+                    f"(priority={priority}, reasons=[{reasons}], task_id={task.task_id})"
                 )
 
             except Exception as e:
-                logger.error(f"Failed to queue analysis for {stock.get('symbol')}: {e}", exc_info=True)
-                # Continue with next stock on failure
+                logger.error(f"Failed to queue batch analysis for {batch_symbols}: {e}", exc_info=True)
+                # Continue with next batch on failure
 
     async def _publish_monitoring_event(self, stocks_analyzed: List[Dict[str, Any]]) -> None:
         """Publish monitoring event for UI updates.
@@ -405,6 +429,87 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
         if self._initialization_error:
             return False, f"{self._initialization_error.__class__.__name__}: {str(self._initialization_error)}"
         return self._initialization_complete, None
+
+    async def _has_fresh_data(self, symbol: str, last_analysis: datetime) -> bool:
+        """Check if there's fresh data for the symbol since last analysis.
+
+        Args:
+            symbol: Stock symbol to check
+            last_analysis: Datetime of last analysis
+
+        Returns:
+            True if fresh data exists, False otherwise
+        """
+        try:
+            # Check for fresh fundamentals data
+            fresh_fundamentals = await self._has_fresh_fundamentals(symbol, last_analysis)
+
+            # Check for fresh earnings data
+            fresh_earnings = await self._has_fresh_earnings(symbol, last_analysis)
+
+            # Check for fresh news data
+            fresh_news = await self._has_fresh_news(symbol, last_analysis)
+
+            has_fresh = fresh_fundamentals or fresh_earnings or fresh_news
+
+            if has_fresh:
+                logger.debug(f"{symbol} has fresh data - fundamentals:{fresh_fundamentals}, earnings:{fresh_earnings}, news:{fresh_news}")
+            else:
+                logger.debug(f"{symbol} has no fresh data since {last_analysis.strftime('%Y-%m-%d %H:%M')}")
+
+            return has_fresh
+
+        except Exception as e:
+            logger.warning(f"Error checking fresh data for {symbol}: {e}")
+            # Default to allowing analysis if we can't check fresh data
+            return True
+
+    async def _has_fresh_fundamentals(self, symbol: str, last_analysis: datetime) -> bool:
+        """Check if fundamentals data is fresh."""
+        try:
+            fundamentals = await self.config_state.get_fundamental_analysis(symbol)
+            if fundamentals:
+                # Check if fundamentals were updated after last analysis
+                last_update = fundamentals.get("updated_at") or fundamentals.get("created_at")
+                if last_update:
+                    if isinstance(last_update, str):
+                        last_update = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                    return last_update > last_analysis
+            return False
+        except Exception:
+            return False
+
+    async def _has_fresh_earnings(self, symbol: str, last_analysis: datetime) -> bool:
+        """Check if earnings data is fresh."""
+        try:
+            earnings = await self.config_state.get_earnings_reports(symbol)
+            if earnings:
+                # Check if any earnings were reported after last analysis
+                for earnings_report in earnings if isinstance(earnings, list) else [earnings]:
+                    report_date = earnings_report.get("report_date") or earnings_report.get("created_at")
+                    if report_date:
+                        if isinstance(report_date, str):
+                            report_date = datetime.fromisoformat(report_date.replace('Z', '+00:00'))
+                        return report_date > last_analysis
+            return False
+        except Exception:
+            return False
+
+    async def _has_fresh_news(self, symbol: str, last_analysis: datetime) -> bool:
+        """Check if news data is fresh."""
+        try:
+            news = await self.config_state.get_news_items(symbol)
+            if news:
+                # Check if any news was published after last analysis
+                for news_item in news if isinstance(news, list) else [news]:
+                    news_date = news_item.get("published_at") or news_item.get("created_at")
+                    if news_date:
+                        if isinstance(news_date, str):
+                            news_date = datetime.fromisoformat(news_date.replace('Z', '+00:00'))
+                        return news_date > last_analysis
+            return False
+        except Exception:
+            return False
 
     def _log_info(self, message: str) -> None:
         """Log info message."""

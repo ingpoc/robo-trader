@@ -129,7 +129,7 @@ def execute_workflow(
             "traditional_tokens_estimate": traditional_tokens,
             "orchestrator_tokens": orchestrator_tokens,
             "token_savings": traditional_tokens - orchestrator_tokens,
-            "efficiency_pct": round((traditional_tokens - orchestrator_tokens) / traditional_tokens * 100, 1),
+            "efficiency_pct": round((traditional_tokens - orchestrator_tokens) / traditional_tokens * 100, 1) if traditional_tokens > 0 else 0.0,
             "note": "Context shared across steps, eliminating redundant information passing"
         }
     }

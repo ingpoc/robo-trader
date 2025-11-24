@@ -6,7 +6,8 @@ conditions:
   - field: command
     operator: regex_match
     pattern: (curl\s+-X\s+(POST|PUT)\s+localhost:8000/api/queue|for\s+.*in.*\{.*do.*curl.*\}|curl\s+.*api/(tasks|queue|workflow))
-action: warn
+action: block
 ---
 
-⚡ Use `workflow_orchestrator`, `smart_cache`, or `knowledge_query` MCP tools instead.
+🚫 BLOCKED: Use MCP for workflow operations.
+Run `search_tools(query="workflow", category_filter="orchestration")` to discover tools.

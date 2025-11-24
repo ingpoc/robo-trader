@@ -18,9 +18,9 @@
 | Always async/await | Non-blocking, proper concurrency |
 
 ## Task Payload Example
-Include symbols in AI_ANALYSIS tasks:
+Updated for STOCK_ANALYSIS with batch processing (max 3 stocks):
 ```
-payload={"agent_name": "scan", "symbols": ["AAPL"]}
+payload={"agent_name": "scan", "symbols": ["AAPL", "GOOGL", "MSFT"]}
 ```
 
 ## Layer-Specific Guides
@@ -31,7 +31,9 @@ Read before modifying: `src/CLAUDE.md`, `src/core/CLAUDE.md`, `src/services/CLAU
 |-------|-----|
 | database is locked | Use `config_state.store_*()`, not direct connection |
 | Queue execution in progress | Remove "limit" from `get_pending_tasks()` |
-| Missing symbol in task | Add "symbols" key to payload |
+| Missing symbol in task | Add "symbols" key to payload (max 3 stocks) |
+| Task timeout (>180s) | Check AI analysis complexity, consider single stock per task |
+| Queue capacity (20) exceeded | Wait for tasks to complete before adding more |
 | Port 8000 in use | `lsof -ti:8000 \| xargs kill -9` |
 
 ## File Locations

@@ -6,7 +6,8 @@ conditions:
   - field: command
     operator: regex_match
     pattern: (find\s+.*\*\.py.*-exec.*grep.*wc\s+-l|awk\s+\{.*print.*\}|for\s+.*in.*\{.*\}.*grep.*-r.*src)
-action: warn
+action: block
 ---
 
-⚡ Use `real_time_performance_monitor` or `task_execution_metrics` MCP tools instead.
+🚫 BLOCKED: Use MCP for performance monitoring.
+Run `search_tools(query="performance", category_filter="monitoring")` to discover tools.

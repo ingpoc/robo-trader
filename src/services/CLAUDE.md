@@ -51,8 +51,8 @@ os.replace(temp, final)
 ```python
 await task_service.create_task(
     queue_name=QueueName.AI_ANALYSIS,
-    task_type=TaskType.RECOMMENDATION_GENERATION,
-    payload={"agent_name": "scan", "symbols": ["AAPL"]}
+    task_type=TaskType.STOCK_ANALYSIS,  # Updated task type
+    payload={"agent_name": "scan", "symbols": ["AAPL", "GOOGL", "MSFT"]}  # Max 3 stocks
 )
 ```
 

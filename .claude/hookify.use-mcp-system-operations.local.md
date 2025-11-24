@@ -6,8 +6,9 @@ conditions:
   - field: command
     operator: regex_match
     pattern: ps\s+aux|top\s|htop|iostat|vmstat|df\s+-|free\s|du\s+-
-action: warn
+action: block
 ---
 
-⚡ Use `check_system_health()` or `coordinator_status()` MCP tools.
-Comprehensive health data with 92%+ token savings.
+🚫 BLOCKED: Use MCP for system monitoring.
+Run `search_tools(query="health", category_filter="system")` to discover available tools.
+92%+ token savings with structured health data.

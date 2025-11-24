@@ -6,8 +6,9 @@ conditions:
   - field: command
     operator: regex_match
     pattern: (tail|head|cat)\s+.*\.(log|txt)|(grep|awk)\s+.*(log|LOG|Error|ERROR|Warning|WARNING)|less\s+.*log
-action: warn
+action: block
 ---
 
-⚡ Use `analyze_logs(patterns=["ERROR"], time_window="1h")` MCP tool.
-Returns structured JSON with 95%+ token savings vs raw log output.
+🚫 BLOCKED: Use MCP for log analysis.
+Run `search_tools(query="logs", category_filter="monitoring")` to discover tools.
+95%+ token savings with structured JSON output.

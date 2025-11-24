@@ -134,6 +134,12 @@ class ThreadSafeQueueExecutor:
                 iteration += 1
 
                 try:
+                    # Check if event loop is still running (may be closed during hot reload)
+                    if not self.loop or self.loop.is_closed():
+                        logger.warning(f"{self.queue_name}: Event loop is closed, waiting for restart...")
+                        self._stop_event.wait(timeout=5.0)
+                        continue
+
                     # Get pending tasks (blocking call in thread is OK)
                     pending_tasks = asyncio.run_coroutine_threadsafe(
                         self.task_service.get_pending_tasks(queue_name=self.queue_name),
@@ -150,6 +156,14 @@ class ThreadSafeQueueExecutor:
                     logger.info(f"{self.queue_name}: Executing task {task.task_id}")
                     self._execute_task_sync(task)
 
+                except RuntimeError as e:
+                    # Handle "Event loop is closed" error
+                    if "Event loop is closed" in str(e) or "Event loop is running" in str(e):
+                        logger.warning(f"{self.queue_name}: Event loop error during hot reload, will retry: {e}")
+                        self._stop_event.wait(timeout=5.0)
+                    else:
+                        logger.error(f"{self.queue_name}: Runtime error in queue loop: {e}")
+                        traceback.print_exc()
                 except asyncio.TimeoutError:
                     logger.error(f"{self.queue_name}: Timeout fetching pending tasks")
                 except Exception as e:
@@ -176,6 +190,10 @@ class ThreadSafeQueueExecutor:
         try:
             logger.info(f"Executing task: {task.task_id} ({task.task_type.value}) in thread")
 
+            # Check if event loop is still valid before attempting execution
+            if not self.loop or self.loop.is_closed():
+                raise RuntimeError("Event loop is closed - cannot execute task")
+
             # Execute task synchronously (blocking is OK in worker thread)
             result = asyncio.run_coroutine_threadsafe(
                 self._execute_task_with_timeout(task),
@@ -188,12 +206,19 @@ class ThreadSafeQueueExecutor:
             logger.info(f"Task completed: {task.task_id} ({duration_ms}ms)")
 
             # Call on_complete callback if provided
-            if self.on_task_complete:
+            if self.on_task_complete and self.loop and not self.loop.is_closed():
                 asyncio.run_coroutine_threadsafe(
                     self.on_task_complete(task),
                     self.loop
                 )
 
+        except RuntimeError as e:
+            # Handle "Event loop is closed" or similar errors
+            if "Event loop is closed" in str(e) or "Event loop is running" in str(e):
+                logger.warning(f"Task {task.task_id} cannot execute - event loop unavailable: {e}")
+                self._schedule_callback_mark_failed(task, f"Event loop error during hot reload: {e}")
+            else:
+                raise
         except asyncio.TimeoutError:
             logger.error(f"Task timeout: {task.task_id} (>900s)")
             self._schedule_callback_mark_failed(task, "Task execution timeout (>900s)")
@@ -234,6 +259,11 @@ class ThreadSafeQueueExecutor:
             task: Task that failed
             error_msg: Error message
         """
+        # Guard against closed event loop
+        if not self.loop or self.loop.is_closed():
+            logger.error(f"Cannot schedule callback for task {task.task_id} - event loop is closed")
+            return
+
         async def mark_failed():
             try:
                 await self.task_service.mark_failed(task.task_id, error_msg)
@@ -242,7 +272,13 @@ class ThreadSafeQueueExecutor:
             except Exception as e:
                 logger.error(f"Error marking task failed: {e}")
 
-        asyncio.run_coroutine_threadsafe(mark_failed(), self.loop)
+        try:
+            asyncio.run_coroutine_threadsafe(mark_failed(), self.loop)
+        except RuntimeError as e:
+            if "Event loop is closed" in str(e):
+                logger.warning(f"Event loop closed while scheduling callback for task {task.task_id}")
+            else:
+                raise
 
     def get_current_task(self) -> Optional[SchedulerTask]:
         """Get currently executing task (thread-safe).

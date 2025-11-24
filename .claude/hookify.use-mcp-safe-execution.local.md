@@ -6,8 +6,8 @@ conditions:
   - field: command
     operator: regex_match
     pattern: (pkill|killall).*-f.*python.*src|(xargs.*)?kill.*-9.*(python|src)|(sqlite3.*robo_trader\.db.*(INSERT|UPDATE|DELETE))
-action: warn
+action: block
 ---
 
-⚡ Use `execute_python` or `execute_analysis` MCP tools for safer operations.
+Run `search_tools(query="execute", category_filter="sandbox")` for safer alternatives.
 For processes: Kill specific ports only (`lsof -ti:8000 | xargs kill -9`)

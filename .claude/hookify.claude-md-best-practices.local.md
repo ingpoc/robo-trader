@@ -12,4 +12,5 @@ conditions:
 action: warn
 ---
 
-CLAUDE.md: Keep compact (max 60 lines), use tables for rules/locations, sacrifice grammar for brevity. No verbose explanations or long code samples.
+🚫 BLOCKED: CLAUDE.md must be compact (max 60 lines).
+Use tables for rules/locations. Sacrifice grammar for brevity. No verbose explanations.
