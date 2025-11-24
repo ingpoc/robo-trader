@@ -48,3 +48,4 @@ Read before modifying: `src/CLAUDE.md`, `src/core/CLAUDE.md`, `src/services/CLAU
 - Frontend: `curl -m 3 http://localhost:3000/health` → 200
 - Tests: `pytest` + `npm run test`
 - Logs: No ERROR or exceptions
+- When changes are made to the backend code and wants to be tested always restart the backend python server to test.

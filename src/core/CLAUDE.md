@@ -36,10 +36,27 @@ Max 150 lines, single responsibility, no business logic
 ## DI
 `register_singleton/factory` → `await container.get("key")`
 
+## DI Container Service Names (CRITICAL)
+```python
+# ✅ CORRECT: Use exact service names
+state_manager = await container.get("state_manager")  # NOT database_state_manager
+event_bus = await container.get("event_bus")
+config = await container.get("config")
+
+# ❌ NEVER: Guess service names
+state_manager = await container.get("database_state_manager")  # WRONG - causes failure
+```
+
+## Event Loop Safety (CRITICAL)
+✅ `asyncio.get_running_loop()` in all async code
+❌ Never `asyncio.get_event_loop()` - causes "event loop is closed" system failure
+
 ## Common Issues
 | Problem | Fix |
 |---------|-----|
 | database is locked | Add asyncio.Lock() |
+| **Event loop closed** | **Use `asyncio.get_running_loop()`** |
+| **Service not found** | **Check exact service name in di_registry_*.py** |
 | Init failures | Track _initialization_complete |
 | Memory leaks | Call unsubscribe() in cleanup() |
 

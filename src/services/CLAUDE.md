@@ -66,3 +66,15 @@ await task_service.create_task(
 | Sync I/O | Use `aiofiles` |
 | No error handling | TradingError with context |
 | Hardcoded config | Load from DI container |
+| **Event loop closure** | **ALWAYS use `asyncio.get_running_loop()` not `get_event_loop()`** |
+
+## Event Loop Safety (CRITICAL)
+```python
+# ✅ SAFE: Get current running loop
+self._loop = asyncio.get_running_loop()
+if not self._loop.is_running():
+    raise RuntimeError("Event loop is not running")
+
+# ❌ DANGEROUS: Can return closed loops
+self._loop = asyncio.get_event_loop()  # CAUSES SYSTEM FAILURE
+```

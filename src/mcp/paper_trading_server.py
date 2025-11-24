@@ -61,10 +61,10 @@ class PaperTradingMCPServer:
             # Get required services from container
             self._task_service = await self.container.get("task_service")
             self._workflow_manager = await self.container.get("workflow_sdk_manager")
-            database_state_manager = await self.container.get("database_state_manager")
+            state_manager = await self.container.get("state_manager")
 
-            self._paper_trading_state = database_state_manager.paper_trading
-            self._portfolio_analysis_state = database_state_manager.portfolio_analysis
+            self._paper_trading_state = state_manager.paper_trading
+            self._portfolio_analysis_state = state_manager.portfolio_analysis
 
             logger.info("Paper Trading MCP Server initialized successfully")
 

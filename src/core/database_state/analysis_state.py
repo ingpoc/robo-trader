@@ -271,34 +271,26 @@ class AnalysisStateManager:
             from datetime import timedelta
             cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
-            # Parameterized query with placeholders
-            placeholders = ",".join("?" * len(symbols))
-            query = f"""
-                SELECT DISTINCT r.symbol
-                FROM (
-                    SELECT symbol, MAX(created_at) as last_analysis
+            # Use a simpler approach: for each symbol, check if it needs analysis
+            # This avoids complex JOINs and is more reliable with SQLite
+            stocks_needing_analysis = []
+
+            for symbol in symbols:
+                # Check if symbol has recent comprehensive analysis
+                async with self.db.connection.execute("""
+                    SELECT MAX(created_at) as last_analysis
                     FROM recommendations
-                    WHERE symbol IN ({placeholders}) AND analysis_type = 'comprehensive'
-                    GROUP BY symbol
-                ) r
-                RIGHT JOIN (
-                    SELECT ? as symbol
-                    UNION ALL
-                    {' UNION ALL '.join([f"SELECT ?" for _ in range(len(symbols)-1)])}
-                ) all_symbols ON r.symbol = all_symbols.symbol
-                WHERE r.symbol IS NULL OR r.last_analysis < ?
-                ORDER BY r.last_analysis ASC
-            """
+                    WHERE symbol = ? AND analysis_type = 'comprehensive'
+                """, (symbol,)) as cursor:
+                    row = await cursor.fetchone()
+                    last_analysis = row[0] if row else None
 
-            # Build parameters: symbols for IN clause + all symbols again + cutoff time
-            params = list(symbols) + symbols + [cutoff_time]
+                    # Add to list if never analyzed or older than cutoff
+                    if last_analysis is None or last_analysis < cutoff_time:
+                        stocks_needing_analysis.append(symbol)
 
-            stocks = []
-            async with self.db.connection.execute(query, params) as cursor:
-                async for row in cursor:
-                    stocks.append(row[0])
-
-            return stocks
+            # Sort by priority (never analyzed first, then by oldest analysis)
+            return stocks_needing_analysis
 
     async def initialize_screening_tables(self) -> None:
         """Initialize screening and planning tables if they don't exist."""

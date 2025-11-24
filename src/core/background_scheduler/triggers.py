@@ -1,12 +1,15 @@
 """Scheduled trigger implementations for background scheduler.
 
 Handles periodic and time-based task scheduling (morning, evening routines, etc.).
+Uses EventBus to publish MARKET_OPEN/MARKET_CLOSE events for token-efficient Claude sessions.
 """
 
 import logging
-from typing import Any, Dict, List
+import uuid
+from typing import Any, Dict, List, Optional
 from datetime import datetime, time, timezone
 
+from ...core.event_bus import EventBus, Event, EventType
 from ...models.scheduler import QueueName, TaskType
 from ...services.scheduler.task_service import SchedulerTaskService
 from .monitors.monthly_reset_monitor import MonthlyResetMonitor
@@ -22,7 +25,8 @@ class Triggers:
         task_service: SchedulerTaskService,
         monthly_reset_monitor: MonthlyResetMonitor,
         market_open_time: time,
-        market_close_time: time
+        market_close_time: time,
+        event_bus: Optional[EventBus] = None
     ):
         """Initialize trigger handlers.
 
@@ -31,45 +35,59 @@ class Triggers:
             monthly_reset_monitor: MonthlyResetMonitor for monthly resets
             market_open_time: Market open time
             market_close_time: Market close time
+            event_bus: EventBus for publishing market events
         """
         self.task_service = task_service
         self.monthly_reset_monitor = monthly_reset_monitor
         self.market_open_time = market_open_time
         self.market_close_time = market_close_time
+        self.event_bus = event_bus
 
     async def run_morning_routine(self, get_portfolio_symbols) -> None:
         """Run morning market open routine.
 
+        Publishes MARKET_OPEN event for ClaudeAgentService to handle.
+        This is more token-efficient than creating task queue entries.
+
         Args:
             get_portfolio_symbols: Callable to get portfolio symbols
         """
-        logger.info("Running morning routine")
+        logger.info("Running morning routine - publishing MARKET_OPEN event")
 
         # Trigger portfolio synchronization first
         await self._trigger_portfolio_sync()
 
-        # Get all portfolio symbols
-        symbols = await get_portfolio_symbols()
-
-        # Trigger morning analysis
-        await self.task_service.create_task(
-            queue_name=QueueName.AI_ANALYSIS,
-            task_type=TaskType.CLAUDE_MORNING_PREP,
-            payload={"symbols": symbols, "scheduled": True},
-            priority=9
-        )
+        # Publish MARKET_OPEN event for ClaudeAgentService
+        if self.event_bus:
+            await self.event_bus.publish(Event(
+                id=str(uuid.uuid4()),
+                type=EventType.MARKET_OPEN,
+                source="triggers",
+                data={"scheduled": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+            ))
+            logger.info("MARKET_OPEN event published - ClaudeAgentService will handle morning prep")
+        else:
+            logger.warning("EventBus not available - cannot publish MARKET_OPEN event")
 
     async def run_evening_routine(self) -> None:
-        """Run evening market close routine."""
-        logger.info("Running evening routine")
+        """Run evening market close routine.
 
-        # Trigger evening review
-        await self.task_service.create_task(
-            queue_name=QueueName.AI_ANALYSIS,
-            task_type=TaskType.CLAUDE_EVENING_REVIEW,
-            payload={"scheduled": True},
-            priority=8
-        )
+        Publishes MARKET_CLOSE event for ClaudeAgentService to handle.
+        This is more token-efficient than creating task queue entries.
+        """
+        logger.info("Running evening routine - publishing MARKET_CLOSE event")
+
+        # Publish MARKET_CLOSE event for ClaudeAgentService
+        if self.event_bus:
+            await self.event_bus.publish(Event(
+                id=str(uuid.uuid4()),
+                type=EventType.MARKET_CLOSE,
+                source="triggers",
+                data={"scheduled": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+            ))
+            logger.info("MARKET_CLOSE event published - ClaudeAgentService will handle evening review")
+        else:
+            logger.warning("EventBus not available - cannot publish MARKET_CLOSE event")
 
         # Check for monthly reset
         await self.check_monthly_reset()

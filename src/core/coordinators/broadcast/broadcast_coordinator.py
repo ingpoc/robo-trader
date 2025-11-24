@@ -63,23 +63,26 @@ class BroadcastCoordinator(BaseCoordinator):
 
     async def broadcast_to_ui(self, message: Dict[str, Any]) -> bool:
         """Broadcast message to all connected WebSocket clients."""
+        # If callback not set, it's expected during startup - treat as success to avoid circuit breaker trip
+        if not self.execution_coordinator.is_callback_set:
+            return True
+
         result = await self.execution_coordinator.broadcast_to_ui(
             message,
             self.health_coordinator.is_circuit_breaker_open
         )
 
         # Record metrics based on result
-        # Only count as failure if callback is set (startup failures shouldn't trip circuit breaker)
+        # Only count failures when callback is set (real failures, not startup timing)
         if result:
             # Get broadcast time from message if available, otherwise use 0
             broadcast_time = message.get('_broadcast_time', 0.0)
             self.health_coordinator.record_broadcast_success(broadcast_time)
-        elif self.execution_coordinator.is_callback_set:
+        else:
             # Only record failure if callback was set (real failure, not startup timing)
             class BroadcastError(Exception):
                 pass
             self.health_coordinator.record_broadcast_failure(BroadcastError("Broadcast failed"))
-        # If callback not set, don't count as failure - it's expected during startup
 
         return result
 

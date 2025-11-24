@@ -9,13 +9,4 @@ conditions:
 action: warn
 ---
 
-⚠️ **Code analysis/metrics via bash detected**
-
-Use MCP performance tools for structured insights:
-
-- `task_execution_metrics` - Task stats, error trends (95%+ token reduction)
-- `token_metrics_collector` - Token usage efficiency tracking
-- `real_time_performance_monitor` - Live CPU, memory, disk I/O metrics
-- `smart_cache` - Cache analysis with TTL and refresh strategies
-
-These tools replace manual analysis (find, grep, awk, for loops) with optimized queries.
+⚡ Use `real_time_performance_monitor` or `task_execution_metrics` MCP tools instead.

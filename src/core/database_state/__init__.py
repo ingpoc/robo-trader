@@ -23,6 +23,7 @@ from .approval_state import ApprovalStateManager
 from .news_earnings_state import NewsEarningsStateManager
 from .analysis_state import AnalysisStateManager
 from .event_trigger_state import EventTriggerStateManager
+from .paper_trading_state import PaperTradingState
 
 __all__ = [
     "DatabaseStateManager",  # Main facade - backward compatible
@@ -33,4 +34,5 @@ __all__ = [
     "NewsEarningsStateManager",
     "AnalysisStateManager",
     "EventTriggerStateManager",
+    "PaperTradingState",
 ]

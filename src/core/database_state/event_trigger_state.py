@@ -104,6 +104,9 @@ class EventTriggerStateManager:
 
                 condition_json = json.dumps(trigger.get("condition")) if trigger.get("condition") else None
 
+                # Use 'or now' to handle both missing key AND None value
+                created_at = trigger.get("created_at") or now
+
                 await self.db.connection.execute("""
                     INSERT OR REPLACE INTO event_triggers
                     (trigger_id, source_queue, target_queue, event_type, condition, enabled, priority, created_at, updated_at)
@@ -116,7 +119,7 @@ class EventTriggerStateManager:
                     condition_json,
                     1 if trigger.get("enabled", True) else 0,
                     trigger.get("priority", 0),
-                    trigger.get("created_at", now),
+                    created_at,
                     now
                 ))
                 await self.db.connection.commit()

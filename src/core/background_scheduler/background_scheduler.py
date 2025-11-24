@@ -82,7 +82,8 @@ class BackgroundScheduler:
             task_service,
             self.monthly_reset_monitor,
             self.market_open_time,
-            self.market_close_time
+            self.market_close_time,
+            event_bus=event_bus  # Pass event_bus for MARKET_OPEN/MARKET_CLOSE events
         )
 
         # Initialize AnalysisScheduler (needs DI container)

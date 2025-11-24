@@ -12,8 +12,4 @@ conditions:
 action: warn
 ---
 
-⚠️ **CLAUDE.md exceeds best practices**
-
-Keep CLAUDE.md files compact (max 60 lines, ~2500 chars). Use tables for rules/locations. Sacrifice grammar for brevity - no verbose explanations or long code samples.
-
-Rationale: Compact CLAUDE.md is easier to remember and update.
+CLAUDE.md: Keep compact (max 60 lines), use tables for rules/locations, sacrifice grammar for brevity. No verbose explanations or long code samples.

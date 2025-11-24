@@ -91,7 +91,10 @@ class SequentialQueueManager:
             return
 
         self._running = True
-        self._loop = asyncio.get_event_loop()
+        # CRITICAL: Always get current event loop to prevent "Event loop is closed" errors
+        self._loop = asyncio.get_running_loop()
+        if not self._loop.is_running():
+            raise RuntimeError("Event loop is not running - cannot start queue executors")
         logger.info("Starting parallel queue execution (NON-BLOCKING with ThreadSafeQueueExecutor)")
 
         try:

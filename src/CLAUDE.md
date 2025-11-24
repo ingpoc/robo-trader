@@ -32,10 +32,31 @@ raise TradingError("msg", category=ErrorCategory.API, recoverable=True)
 ## File I/O
 Use `aiofiles` for async: `async with aiofiles.open(path) as f: data = await f.read()`
 
+## Event Loop Safety (CRITICAL)
+| Rule | Why |
+|------|-----|
+| Use `asyncio.get_running_loop()` | Prevents "event loop is closed" system failures |
+| Never use `asyncio.get_event_loop()` | Can return closed loops causing complete system crash |
+
+## DI Container Service Names (CRITICAL)
+✅ **CORRECT**: `await container.get("state_manager")`
+❌ **WRONG**: `await container.get("database_state_manager")`
+
+**Common Service Names**:
+- `"state_manager"` (not "database_state_manager")
+- `"event_bus"`
+- `"config"`
+- `"resource_manager"`
+- `"background_scheduler"`
+
+Check `di_registry_*.py` files for exact service names.
+
 ## Common Issues
 | Issue | Fix |
 |-------|-----|
 | database is locked | Use locked state methods |
+| **Event loop is closed** | **Use `asyncio.get_running_loop()` not `get_event_loop()`** |
+| **Service not registered** | **Check exact service name in di_registry_*.py files** |
 | Port 8000 in use | `lsof -ti:8000 \| xargs kill -9` |
 | SDK timeout | Increase timeout in sdk_helpers.py |
 | Import errors | Clear __pycache__ directories |

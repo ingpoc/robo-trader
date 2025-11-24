@@ -48,4 +48,30 @@ async def _execute_queue(self, queue_name):
 | Queue stuck | Check handler is not blocking, wrap with asyncio.wait_for() |
 | Tasks out of order | Verify _execute_queue() uses while loop, not asyncio.gather() |
 | Task never starts | Check background scheduler init complete flag |
+| **Event loop is closed** | **CRITICAL: Use `asyncio.get_running_loop()` not `asyncio.get_event_loop()`** |
+
+## Service Name Dependencies (CRITICAL)
+✅ `await container.get("state_manager")` for task operations
+✅ `await container.get("event_bus")` for task events
+❌ Never use "database_state_manager" - service name is wrong
+
+```python
+# ✅ CORRECT: Use exact service names
+state_manager = await container.get("state_manager")  # NOT database_state_manager
+task_service = await container.get("task_service")
+
+# ❌ WRONG: Service name doesn't exist
+state_manager = await container.get("database_state_manager")  # FAILURE
+```
+
+## Event Loop Management (CRITICAL)
+```python
+# ✅ CORRECT: Always use get_running_loop() to prevent closure errors
+self._loop = asyncio.get_running_loop()
+if not self._loop.is_running():
+    raise RuntimeError("Event loop is not running")
+
+# ❌ NEVER: get_event_loop() can return closed loops
+self._loop = asyncio.get_event_loop()  # DANGEROUS - causes system failure
+```
 
