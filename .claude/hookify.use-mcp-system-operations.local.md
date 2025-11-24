@@ -5,16 +5,18 @@ event: bash
 conditions:
   - field: command
     operator: regex_match
-    pattern: (watch\s+-n|top\s+-b|iostat\s+-x|vmstat\s+\d+|strace\s+-p|htop|nmon|dstat)
+    pattern: (ps\s+aux|top\s+-n\s+\d+|iostat|vmstat|watch\s+|strace|lsof\s+-.*p\s+\d+)
 action: warn
 ---
 
-⚠️ **Continuous system monitoring via bash detected**
+⚠️ **System monitoring via bash detected**
 
-For sustained monitoring, use MCP tools (they're token-optimized):
+Use MCP tools for system inspection - they're designed for robo-trader:
 
 - `check_system_health` - Database, queues, API, disk, backups
 - `coordinator_status` - Coordinator initialization status
-- `real_time_performance_monitor` - CPU, memory, disk I/O metrics
+- `queue_status` - Queue depth and task analysis
+- `diagnose_database_locks` - Lock issues with code references
+- `real_time_performance_monitor` - CPU, memory, disk I/O monitoring
 
-Quick commands like `ps aux`, `top`, `lsof` are fine for debugging.
+MCP tools save tokens (95%+ reduction) and provide structured insights.
