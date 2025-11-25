@@ -38,6 +38,8 @@ from .schemas import (
     EnhancedDifferentialAnalysisInput, SessionContextInjectionInput,
     ToolResponse, ErrorResponse, FileTreeNode, SearchMatch
 )
+from .schemas.examples import ExamplesRegistry
+from .schemas.tool_examples_data import TOOL_EXAMPLES_REGISTRY
 
 # Import tools using package-relative imports
 from .tools.logs.analyze_logs import analyze_logs
@@ -62,6 +64,11 @@ from .tools.performance.token_metrics_collector import token_metrics_collector
 from .tools.optimization.workflow_orchestrator import workflow_orchestrator
 from .tools.optimization.enhanced_differential_analysis import enhanced_differential_analysis
 from .tools.optimization.session_context_injection import session_context_injection
+
+# Import security module
+from .security import access_control
+# Import context module
+from .context import context_analyzer
 
 # Import MCP SDK
 from mcp.server.models import InitializationOptions
@@ -264,7 +271,10 @@ SERVERS_STRUCTURE = {
     }
 }
 
-# Flatten tools for quick access
+# Native MCP deferred loading is used - no custom configuration needed
+# defer_loading parameter is set directly on Tool objects in list_tools()
+
+# Flatten tools for quick access (maintain backward compatibility)
 ALL_TOOLS = {}
 for category, data in SERVERS_STRUCTURE.items():
     for tool_name, tool_info in data["tools"].items():
@@ -515,45 +525,72 @@ async def get_error_logs_resource() -> Dict[str, Any]:
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
-    """List all available tools with progressive disclosure support."""
+    """List all available tools with Anthropic's deferred_loading pattern."""
     tools = []
 
-    # Filesystem navigation tools
+    # Search tools (always visible - defer_loading: false)
     tools.append(Tool(
         name="list_directories",
-        description="List directories and files in the filesystem-like tool structure",
-        inputSchema=ListDirectoriesInput.model_json_schema()
+        description="Browse tool categories for discovery",
+        inputSchema=ListDirectoriesInput.model_json_schema(),
+        defer_loading=False
+    ))
+
+    tools.append(Tool(
+        name="search_tools",
+        description="Search for tools by name or description with detail level control",
+        inputSchema=SearchToolsInput.model_json_schema(),
+        defer_loading=False
     ))
 
     tools.append(Tool(
         name="read_file",
-        description="Read tool definition files for on-demand discovery",
-        inputSchema=ReadFileInput.model_json_schema()
+        description="Read tool definition files for on-demand discovery and examples",
+        inputSchema=ReadFileInput.model_json_schema(),
+        defer_loading=False
     ))
 
-    # Search tool
-    tools.append(Tool(
-        name="search_tools",
-        description="Search for tools by name or description with detail level control",
-        inputSchema=SearchToolsInput.model_json_schema()
-    ))
-
-    # All analysis tools (immediately callable)
+    # Analysis tools (deferred loading - defer_loading: true)
+    # These will only be loaded when Claude searches for them specifically
     for tool_name, tool_info in ALL_TOOLS.items():
         tools.append(Tool(
             name=tool_name,
             description=tool_info["description"],
-            inputSchema=tool_info["input_schema"].model_json_schema()
+            inputSchema=tool_info["input_schema"].model_json_schema(),
+            defer_loading=True
         ))
+
+    # Anthropic Pattern:
+    # - 3 search tools always visible (defer_loading: false)
+    # - 22 analysis tools deferred (defer_loading: true)
+    # - Tools loaded on-demand through search
+    # - ~85% token reduction in initial context
 
     return tools
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    """Execute tool calls with proper error handling and response formatting."""
+    """Execute tool calls with access control and proper error handling."""
     try:
-        # Discovery Tools
+        # Extract caller context from arguments for access control
+        caller_context = arguments.get("caller_context", {})
+
+        # Check access permissions using Anthropic's allowed_callers pattern
+        has_access, denial_reason = access_control.check_tool_access(name, caller_context)
+
+        if not has_access:
+            access_control.log_tool_access(name, caller_context, False)
+            error_response = ErrorResponse(
+                error=f"Access denied to tool '{name}': {denial_reason}",
+                suggestion="Check caller permissions and context requirements"
+            )
+            return [TextContent(type="text", text=json.dumps(error_response.model_dump(), indent=2))]
+
+        # Log successful access
+        access_control.log_tool_access(name, caller_context, True)
+
+        # Discovery Tools (Public Access - allowed_callers: ["*"])
         if name == "list_directories":
             return await handle_list_directories(arguments)
         elif name == "read_file":
@@ -561,7 +598,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         elif name == "search_tools":
             return await handle_search_tools(arguments)
 
-        # Analysis Tools
+        # Analysis Tools (Role-based access control)
         elif name in ALL_TOOLS:
             return await handle_analysis_tool(name, arguments)
 
@@ -677,27 +714,59 @@ async def handle_read_file(arguments: Dict[str, Any]) -> List[TextContent]:
 
         tool_info = SERVERS_STRUCTURE[category]["tools"][tool_name]
 
-        # Generate file content (TypeScript-like interface)
+        # Get tool examples for enhanced discovery
+        tool_examples = TOOL_EXAMPLES_REGISTRY.get_examples_for_tool(tool_name)
+
+        # Generate examples section
+        examples_section = ""
+        if tool_examples:
+            examples_section = "\n// Tool Usage Examples:\n"
+            for i, example in enumerate(tool_examples, 1):
+                examples_section += f"""
+/*
+ * Example {i}: {example.name}
+ * {example.description}
+ * Complexity: {example.complexity.value} | Category: {example.category.value}
+ * Use Case: {example.use_case}
+ *
+ * Input Parameters:
+{json.dumps(example.input_parameters, indent=4)}
+ *
+ * Expected Output Structure:
+{json.dumps(example.expected_output, indent=4)}
+ *
+ * Best Practices:
+{chr(10).join(f" *   - {practice}" for practice in example.best_practices)}
+ *
+ * Success Indicators:
+{chr(10).join(f" *   - {indicator}" for indicator in example.success_indicators)}
+ */
+"""
+
+        # Generate file content with enhanced examples
         file_content = f"""
 // Tool: {tool_name}
 // Category: {category}
 // Token Efficiency: {tool_info['token_efficiency']}
+// Available Examples: {len(tool_examples)} comprehensive usage patterns
 
 interface {tool_name.title()}Input {{
     // Input schema based on Pydantic model
     use_cache?: boolean;
     timeout_seconds?: number;
+    [key: string]: any; // Additional tool-specific parameters
 }}
 
 interface {tool_name.title()}Output {{
     success: boolean;
-    insights: string[];
-    recommendations: string[];
-    token_efficiency: {{
+    data?: any;
+    insights?: string[];
+    recommendations?: string[];
+    token_efficiency?: {{
         compression_ratio: string;
         note: string;
     }};
-    execution_stats: {{
+    execution_stats?: {{
         execution_time_ms: number;
         data_source: string;
     }};
@@ -706,11 +775,14 @@ interface {tool_name.title()}Output {{
 // Tool Implementation
 export async function {tool_name}(input: {tool_name.title()}Input): Promise<{tool_name.title()}Output> {{
     return callMCPTool<{tool_name.title()}Output>('{tool_name}', input);
-}}
+}}{examples_section}
 
-// Example Usage:
+// Quick Start Example:
 // const result = await {tool_name}({{ use_cache: true }});
-// console.log(result.insights);
+// if (result.success) {{
+//     console.log('Tool executed successfully');
+//     console.log('Insights:', result.insights || []);
+// }}
 """
 
         result = {
@@ -735,13 +807,25 @@ export async function {tool_name}(input: {tool_name.title()}Input): Promise<{too
 
 
 async def handle_search_tools(arguments: Dict[str, Any]) -> List[TextContent]:
-    """Handle tool search with detail level control."""
+    """Handle tool search with context-aware relevance scoring."""
     try:
         # Validate input
         input_data = SearchToolsInput(**arguments)
         query = input_data.query.lower()
 
-        # Search matching tools
+        # Analyze context for relevance scoring (Anthropic Progressive Disclosure Pattern)
+        conversation_context = arguments.get("conversation_context", "")
+        recent_messages = arguments.get("recent_messages", [conversation_context])
+
+        context_analysis = context_analyzer.analyze_context(recent_messages, query)
+        context_analyzer.update_context_history(context_analysis)
+
+        # Create relevance lookup for quick access
+        relevance_lookup = {
+            tool.tool_name: tool for tool in context_analysis.tool_relevance
+        }
+
+        # Search matching tools with context-aware scoring
         matches = []
         for tool_name, tool_info in ALL_TOOLS.items():
             name_match = query in tool_name.lower()
@@ -753,12 +837,37 @@ async def handle_search_tools(arguments: Dict[str, Any]) -> List[TextContent]:
                 if input_data.category_filter and tool_info["category"] != input_data.category_filter:
                     continue
 
+                # Get context relevance
+                tool_relevance = relevance_lookup.get(tool_name)
+                relevance_score = tool_relevance.relevance_score if tool_relevance else 0.1
+                relevance_reasons = tool_relevance.relevance_reasons if tool_relevance else ["No specific context match"]
+
+                # Boost score for direct text matches
+                if name_match:
+                    relevance_score += 0.3
+                    relevance_reasons.append("Direct name match")
+                if desc_match:
+                    relevance_score += 0.2
+                    relevance_reasons.append("Description match")
+                if category_match:
+                    relevance_score += 0.1
+                    relevance_reasons.append("Category match")
+
+                # Normalize to 1.0 max
+                relevance_score = min(relevance_score, 1.0)
+
                 match = SearchMatch(
                     tool_name=tool_name,
                     category=tool_info["category"],
                     description=tool_info["description"],
                     token_efficiency=tool_info["token_efficiency"]
                 ).model_dump()
+
+                # Add context-aware information
+                match["relevance_score"] = round(relevance_score, 2)
+                match["relevance_reasons"] = relevance_reasons
+                match["context_match"] = tool_relevance.context_match if tool_relevance else False
+
                 matches.append(match)
 
         if not matches:
@@ -767,9 +876,21 @@ async def handle_search_tools(arguments: Dict[str, Any]) -> List[TextContent]:
                 "message": f"No tools found matching query: {query}",
                 "total_tools_available": len(ALL_TOOLS),
                 "suggestion": "Try searching for keywords like: logs, health, queue, performance, portfolio, etc.",
-                "available_categories": list(SERVERS_STRUCTURE.keys())
+                "available_categories": list(SERVERS_STRUCTURE.keys()),
+                "note": "All tools are available through search - use 'list_directories' to browse categories"
             }
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        # Sort matches by relevance score (highest first) - Anthropic Progressive Disclosure
+        matches.sort(key=lambda x: x.get("relevance_score", 0.0), reverse=True)
+
+        # Add context information to results
+        context_info = {
+            "primary_intent": context_analysis.session_context.get("primary_intent", "exploration"),
+            "detected_intents": context_analysis.session_context.get("detected_intents", []),
+            "confidence_scores": context_analysis.session_context.get("confidence_scores", {}),
+            "conversation_summary": context_analysis.conversation_summary
+        } if context_analysis else {}
 
         # Format results based on detail level
         if input_data.detail_level == "names_only":
@@ -779,7 +900,8 @@ async def handle_search_tools(arguments: Dict[str, Any]) -> List[TextContent]:
                 "detail_level": "names_only",
                 "matches": len(matches),
                 "tools": [m["tool_name"] for m in matches],
-                "note": "Use detail_level='summary' or 'full' for more information"
+                "context_aware": True,
+                "note": "Tools sorted by context relevance. Use detail_level='summary' or 'full' for scoring details."
             }
         elif input_data.detail_level == "full":
             result = {
@@ -788,23 +910,32 @@ async def handle_search_tools(arguments: Dict[str, Any]) -> List[TextContent]:
                 "detail_level": "full",
                 "matches": len(matches),
                 "tools": matches,
-                "note": "All matching tools are immediately callable"
+                "context_aware": True,
+                "context_analysis": context_info,
+                "note": "Tools sorted by relevance score. Higher scores indicate better context match."
             }
         else:  # summary (default)
+            # Enhanced summary with relevance information
+            summary_tools = []
+            for m in matches:
+                tool_summary = {
+                    "name": m["tool_name"],
+                    "category": m["category"],
+                    "brief": m["description"][:80] + "..." if len(m["description"]) > 80 else m["description"],
+                    "relevance_score": m.get("relevance_score", 0.0),
+                    "context_match": m.get("context_match", False)
+                }
+                summary_tools.append(tool_summary)
+
             result = {
                 "success": True,
                 "query": query,
                 "detail_level": "summary",
                 "matches": len(matches),
-                "tools": [
-                    {
-                        "name": m["tool_name"],
-                        "category": m["category"],
-                        "brief": m["description"][:80] + "..." if len(m["description"]) > 80 else m["description"]
-                    }
-                    for m in matches
-                ],
-                "note": "Use detail_level='full' to see complete descriptions"
+                "tools": summary_tools,
+                "context_aware": True,
+                "context_analysis": context_info,
+                "note": "Tools sorted by relevance score. Tools with higher scores better match your intent."
             }
 
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -812,6 +943,10 @@ async def handle_search_tools(arguments: Dict[str, Any]) -> List[TextContent]:
     except Exception as e:
         error_response = ErrorResponse(error=f"Tool search failed: {str(e)}")
         return [TextContent(type="text", text=json.dumps(error_response.model_dump(), indent=2))]
+
+
+# Native MCP deferred loading is used - no custom load_category needed
+# Tools with defer_loading=true are automatically loaded by the MCP SDK
 
 
 async def handle_analysis_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:

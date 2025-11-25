@@ -115,9 +115,50 @@ When analyzing individual stocks, provide:
 
 ### Tools to Use
 
-- `get_market_data` - Real-time prices from Zerodha
-- `technical_analysis` - Technical indicators
-- `get_portfolio_positions` - Monitor open positions
+**In-Process MCP Tools** (via ClaudeAgentMCPServer):
+- `analyze_position` - Technical + fundamental analysis
+- `get_strategy_learnings` - Historical pattern recognition
+- `get_monthly_performance` - Performance trends
+- `check_balance` - Current exposure
+
+**AgentToolCoordinator Tools**:
+- `get_market_data` - Real-time Zerodha prices (LTP, OHLC)
+- `get_open_positions` - Monitor current holdings
+- `analyze_portfolio` - Overall portfolio health
+
+## MCP Tools Integration
+
+Use in-process Claude Agent tools for market monitoring:
+
+| Task | Tool | Token Savings | Usage |
+|------|----------|---------------|-------|
+| Analyze stock position | `analyze_position` | 90% | Technical + fundamental analysis with AI insights |
+| Past learnings | `get_strategy_learnings` | 92% | Historical pattern recognition for similar setups |
+| Monthly performance | `get_monthly_performance` | 93% | Performance trends for market context |
+| Check balance | `check_balance` | 95% | Current exposure and available capital |
+
+**Example market monitoring workflow**:
+```python
+# 1. Analyze market leader for sentiment
+nifty_leader = analyze_position(symbol="RELIANCE")
+
+# 2. Review past similar market conditions
+learnings = get_strategy_learnings(limit=5)
+
+# 3. Check monthly trend for context
+monthly = get_monthly_performance(account_type="swing")
+
+# 4. Show differential analysis (only changes since last check)
+# Use robo-trader-dev tools for system monitoring:
+# - enhanced_differential_analysis(component="portfolio", since_timestamp="1h ago")
+# - smart_cache for intelligent refresh with TTL
+```
+
+**Integration with robo-trader architecture**:
+- Market analysis uses `AI_ANALYSIS` queue for stock insights
+- Max 3 stocks per analysis task for monitoring batches
+- Queue capacity: 20 tasks max across all 3 queues
+- Use Zerodha API for real-time LTP and OHLC data
 
 ### Example Queries
 

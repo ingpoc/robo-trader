@@ -80,6 +80,32 @@ class SearchToolsInput(BaseToolInput):
         return v
 
 
+class LoadCategoryInput(BaseToolInput):
+    """Input for loading tools from a specific category on-demand."""
+    category: str = Field(
+        description="Category to load (logs, database, system, optimization, performance, execution)"
+    )
+    detail_level: Optional[str] = Field(
+        default="summary",
+        description="Detail level: names_only, summary, or full"
+    )
+
+    @validator('category')
+    def validate_category(cls, v):
+        """Validate category."""
+        valid_categories = ["logs", "database", "system", "optimization", "performance", "execution"]
+        if v not in valid_categories:
+            raise ValueError(f"category must be one of: {', '.join(valid_categories)}")
+        return v
+
+    @validator('detail_level')
+    def validate_detail_level(cls, v):
+        """Validate detail level."""
+        if v not in ["names_only", "summary", "full"]:
+            raise ValueError("detail_level must be 'names_only', 'summary', or 'full'")
+        return v
+
+
 # Analysis Tools
 
 class AnalyzeLogsInput(BaseToolInput):

@@ -208,6 +208,41 @@ See `references/fix_templates.md` for ready-to-use fix patterns:
 - **Edit Tool:** Apply code fixes
 - **Database Queries:** Verify task/record state
 
+## MCP Tools Integration
+
+Use robo-trader-dev MCP tools for 95%+ token-efficient debugging:
+
+| Task | MCP Tool | Token Savings | Usage |
+|------|----------|---------------|-------|
+| Analyze error logs | `mcp__robo-trader-dev__analyze_logs` | 98% | Pattern detection with time windows |
+| System health check | `mcp__robo-trader-dev__check_system_health` | 97% | Database, queues, API, disk status |
+| Diagnose DB locks | `mcp__robo-trader-dev__diagnose_database_locks` | 95% | Correlate logs with code patterns |
+| Queue monitoring | `mcp__robo-trader-dev__queue_status` | 96% | Real-time queue backlog analysis |
+| Coordinator status | `mcp__robo-trader-dev__coordinator_status` | 94% | Init status, error details |
+| Error pattern fix | `mcp__robo-trader-dev__suggest_fix` | 90% | Known pattern matching with examples |
+| Read code files | `mcp__robo-trader-dev__smart_file_read` | 85% | Progressive context (summary/targeted/full) |
+| Find related files | `mcp__robo-trader-dev__find_related_files` | 88% | Import/git/similarity analysis |
+
+**Example debugging workflow**:
+```python
+# 1. Detect errors (MCP instead of tail/grep)
+mcp__robo-trader-dev__analyze_logs(patterns=["ERROR", "TIMEOUT"], time_window="1h")
+
+# 2. Check system health (MCP instead of curl loops)
+mcp__robo-trader-dev__check_system_health(components=["database", "queues", "api_endpoints"])
+
+# 3. Diagnose specific issue (MCP instead of sqlite3 + code reading)
+mcp__robo-trader-dev__diagnose_database_locks(time_window="24h", include_code_references=True)
+
+# 4. Get fix suggestions (MCP instead of manual pattern matching)
+mcp__robo-trader-dev__suggest_fix(error_message="name 'Optional' is not defined", context_file="src/services/analyzer.py")
+```
+
+**Integration with robo-trader architecture**:
+- Queue operations: Use `queue_status` to monitor PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS
+- Coordinator debugging: Use `coordinator_status` for BroadcastCoordinator, AIChatCoordinator init issues
+- Database access: Use `query_portfolio` or `diagnose_database_locks` instead of direct sqlite3 connections
+
 ## Key Principles
 
 1. **One issue at a time** - Fix one problem per iteration to prevent cascading failures

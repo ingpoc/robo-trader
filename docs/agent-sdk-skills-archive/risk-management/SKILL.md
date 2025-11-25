@@ -127,9 +127,70 @@ Generate alerts for:
 
 ### Tools to Use
 
-- `analyze_portfolio` - Portfolio risk analysis
-- `assess_risk` - Individual trade risk
-- `get_portfolio_positions` - Current exposure
+**In-Process MCP Tools** (via ClaudeAgentMCPServer):
+- `check_balance` - Real-time capital allocation
+- `analyze_position` - Position risk metrics
+- `get_monthly_performance` - Win rate, profit factor tracking
+- `execute_trade` - Risk-validated trade execution
+
+**AgentToolCoordinator Tools**:
+- `calculate_risk_metrics` - Portfolio risk calculations
+- `get_open_positions` - Current position exposure
+- `analyze_portfolio` - Overall portfolio risk
+
+## MCP Tools Integration
+
+Use in-process Claude Agent tools for risk assessment:
+
+| Task | Tool | Token Savings | Usage |
+|------|----------|---------------|-------|
+| Analyze position risk | `analyze_position` | 90% | Individual position risk metrics and correlation |
+| Check current exposure | `check_balance` | 95% | Real-time capital allocation and available cash |
+| Performance trends | `get_monthly_performance` | 93% | Win rate, profit factor, drawdown tracking |
+| Execute trade (validated) | `execute_trade` | N/A | Enforce risk limits before execution |
+
+**Example risk assessment workflow**:
+```python
+# 1. Check current exposure before new trade
+balance = check_balance(account_id="swing")
+current_cash = balance["cash_available"]
+portfolio_value = balance["total_value"]
+
+# 2. Calculate position size with risk limits
+risk_per_trade = portfolio_value * 0.015  # 1.5% risk
+stop_loss_distance = entry_price - stop_loss
+position_size = risk_per_trade / stop_loss_distance
+
+# 3. Validate position size doesn't exceed 15% limit
+max_position_value = portfolio_value * 0.15
+if (position_size * entry_price) > max_position_value:
+    position_size = max_position_value / entry_price
+    print("Adjusted for 15% position limit")
+
+# 4. Analyze position for correlation check
+analysis = analyze_position(symbol="RELIANCE")
+
+# 5. Review past performance for context
+monthly = get_monthly_performance(account_type="swing")
+if monthly["win_rate"] < 0.40:
+    print("⚠️ Win rate below 45% threshold - review strategy")
+
+# 6. Execute only if all risk checks pass
+if all_checks_pass:
+    execute_trade(
+        symbol="RELIANCE",
+        action="buy",
+        quantity=int(position_size),
+        entry_price=entry_price,
+        strategy_rationale="Risk-validated entry",
+        stop_loss=stop_loss
+    )
+```
+
+**Integration with robo-trader architecture**:
+- Risk checks operate synchronously (not queued)
+- Portfolio risk metrics updated after each trade
+- Max 20 open positions enforced at system level
 
 ### Response Format
 

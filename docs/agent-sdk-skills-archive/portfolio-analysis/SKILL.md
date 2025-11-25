@@ -70,10 +70,63 @@ Always structure analysis as:
 
 ### Tools to Use
 
-- `analyze_portfolio` - Get portfolio analysis
-- `get_recommendations` - Get AI recommendations
-- `technical_analysis` - Technical indicators
-- `get_portfolio_positions` - Current holdings
+**In-Process MCP Tools** (via ClaudeAgentMCPServer):
+- `execute_trade` - Execute paper trade with validation
+- `close_position` - Close existing position
+- `check_balance` - Get account balance and cash
+- `analyze_position` - Deep stock analysis with AI
+- `get_strategy_learnings` - Historical strategy insights
+- `get_monthly_performance` - Monthly performance metrics
+
+**AgentToolCoordinator Tools**:
+- `get_market_data` - Real-time Zerodha prices
+- `analyze_portfolio` - Full portfolio analysis
+- `get_open_positions` - Current holdings
+- `calculate_risk_metrics` - Portfolio risk metrics
+
+## MCP Tools Integration
+
+Use in-process Claude Agent tools for portfolio operations:
+
+| Task | Tool | Token Savings | Usage |
+|------|----------|---------------|-------|
+| Analyze stock position | `analyze_position` | 90% | Deep analysis of specific stock with AI insights |
+| Check account balance | `check_balance` | 95% | Real-time balance and cash availability |
+| Get past learnings | `get_strategy_learnings` | 92% | Historical strategy performance insights |
+| Monthly performance | `get_monthly_performance` | 93% | Month-over-month performance metrics |
+| Execute paper trade | `execute_trade` | N/A | Simulated trade execution (paper trading) |
+| Close position | `close_position` | N/A | Exit existing paper trading position |
+
+**Example portfolio analysis workflow**:
+```python
+# 1. Check current balance and positions
+balance = check_balance(account_id="swing")
+
+# 2. Analyze specific position for insights
+analysis = analyze_position(symbol="RELIANCE")
+
+# 3. Review past strategy learnings
+learnings = get_strategy_learnings(limit=5)
+
+# 4. Get monthly performance context
+performance = get_monthly_performance(account_type="swing")
+
+# 5. Execute trade if analysis supports it (paper trading only)
+if analysis.suggests_buy:
+    execute_trade(
+        symbol="RELIANCE",
+        action="buy",
+        quantity=10,
+        entry_price=2500.50,
+        strategy_rationale="Technical breakout with strong fundamentals"
+    )
+```
+
+**Integration with robo-trader architecture**:
+- All tools operate in paper trading mode (simulation only)
+- Use `AI_ANALYSIS` queue for stock analysis tasks
+- Max 3 stocks per analysis task: `{"agent_name": "scan", "symbols": ["RELIANCE", "TCS", "INFY"]}`
+- Queue capacity: 20 tasks max
 
 ### Example Response Structure
 

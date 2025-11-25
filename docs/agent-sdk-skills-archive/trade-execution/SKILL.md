@@ -83,10 +83,80 @@ If execution fails:
 
 ### Tools to Use
 
-- `paper_trading_buy` - Execute paper buy order
-- `paper_trading_sell` - Execute paper sell order
-- `get_portfolio_positions` - Check current positions
-- `get_market_data` - Get real-time prices from Zerodha
+**In-Process MCP Tools** (via ClaudeAgentMCPServer):
+- `execute_trade` - Execute buy/sell with action="buy" or "sell"
+- `close_position` - Close existing position with reason
+- `check_balance` - Verify sufficient balance
+- `analyze_position` - Pre-trade validation
+- `get_strategy_learnings` - Similar past trades
+
+**AgentToolCoordinator Tools**:
+- `get_market_data` - Real-time Zerodha prices
+- `get_open_positions` - Current holdings
+- `calculate_risk_metrics` - Position size validation
+
+## MCP Tools Integration
+
+Use in-process Claude Agent tools for trade validation and monitoring:
+
+| Task | Tool | Token Savings | Usage |
+|------|----------|---------------|-------|
+| Execute paper trade | `execute_trade` | N/A | Validated trade execution with risk checks |
+| Close position | `close_position` | N/A | Exit existing position with reason logging |
+| Check balance | `check_balance` | 95% | Real-time balance and margin availability |
+| Analyze position | `analyze_position` | 90% | Pre-trade analysis for entry validation |
+| Get learnings | `get_strategy_learnings` | 92% | Past similar trades for pattern matching |
+
+**Example pre-trade validation workflow**:
+```python
+# 1. Check system health before trade (robo-trader-dev MCP)
+health = mcp__robo-trader-dev__check_system_health(
+    components=["database", "queues", "api_endpoints"],
+    include_recommendations=True
+)
+
+# 2. Verify no recent execution errors (robo-trader-dev MCP)
+errors = mcp__robo-trader-dev__analyze_logs(
+    patterns=["ERROR", "paper_trading"],
+    time_window="1h",
+    group_by="error_type"
+)
+
+# 3. Check if AI_ANALYSIS queue has capacity (robo-trader-dev MCP)
+queue = mcp__robo-trader-dev__queue_status(
+    queue_filter="AI_ANALYSIS",
+    include_backlog_analysis=True
+)
+# Queue capacity: 20 max. If near capacity, wait before adding tasks.
+
+# 4. Validate balance and position size (in-process tool)
+balance = check_balance(account_id="swing")
+portfolio_value = balance["total_value"]
+max_position = portfolio_value * 0.15  # 15% limit
+
+# 5. Analyze stock before entry (in-process tool)
+analysis = analyze_position(symbol="RELIANCE")
+
+# 6. Review past similar trades (in-process tool)
+learnings = get_strategy_learnings(limit=3)
+
+# 7. Execute trade with risk validation (in-process tool)
+execute_trade(
+    symbol="RELIANCE",
+    action="buy",
+    quantity=50,
+    entry_price=2450.50,
+    strategy_rationale="Technical breakout + fundamental strength",
+    stop_loss=2327.00,
+    target_price=2695.00
+)
+```
+
+**Integration with robo-trader architecture**:
+- AI analysis tasks: Must queue to AI_ANALYSIS (prevents token exhaustion)
+- Max 3 stocks per task: `{"agent_name": "scan", "symbols": ["AAPL", "GOOGL", "MSFT"]}`
+- Queue capacity: 20 tasks max across all 3 queues
+- Use robo-trader-dev MCP tools for system monitoring, in-process tools for trading
 
 ### Example Trade Flow
 

@@ -1,6 +1,9 @@
 # Backend Layer - src/
 
+**Context**: Agent SDK bot code. Claude Code debugs this, doesn't implement trading logic.
+
 ## Architecture Layers
+
 | Layer | Max Size | Pattern |
 |-------|----------|---------|
 | core/ | 350 lines | DI, events, state |
@@ -8,60 +11,40 @@
 | web/ | 300 lines | FastAPI routes |
 | models/ | 200 lines | Pydantic models |
 
-## SDK-Only Rule (MANDATORY)
-✅ Use `ClaudeSDKClientManager.get_instance()` + `query_with_timeout()`
-❌ NEVER import `anthropic` directly
+## Critical Rules
 
-## Database Access (CRITICAL)
-✅ Use locked state: `config_state.store_analysis_history(symbol, ts, data)`
-❌ Never: `db.connection.execute()` → locks database!
+| Rule | Pattern | Why |
+|------|---------|-----|
+| SDK-only | `ClaudeSDKClientManager.get_instance()` | Never import `anthropic` directly |
+| Locked state | `config_state.store_*()` | Never direct DB connection → locks |
+| Event loop | `asyncio.get_running_loop()` | Never `get_event_loop()` → crashes |
+| Service names | `"state_manager"` not `"database_state_manager"` | Check di_registry_*.py |
+| Async I/O | `async with aiofiles.open()` | Non-blocking file operations |
+| Services | Extend `EventHandler` class | Event-driven via EventBus |
+| Errors | `TradingError(category=ErrorCategory.*)` | Structured error handling |
 
-## Service Pattern
-```python
-class MyService(EventHandler):
-    async def handle_event(self, event: Event):
-        if event.type == EventType.EVENT_NAME:
-            await self._handle_event(event)
-```
+## DI Container Service Names
 
-## Error Handling
-```python
-raise TradingError("msg", category=ErrorCategory.API, recoverable=True)
-```
-
-## File I/O
-Use `aiofiles` for async: `async with aiofiles.open(path) as f: data = await f.read()`
-
-## Event Loop Safety (CRITICAL)
-| Rule | Why |
-|------|-----|
-| Use `asyncio.get_running_loop()` | Prevents "event loop is closed" system failures |
-| Never use `asyncio.get_event_loop()` | Can return closed loops causing complete system crash |
-
-## DI Container Service Names (CRITICAL)
 ✅ **CORRECT**: `await container.get("state_manager")`
 ❌ **WRONG**: `await container.get("database_state_manager")`
 
-**Common Service Names**:
-- `"state_manager"` (not "database_state_manager")
-- `"event_bus"`
-- `"config"`
-- `"resource_manager"`
-- `"background_scheduler"`
-
-Check `di_registry_*.py` files for exact service names.
+Common names: `state_manager`, `event_bus`, `config`, `resource_manager`, `background_scheduler`
+(Check `di_registry_*.py` for exact names)
 
 ## Common Issues
+
 | Issue | Fix |
 |-------|-----|
-| database is locked | Use locked state methods |
-| **Event loop is closed** | **Use `asyncio.get_running_loop()` not `get_event_loop()`** |
-| **Service not registered** | **Check exact service name in di_registry_*.py files** |
+| database is locked | Use locked state methods: `config_state.store_*()`|
+| Event loop is closed | Use `asyncio.get_running_loop()` not `get_event_loop()` |
+| Service not registered | Check exact service name in di_registry_*.py |
 | Port 8000 in use | `lsof -ti:8000 \| xargs kill -9` |
 | SDK timeout | Increase timeout in sdk_helpers.py |
-| Import errors | Clear __pycache__ directories |
+| Import errors | Clear __pycache__: `find . -name "*.pyc" -delete` |
 
 ## Read Before Changing
-- src/core/CLAUDE.md - Core infrastructure
-- src/services/CLAUDE.md - Service patterns
-- src/web/CLAUDE.md - Web patterns
+
+- `src/core/CLAUDE.md` - Core infrastructure patterns
+- `src/services/CLAUDE.md` - Service implementation patterns
+- `src/web/CLAUDE.md` - API/web patterns
+
