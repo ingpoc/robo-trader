@@ -827,3 +827,111 @@ class KiteConnectService:
         except Exception as e:
             self.logger.error(f"Failed to get bulk prices: {e}")
             return {}
+
+    async def get_instrument_token(self, symbol: str, exchange: str = "NSE") -> Optional[int]:
+        """
+        Get instrument token for a symbol from Kite Connect.
+
+        Args:
+            symbol: Stock symbol (e.g., "RELIANCE", "TCS")
+            exchange: Exchange name (default: "NSE")
+
+        Returns:
+            Instrument token or None if not found
+        """
+        try:
+            if not self.kite or not self._active_session:
+                raise TradingError(
+                    "Kite Connect not authenticated",
+                    category=ErrorCategory.AUTHENTICATION,
+                    severity=ErrorSeverity.HIGH
+                )
+
+            # Rate limiting
+            await self._rate_limit_check("instruments")
+
+            # Get instruments list
+            instruments = self.kite.instruments(exchange)
+
+            # Find matching instrument
+            for instrument in instruments:
+                if instrument.get("tradingsymbol") == symbol and instrument.get("exchange") == exchange:
+                    return instrument.get("instrument_token")
+
+            self.logger.warning(f"Instrument token not found for {exchange}:{symbol}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Failed to get instrument token for {symbol}: {e}")
+            return None
+
+    async def get_historical_data(
+        self,
+        symbol: str,
+        from_date: str,
+        to_date: str,
+        interval: str = "day",
+        exchange: str = "NSE"
+    ) -> List[Dict[str, Any]]:
+        """
+        Get historical OHLC data from Kite Connect.
+
+        Args:
+            symbol: Stock symbol (e.g., "RELIANCE", "TCS")
+            from_date: Start date in 'YYYY-MM-DD' format
+            to_date: End date in 'YYYY-MM-DD' format
+            interval: Data interval - 'minute', '3minute', '5minute', '10minute', '15minute',
+                     '30minute', '60minute', 'day', 'week', 'month' (default: 'day')
+            exchange: Exchange name (default: "NSE")
+
+        Returns:
+            List of OHLC data dictionaries with keys: date, open, high, low, close, volume, oi
+        """
+        try:
+            if not self.kite or not self._active_session:
+                raise TradingError(
+                    "Kite Connect not authenticated",
+                    category=ErrorCategory.AUTHENTICATION,
+                    severity=ErrorSeverity.HIGH
+                )
+
+            # Get instrument token
+            instrument_token = await self.get_instrument_token(symbol, exchange)
+            if not instrument_token:
+                raise TradingError(
+                    f"Instrument token not found for {symbol}",
+                    category=ErrorCategory.API,
+                    severity=ErrorSeverity.MEDIUM
+                )
+
+            # Rate limiting
+            await self._rate_limit_check("historical_data")
+
+            # Get historical data
+            # Note: Kite Connect historical_data is synchronous, so we run it in executor
+            loop = asyncio.get_event_loop()
+            historical_data = await loop.run_in_executor(
+                None,
+                lambda: self.kite.historical_data(
+                    instrument_token=instrument_token,
+                    from_date=from_date,
+                    to_date=to_date,
+                    interval=interval,
+                    continuous=False,
+                    oi=False
+                )
+            )
+
+            self.logger.info(f"Fetched {len(historical_data)} historical data points for {symbol} ({from_date} to {to_date})")
+            return historical_data
+
+        except TradingError:
+            raise
+        except Exception as e:
+            self.logger.error(f"Failed to get historical data for {symbol}: {e}")
+            raise TradingError(
+                f"Failed to get historical data for {symbol}: {e}",
+                category=ErrorCategory.API,
+                severity=ErrorSeverity.MEDIUM,
+                recoverable=True
+            )

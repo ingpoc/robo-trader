@@ -354,46 +354,94 @@ class EventRouterService:
         return self._running
 
     # Database operations
+    async def _get_trigger_state_manager(self):
+        """Get the EventTriggerStateManager from the main state manager."""
+        state_manager = await self.container.get_state_manager()
+        # The state manager should have event_trigger_state as an attribute
+        if hasattr(state_manager, 'event_trigger_state'):
+            return state_manager.event_trigger_state
+        # Fallback: try to get it from the db connection
+        from ..core.database_state.event_trigger_state import EventTriggerStateManager
+        if not hasattr(self, '_event_trigger_state'):
+            self._event_trigger_state = EventTriggerStateManager(state_manager.db)
+            await self._event_trigger_state.initialize()
+        return self._event_trigger_state
+
     async def _load_triggers_from_db(self) -> None:
         """Load triggers from database."""
         try:
-            state_manager = await self.container.get_state_manager()
+            trigger_state = await self._get_trigger_state_manager()
+            stored_triggers = await trigger_state.get_all_triggers()
 
-            # This would query the event_triggers table
-            # For now, create default triggers
-            await self._create_default_triggers()
+            if stored_triggers:
+                # Load existing triggers from database
+                for trigger_data in stored_triggers:
+                    trigger = EventTrigger(
+                        trigger_id=trigger_data["trigger_id"],
+                        source_queue=QueueName(trigger_data["source_queue"]) if trigger_data.get("source_queue") else QueueName.PORTFOLIO_SYNC,
+                        target_queue=QueueName(trigger_data["target_queue"]) if trigger_data.get("target_queue") else QueueName.DATA_FETCHER,
+                        event_type=EventType(trigger_data["event_type"]) if trigger_data.get("event_type") else EventType.FEATURE_UPDATED,
+                        condition=trigger_data.get("condition", {}),
+                        is_active=trigger_data.get("enabled", True),
+                        priority=trigger_data.get("priority", 5),
+                        created_at=trigger_data.get("created_at"),
+                        updated_at=trigger_data.get("updated_at")
+                    )
+                    self._triggers[trigger.trigger_id] = trigger
+                self._log_info(f"Loaded {len(stored_triggers)} triggers from database")
+            else:
+                # No stored triggers, create defaults
+                self._log_info("No stored triggers found, creating defaults")
+                await self._create_default_triggers()
 
         except Exception as e:
             self._log_error(f"Failed to load triggers from database: {e}")
-            # Continue with empty triggers
+            # Fallback to creating default triggers
+            await self._create_default_triggers()
 
     async def _persist_trigger(self, trigger: EventTrigger) -> None:
         """Persist trigger to database."""
         try:
-            state_manager = await self.container.get_state_manager()
-            # TODO: Implement database persistence
-            # await state_manager.store_event_trigger(trigger)
-            pass
+            trigger_state = await self._get_trigger_state_manager()
+            trigger_data = {
+                "trigger_id": trigger.trigger_id,
+                "source_queue": trigger.source_queue.value if hasattr(trigger.source_queue, 'value') else str(trigger.source_queue),
+                "target_queue": trigger.target_queue.value if hasattr(trigger.target_queue, 'value') else str(trigger.target_queue),
+                "event_type": trigger.event_type.value if hasattr(trigger.event_type, 'value') else str(trigger.event_type),
+                "condition": trigger.condition,
+                "enabled": trigger.is_active,
+                "priority": trigger.priority,
+                "created_at": trigger.created_at,
+                "updated_at": trigger.updated_at
+            }
+            await trigger_state.store_trigger(trigger_data)
+            self._log_info(f"Persisted trigger {trigger.trigger_id} to database")
         except Exception as e:
             self._log_error(f"Failed to persist trigger {trigger.trigger_id}: {e}")
 
     async def _update_trigger(self, trigger: EventTrigger) -> None:
         """Update trigger in database."""
         try:
-            state_manager = await self.container.get_state_manager()
-            # TODO: Implement database update
-            # await state_manager.update_event_trigger(trigger)
-            pass
+            trigger_state = await self._get_trigger_state_manager()
+            updates = {
+                "source_queue": trigger.source_queue.value if hasattr(trigger.source_queue, 'value') else str(trigger.source_queue),
+                "target_queue": trigger.target_queue.value if hasattr(trigger.target_queue, 'value') else str(trigger.target_queue),
+                "event_type": trigger.event_type.value if hasattr(trigger.event_type, 'value') else str(trigger.event_type),
+                "condition": trigger.condition,
+                "enabled": trigger.is_active,
+                "priority": trigger.priority
+            }
+            await trigger_state.update_trigger(trigger.trigger_id, updates)
+            self._log_info(f"Updated trigger {trigger.trigger_id} in database")
         except Exception as e:
             self._log_error(f"Failed to update trigger {trigger.trigger_id}: {e}")
 
     async def _delete_trigger(self, trigger_id: str) -> None:
         """Delete trigger from database."""
         try:
-            state_manager = await self.container.get_state_manager()
-            # TODO: Implement database deletion
-            # await state_manager.delete_event_trigger(trigger_id)
-            pass
+            trigger_state = await self._get_trigger_state_manager()
+            await trigger_state.delete_trigger(trigger_id)
+            self._log_info(f"Deleted trigger {trigger_id} from database")
         except Exception as e:
             self._log_error(f"Failed to delete trigger {trigger_id}: {e}")
 

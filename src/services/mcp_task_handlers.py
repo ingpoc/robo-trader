@@ -31,8 +31,8 @@ class MCPResearchHandler:
     async def initialize(self) -> None:
         """Initialize handler dependencies."""
         self._workflow_manager = await get_workflow_sdk_manager()
-        database_state_manager = await self.container.get("database_state_manager")
-        self._paper_trading_state = database_state_manager.paper_trading_state
+        state_manager = await self.container.get("state_manager")
+        self._paper_trading_state = state_manager.paper_trading_state
 
     async def handle_market_research_perplexity(self, task: SchedulerTask) -> Dict[str, Any]:
         """Handle market research using Perplexity API."""
@@ -171,8 +171,8 @@ class MCPTradeExecutionHandler:
     async def initialize(self) -> None:
         """Initialize handler dependencies."""
         self._workflow_manager = await get_workflow_sdk_manager()
-        database_state_manager = await self.container.get("database_state_manager")
-        self._paper_trading_state = database_state_manager.paper_trading_state
+        state_manager = await self.container.get("state_manager")
+        self._paper_trading_state = state_manager.paper_trading_state
 
     async def handle_paper_trade_execution(self, task: SchedulerTask) -> Dict[str, Any]:
         """Handle paper trade execution with real market prices."""
@@ -317,8 +317,8 @@ class MCPAnalysisHandler:
     async def initialize(self) -> None:
         """Initialize handler dependencies."""
         self._workflow_manager = await get_workflow_sdk_manager()
-        database_state_manager = await self.container.get("database_state_manager")
-        self._portfolio_analysis_state = database_state_manager.portfolio_analysis_state
+        state_manager = await self.container.get("state_manager")
+        self._portfolio_analysis_state = state_manager.portfolio_analysis_state
 
     async def handle_portfolio_intelligence_analysis(self, task: SchedulerTask) -> Dict[str, Any]:
         """Handle portfolio intelligence analysis."""

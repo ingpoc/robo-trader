@@ -47,6 +47,7 @@ class AnalysisScheduler(EventHandler):
         self.container = container
         self.check_interval_minutes = check_interval_minutes
         self.analysis_threshold_hours = analysis_threshold_hours
+        self._max_queue_capacity = 20  # Max tasks in AI_ANALYSIS queue (aligned with PortfolioAnalysisCoordinator)
 
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -123,6 +124,22 @@ class AnalysisScheduler(EventHandler):
                     "cycle_time_seconds": 0.0
                 }
 
+            # Check queue capacity before proceeding (Phase 2: Align with PortfolioAnalysisCoordinator)
+            task_service = await self.container.get("task_service")
+            queue_stats = await task_service.get_queue_statistics(QueueName.AI_ANALYSIS)
+            current_queue_size = (queue_stats.pending_count + queue_stats.running_count)
+
+            if current_queue_size >= self._max_queue_capacity:
+                logger.info(
+                    f"AI Analysis queue at capacity ({current_queue_size}/{self._max_queue_capacity}). "
+                    f"Skipping scheduling cycle until tasks are processed."
+                )
+                return {
+                    "stocks_queued": [],
+                    "stocks_skipped": [],
+                    "cycle_time_seconds": 0.0
+                }
+
             # Extract symbols
             symbols = [
                 h['symbol'] if isinstance(h, dict) else h.symbol
@@ -138,31 +155,43 @@ class AnalysisScheduler(EventHandler):
             )
             logger.debug(f"Stocks needing analysis: {stocks_needing_analysis}")
 
-            # Create tasks for stocks needing analysis
-            task_service = await self.container.get("task_service")
+            # Create batch tasks for stocks needing analysis (Phase 3: batch processing)
             stocks_queued = []
             stocks_skipped = []
 
+            # Phase 3: Filter symbols based on analysis rules
+            symbols_to_queue = []
             for symbol in stocks_needing_analysis:
-                # Check if already queued (deduplication)
                 if await self._is_already_queued(task_service, symbol):
                     logger.debug(f"Skipping {symbol} - already in AI_ANALYSIS queue")
                     stocks_skipped.append(symbol)
-                    continue
+                elif await self._already_analyzed_this_month(symbol):
+                    logger.debug(f"Skipping {symbol} - already analyzed this month")
+                    stocks_skipped.append(symbol)
+                elif not await self._has_fresh_data(symbol):
+                    logger.debug(f"Skipping {symbol} - no fresh data available")
+                    stocks_skipped.append(symbol)
+                else:
+                    symbols_to_queue.append(symbol)
 
-                # Queue comprehensive analysis task
+            # Phase 3: Batch size = 3 stocks per task (balances efficiency and isolation)
+            batch_size = 3
+            for i in range(0, len(symbols_to_queue), batch_size):
+                batch_symbols = symbols_to_queue[i:i + batch_size]
+
+                # Queue batch analysis task
                 try:
                     await task_service.create_task(
                         queue_name=QueueName.AI_ANALYSIS,
-                        task_type=TaskType.COMPREHENSIVE_STOCK_ANALYSIS,
-                        payload={"symbol": symbol},
+                        task_type=TaskType.STOCK_ANALYSIS,
+                        payload={"symbols": batch_symbols},  # Phase 3: batch processing
                         priority=7
                     )
-                    stocks_queued.append(symbol)
-                    logger.info(f"Queued comprehensive analysis for {symbol}")
+                    stocks_queued.extend(batch_symbols)
+                    logger.info(f"Queued batch analysis for {len(batch_symbols)} symbols: {batch_symbols}")
                 except Exception as e:
-                    logger.error(f"Failed to queue analysis for {symbol}: {e}")
-                    stocks_skipped.append(symbol)
+                    logger.error(f"Failed to queue batch analysis for {batch_symbols}: {e}")
+                    stocks_skipped.extend(batch_symbols)
 
             # Calculate cycle time
             cycle_time = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -205,11 +234,17 @@ class AnalysisScheduler(EventHandler):
             # Get pending tasks from AI_ANALYSIS queue
             pending_tasks = await task_service.get_pending_tasks(QueueName.AI_ANALYSIS)
 
-            # Check if any task is for this symbol with COMPREHENSIVE_STOCK_ANALYSIS type
+            # Check if any task is for this symbol with STOCK_ANALYSIS type (Phase 3: support batch)
             for task in pending_tasks:
-                if (task.task_type == TaskType.COMPREHENSIVE_STOCK_ANALYSIS and
-                    task.payload.get("symbol") == symbol):
-                    return True
+                if task.task_type == TaskType.STOCK_ANALYSIS:
+                    payload = task.payload or {}
+                    # Check for single symbol (legacy)
+                    if payload.get("symbol") == symbol:
+                        return True
+                    # Check for batch symbols (Phase 3)
+                    if "symbols" in payload and isinstance(payload.get("symbols"), list):
+                        if symbol in payload.get("symbols", []):
+                            return True
 
             return False
         except Exception as e:
@@ -271,3 +306,111 @@ class AnalysisScheduler(EventHandler):
                 break
 
         logger.info("Analysis scheduler loop stopped")
+
+    async def _already_analyzed_this_month(self, symbol: str) -> bool:
+        """Check if symbol was already analyzed this month."""
+        try:
+            analysis_state = await self.container.get_state_manager()
+            analysis_history = await analysis_state.config_state.get_analysis_history()
+
+            now = datetime.now(timezone.utc)
+
+            for analysis in analysis_history.get("analyses", []):
+                if analysis.get("symbol") == symbol:
+                    created_at_str = analysis.get("created_at")
+                    if created_at_str:
+                        try:
+                            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                            # Check if analysis was done this month
+                            if created_at.year == now.year and created_at.month == now.month:
+                                return True
+                        except (ValueError, TypeError):
+                            pass
+
+            return False
+        except Exception as e:
+            logger.warning(f"Error checking monthly analysis for {symbol}: {e}")
+            return False
+
+    async def _has_fresh_data(self, symbol: str) -> bool:
+        """Check if there's fresh data for the symbol since last analysis."""
+        try:
+            analysis_state = await self.container.get_state_manager()
+
+            # Get last analysis time
+            analysis_history = await analysis_state.config_state.get_analysis_history()
+            last_analysis = None
+
+            for analysis in analysis_history.get("analyses", []):
+                if analysis.get("symbol") == symbol:
+                    created_at_str = analysis.get("created_at")
+                    if created_at_str:
+                        try:
+                            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                            if not last_analysis or created_at > last_analysis:
+                                last_analysis = created_at
+                        except (ValueError, TypeError):
+                            pass
+
+            if not last_analysis:
+                # Never analyzed, always has fresh data
+                return True
+
+            # Check for fresh fundamentals, earnings, and news
+            fresh_fundamentals = await self._has_fresh_fundamentals(symbol, last_analysis)
+            fresh_earnings = await self._has_fresh_earnings(symbol, last_analysis)
+            fresh_news = await self._has_fresh_news(symbol, last_analysis)
+
+            return fresh_fundamentals or fresh_earnings or fresh_news
+
+        except Exception as e:
+            logger.warning(f"Error checking fresh data for {symbol}: {e}")
+            # Default to allowing analysis if we can't check fresh data
+            return True
+
+    async def _has_fresh_fundamentals(self, symbol: str, last_analysis: datetime) -> bool:
+        """Check if fundamentals data is fresh."""
+        try:
+            analysis_state = await self.container.get_state_manager()
+            fundamentals = await analysis_state.config_state.get_fundamental_analysis(symbol)
+            if fundamentals:
+                last_update = fundamentals.get("updated_at") or fundamentals.get("created_at")
+                if last_update:
+                    if isinstance(last_update, str):
+                        last_update = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                    return last_update > last_analysis
+            return False
+        except Exception:
+            return False
+
+    async def _has_fresh_earnings(self, symbol: str, last_analysis: datetime) -> bool:
+        """Check if earnings data is fresh."""
+        try:
+            analysis_state = await self.container.get_state_manager()
+            earnings = await analysis_state.config_state.get_earnings_reports(symbol)
+            if earnings:
+                for earnings_report in earnings if isinstance(earnings, list) else [earnings]:
+                    report_date = earnings_report.get("report_date") or earnings_report.get("created_at")
+                    if report_date:
+                        if isinstance(report_date, str):
+                            report_date = datetime.fromisoformat(report_date.replace('Z', '+00:00'))
+                        return report_date > last_analysis
+            return False
+        except Exception:
+            return False
+
+    async def _has_fresh_news(self, symbol: str, last_analysis: datetime) -> bool:
+        """Check if news data is fresh."""
+        try:
+            analysis_state = await self.container.get_state_manager()
+            news = await analysis_state.config_state.get_news_items(symbol)
+            if news:
+                for news_item in news if isinstance(news, list) else [news]:
+                    news_date = news_item.get("published_at") or news_item.get("created_at")
+                    if news_date:
+                        if isinstance(news_date, str):
+                            news_date = datetime.fromisoformat(news_date.replace('Z', '+00:00'))
+                        return news_date > last_analysis
+            return False
+        except Exception:
+            return False

@@ -262,9 +262,9 @@ async def check_paper_trading_status(args: Dict[str, Any], container: Optional[D
         include_positions = args.get("include_positions", True)
         include_open_trades = args.get("include_open_trades", True)
 
-        # Get database state manager
-        database_state_manager = await container.get("database_state_manager")
-        paper_trading_state = database_state_manager.paper_trading
+        # Get state manager
+        state_manager = await container.get("state_manager")
+        paper_trading_state = state_manager.paper_trading
 
         # Get account overview
         account = await paper_trading_state.get_account("paper_swing_main")
@@ -564,9 +564,9 @@ async def calculate_monthly_pnl(args: Dict[str, Any], container: Optional[Depend
         if not month:
             month = datetime.now().strftime("%B")
 
-        # Get database state manager
-        database_state_manager = await container.get("database_state_manager")
-        paper_trading_state = database_state_manager.paper_trading
+        # Get state manager
+        state_manager = await container.get("state_manager")
+        paper_trading_state = state_manager.paper_trading
 
         # Calculate monthly P&L (mock implementation)
         monthly_data = await paper_trading_state.calculate_monthly_pnl(year, month)

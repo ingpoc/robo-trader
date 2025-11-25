@@ -27,39 +27,55 @@ const queryClient = new QueryClient({
   },
 })
 
-// Wrapper for PaperTradingFeature to provide necessary props
+// Wrapper for PaperTradingFeature - READ-ONLY observatory
 function PaperTradingFeatureWrapper() {
-  const [accountOverview] = useState(null)
-  const [openPositions] = useState([])
-  const [closedTrades] = useState([])
-  const [performanceMetrics] = useState(null)
-  const [dailyReflection] = useState(null)
-  const [strategyInsights] = useState([])
+  const [accountOverview, setAccountOverview] = useState(null)
+  const [openPositions, setOpenPositions] = useState([])
+  const [closedTrades, setClosedTrades] = useState([])
+  const [performanceMetrics, setPerformanceMetrics] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const handleExecuteBuy = async (request: any) => {
-    console.log('Execute buy:', request)
-    // TODO: Implement MCP tool call
+  const fetchData = async () => {
+    setIsLoading(true)
+    try {
+      const accountId = 'paper_swing_main'
+      const [overviewRes, positionsRes, tradesRes] = await Promise.all([
+        fetch(`/api/paper-trading/accounts/${accountId}/overview`),
+        fetch(`/api/paper-trading/accounts/${accountId}/positions`),
+        fetch(`/api/paper-trading/accounts/${accountId}/trades`)
+      ])
+
+      if (overviewRes.ok) {
+        const data = await overviewRes.json()
+        // Map API response to expected format
+        setAccountOverview({
+          balance: data.currentBalance || data.balance || 0,
+          deployed_capital: data.deployedCapital || data.deployed_capital || 0,
+          available_margin: data.marginAvailable || data.cashAvailable || 0,
+          total_pnl: data.todayPnL || 0,
+          open_positions_count: data.openPositions || 0
+        })
+      }
+      if (positionsRes.ok) {
+        const data = await positionsRes.json()
+        setOpenPositions(data.positions || data || [])
+      }
+      if (tradesRes.ok) {
+        const data = await tradesRes.json()
+        setClosedTrades(data.trades || data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching paper trading data:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleExecuteSell = async (request: any) => {
-    console.log('Execute sell:', request)
-    // TODO: Implement MCP tool call
-  }
-
-  const handleClosePosition = async (request: any) => {
-    console.log('Close position:', request)
-    // TODO: Implement MCP tool call
-  }
-
-  const handleModifyPosition = async (tradeId: string, stopLoss?: number, target?: number) => {
-    console.log('Modify position:', { tradeId, stopLoss, target })
-    // TODO: Implement MCP tool call
-  }
-
-  const handleRefresh = async () => {
-    console.log('Refresh paper trading data')
-    // TODO: Implement data refresh
-  }
+  React.useEffect(() => {
+    fetchData()
+    const interval = setInterval(fetchData, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <PaperTradingFeature
@@ -67,14 +83,8 @@ function PaperTradingFeatureWrapper() {
       openPositions={openPositions}
       closedTrades={closedTrades}
       performanceMetrics={performanceMetrics}
-      dailyReflection={dailyReflection}
-      strategyInsights={strategyInsights}
-      onExecuteBuy={handleExecuteBuy}
-      onExecuteSell={handleExecuteSell}
-      onClosePosition={handleClosePosition}
-      onModifyPosition={handleModifyPosition}
-      onRefresh={handleRefresh}
-      isLoading={false}
+      onRefresh={fetchData}
+      isLoading={isLoading}
     />
   )
 }

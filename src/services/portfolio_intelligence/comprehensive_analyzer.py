@@ -56,7 +56,7 @@ async def handle_comprehensive_analysis(
         # Get required services
         state_manager = await container.get_state_manager()
         analysis_state = state_manager.analysis
-        stock_state_store = await container.get("stock_state_store")
+        stock_state_store = state_manager.get_stock_state_store()
         task_service = await container.get("task_service")
 
         # Fetch market data (news, earnings, fundamentals)

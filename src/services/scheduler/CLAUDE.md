@@ -1,239 +1,89 @@
-# Scheduler Service Directory Guidelines
+# Scheduler Service - src/services/scheduler/
 
-> **Scope**: Applies to `src/services/scheduler/` directory. Read `src/services/CLAUDE.md` for context.
->
-> **Last Updated**: 2025-11-22 | **Status**: Active | **Tier**: Reference + Explanation
->
-> **Read in this order**:
-> 1. `src/services/CLAUDE.md` - Services layer overview
-> 2. This file - Queue manager and task service patterns
-> 3. `src/models/CLAUDE.md` - SchedulerTask model details
+## Architecture
+| Component | Pattern | Rule |
+|-----------|---------|------|
+| Queues | 3 PARALLEL (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) | asyncio.gather() |
+| Tasks | SEQUENTIAL within each queue | while loop, one-at-a-time |
+| Timeout | 180s (3min) for AI_ANALYSIS | Fail-fast for single stocks, batch max 3 |
 
-## Purpose
-
-The `scheduler/` directory contains the core scheduler service with queue management. It provides `SequentialQueueManager` for parallel queue execution (queues run in parallel, tasks within queues run sequentially) and `SchedulerTaskService` for task management.
-
-## Architecture Pattern
-
-### Parallel Queue, Sequential Task Pattern
-
-The scheduler implements a three-queue architecture:
-- **3 queues execute in PARALLEL**: PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS
-- **Tasks WITHIN each queue execute SEQUENTIALLY**: One-at-a-time per queue
-
-This prevents turn limit exhaustion for AI analysis while allowing parallel processing across different queue types.
-
-### Directory Structure
-
-```
-scheduler/
-├── queue_manager.py    # Sequential queue manager
-└── task_service.py     # Scheduler task service
-```
-
-## Rules
-
-### ✅ DO
-
-- ✅ Execute 3 queues in parallel using `asyncio.gather()`
-- ✅ Execute tasks within each queue sequentially (one-at-a-time)
-- ✅ Use `SchedulerTaskService` for task management
-- ✅ Register task handlers for each task type
-- ✅ Emit events for task lifecycle
-- ✅ Track completed tasks to prevent duplicates
-- ✅ Use async operations throughout
-
-### ❌ DON'T
-
-- ❌ Execute queues sequentially (WRONG)
-- ❌ Execute tasks in parallel within queues (WRONG - causes turn limit exhaustion)
-- ❌ Skip task handler registration
-- ❌ Skip event emission
-- ❌ Use blocking operations
-- ❌ Skip error handling
-
-## Queue Manager Pattern
+## Patterns
 
 ```python
-from src.services.scheduler.queue_manager import SequentialQueueManager
-
-# Initialize queue manager
+# Queue manager initialization
 queue_manager = SequentialQueueManager(task_service)
-
-# Execute all queues in parallel
 await queue_manager.execute_queues()
 
-# Architecture:
-# - PORTFOLIO_SYNC queue processes tasks sequentially
-# - DATA_FETCHER queue processes tasks sequentially  
-# - AI_ANALYSIS queue processes tasks sequentially
-# - All three queues run in PARALLEL
-```
-
-## Task Service Pattern
-
-```python
-from src.services.scheduler.task_service import SchedulerTaskService
-
-# Initialize task service
-task_service = SchedulerTaskService(store, execution_tracker)
-
-# Register task handler
-task_service.register_handler(
-    TaskType.RECOMMENDATION_GENERATION,
-    handle_recommendation_generation
-)
-
-# Create task
-task = await task_service.create_task(
+# Task creation (MUST include symbols for AI_ANALYSIS, max 3 stocks)
+await task_service.create_task(
     queue_name=QueueName.AI_ANALYSIS,
-    task_type=TaskType.RECOMMENDATION_GENERATION,
-    payload={"symbols": ["AAPL"]},
-    priority=7
+    task_type=TaskType.STOCK_ANALYSIS,
+    payload={"agent_name": "scan", "symbols": ["AAPL", "GOOGL", "MSFT"]}
 )
 
-# Execute task
-result = await task_service.execute_task(task)
-```
+# Parallel queue execution (3 queues at once)
+await asyncio.gather(
+    self._execute_queue(QueueName.PORTFOLIO_SYNC),
+    self._execute_queue(QueueName.DATA_FETCHER),
+    self._execute_queue(QueueName.AI_ANALYSIS),
+    return_exceptions=True
+)
 
-## Parallel Queue Execution
-
-```python
-async def execute_queues(self) -> None:
-    """Execute all queues in parallel."""
-    # Execute each queue concurrently
-    await asyncio.gather(
-        self._execute_queue(QueueName.PORTFOLIO_SYNC),
-        self._execute_queue(QueueName.DATA_FETCHER),
-        self._execute_queue(QueueName.AI_ANALYSIS),
-        return_exceptions=True
-    )
-```
-
-## Sequential Task Execution
-
-```python
-async def _execute_queue(self, queue_name: QueueName) -> None:
-    """Execute all tasks in a queue sequentially."""
+# Sequential task execution (one per queue)
+async def _execute_queue(self, queue_name):
     while True:
-        # Get next task
         task = await self.task_service.get_next_task(queue_name)
-        if not task:
-            break
-
-        # Execute task (one-at-a-time)
+        if not task: break
         await self.task_service.execute_task(task)
-
-        # Wait before next task (if needed)
-        await asyncio.sleep(0.1)
 ```
 
-## Task Execution Timeout (CRITICAL)
+## Critical Rules
+✅ DO: 3 queues parallel + sequential tasks | async/await | register handlers | emit events
+❌ DON'T: Sequential queues | parallel tasks within queue | blocking ops | skip errors
 
-### Problem: Aggressive Timeouts Causing Premature Failures
+## Architecture Updates
 
-**Symptoms**:
-- AI analysis tasks fail with "Task execution timeout" error after 5 minutes
-- Task status changes to FAILED instead of COMPLETED
-- Error message: "Task execution timeout (>300s)"
+| Component | Pattern | Rule |
+|-----------|---------|------|
+| Queues | 3 PARALLEL (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) | asyncio.gather() |
+| Tasks | SEQUENTIAL within each queue | while loop, one-at-a-time |
+| Timeout | 180s (3min) for AI_ANALYSIS | Fail-fast for single stocks |
+| Capacity | 20 tasks max per queue | Prevents queue overflow |
+| Retry | Exponential backoff (1s → 5s → 30s → 300s) | Automatic recovery |
 
-**Root Cause**:
-- Claude AI analysis on portfolios with 2+ stocks takes 5-10+ minutes
-- Analysis includes: reasoning, SDK turns, data fetching, Claude interactions
-- 300-second (5-minute) timeout was too aggressive
+## Common Issues
+| Error | Fix |
+|-------|-----|
+| Task timeout >180s | Reduce batch size or complexity |
+| Queue capacity (20) exceeded | Wait for tasks to complete |
+| Retry failures | Check exponential backoff logic |
+| Queue stuck | Check handler is not blocking, wrap with asyncio.wait_for() |
+| Tasks out of order | Verify _execute_queue() uses while loop, not asyncio.gather() |
+| Task never starts | Check background scheduler init complete flag |
+| **Event loop is closed** | **CRITICAL: Use `asyncio.get_running_loop()` not `asyncio.get_event_loop()`** |
 
-**Solution**:
-```python
-# In queue_manager.py _execute_single_task()
-result = await asyncio.wait_for(
-    self.task_service.execute_task(task),
-    timeout=900.0  # 15 minutes for AI analysis
-)
-```
-
-**Why 15 minutes?**
-- AI_ANALYSIS queue tasks (recommendation_generation) need 5-10+ min
-- Claude Agent SDK analysis with portfolio data is naturally slow
-- Better to have generous timeout than lose legitimate analysis results
-- Task-specific: PORTFOLIO_SYNC and DATA_FETCHER can still use shorter timeouts if needed
-
-**Lessons Learned**:
-1. ✅ AI analysis timeouts must account for Claude SDK reasoning time
-2. ✅ Test with actual portfolio data to understand execution time
-3. ✅ Document timeout rationale in code comments
-4. ✅ Monitor logs to detect if timeout is still too aggressive
-5. ✅ Consider making timeout configurable per task type if needed
-
-### When to Adjust Timeout
-
-- **Still timing out?** Increase to 1200s (20 min) if analyzing large portfolios
-- **Timeout never hit?** Can reduce if consistently completing in <3 min (unlikely for AI)
-- **Different queue?** PORTFOLIO_SYNC can use 60-300s, DATA_FETCHER 120-600s
-
-## Dependencies
-
-Scheduler components depend on:
-- `SchedulerTaskStore` - For task persistence
-- `ExecutionTracker` - For execution logging
-- `EventBus` - For event emission
-- Task handlers - For task execution logic
-
-## Testing
-
-Test queue execution:
+## Service Name Dependencies (CRITICAL)
+✅ `await container.get("state_manager")` for task operations
+✅ `await container.get("event_bus")` for task events
+❌ Never use "database_state_manager" - service name is wrong
 
 ```python
-import pytest
-from src.services.scheduler.queue_manager import SequentialQueueManager
+# ✅ CORRECT: Use exact service names
+state_manager = await container.get("state_manager")  # NOT database_state_manager
+task_service = await container.get("task_service")
 
-async def test_parallel_queue_execution():
-    """Test queues execute in parallel."""
-    queue_manager = SequentialQueueManager(task_service)
-    
-    # Execute queues
-    await queue_manager.execute_queues()
-    
-    # Verify all queues executed
-    assert queue_manager._running is False
+# ❌ WRONG: Service name doesn't exist
+state_manager = await container.get("database_state_manager")  # FAILURE
 ```
 
-## Quick Fix Guide - Common Scheduler Errors
+## Event Loop Management (CRITICAL)
+```python
+# ✅ CORRECT: Always use get_running_loop() to prevent closure errors
+self._loop = asyncio.get_running_loop()
+if not self._loop.is_running():
+    raise RuntimeError("Event loop is not running")
 
-**Error: "Task execution timeout (>900s)"**
-- **Cause**: AI analysis on large portfolios takes longer than timeout
-- **Fix**: Increase timeout in queue_manager.py `_execute_single_task()` method (line 132)
-- **Prevention**: Monitor logs for consistently long execution times, adjust proactively
-
-**Error: "Task never starts executing"**
-- **Cause**: Queue executor initialization failed silently (fire-and-forget pattern)
-- **Fix**: Check `_initialization_complete` flag in background scheduler logs (marked "OK" if ready)
-- **Prevention**: Implement initialization status tracking with re-raise for orchestrator detection
-
-**Error: "Queue stuck processing task X"**
-- **Cause**: Task handler blocked/hung, next task never starts
-- **Fix**: Increase timeout or add heartbeat monitoring to detect hanging tasks
-- **Prevention**: Wrap all async operations with `asyncio.wait_for(operation, timeout=X)`
-
-**Error: "Tasks processed out of order"**
-- **Cause**: Tasks running in parallel within queue instead of sequentially
-- **Fix**: Verify `_execute_queue()` uses `while` loop (not `asyncio.gather()` for tasks in queue)
-- **Prevention**: Maintain queue-level sequential execution pattern (CRITICAL)
-
-## Maintenance Instructions
-
-**For Contributors**: This CLAUDE.md is a living document. When you:
-- ✅ Adjust timeout → Document new value and rationale in Timeout section
-- ✅ Fix queue execution issue → Add to Quick Fix Guide with symptoms/fix/prevention
-- ✅ Change queue architecture → Update Architecture Pattern section (CRITICAL)
-- ✅ Add new queue → Document in rules and parallel execution pattern
-- ⚠️ Update this file → Run changes through prompt optimizer tool
-- ⚠️ Share improvements → Commit alongside code changes so team benefits
-
-**CRITICAL Invariants**:
-- ✅ Always maintain parallel queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS)
-- ✅ Always maintain sequential tasks within each queue
-- ✅ Always use `asyncio.gather()` for queues, `while` loop for tasks
-- ✅ Always document timeout changes with rationale
-
-**Last Review**: 2025-11-22
+# ❌ NEVER: get_event_loop() can return closed loops
+self._loop = asyncio.get_event_loop()  # DANGEROUS - causes system failure
+```
 

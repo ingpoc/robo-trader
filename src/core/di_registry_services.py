@@ -165,3 +165,22 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         return prompt_service
 
     container._register_singleton("enhanced_prompt_optimization_service", create_enhanced_prompt_optimization_service)
+
+    # Claude Agent Service (token-efficient autonomous trading)
+    async def create_claude_agent_service():
+        from src.services.claude_agent_service import ClaudeAgentService
+
+        event_bus = await container.get("event_bus")
+        strategy_store = await container.get("claude_strategy_store")
+
+        claude_agent_service = ClaudeAgentService(
+            config=container.config,
+            event_bus=event_bus,
+            container=container,
+            strategy_store=strategy_store
+        )
+        await claude_agent_service.initialize()
+        logger.info("ClaudeAgentService initialized - subscribes to MARKET_OPEN/MARKET_CLOSE events")
+        return claude_agent_service
+
+    container._register_singleton("claude_agent_service", create_claude_agent_service)

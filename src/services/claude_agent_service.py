@@ -81,11 +81,21 @@ class ClaudeAgentService(EventHandler):
 
         try:
             if event.type == EventType.MARKET_OPEN:
+                # Check if AI trading is enabled before running sessions
+                if not await self._is_ai_trading_enabled():
+                    logger.info("AI trading disabled - skipping morning prep sessions")
+                    return
+
                 # Market opened - trigger morning prep
                 await self.run_morning_prep(account_type="swing")
                 await self.run_morning_prep(account_type="options")
 
             elif event.type == EventType.MARKET_CLOSE:
+                # Check if AI trading is enabled before running sessions
+                if not await self._is_ai_trading_enabled():
+                    logger.info("AI trading disabled - skipping evening review sessions")
+                    return
+
                 # Market closed - trigger evening review
                 await self.run_evening_review(account_type="swing")
                 await self.run_evening_review(account_type="options")
@@ -96,6 +106,16 @@ class ClaudeAgentService(EventHandler):
 
         except Exception as e:
             logger.error(f"Error handling event {event.type}: {e}")
+
+    async def _is_ai_trading_enabled(self) -> bool:
+        """Check if AI trading is enabled in automation config."""
+        try:
+            state_manager = await self.container.get("state_manager")
+            config = await state_manager.paper_trading.get_automation_config()
+            return config.get("ai_trading_enabled", False)
+        except Exception as e:
+            logger.warning(f"Could not check ai_trading_enabled: {e}")
+            return False
 
     async def run_morning_prep(self, account_type: str) -> Optional[ClaudeSessionResult]:
         """

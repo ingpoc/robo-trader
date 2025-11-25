@@ -139,7 +139,8 @@ class DependencyContainer:
     async def get_risk_service(self) -> RiskService:
         """Get the risk service instance."""
         return await self.get("risk_service")
-    # async def get_queue_coordinator(self) -> QueueCoordinator:  # Not implemented
+
+    async def get_queue_coordinator(self) -> "QueueCoordinator":
         """Get the queue coordinator instance."""
         return await self.get("queue_coordinator")
 

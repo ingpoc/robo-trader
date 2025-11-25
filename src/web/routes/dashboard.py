@@ -372,7 +372,7 @@ async def get_dashboard_alerts(
 async def get_claude_recommendations(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude AI trading recommendations from database."""
     try:
-        db_state = await container.get("database_state_manager")
+        db_state = await container.get("state_manager")
         if not db_state:
             return {"recommendations": []}
 

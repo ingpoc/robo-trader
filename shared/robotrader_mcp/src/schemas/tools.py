@@ -220,25 +220,21 @@ class GetCoordinatorStatusInput(BaseToolInput):
 
 class RealTimePerformanceMonitorInput(BaseToolInput):
     """Input for real-time performance monitoring."""
-    metrics: Optional[List[str]] = Field(
-        default=["cpu", "memory", "disk_io", "network"],
-        description="Metrics to monitor"
+    action: Optional[str] = Field(
+        default="get_performance",
+        description="Action to perform ('get_performance', 'get_status', 'get_alerts')"
     )
-    duration_seconds: Optional[int] = Field(
-        default=30,
-        ge=5,
-        le=300,
-        description="Monitoring duration in seconds"
+    detail_level: Optional[str] = Field(
+        default="insights",
+        description="Output detail level ('overview', 'insights', 'analysis', 'comprehensive')"
     )
-    sample_interval: Optional[int] = Field(
-        default=1,
-        ge=1,
-        le=10,
-        description="Sample interval in seconds"
+    start_monitoring: Optional[bool] = Field(
+        default=False,
+        description="Start background monitoring if True"
     )
-    include_alerts: Optional[bool] = Field(
-        default=True,
-        description="Include performance alerts"
+    stop_monitoring: Optional[bool] = Field(
+        default=False,
+        description="Stop background monitoring if True"
     )
 
 

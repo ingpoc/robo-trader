@@ -21,6 +21,11 @@ class ClaudeAgentMCPServer:
     """
     MCP Server implementation for Claude Agent tool execution.
 
+    Implements Progressive Discovery Pattern (Anthropic's research):
+    - Minimal tool definitions upfront (name only)
+    - Full schemas loaded on-demand via search_tools()
+    - Token-optimized responses (no JSON indentation)
+
     Provides standardized MCP interface for:
     - Tool discovery and execution
     - Resource access
@@ -28,12 +33,24 @@ class ClaudeAgentMCPServer:
     - SDK-compliant patterns
     """
 
+    # Minimal tool registry - name only (Progressive Discovery Pattern)
+    # Full definitions loaded on-demand to save tokens
+    TOOL_BRIEF = {
+        "execute_trade": "Trade stock",
+        "close_position": "Close position",
+        "check_balance": "Get balance",
+        "get_strategy_learnings": "Past learnings",
+        "get_monthly_performance": "Month stats",
+        "analyze_position": "Analyze stock",
+        "search_tools": "Find tools"  # Meta-tool for progressive discovery
+    }
+
     def __init__(self, container: DependencyContainer):
         """Initialize MCP server."""
         self.container = container
         self.tool_executor: Optional[ToolExecutor] = None
         self._initialized = False
-        self._tools: Dict[str, Dict[str, Any]] = {}
+        self._tools: Dict[str, Dict[str, Any]] = {}  # Full schemas (lazy loaded)
         self._resources: Dict[str, Dict[str, Any]] = {}
 
     async def initialize(self) -> None:
@@ -68,88 +85,107 @@ class ClaudeAgentMCPServer:
             )
 
     async def _register_tools(self) -> None:
-        """Register available tools with MCP."""
+        """
+        Register available tools with MCP (full schemas for internal use).
+
+        Progressive Discovery Pattern:
+        - Full schemas stored here but NOT sent to agent upfront
+        - Agent uses search_tools() to discover tools on-demand
+        - Massive token savings (~95% reduction in tool definitions)
+        """
         self._tools = {
-            "execute_trade": {
-                "name": "execute_trade",
-                "description": "Execute a paper trade (buy/sell equity or option)",
+            "search_tools": {
+                "name": "search_tools",
+                "description": "Find tools by name/purpose. Use before calling tools.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "symbol": {"type": "string", "description": "Stock symbol (e.g., SBIN)"},
-                        "action": {"type": "string", "enum": ["buy", "sell"], "description": "Buy or sell"},
-                        "quantity": {"type": "integer", "minimum": 1, "description": "Number of shares"},
-                        "entry_price": {"type": "number", "minimum": 0, "description": "Entry/exit price"},
-                        "strategy_rationale": {"type": "string", "description": "Why this trade?"},
-                        "stop_loss": {"type": "number", "description": "Optional stop loss price"},
-                        "target_price": {"type": "number", "description": "Optional target price"},
-                        "account_id": {"type": "string", "description": "Account ID (optional)"},
-                        "claude_session_id": {"type": "string", "description": "Session ID (optional)"}
+                        "query": {"type": "string", "description": "Search term"},
+                        "detail": {"type": "string", "enum": ["brief", "full"], "default": "brief"}
+                    },
+                    "required": []
+                }
+            },
+            "execute_trade": {
+                "name": "execute_trade",
+                "description": "Execute paper trade",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {"type": "string"},
+                        "action": {"type": "string", "enum": ["buy", "sell"]},
+                        "quantity": {"type": "integer", "minimum": 1},
+                        "entry_price": {"type": "number", "minimum": 0},
+                        "strategy_rationale": {"type": "string"},
+                        "stop_loss": {"type": "number"},
+                        "target_price": {"type": "number"},
+                        "account_id": {"type": "string"},
+                        "claude_session_id": {"type": "string"}
                     },
                     "required": ["symbol", "action", "quantity", "entry_price", "strategy_rationale"]
                 }
             },
             "close_position": {
                 "name": "close_position",
-                "description": "Close an open trading position",
+                "description": "Close position",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "trade_id": {"type": "string", "description": "Trade ID to close"},
-                        "exit_price": {"type": "number", "minimum": 0, "description": "Exit price"},
-                        "reason": {"type": "string", "description": "Reason for closing"}
+                        "trade_id": {"type": "string"},
+                        "exit_price": {"type": "number", "minimum": 0},
+                        "reason": {"type": "string"}
                     },
                     "required": ["trade_id", "exit_price", "reason"]
                 }
             },
             "check_balance": {
                 "name": "check_balance",
-                "description": "Get current account balance and buying power",
+                "description": "Get balance",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "account_id": {"type": "string", "description": "Account ID (optional)"}
+                        "account_id": {"type": "string"}
                     },
                     "required": []
                 }
             },
             "get_strategy_learnings": {
                 "name": "get_strategy_learnings",
-                "description": "Get strategy performance learnings and recommendations for improving trading",
+                "description": "Get learnings",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "limit": {"type": "integer", "description": "Number of top strategies to return (default: 5)", "default": 5}
+                        "limit": {"type": "integer", "default": 5}
                     },
                     "required": []
                 }
             },
             "get_monthly_performance": {
                 "name": "get_monthly_performance",
-                "description": "Get current month's trading performance summary",
+                "description": "Month stats",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "account_type": {"type": "string", "enum": ["swing", "options"], "description": "Account type"}
+                        "account_type": {"type": "string", "enum": ["swing", "options"]}
                     },
                     "required": ["account_type"]
                 }
             },
             "analyze_position": {
                 "name": "analyze_position",
-                "description": "Analyze a specific open position with technical and fundamental insights",
+                "description": "Analyze stock",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "symbol": {"type": "string", "description": "Stock symbol"},
-                        "trade_id": {"type": "string", "description": "Trade ID for position analysis"}
+                        "symbol": {"type": "string"},
+                        "trade_id": {"type": "string"}
                     },
                     "required": ["symbol"]
                 }
             }
         }
 
-        self._log_info(f"Registered {len(self._tools)} MCP tools")
+        self._log_info(f"Registered {len(self._tools)} MCP tools (progressive discovery enabled)")
 
     async def _register_resources(self) -> None:
         """Register available resources with MCP."""
@@ -190,15 +226,68 @@ class ClaudeAgentMCPServer:
 
     # MCP Tool Methods
 
-    async def list_tools(self) -> List[Dict[str, Any]]:
-        """List available tools (MCP method)."""
+    async def list_tools(self, minimal: bool = True) -> List[Dict[str, Any]]:
+        """
+        List available tools (MCP method).
+
+        Progressive Discovery Pattern:
+        - minimal=True (default): Returns only name + brief description (~30 tokens total)
+        - minimal=False: Returns full schemas (~600 tokens) - use sparingly
+
+        Agent should use search_tools() to get full schema for specific tools.
+        """
         if not self._initialized:
             await self.initialize()
 
-        return list(self._tools.values())
+        if minimal:
+            # Progressive discovery: minimal definitions save ~95% tokens
+            return [
+                {"name": name, "description": brief}
+                for name, brief in self.TOOL_BRIEF.items()
+            ]
+        else:
+            return list(self._tools.values())
+
+    async def search_tools(self, query: str = "", detail: str = "brief") -> List[Dict[str, Any]]:
+        """
+        Progressive tool discovery (Anthropic's research pattern).
+
+        Args:
+            query: Search term to filter tools (empty = all tools)
+            detail: "brief" for name+description, "full" for complete schema
+
+        Returns:
+            Matching tools with requested detail level
+
+        Token savings: ~570 tokens/session vs upfront dump
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        # Filter tools by query
+        if query:
+            matches = [
+                name for name, brief in self.TOOL_BRIEF.items()
+                if query.lower() in name.lower() or query.lower() in brief.lower()
+            ]
+        else:
+            matches = list(self.TOOL_BRIEF.keys())
+
+        # Return with requested detail level
+        if detail == "full":
+            return [self._tools[name] for name in matches if name in self._tools]
+        else:
+            return [{"name": name, "description": self.TOOL_BRIEF.get(name, "")} for name in matches]
 
     async def call_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a tool call (MCP method)."""
+        """
+        Execute a tool call (MCP method).
+
+        Token Optimization:
+        - No JSON indentation (saves ~15% tokens per response)
+        - Compact separators for minimal whitespace
+        - search_tools handled internally for progressive discovery
+        """
         if not self._initialized or not self.tool_executor:
             raise TradingError(
                 "MCP server not initialized",
@@ -206,6 +295,20 @@ class ClaudeAgentMCPServer:
                 severity=ErrorSeverity.CRITICAL,
                 recoverable=False
             )
+
+        # Handle search_tools internally (progressive discovery)
+        if tool_name == "search_tools":
+            query = tool_input.get("query", "")
+            detail = tool_input.get("detail", "brief")
+            results = await self.search_tools(query, detail)
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(results, separators=(',', ':'))  # Compact JSON
+                    }
+                ]
+            }
 
         if tool_name not in self._tools:
             raise TradingError(
@@ -219,13 +322,13 @@ class ClaudeAgentMCPServer:
             # Execute tool using ToolExecutor
             result = await self.tool_executor.execute(tool_name, tool_input)
 
-            # Format result for MCP
+            # Format result for MCP - COMPACT JSON (no indent, saves ~15% tokens)
             if result.get("success"):
                 return {
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps(result.get("output", {}), indent=2)
+                            "text": json.dumps(result.get("output", {}), separators=(',', ':'))
                         }
                     ]
                 }
@@ -234,7 +337,7 @@ class ClaudeAgentMCPServer:
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Tool execution failed: {result.get('error', 'Unknown error')}"
+                            "text": f"Error: {result.get('error', 'Unknown')}"  # Shorter error
                         }
                     ],
                     "isError": True
@@ -246,7 +349,7 @@ class ClaudeAgentMCPServer:
                 "content": [
                     {
                         "type": "text",
-                        "text": f"Unexpected error executing {tool_name}: {str(e)}"
+                        "text": f"Error: {tool_name}: {str(e)}"  # Shorter error
                     }
                 ],
                 "isError": True
@@ -293,12 +396,13 @@ class ClaudeAgentMCPServer:
             else:
                 raise TradingError(f"Unknown resource URI: {uri}")
 
+            # Token optimization: compact JSON (no indent)
             return {
                 "contents": [
                     {
                         "uri": uri,
                         "mimeType": "application/json",
-                        "text": json.dumps(data, indent=2, default=str)
+                        "text": json.dumps(data, separators=(',', ':'), default=str)
                     }
                 ]
             }

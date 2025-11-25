@@ -18,13 +18,32 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
   metrics,
   isLoading = false
 }) => {
-  if (isLoading || !metrics) {
+  if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[...Array(8)].map((_, i) => (
           <SkeletonCard key={i} className="h-24" />
         ))}
       </div>
+    )
+  }
+
+  if (!metrics) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Performance Metrics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <Target className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+            <p className="text-muted-foreground">No trading data yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Metrics will appear after AI executes trades via MCP
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 

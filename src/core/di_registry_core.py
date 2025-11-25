@@ -133,31 +133,38 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
         # Register RECOMMENDATION_GENERATION handler
         async def handle_recommendation_generation(task):
-            """Handle portfolio intelligence analysis tasks with batch processing."""
+            """Handle portfolio intelligence analysis tasks with batch processing (Phase 3)."""
             analyzer = await container.get("portfolio_intelligence_analyzer")
 
-            # Get symbols to analyze (if None, get stocks with oldest analysis)
-            symbols_to_analyze = task.payload.get("symbols")
+            # Phase 3: Support multiple payload formats for batch processing
+            symbols_to_analyze = None
 
-            # If no specific symbols provided, select 2-3 stocks with oldest analysis
+            # 1. Check for symbols array (Phase 3: batch mode)
+            if "symbols" in task.payload:
+                symbols_to_analyze = task.payload.get("symbols")
+                logger.info(f"Processing batch task with {len(symbols_to_analyze)} symbols: {symbols_to_analyze}")
+
+            # 2. Check for single symbol (legacy mode)
+            elif "symbol" in task.payload:
+                symbol = task.payload.get("symbol")
+                symbols_to_analyze = [symbol]
+                logger.info(f"Processing single symbol: {symbol}")
+
+            # 3. If no symbols provided, select stocks with oldest analysis (existing behavior)
             if symbols_to_analyze is None:
-                # Get stocks with oldest analysis (priority: no analysis > oldest analysis)
                 from src.services.portfolio_intelligence.data_gatherer import PortfolioDataGatherer
                 data_gatherer = PortfolioDataGatherer(
                     await container.get("state_manager"),
                     await container.get("configuration_state")
                 )
                 symbols_to_analyze = await data_gatherer.get_stocks_with_updates()
-
-                # Select only 2-3 stocks with oldest/first analysis
-                # This prevents processing all 81 stocks at once
+                # Select only 2-3 stocks with oldest/first analysis (Phase 3: auto-batch)
                 symbols_to_analyze = symbols_to_analyze[:3]
+                logger.info(f"Auto-selected {len(symbols_to_analyze)} stocks for analysis: {symbols_to_analyze}")
 
-                logger.info(f"Selected {len(symbols_to_analyze)} stocks for analysis: {symbols_to_analyze}")
-
-            # Process specific symbols (should be 2-3 max per task)
+            # Process symbols (1-10 per task depending on batch size)
             return await analyzer.analyze_portfolio_intelligence(
-                agent_name=task.payload["agent_name"],
+                agent_name=task.payload.get("agent_name", "scan"),
                 symbols=symbols_to_analyze,
                 batch_info={
                     "batch_id": task.payload.get("batch_id"),
@@ -167,6 +174,11 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
         task_service.register_handler(TaskType.RECOMMENDATION_GENERATION, handle_recommendation_generation)
         logger.info("Registered RECOMMENDATION_GENERATION task handler")
+
+        # Register STOCK_ANALYSIS handler (Phase 1: Consolidated task type)
+        # Maps to the same handler as RECOMMENDATION_GENERATION for now
+        task_service.register_handler(TaskType.STOCK_ANALYSIS, handle_recommendation_generation)
+        logger.info("Registered STOCK_ANALYSIS task handler")
 
         # Register FUNDAMENTALS_UPDATE handler
         async def handle_fundamentals_update(task):
@@ -285,80 +297,9 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         task_service.register_handler(TaskType.MARKET_SCREENING, handle_market_screening)
         logger.info("Registered MARKET_SCREENING task handler")
 
-        # Register CLAUDE_MORNING_PREP handler
-        async def handle_claude_morning_prep(task):
-            """Handle morning market preparation with AI analysis."""
-            try:
-                logger.info("Processing Claude morning prep routine")
-
-                symbols = task.payload.get("symbols", [])
-                if not symbols:
-                    logger.warning("No symbols provided for morning prep")
-                    return {"status": "skipped", "reason": "no_symbols"}
-
-                # Get portfolio intelligence analyzer
-                analyzer = await container.get("portfolio_intelligence_analyzer")
-
-                # Run morning analysis on portfolio symbols (batched)
-                # Process in smaller batches to avoid turn limit exhaustion
-                batch_size = 3
-                results = []
-
-                for i in range(0, len(symbols), batch_size):
-                    batch_symbols = symbols[i:i + batch_size]
-                    logger.info(f"Morning prep batch {i//batch_size + 1}: analyzing {len(batch_symbols)} symbols")
-
-                    result = await analyzer.analyze_portfolio_intelligence(
-                        agent_name="morning_prep",
-                        symbols=batch_symbols,
-                        batch_info={
-                            "batch_id": i // batch_size,
-                            "total_batches": (len(symbols) + batch_size - 1) // batch_size,
-                            "routine": "morning_prep"
-                        }
-                    )
-                    results.append(result)
-
-                logger.info(f"Morning prep completed: processed {len(symbols)} symbols in {len(results)} batches")
-                return {
-                    "status": "completed",
-                    "symbols_processed": len(symbols),
-                    "batches": len(results)
-                }
-            except Exception as e:
-                logger.error(f"Error in morning prep handler: {e}")
-                raise
-
-        task_service.register_handler(TaskType.CLAUDE_MORNING_PREP, handle_claude_morning_prep)
-        logger.info("Registered CLAUDE_MORNING_PREP task handler")
-
-        # Register CLAUDE_EVENING_REVIEW handler
-        async def handle_claude_evening_review(task):
-            """Handle evening market close review with AI analysis."""
-            try:
-                logger.info("Processing Claude evening review routine")
-
-                # Get portfolio intelligence analyzer
-                analyzer = await container.get("portfolio_intelligence_analyzer")
-
-                # Run evening review on all positions
-                result = await analyzer.analyze_portfolio_intelligence(
-                    agent_name="evening_review",
-                    symbols=None,  # Will analyze all positions
-                    batch_info={"routine": "evening_review"}
-                )
-
-                logger.info(f"Evening review completed")
-                return {
-                    "status": "completed",
-                    "analysis": result
-                }
-            except Exception as e:
-                logger.error(f"Error in evening review handler: {e}")
-                raise
-
-        task_service.register_handler(TaskType.CLAUDE_EVENING_REVIEW, handle_claude_evening_review)
-        logger.info("Registered CLAUDE_EVENING_REVIEW task handler")
+        # NOTE: CLAUDE_MORNING_PREP and CLAUDE_EVENING_REVIEW handlers removed
+        # Morning/evening sessions now handled by ClaudeAgentService via MARKET_OPEN/MARKET_CLOSE events
+        # This is more token-efficient (single MCP session vs multiple batched calls)
 
         # Register CLAUDE_NEWS_ANALYSIS handler
         async def handle_claude_news_analysis(task):

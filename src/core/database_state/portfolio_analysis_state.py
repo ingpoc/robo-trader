@@ -675,7 +675,7 @@ Provide comprehensive investment recommendation.""",
                     )
 
                 await self.db.connection.commit()
-                logger.info(f"Stored {len(events)} hook events for analysis {analysis_id}")
+                logger.debug(f"Stored {len(events)} hook events for analysis {analysis_id}")
                 return True
 
             except Exception as e:

@@ -16,8 +16,25 @@ CACHE_FILE = CACHE_DIR / "coordinator_status.json"
 CACHE_TTL_SECONDS = 45  # 45 seconds
 
 
-def get_coordinator_status(use_cache: bool = True) -> Dict[str, Any]:
-    """Get coordinator initialization status with caching and token efficiency."""
+def get_coordinator_status(
+    use_cache: bool = True,
+    include_error_details: bool = True,
+    include_last_check_time: bool = True,
+    check_critical_only: bool = False,
+    timeout_seconds: int = 30
+) -> Dict[str, Any]:
+    """Get coordinator initialization status with caching and token efficiency.
+
+    Args:
+        use_cache: Use cached results if available
+        include_error_details: Include detailed error information
+        include_last_check_time: Include last check timestamps
+        check_critical_only: Check only critical coordinators
+        timeout_seconds: Request timeout in seconds
+
+    Returns:
+        Coordinator status information
+    """
 
     # Check cache
     if use_cache and CACHE_FILE.exists():
@@ -38,7 +55,7 @@ def get_coordinator_status(use_cache: bool = True) -> Dict[str, Any]:
     api_base = os.environ.get('ROBO_TRADER_API', 'http://localhost:8000')
 
     try:
-        response = requests.get(f"{api_base}/api/coordinators/status", timeout=5)
+        response = requests.get(f"{api_base}/api/coordinators/status", timeout=timeout_seconds)
 
         if response.status_code != 200:
             return {

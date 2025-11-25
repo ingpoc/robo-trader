@@ -264,10 +264,26 @@ class PerformanceMonitor:
     def get_current_performance(self, detail_level: str = "insights") -> Dict[str, Any]:
         """Get current performance snapshot with configurable detail."""
         if not self.performance_history:
-            return {
-                "status": "no_data",
-                "message": "No performance data available"
-            }
+            # Return basic system information when no monitoring data available
+            try:
+                import psutil
+                return {
+                    "status": "initializing",
+                    "message": "Performance monitoring not started. Use start_monitoring=True to begin collecting data.",
+                    "current_system_info": {
+                        "cpu_percent": psutil.cpu_percent(interval=1),
+                        "memory_percent": psutil.virtual_memory().percent,
+                        "disk_usage_percent": psutil.disk_usage('/').percent,
+                        "timestamp": psutil.boot_time()
+                    },
+                    "suggestion": "Start monitoring with start_monitoring=True parameter"
+                }
+            except ImportError:
+                return {
+                    "status": "initializing",
+                    "message": "Performance monitoring not started. psutil not available for system metrics.",
+                    "suggestion": "Start monitoring with start_monitoring=True parameter"
+                }
 
         latest_sample = self.performance_history[-1]
 

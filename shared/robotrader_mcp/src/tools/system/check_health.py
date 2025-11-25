@@ -11,7 +11,13 @@ from typing import Dict, List, Any, Optional
 import os
 import shutil
 
-def check_system_health(components: List[str] = None, verbose: bool = False) -> Dict[str, Any]:
+def check_system_health(
+    components: List[str] = None,
+    verbose: bool = False,
+    include_recommendations: bool = True,
+    timeout_seconds: int = 30,
+    use_cache: bool = True
+) -> Dict[str, Any]:
     """Check robo-trader system health across multiple components.
 
     Aggregates health across all components and returns 800 tokens of status.
@@ -20,6 +26,9 @@ def check_system_health(components: List[str] = None, verbose: bool = False) -> 
     Args:
         components: Components to check (default: all)
         verbose: Include detailed status information
+        include_recommendations: Include actionable recommendations
+        timeout_seconds: Timeout for health checks
+        use_cache: Use cached results if available
 
     Returns:
         Structured health assessment with actionable insights
