@@ -1,0 +1,291 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Feature List Schema",
+  "description": "Schema for validating feature-list.json files created by Initializer Agent",
+  "type": "object",
+  "required": [
+    "project_name",
+    "task_type",
+    "user_prompt",
+    "total_features",
+    "completed",
+    "in_progress",
+    "pending",
+    "created_at",
+    "last_updated",
+    "categories",
+    "anti_patterns"
+  ],
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "description": "Name of the project or feature being developed"
+    },
+    "task_type": {
+      "type": "string",
+      "enum": ["new_feature", "bug_fix", "refactoring", "documentation"],
+      "description": "Type of development task"
+    },
+    "user_prompt": {
+      "type": "string",
+      "description": "Original user request that triggered feature expansion"
+    },
+    "total_features": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of features across all categories"
+    },
+    "completed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of completed features"
+    },
+    "in_progress": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of features currently being implemented"
+    },
+    "pending": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of features not yet started"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when feature list was created"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last update"
+    },
+    "categories": {
+      "type": "object",
+      "required": [
+        "testing",
+        "api_endpoints",
+        "data_fetching",
+        "ui_components",
+        "state_management",
+        "error_handling",
+        "accessibility",
+        "performance"
+      ],
+      "properties": {
+        "testing": {
+          "$ref": "#/definitions/category"
+        },
+        "api_endpoints": {
+          "$ref": "#/definitions/category"
+        },
+        "data_fetching": {
+          "$ref": "#/definitions/category"
+        },
+        "ui_components": {
+          "$ref": "#/definitions/category"
+        },
+        "state_management": {
+          "$ref": "#/definitions/category"
+        },
+        "error_handling": {
+          "$ref": "#/definitions/category"
+        },
+        "accessibility": {
+          "$ref": "#/definitions/category"
+        },
+        "performance": {
+          "$ref": "#/definitions/category"
+        }
+      },
+      "additionalProperties": false
+    },
+    "anti_patterns": {
+      "type": "object",
+      "required": [
+        "prevent_test_modifications",
+        "no_premature_completion",
+        "dependency_tracking",
+        "atomic_commits",
+        "test_first"
+      ],
+      "properties": {
+        "prevent_test_modifications": {
+          "$ref": "#/definitions/anti_pattern"
+        },
+        "no_premature_completion": {
+          "$ref": "#/definitions/anti_pattern"
+        },
+        "dependency_tracking": {
+          "$ref": "#/definitions/anti_pattern"
+        },
+        "atomic_commits": {
+          "$ref": "#/definitions/anti_pattern"
+        },
+        "test_first": {
+          "$ref": "#/definitions/anti_pattern"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "robo_trader_patterns": {
+          "type": "object",
+          "properties": {
+            "max_coordinator_lines": {
+              "type": "integer",
+              "const": 150
+            },
+            "use_event_bus": {
+              "type": "boolean",
+              "const": true
+            },
+            "async_await_throughout": {
+              "type": "boolean",
+              "const": true
+            },
+            "locked_state_methods": {
+              "type": "boolean",
+              "const": true
+            },
+            "queue_ai_tasks": {
+              "type": "boolean",
+              "const": true
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "category": {
+      "type": "object",
+      "required": ["priority", "total", "features"],
+      "properties": {
+        "priority": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Implementation priority for this category"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total features in this category"
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/feature"
+          }
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "status",
+        "dependencies",
+        "test_files",
+        "priority"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z]+-\\d+$",
+          "description": "Unique feature identifier (e.g., UI-001, API-003)"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 100,
+          "description": "Concise feature name (3-7 words)"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Detailed explanation of feature requirements"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "completed"],
+          "description": "Current implementation status"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]+-\\d+$"
+          },
+          "description": "Array of feature IDs this feature depends on"
+        },
+        "test_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Array of test file paths for this feature"
+        },
+        "immutable": {
+          "type": "boolean",
+          "description": "If true, tests cannot be modified (prevents inappropriate test changes)"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Individual feature priority"
+        },
+        "estimated_time_minutes": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 120,
+          "description": "Estimated implementation time in minutes"
+        },
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,40}$",
+          "description": "Git commit SHA when feature was completed"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when feature was completed"
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when feature implementation started"
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of blocker descriptions preventing feature completion"
+        }
+      }
+    },
+    "anti_pattern": {
+      "type": "object",
+      "required": ["rule", "rationale", "enforcement"],
+      "properties": {
+        "rule": {
+          "type": "string",
+          "description": "The rule that prevents the anti-pattern"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why this rule exists"
+        },
+        "enforcement": {
+          "type": "string",
+          "description": "How the rule is enforced"
+        }
+      }
+    }
+  }
+}

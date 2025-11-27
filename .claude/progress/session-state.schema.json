@@ -1,0 +1,213 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Session State Schema",
+  "description": "Schema for validating session-state.json files used by Coding Agent for session restoration",
+  "type": "object",
+  "required": [
+    "session_number",
+    "started_at",
+    "last_action",
+    "last_action_at",
+    "agent_type",
+    "heartbeat",
+    "abnormal_exit_detection",
+    "metrics"
+  ],
+  "properties": {
+    "session_number": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Sequential session number (starts at 0 for initialization)"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when current session started"
+    },
+    "last_action": {
+      "type": "string",
+      "enum": [
+        "initialized",
+        "started_feature",
+        "completed_feature",
+        "committed_code",
+        "ran_tests",
+        "fixed_tests",
+        "updated_progress",
+        "session_ended"
+      ],
+      "description": "Last action performed by the agent"
+    },
+    "last_action_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last action"
+    },
+    "last_feature_id": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Z]+-\\d+$",
+      "description": "Feature ID of last completed or in-progress feature"
+    },
+    "agent_type": {
+      "type": "string",
+      "enum": ["initializer", "coding"],
+      "description": "Which agent is currently active"
+    },
+    "heartbeat": {
+      "type": "object",
+      "required": ["enabled", "interval_seconds", "last_heartbeat"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether heartbeat monitoring is active"
+        },
+        "interval_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 600,
+          "description": "Seconds between heartbeat updates"
+        },
+        "last_heartbeat": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of last heartbeat"
+        }
+      }
+    },
+    "previous_session": {
+      "type": ["object", "null"],
+      "properties": {
+        "session_number": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ended_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["clean_exit", "abnormal_exit"],
+          "description": "How the previous session ended"
+        },
+        "features_completed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]+-\\d+$"
+          },
+          "description": "Feature IDs completed in previous session"
+        },
+        "duration_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total duration of previous session in minutes"
+        }
+      }
+    },
+    "current_activity": {
+      "type": "object",
+      "required": ["status", "files_modified"],
+      "properties": {
+        "feature_id": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Z]+-\\d+$",
+          "description": "Feature currently being worked on"
+        },
+        "started_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "When work on current feature started"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "awaiting_coding_agent",
+            "selecting_feature",
+            "writing_tests",
+            "implementing",
+            "running_tests",
+            "debugging",
+            "committing",
+            "updating_progress",
+            "idle"
+          ],
+          "description": "Current activity status"
+        },
+        "files_modified": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of files modified in current activity"
+        }
+      }
+    },
+    "abnormal_exit_detection": {
+      "type": "object",
+      "required": ["enabled", "threshold_minutes", "last_heartbeat", "recovery_actions"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether abnormal exit detection is active"
+        },
+        "threshold_minutes": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 120,
+          "description": "Minutes of inactivity before considering exit abnormal"
+        },
+        "last_heartbeat": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last heartbeat timestamp (same as heartbeat.last_heartbeat)"
+        },
+        "recovery_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "List of recovery actions to perform if abnormal exit detected"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "total_features_this_session",
+        "total_commits_this_session",
+        "total_tests_run",
+        "average_feature_time_minutes"
+      ],
+      "properties": {
+        "total_features_this_session": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of features completed in current session"
+        },
+        "total_commits_this_session": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of git commits in current session"
+        },
+        "total_tests_run": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total test executions in current session"
+        },
+        "average_feature_time_minutes": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Average time per feature across all sessions"
+        },
+        "test_pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Percentage of test runs that passed (0.0 to 1.0)"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,97 @@
+=== {PROJECT_NAME} Development Progress ===
+Task Type: {TASK_TYPE}
+Original Prompt: "{USER_PROMPT}"
+Started: {START_DATE}
+Last Updated: {LAST_UPDATED}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OVERALL PROGRESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Total Features: {TOTAL_FEATURES}
+Completed: {COMPLETED} ({PERCENT}%)
+In Progress: {IN_PROGRESS}
+Pending: {PENDING}
+
+Progress Bar: {PROGRESS_BAR}
+
+⏱️ ESTIMATED TIME:
+Total Development Time: {EST_HOURS} hours (based on {AVG_MINUTES}min avg/feature)
+Estimated Completion: {EST_COMPLETION_DATE}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RECENT ACTIVITY (Last 5 Features)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{RECENT_ACTIVITY_PLACEHOLDER}
+(No features completed yet - ready to start!)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CURRENT BLOCKERS & WARNINGS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{BLOCKERS_PLACEHOLDER}
+(No blockers detected)
+
+{WARNINGS_PLACEHOLDER}
+(No warnings)
+
+{DEPENDENCIES_PLACEHOLDER}
+(Dependency analysis will be shown here)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NEXT UP (Priority Order)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{NEXT_UP_PLACEHOLDER}
+(Top 10 next available features will be listed here)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CATEGORY BREAKDOWN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Testing: [░░░░░░░░░░░░░░░░░░░░] 0/{TESTING_TOTAL} (0%)
+API Endpoints: [░░░░░░░░░░░░░░░░░░░░] 0/{API_TOTAL} (0%)
+Data Fetching: [░░░░░░░░░░░░░░░░░░░░] 0/{DATA_TOTAL} (0%)
+UI Components: [░░░░░░░░░░░░░░░░░░░░] 0/{UI_TOTAL} (0%)
+State Management: [░░░░░░░░░░░░░░░░░░░░] 0/{STATE_TOTAL} (0%)
+Error Handling: [░░░░░░░░░░░░░░░░░░░░] 0/{ERROR_TOTAL} (0%)
+Accessibility: [░░░░░░░░░░░░░░░░░░░░] 0/{A11Y_TOTAL} (0%)
+Performance: [░░░░░░░░░░░░░░░░░░░░] 0/{PERF_TOTAL} (0%)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NOTES & REMINDERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✏️ Robo-Trader Specific Reminders:
+- Max 150 lines per coordinator
+- Use EventBus for all inter-coordinator communication
+- All code must be async/await
+- Use config_state.store_*() for database operations (prevents locks)
+- Queue AI analysis tasks to prevent token exhaustion
+- Test UI changes with Playwright before committing
+- Run full test suite before marking features complete
+
+📝 Task-Specific Notes:
+{TASK_NOTES_PLACEHOLDER}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEGEND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Status Indicators:
+✅ - Feature completed and committed
+🚧 - Feature in progress
+⏸️  - Feature paused (waiting on dependency or blocker)
+⏭️  - Feature skipped (will revisit later)
+
+Priority Levels:
+🔴 HIGH - Critical path features (implement first)
+🟡 MEDIUM - Important but not blocking
+🟢 LOW - Nice-to-have enhancements
+
+Progress Bar:
+█ - Completed
+░ - Pending
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
