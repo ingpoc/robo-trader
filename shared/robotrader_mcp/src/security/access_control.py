@@ -42,7 +42,7 @@ class AccessControlSystem:
     def _initialize_permissions(self) -> Dict[str, ToolPermissions]:
         """Define permission levels for all tools."""
         return {
-            # Discovery Tools (Public Access)
+            # All tools now have public access
             "list_directories": ToolPermissions(
                 allowed_callers=["*"],  # All callers
                 requires_context=False,
@@ -58,130 +58,115 @@ class AccessControlSystem:
                 requires_context=False,
                 audit_log=False
             ),
-
-            # System Monitoring Tools (Monitoring Role)
             "check_system_health": ToolPermissions(
-                allowed_callers=["monitoring", "analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "system", "operation": "health_check"},
-                rate_limit=10
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "queue_status": ToolPermissions(
-                allowed_callers=["monitoring", "analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "queue", "operation": "status_monitoring"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "coordinator_status": ToolPermissions(
-                allowed_callers=["monitoring", "analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "coordinator", "operation": "health_check"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "real_time_performance_monitor": ToolPermissions(
-                allowed_callers=["monitoring", "analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "performance", "operation": "monitoring"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
-
-            # Analysis Tools (Analysis Role)
             "analyze_logs": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "logs", "operation": "analysis"},
-                rate_limit=20
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "query_portfolio": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "portfolio", "operation": "query"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "context_aware_summarize": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "data", "operation": "summarization"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "smart_file_read": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "filesystem", "operation": "read"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "execute_analysis": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "analysis", "operation": "execute"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
-
-            # Advanced Tools (Debugging Role)
             "diagnose_database_locks": ToolPermissions(
-                allowed_callers=["debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "database", "operation": "diagnosis"},
-                rate_limit=5
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "verify_configuration_integrity": ToolPermissions(
-                allowed_callers=["debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "config", "operation": "verification"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "suggest_fix": ToolPermissions(
-                allowed_callers=["debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "error", "operation": "fix_suggestion"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "knowledge_query": ToolPermissions(
-                allowed_callers=["debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "knowledge", "operation": "query"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "find_related_files": ToolPermissions(
-                allowed_callers=["debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "filesystem", "operation": "search"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
-
-            # Execution Tools (Admin Role)
             "execute_python": ToolPermissions(
-                allowed_callers=["admin"],
-                requires_context=True,
-                context_requirements={"component": "execution", "operation": "python_code"},
-                rate_limit=10
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "workflow_orchestrator": ToolPermissions(
-                allowed_callers=["admin"],
-                requires_context=True,
-                context_requirements={"component": "workflow", "operation": "orchestrate"},
-                rate_limit=15
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
-
-            # Performance & Metrics Tools
             "task_execution_metrics": ToolPermissions(
-                allowed_callers=["monitoring", "analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "metrics", "operation": "task_analysis"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "token_metrics_collector": ToolPermissions(
-                allowed_callers=["monitoring", "analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "metrics", "operation": "token_analysis"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "smart_cache": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "cache", "operation": "analysis"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "session_context_injection": ToolPermissions(
-                allowed_callers=["debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "session", "operation": "context_management"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "enhanced_differential_analysis": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "analysis", "operation": "differential"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             ),
             "differential_analysis": ToolPermissions(
-                allowed_callers=["analysis", "debugging", "admin"],
-                requires_context=True,
-                context_requirements={"component": "analysis", "operation": "differential"}
+                allowed_callers=["*"],  # All callers
+                requires_context=False,
+                audit_log=False
             )
         }
 

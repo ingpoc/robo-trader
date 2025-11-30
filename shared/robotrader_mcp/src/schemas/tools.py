@@ -127,6 +127,16 @@ class AnalyzeLogsInput(BaseToolInput):
         default="error_type",
         description="How to group results: error_type, time, severity"
     )
+    timeout_seconds: Optional[int] = Field(
+        default=30,
+        ge=1,
+        le=300,
+        description="Execution timeout in seconds (1-300, default 30)"
+    )
+    use_cache: Optional[bool] = Field(
+        default=True,
+        description="Whether to use cached results"
+    )
 
     @validator('time_window')
     def validate_time_window(cls, v):
@@ -182,6 +192,16 @@ class DiagnoseDatabaseLocksInput(BaseToolInput):
         default=True,
         description="Suggest specific fixes for identified issues"
     )
+    timeout_seconds: Optional[int] = Field(
+        default=30,
+        ge=1,
+        le=300,
+        description="Execution timeout in seconds (1-300, default 30)"
+    )
+    use_cache: Optional[bool] = Field(
+        default=True,
+        description="Whether to use cached results"
+    )
 
     @validator('time_window')
     def validate_time_window(cls, v):
@@ -225,6 +245,16 @@ class GetQueueStatusInput(BaseToolInput):
     include_backlog_analysis: Optional[bool] = Field(
         default=True,
         description="Include backlog analysis and recommendations"
+    )
+    timeout_seconds: Optional[int] = Field(
+        default=30,
+        ge=1,
+        le=300,
+        description="Execution timeout in seconds (1-300, default 30)"
+    )
+    use_cache: Optional[bool] = Field(
+        default=True,
+        description="Whether to use cached results"
     )
 
 

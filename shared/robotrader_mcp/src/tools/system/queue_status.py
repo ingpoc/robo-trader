@@ -20,7 +20,8 @@ def get_queue_status(
     use_cache: bool = True,
     include_details: bool = False,
     queue_filter: Optional[str] = None,
-    include_backlog_analysis: bool = True
+    include_backlog_analysis: bool = True,
+    timeout_seconds: int = 30
 ) -> Dict[str, Any]:
     """Get real-time queue status with caching and token efficiency.
 
@@ -59,7 +60,7 @@ def get_queue_status(
     api_base = os.environ.get('ROBO_TRADER_API', 'http://localhost:8000')
 
     try:
-        response = requests.get(f"{api_base}/api/queues/status", timeout=5)
+        response = requests.get(f"{api_base}/api/queues/status", timeout=timeout)
 
         if response.status_code != 200:
             return {

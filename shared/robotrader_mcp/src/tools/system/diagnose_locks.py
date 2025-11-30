@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Set
 import os
 
-def diagnose_database_locks(time_window: str = "24h", include_code_references: bool = True, suggest_fixes: bool = True) -> Dict[str, Any]:
+def diagnose_database_locks(time_window: str = "24h", include_code_references: bool = True, suggest_fixes: bool = True, timeout_seconds: int = 30, use_cache: bool = True) -> Dict[str, Any]:
     """Diagnose database lock issues by correlating logs with code patterns.
 
     Processes logs + code in sandbox and returns 1.2K tokens of actionable diagnosis.

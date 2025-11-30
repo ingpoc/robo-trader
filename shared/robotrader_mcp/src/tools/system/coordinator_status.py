@@ -21,7 +21,8 @@ def get_coordinator_status(
     include_error_details: bool = True,
     include_last_check_time: bool = True,
     check_critical_only: bool = False,
-    timeout_seconds: int = 30
+    timeout_seconds: int = 30,
+    **kwargs
 ) -> Dict[str, Any]:
     """Get coordinator initialization status with caching and token efficiency.
 

@@ -600,6 +600,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
         # Analysis Tools (Role-based access control)
         elif name in ALL_TOOLS:
+            # Extract timeout from arguments or schema
+            timeout = getattr(arguments, 'timeout_seconds', 30)
             return await handle_analysis_tool(name, arguments)
 
         else:
