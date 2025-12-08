@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "playwright": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "@playwright/mcp@latest"
+        "/Users/gurusharan/Documents/remote-claude/mcp-servers/playwright-dynamic-mcp/index-dynamic.cjs"
       ]
     },
     "robo-trader-dev": {

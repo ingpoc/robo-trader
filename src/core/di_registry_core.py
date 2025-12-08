@@ -84,6 +84,16 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("configuration_state", create_configuration_state)
 
+    # Paper Trading State - singleton (Database-backed paper trading)
+    async def create_paper_trading_state():
+        from .database_state.paper_trading_state import PaperTradingState
+        state_manager = await container.get("state_manager")
+        paper_trading_state = PaperTradingState(state_manager.db)
+        await paper_trading_state.initialize()
+        return paper_trading_state
+
+    container._register_singleton("paper_trading_state", create_paper_trading_state)
+
     # ========================================
     # REPOSITORY LAYER (Phase 1)
     # ========================================

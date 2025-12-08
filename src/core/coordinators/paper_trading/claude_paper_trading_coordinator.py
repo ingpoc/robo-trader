@@ -18,7 +18,7 @@ from ...database_state import DatabaseStateManager
 from ...event_bus import EventBus, Event, EventType
 from ....services.paper_trading.account_manager import PaperTradingAccountManager
 from ....services.paper_trading.trade_executor import PaperTradeExecutor
-from ....services.kite_connect_service import KiteConnectService
+from ....services.kite_portfolio_service import KitePortfolioService
 from ....services.technical_indicators_service import TechnicalIndicatorsService
 from ....services.fundamental_service import FundamentalService
 from ....config import Config
@@ -42,7 +42,7 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         event_bus: EventBus,
         account_manager: PaperTradingAccountManager,
         trade_executor: PaperTradeExecutor,
-        kite_service: Optional[KiteConnectService] = None,
+        kite_service: Optional[KitePortfolioService] = None,
         indicators_service: Optional[TechnicalIndicatorsService] = None,
         fundamental_service: Optional[FundamentalService] = None
     ):
@@ -296,17 +296,77 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         market_analysis: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Generate strategy using Claude Agent SDK tools."""
-        # This will be called by Claude when using the strategy tools
-        # For now, return a basic strategy structure
-        return {
-            "account_id": account_id,
-            "available_capital": available_capital,
-            "recommended_trades": [],
-            "position_sizing": {},
-            "stop_loss_levels": {},
-            "target_prices": {},
-            "generated_at": datetime.now(timezone.utc).isoformat()
-        }
+        try:
+            # Get Claude Agent Service from container
+            from ....core.di import get_container
+            container = get_container()
+            claude_service = await container.get("claude_agent_service")
+
+            # Build context for Claude
+            context = {
+                "account_id": account_id,
+                "available_capital": available_capital,
+                "open_positions": [
+                    {
+                        "symbol": pos.get("symbol"),
+                        "quantity": pos.get("quantity"),
+                        "entry_price": pos.get("entry_price"),
+                        "current_price": pos.get("current_price"),
+                        "unrealized_pnl": pos.get("unrealized_pnl", 0)
+                    }
+                    for pos in open_positions
+                ],
+                "market_analysis": market_analysis,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+            # Run morning prep session to generate strategy
+            session_result = await claude_service.run_morning_prep_session(
+                account_type="paper",
+                context=context
+            )
+
+            # Parse decisions from session result
+            recommended_trades = []
+            if hasattr(session_result, 'decisions_made') and session_result.decisions_made:
+                for decision in session_result.decisions_made:
+                    # Extract trade recommendations from decisions
+                    if decision.get("action") in ["BUY", "SELL"]:
+                        recommended_trades.append({
+                            "symbol": decision.get("symbol"),
+                            "action": decision.get("action"),
+                            "quantity": decision.get("quantity", 1),
+                            "entry_price": decision.get("price", 0),
+                            "stop_loss": decision.get("stop_loss"),
+                            "target_price": decision.get("target"),
+                            "rationale": decision.get("reasoning", "")
+                        })
+
+            return {
+                "account_id": account_id,
+                "available_capital": available_capital,
+                "recommended_trades": recommended_trades,
+                "position_sizing": {},
+                "stop_loss_levels": {},
+                "target_prices": {},
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "session_id": getattr(session_result, 'session_id', None),
+                "market_context": market_analysis
+            }
+
+        except Exception as e:
+            logger.error(f"Claude SDK strategy generation failed: {e}")
+            # Return empty strategy on error but log the issue
+            return {
+                "account_id": account_id,
+                "available_capital": available_capital,
+                "recommended_trades": [],
+                "position_sizing": {},
+                "stop_loss_levels": {},
+                "target_prices": {},
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "error": str(e)
+            }
 
     async def _evaluate_with_claude(
         self,

@@ -9,7 +9,6 @@ from datetime import datetime, timezone, timedelta
 
 from src.repositories import QueueStateRepository
 from src.models.domain import QueueState, QueueStatus
-from src.core.database import Database
 
 
 class TestQueueStateRepository:
@@ -21,9 +20,9 @@ class TestQueueStateRepository:
         # Create in-memory database
         connection = await aiosqlite.connect(":memory:")
 
-        # Create scheduler_tasks table
+        # Create queue_tasks table
         await connection.execute("""
-            CREATE TABLE IF NOT EXISTS scheduler_tasks (
+            CREATE TABLE IF NOT EXISTS queue_tasks (
                 task_id TEXT PRIMARY KEY,
                 queue_name TEXT NOT NULL,
                 task_type TEXT NOT NULL,
@@ -35,13 +34,20 @@ class TestQueueStateRepository:
                 scheduled_at TEXT,
                 started_at TEXT,
                 completed_at TEXT,
-                error_message TEXT
+                error_message TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
         await connection.commit()
 
-        # Create Database wrapper
-        db = Database(connection=connection)
+        # Create a simple Database wrapper for test
+        class TestDatabase:
+            def __init__(self, connection):
+                self.connection = connection
+                self.backup_manager = None
+
+        db = TestDatabase(connection=connection)
 
         yield db
 
@@ -64,42 +70,42 @@ class TestQueueStateRepository:
         tasks = [
             # AI Analysis queue - running and pending
             ("task-001", "ai_analysis", "RECOMMENDATION_GENERATION", "pending", 7,
-             (now - timedelta(minutes=5)).isoformat(), None, None),
+             (now - timedelta(minutes=5)).isoformat(), None, None, None),
             ("task-002", "ai_analysis", "RECOMMENDATION_GENERATION", "running", 7,
              (now - timedelta(minutes=3)).isoformat(),
-             (now - timedelta(minutes=2)).isoformat(), None),
+             (now - timedelta(minutes=2)).isoformat(), None, None),
             ("task-003", "ai_analysis", "RECOMMENDATION_GENERATION", "completed", 7,
              (today_start + timedelta(hours=2)).isoformat(),
              (today_start + timedelta(hours=2, minutes=1)).isoformat(),
-             (today_start + timedelta(hours=2, minutes=3)).isoformat()),
+             (today_start + timedelta(hours=2, minutes=3)).isoformat(), None),
             ("task-004", "ai_analysis", "RECOMMENDATION_GENERATION", "completed", 7,
              (today_start + timedelta(hours=3)).isoformat(),
              (today_start + timedelta(hours=3, minutes=1)).isoformat(),
-             (today_start + timedelta(hours=3, minutes=4)).isoformat()),
+             (today_start + timedelta(hours=3, minutes=4)).isoformat(), None),
 
             # Data fetcher queue - some failed tasks
             ("task-005", "data_fetcher", "NEWS_MONITORING", "failed", 5,
              (now - timedelta(minutes=10)).isoformat(),
-             (now - timedelta(minutes=9)).isoformat(), None),
+             (now - timedelta(minutes=9)).isoformat(), None, "API timeout after 30 seconds"),
             ("task-006", "data_fetcher", "EARNINGS_CHECK", "completed", 5,
              (today_start + timedelta(hours=1)).isoformat(),
              (today_start + timedelta(hours=1, minutes=1)).isoformat(),
-             (today_start + timedelta(hours=1, minutes=2)).isoformat()),
+             (today_start + timedelta(hours=1, minutes=2)).isoformat(), None),
 
             # Portfolio sync queue - idle (no pending)
             ("task-007", "portfolio_sync", "SYNC_ACCOUNT", "completed", 8,
              (today_start + timedelta(hours=0, minutes=30)).isoformat(),
              (today_start + timedelta(hours=0, minutes=31)).isoformat(),
-             (today_start + timedelta(hours=0, minutes=32)).isoformat()),
+             (today_start + timedelta(hours=0, minutes=32)).isoformat(), None),
         ]
 
         for task in tasks:
             await database.connection.execute(
                 """
-                INSERT INTO scheduler_tasks
+                INSERT INTO queue_tasks
                 (task_id, queue_name, task_type, status, priority,
-                 scheduled_at, started_at, completed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 scheduled_at, started_at, completed_at, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 task
             )
@@ -244,7 +250,8 @@ class TestQueueStateRepository:
 
         assert len(tasks) == 1
         assert tasks[0]["task_id"] == "task-005"
-        assert tasks[0]["status"] == "failed"
+        assert tasks[0]["queue_name"] == "data_fetcher"
+        assert tasks[0]["error_message"] is not None
 
     async def test_current_task_correlation(self, repository, sample_tasks):
         """Test that current task is correctly correlated to queue."""

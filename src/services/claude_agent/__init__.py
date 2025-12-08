@@ -10,6 +10,7 @@ from .execution_monitor import ExecutionMonitor, ExecutionStep, TradeExecutionLo
 from .daily_strategy_evaluator import DailyStrategyEvaluator, StrategyPerformanceMetrics, StrategyRefinement, DailyStrategyReport
 from .activity_summarizer import ActivitySummarizer, DailyActivitySummary, WeeklyActivitySummary
 from .trade_decision_logger import TradeDecisionLogger
+from .mcp_server import ClaudeAgentMCPServer
 
 __all__ = [
     # Research tracking
@@ -42,4 +43,7 @@ __all__ = [
 
     # Trade decision logging
     "TradeDecisionLogger",
+
+    # MCP Server
+    "ClaudeAgentMCPServer",
 ]

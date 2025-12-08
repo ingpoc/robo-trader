@@ -416,7 +416,56 @@ class DatabaseConnection:
             UNIQUE(data_type, created_at)
         );
 
+        -- Daily Strategy Reports (for autonomous trading evaluation)
+        CREATE TABLE IF NOT EXISTS daily_strategy_reports (
+            id INTEGER PRIMARY KEY,
+            report_id TEXT NOT NULL UNIQUE,
+            evaluation_date TEXT NOT NULL,
+            account_type TEXT NOT NULL,
+            report_data TEXT NOT NULL,  -- JSON with full report
+            confidence_score REAL DEFAULT 0.0,
+            created_at TEXT NOT NULL
+        );
+
+        -- Claude Trading Decisions (for autonomous trading transparency)
+        CREATE TABLE IF NOT EXISTS claude_decisions (
+            id INTEGER PRIMARY KEY,
+            decision_id TEXT NOT NULL UNIQUE,
+            timestamp TEXT NOT NULL,
+            decision_type TEXT NOT NULL,  -- BUY, SELL, HOLD
+            symbol TEXT NOT NULL,
+            reasoning TEXT NOT NULL,
+            confidence_score REAL DEFAULT 0.0,
+            context_snapshot TEXT,  -- JSON with portfolio state, market data
+            execution_result TEXT,  -- JSON with fill price, quantity, errors
+            executed_at TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- Trading Safeguards State (for autonomous execution limits)
+        CREATE TABLE IF NOT EXISTS trading_safeguards (
+            id INTEGER PRIMARY KEY,
+            safeguard_date TEXT NOT NULL UNIQUE,
+            trades_today INTEGER DEFAULT 0,
+            daily_pnl REAL DEFAULT 0.0,
+            consecutive_losses INTEGER DEFAULT 0,
+            circuit_breaker_active INTEGER DEFAULT 0,
+            circuit_breaker_reason TEXT,
+            last_trade_timestamp TEXT,
+            max_trades_limit INTEGER DEFAULT 10,
+            max_daily_loss REAL DEFAULT -5000.0,
+            max_consecutive_losses INTEGER DEFAULT 3,
+            positions_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
         -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_claude_decisions_symbol ON claude_decisions(symbol);
+        CREATE INDEX IF NOT EXISTS idx_claude_decisions_timestamp ON claude_decisions(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_claude_decisions_type ON claude_decisions(decision_type);
+        CREATE INDEX IF NOT EXISTS idx_daily_strategy_reports_date ON daily_strategy_reports(evaluation_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_daily_strategy_reports_account ON daily_strategy_reports(account_type);
         CREATE INDEX IF NOT EXISTS idx_analysis_history_symbol ON analysis_history(symbol);
         CREATE INDEX IF NOT EXISTS idx_analysis_history_timestamp ON analysis_history(timestamp);
         CREATE INDEX IF NOT EXISTS idx_daily_plans_date ON daily_plans(date);
@@ -451,6 +500,7 @@ class DatabaseConnection:
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_data_type ON optimized_prompts(data_type);
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_created ON optimized_prompts(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_data_type_created ON optimized_prompts(data_type, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_trading_safeguards_date ON trading_safeguards(safeguard_date DESC);
         """
 
         await self._connection_pool.executescript(schema)

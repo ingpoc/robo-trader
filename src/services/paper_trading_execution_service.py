@@ -491,16 +491,32 @@ Respond with ONLY the JSON object. No explanation text."""
         """Lazy initialization of Claude SDK client - called once at service init and on-demand."""
         if self._client is None:
             try:
-                options = ClaudeAgentOptions(
-                    allowed_tools=[],
-                    system_prompt=self._get_trading_prompt(),
-                    max_turns=1,
-                    disallowed_tools=["WebSearch", "WebFetch", "Bash", "Read", "Write"],
-                )
-                # Use client manager with unique client type for paper trading
-                from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
-                client_manager = await ClaudeSDKClientManager.get_instance()
-                self._client = await client_manager.get_client("paper_trading", options)
+                # CRITICAL: Remove ANTHROPIC_API_KEY from env to force CLI auth
+                # The OAuth token in .env is NOT valid for direct API calls
+                import os
+                original_api_key = os.environ.pop("ANTHROPIC_API_KEY", None)
+                loguru_logger.info(f"Removed ANTHROPIC_API_KEY from env (was set: {original_api_key is not None})")
+
+                try:
+                    # Pass empty env to prevent SDK from using ANTHROPIC_API_KEY
+                    # SDK will use Claude CLI authentication instead
+                    options = ClaudeAgentOptions(
+                        allowed_tools=[],
+                        system_prompt=self._get_trading_prompt(),
+                        max_turns=1,
+                        disallowed_tools=["WebSearch", "WebFetch", "Bash", "Read", "Write", "Task", "TodoWrite", "Glob", "Grep", "Edit"],
+                        permission_mode="bypassPermissions",  # Bypass all permission checks for pure validation
+                        env={},  # Empty env = use CLI auth, not ANTHROPIC_API_KEY
+                    )
+                    # Use client manager with unique client type for paper trading
+                    from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+                    client_manager = await ClaudeSDKClientManager.get_instance()
+                    # Force recreate to ensure clean client without API key
+                    self._client = await client_manager.get_client("paper_trading", options, force_recreate=True)
+                finally:
+                    # Restore API key for other services that need it
+                    if original_api_key:
+                        os.environ["ANTHROPIC_API_KEY"] = original_api_key
                 loguru_logger.debug("Initialized Claude SDK client for trade execution via manager")
             except Exception as e:
                 loguru_logger.error(f"Failed to initialize Claude SDK client: {e}")

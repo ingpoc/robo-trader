@@ -1,59 +1,94 @@
-# Claude Code Guidelines
+# Robo Trader - Autonomous Paper Trading System
 
-## Core Principles
+## First Thing: Check Progress
 
-- Fix real issues, not tests. Verify logic works.
-- Be concise. Use Context7 MCP when uncertain.
-- Read patterns before changing. Test UI with Playwright before concluding.
+Before doing ANY work, read `.claude/progress/`:
 
-## My Role: Development Only (NOT Trading)
+| File | Purpose |
+|------|---------|
+| `feature-list.json` | What's done, what's pending, dependencies |
+| `session-state.json` | Was there an abnormal exit? Current feature? |
+| `claude-progress.txt` | Human-readable summary |
 
-Claude Code: Debug, fix bugs, review logs, analyze what bot did
-Agent SDK Bot: Portfolio analysis, risk decisions, trade execution
-I NEVER: Make trading decisions, portfolio analysis, or invoke bot
+## Project Purpose
+
+Build autonomous system:
+1. Monthly AI analysis of user's real portfolio for keep/sell recommendations
+2. Fully autonomous paper trading with ₹1L to test if Claude can be trusted with real money
+
+Claude handles all research, trading, and strategy evolution.
+
+## Startup Ritual
+
+1. Read `.claude/progress/session-state.json` for abnormal exit
+2. Read `.claude/progress/feature-list.json` for current state
+3. Check git status for uncommitted changes
+4. Run `curl -m 3 http://localhost:8000/api/health`
+5. Resume current feature OR start next pending feature
 
 ## Critical Constraints
 
 | Constraint | Rule |
-|-----------|------|
-| Processes | Max 2 (port 8000, 3000). Kill ports only. |
-| Health checks | 5sec timeout on /api/health. Check logs first. |
+|------------|------|
+| Opus Role | Orchestrate and delegate, don't implement directly |
+| Progress Updates | NON-NEGOTIABLE after every feature |
+| Processes | Max 2 (port 8000, 3000). Kill ports only |
 | AI analysis | MUST use AI_ANALYSIS queue (prevents token exhaustion) |
 | Database access | Use locked state methods, never direct connection |
 | Queues | 3 parallel, 20 max capacity, sequential tasks within each |
 
-## File Management
+## Role Separation
 
-- Delete test files after testing. Remove unwanted files from root.
-- No summary/analysis docs—present findings directly.
-- No new *.md files except CLAUDE.md or README.md updates.
+| Role | Responsibility |
+|------|----------------|
+| Claude Code (Opus) | Orchestrate, delegate to coding-agent, verify |
+| coding-agent (Sonnet) | Implement one feature at a time, update progress |
+| Agent SDK Bot | Portfolio analysis, risk decisions, trade execution |
 
-## Code & Testing
+**I NEVER**: Make trading decisions, portfolio analysis, or invoke bot directly
 
-- Verify immediately: read-back, syntax check (no batching).
-- Test from UI. Use robo-trader-dev MCP tools for debugging.
+## Two-Agent System
 
-## Component Creation Locations
+```
+New project/complex task → initializer-agent (creates feature-list.json)
+                                    ↓
+              coding-agent (implements features one at a time)
+```
 
-`.claude/` is shared by both Claude Code and Agent SDK bot (same agent harness):
+| Situation | Agent |
+|-----------|-------|
+| New project, complex breakdown | `initializer-agent` |
+| Implement feature from feature-list | `coding-agent` |
+| Need codebase understanding | `Explore` (built-in) |
+| Quick fix (<5 min) | Do directly (say "quick fix") |
+
+## Component Locations
 
 | Type | Location | Auto-Discovered By |
 |------|----------|-------------------|
 | Skills | `.claude/skills/NAME/SKILL.md` | Both Claude Code + Agent SDK |
-| Agents | `.claude/agents/NAME.md` | Agent SDK bot |
-| Hooks | `.claude/settings.json` + `.claude/hooks/` | Both systems |
+| Agents | `~/.claude/agents/NAME.md` | Global (initializer + coding) |
+| Progress | `.claude/progress/` | All agents |
+| Hooks | `~/.claude/hooks/` | Native hooks (PreToolUse, etc.) |
 | MCP Config | `.mcp.json` at root | Both (separate servers) |
-| Dev tools | `shared/robotrader_mcp/` | Claude Code debugging only |
-| Internal | `src/` | Not auto-discovered |
 
 ## MCP & Debugging
 
 - Use robo-trader-dev MCP: `list_categories` → `load_category`
-- Hookify rules prevent mistakes automatically
+- Native hooks enforce two-agent system automatically
 - Debug with robo-trader-dev MCP first (95%+ token reduction)
+
+## Session Recovery
+
+If `session-state.json` shows `status: "active"` with stale heartbeat (>30 min):
+
+1. Check git status for partial changes
+2. Review what was completed vs. in-progress
+3. Options: Complete partial work, rollback, or mark blocked
+4. Update session state before resuming
 
 ## Documentation
 
-- Read layer-specific CLAUDE.md before changes
+- Read layer-specific CLAUDE.md before changes: `src/CLAUDE.md`, `src/core/CLAUDE.md`
 - Update CLAUDE.md when discovering flaws
 - Restart server and test UI after fixes

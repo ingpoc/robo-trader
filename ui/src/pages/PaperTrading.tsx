@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { usePaperTrading } from '@/hooks/usePaperTrading'
 import { useAccount } from '@/contexts/AccountContext'
 import { AccountSelector } from '@/components/AccountSelector'
-import { CurrentStrategyPanel } from '@/features/paper-trading/components'
+import { CurrentStrategyPanel, StockDiscoveryCard } from '@/features/paper-trading/components'
 import {
   DollarSign,
   TrendingUp,
@@ -32,6 +32,7 @@ import {
   CheckCircle,
   Eye,
   ArrowRight,
+  Search,
 } from 'lucide-react'
 
 export function PaperTrading() {
@@ -395,12 +396,13 @@ export function PaperTrading() {
 
       {/* Main Content - Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="execute">Execute Trade</TabsTrigger>
           <TabsTrigger value="positions">Positions</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="strategy">Strategy</TabsTrigger>
+          <TabsTrigger value="stock-discovery">Stock Discovery</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab - Combining Swing & Options Performance */}
@@ -539,6 +541,45 @@ export function PaperTrading() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Stock Discovery Tab */}
+        <TabsContent value="stock-discovery" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <StockDiscoveryCard />
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="w-5 h-5" />
+                  Discovery Settings
+                </CardTitle>
+                <CardDescription>
+                  Configure discovery parameters and strategies here
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Stock Discovery helps you find new trading opportunities based on AI analysis
+                  and market scanning. Configure your preferred sectors, market cap ranges, and
+                  trading strategies to personalize the discovery process.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                    <h4 className="font-medium mb-1">AI-Powered Scanning</h4>
+                    <p className="text-sm text-muted-foreground">Claude analyzes thousands of stocks for opportunities</p>
+                  </div>
+                  <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                    <h4 className="font-medium mb-1">Custom Watchlist</h4>
+                    <p className="text-sm text-muted-foreground">Add symbols manually or from discovery results</p>
+                  </div>
+                  <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
+                    <h4 className="font-medium mb-1">Real-time Updates</h4>
+                    <p className="text-sm text-muted-foreground">Watchlist updates with live prices and AI scores</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Execute Trade Tab */}

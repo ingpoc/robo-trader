@@ -139,7 +139,69 @@ class PortfolioDataGatherer:
                     "data_summary": {"earnings_count": 0, "news_count": 0, "fundamental_count": 0}
                 }
 
-        return stocks_data
+        # Filter to only return stocks with actual market data
+        # This prevents Claude from analyzing stocks with empty data
+        filtered_stocks_data = {}
+        for symbol, data in stocks_data.items():
+            data_summary = data.get('data_summary', {})
+            has_data = (
+                data_summary.get('earnings_count', 0) > 0 or
+                data_summary.get('news_count', 0) > 0 or
+                data_summary.get('fundamental_count', 0) > 0
+            )
+
+            if has_data:
+                filtered_stocks_data[symbol] = data
+            else:
+                logger.warning(f"Filtering out {symbol}: No market data available (earnings: {data_summary.get('earnings_count', 0)}, news: {data_summary.get('news_count', 0)}, fundamentals: {data_summary.get('fundamental_count', 0)})")
+                # Still return the symbol but with empty data to indicate no analysis possible
+                filtered_stocks_data[symbol] = {
+                    "symbol": symbol,
+                    "earnings": [],
+                    "news": [],
+                    "fundamental_analysis": [],
+                    "data_summary": {
+                        "earnings_count": 0,
+                        "news_count": 0,
+                        "fundamental_count": 0
+                    },
+                    "message": "No market data available for analysis"
+                }
+
+        # Filter to only return stocks with actual market data
+        # This prevents Claude from analyzing stocks with empty data
+        filtered_stocks_data = {}
+        for symbol, data in stocks_data.items():
+            data_summary = data.get('data_summary', {})
+            has_data = (
+                data_summary.get('earnings_count', 0) > 0 or
+                data_summary.get('news_count', 0) > 0 or
+                data_summary.get('fundamental_count', 0) > 0
+            )
+
+            if has_data:
+                filtered_stocks_data[symbol] = data
+            else:
+                logger.warning(f"Filtering out {symbol}: No market data available (earnings: {data_summary.get('earnings_count', 0)}, news: {data_summary.get('news_count', 0)}, fundamentals: {data_summary.get('fundamental_count', 0)})")
+                # Still return symbol but with empty data to indicate no analysis possible
+                filtered_stocks_data[symbol] = {
+                    "symbol": symbol,
+                    "earnings": [],
+                    "news": [],
+                    "fundamental_analysis": [],
+                    "data_summary": {
+                        "earnings_count": 0,
+                        "news_count": 0,
+                        "fundamental_count": 0
+                    },
+                    "message": "No market data available for analysis"
+                }
+
+        if not filtered_stocks_data:
+            logger.warning("No stocks with market data available for Claude analysis")
+
+        logger.info(f"Returning {len(filtered_stocks_data)} stocks with market data for analysis")
+        return filtered_stocks_data
 
     def _parse_date(self, date_value):
         """Parse date string to date object."""

@@ -19,6 +19,7 @@ from src.services.market_data_service import MarketDataService
 from src.services.feature_management.service import FeatureManagementService
 from src.services.event_router_service import EventRouterService
 from src.services.token_refresh_manager import TokenRefreshManager
+# from src.services.manual_override_service import ManualOverrideService
 
 logger = logging.getLogger(__name__)
 
@@ -184,3 +185,12 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         return claude_agent_service
 
     container._register_singleton("claude_agent_service", create_claude_agent_service)
+
+    # Manual Override Service
+    # async def create_manual_override_service():
+    #     event_bus = await container.get("event_bus")
+    #     config_state = await container.get("configuration_state")
+    #     manual_override_service = ManualOverrideService(config_state, event_bus)
+    #     return manual_override_service
+
+    # container._register_singleton("manual_override_service", create_manual_override_service)

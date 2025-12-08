@@ -824,3 +824,122 @@ async def get_automation_monitor(
 
     except Exception as e:
         return await handle_unexpected_error(e, "get_automation_monitor")
+
+
+# ============================================================================
+# STOCK DISCOVERY ENDPOINTS - PT-002: Autonomous Stock Discovery
+# ============================================================================
+
+@router.post("/paper-trading/discovery/trigger-daily")
+@limiter.limit("10/minute")
+async def trigger_daily_discovery(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Trigger daily autonomous stock discovery session."""
+    try:
+        stock_discovery_coordinator = await container.get("stock_discovery_coordinator")
+
+        result = await stock_discovery_coordinator.trigger_daily_discovery()
+
+        return {
+            "success": result["success"],
+            "message": result["message"],
+            "session_id": result["session_id"],
+            "session_type": result.get("session_type", "daily_screen")
+        }
+
+    except Exception as e:
+        return await handle_unexpected_error(e, "trigger_daily_discovery")
+
+
+@router.post("/paper-trading/discovery/trigger-sector")
+@limiter.limit("10/minute")
+async def trigger_sector_discovery(
+    request: Request,
+    sector: str,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Trigger sector-focused stock discovery."""
+    try:
+        stock_discovery_coordinator = await container.get("stock_discovery_coordinator")
+
+        result = await stock_discovery_coordinator.trigger_sector_discovery(sector)
+
+        return {
+            "success": result["success"],
+            "message": result["message"],
+            "session_id": result["session_id"],
+            "sector": result.get("sector")
+        }
+
+    except Exception as e:
+        return await handle_unexpected_error(e, "trigger_sector_discovery")
+
+
+@router.get("/paper-trading/discovery/status")
+@limiter.limit("30/minute")
+async def get_discovery_status(
+    request: Request,
+    session_id: Optional[str] = None,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get stock discovery session status."""
+    try:
+        stock_discovery_coordinator = await container.get("stock_discovery_coordinator")
+
+        result = await stock_discovery_coordinator.get_discovery_status(session_id)
+
+        return {
+            "success": True,
+            "data": result
+        }
+
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_discovery_status")
+
+
+@router.get("/paper-trading/discovery/watchlist")
+@limiter.limit("30/minute")
+async def get_discovery_watchlist(
+    request: Request,
+    limit: int = 50,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get the current discovery watchlist."""
+    try:
+        stock_discovery_coordinator = await container.get("stock_discovery_coordinator")
+
+        result = await stock_discovery_coordinator.get_discovery_watchlist(limit)
+
+        return {
+            "success": True,
+            "data": result
+        }
+
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_discovery_watchlist")
+
+
+@router.get("/paper-trading/discovery/sessions")
+@limiter.limit("30/minute")
+async def get_discovery_sessions(
+    request: Request,
+    container: DependencyContainer = Depends(get_container)
+) -> Dict[str, Any]:
+    """Get recent discovery sessions."""
+    try:
+        state_manager = await container.get("state_manager")
+
+        sessions = await state_manager.paper_trading.get_discovery_sessions(limit=10)
+
+        return {
+            "success": True,
+            "data": {
+                "sessions": sessions,
+                "total_sessions": len(sessions)
+            }
+        }
+
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_discovery_sessions")

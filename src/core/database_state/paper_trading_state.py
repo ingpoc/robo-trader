@@ -151,32 +151,89 @@ class PaperTradingState(BaseState):
                 evolution_type TEXT NOT NULL,  -- 'parameter_tuning', 'rule_addition', 'rule_removal', 'strategy_merge'
                 old_parameters TEXT,  -- JSON blob
                 new_parameters TEXT,  -- JSON blob
-                performance_before REAL DEFAULT 0.0,
-                performance_after REAL DEFAULT 0.0,
-                improvement_reason TEXT NOT NULL,
-                test_period_days INTEGER DEFAULT 30,
+                performance_impact TEXT,  -- JSON blob with before/after metrics
+                evolution_reason TEXT,
+                automated BOOLEAN DEFAULT FALSE,
                 created_at TEXT NOT NULL
             );
 
-            -- AI Automation Configuration
+            -- Stock Discovery Watchlist
+            CREATE TABLE IF NOT EXISTS stock_discovery_watchlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                company_name TEXT,
+                sector TEXT,
+                discovery_date TEXT NOT NULL,
+                discovery_source TEXT NOT NULL,  -- 'perplexity_research', 'market_scanner', 'news_alert', 'sector_analysis'
+                discovery_reason TEXT,  -- Why this stock was discovered
+                current_price REAL,
+                market_cap TEXT,
+                recommendation TEXT DEFAULT 'WATCH',  -- 'WATCH', 'BUY', 'AVOID'
+                confidence_score REAL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+                research_summary TEXT,  -- JSON blob with key findings
+                technical_indicators TEXT,  -- JSON blob with technical analysis
+                fundamental_metrics TEXT,  -- JSON blob with fundamentals
+                last_analyzed TEXT,
+                status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVIEWED', 'ACTIONED')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(symbol, discovery_date)
+            );
+
+            -- Stock Discovery Screening Sessions
+            CREATE TABLE IF NOT EXISTS stock_discovery_sessions (
+                id TEXT PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                session_type TEXT NOT NULL,  -- 'daily_screen', 'sector_focus', 'market_sweep', 'event_driven'
+                screening_criteria TEXT,  -- JSON blob with filters used
+                total_stocks_scanned INTEGER DEFAULT 0,
+                stocks_discovered INTEGER DEFAULT 0,
+                high_potential_stocks INTEGER DEFAULT 0,
+                session_duration_ms INTEGER,
+                key_insights TEXT,  -- JSON array of important findings
+                market_conditions TEXT,  -- JSON blob with market context
+                session_status TEXT DEFAULT 'RUNNING' CHECK (session_status IN ('RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')),
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                completed_at TEXT
+            );
+
+            -- Stock Discovery Results
+            CREATE TABLE IF NOT EXISTS stock_discovery_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                score REAL NOT NULL,  -- Composite score (0-100)
+                recommendation TEXT NOT NULL,  -- 'STRONG_BUY', 'BUY', 'HOLD', 'AVOID', 'STRONG_AVOID'
+                analysis_summary TEXT,  -- JSON with key analysis points
+                risk_level TEXT,  -- 'LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH'
+                catalyst_events TEXT,  -- JSON array of upcoming catalysts
+                valuation_metrics TEXT,  -- JSON with valuation data
+                momentum_indicators TEXT,  -- JSON with momentum data
+                research_depth TEXT,  -- 'BASIC', 'STANDARD', 'DEEP'
+                confidence_level REAL,
+                action_taken TEXT DEFAULT 'NONE',  -- 'NONE', 'ADDED_TO_WATCHLIST', 'TRIGGERED_RESEARCH'
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES stock_discovery_sessions(id) ON DELETE CASCADE
+            );
+
+            -- AI Automation Configuration (PT-003, PT-004 scheduling)
             CREATE TABLE IF NOT EXISTS ai_automation_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                ai_trading_enabled BOOLEAN NOT NULL DEFAULT 0,
-                risk_limits TEXT,  -- JSON blob with risk configuration
-                trading_hours TEXT,  -- JSON blob with allowed trading hours
-                daily_loss_limit REAL DEFAULT 5000.0,
+                morning_session_enabled BOOLEAN DEFAULT FALSE,  -- PT-003
+                morning_session_time TEXT DEFAULT '09:00',
+                evening_review_enabled BOOLEAN DEFAULT FALSE,  -- PT-004
+                evening_review_time TEXT DEFAULT '16:00',
+                auto_trade_enabled BOOLEAN DEFAULT FALSE,
+                max_positions INTEGER DEFAULT 10,
                 max_position_size_percent REAL DEFAULT 5.0,
-                max_portfolio_risk_percent REAL DEFAULT 10.0,
-                emergency_stop BOOLEAN DEFAULT 0,
-                last_strategy_generation TEXT,
-                last_trade_execution TEXT,
-                automation_start_time TEXT,
-                total_automated_trades INTEGER DEFAULT 0,
-                successful_automated_trades INTEGER DEFAULT 0,
-                failed_automated_trades INTEGER DEFAULT 0,
-                total_automated_pnl REAL DEFAULT 0.0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                stop_loss_percent REAL DEFAULT 2.0,
+                target_profit_percent REAL DEFAULT 5.0,
+                risk_per_trade_percent REAL DEFAULT 1.0,
+                discovery_frequency TEXT DEFAULT 'daily',  -- PT-002
+                sectors_to_watch TEXT,  -- JSON array of preferred sectors
+                market_cap_range TEXT,  -- JSON with min/max
+                last_updated TEXT NOT NULL
             );
 
             -- Indexes for performance
@@ -193,6 +250,16 @@ class PaperTradingState(BaseState):
             CREATE INDEX IF NOT EXISTS idx_evolution_strategy ON strategy_evolution(strategy_tag);
             CREATE INDEX IF NOT EXISTS idx_evolution_date ON strategy_evolution(evolution_date DESC);
             CREATE INDEX IF NOT EXISTS idx_ai_automation_config ON ai_automation_config(id);
+
+            -- Stock Discovery Indexes
+            CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_symbol ON stock_discovery_watchlist(symbol);
+            CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_date ON stock_discovery_watchlist(discovery_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_status ON stock_discovery_watchlist(status);
+            CREATE INDEX IF NOT EXISTS idx_discovery_sessions_date ON stock_discovery_sessions(session_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_discovery_sessions_type ON stock_discovery_sessions(session_type);
+            CREATE INDEX IF NOT EXISTS idx_discovery_results_session ON stock_discovery_results(session_id);
+            CREATE INDEX IF NOT EXISTS idx_discovery_results_symbol ON stock_discovery_results(symbol);
+            CREATE INDEX IF NOT EXISTS idx_discovery_results_score ON stock_discovery_results(score DESC);
             """
 
             try:
@@ -1129,3 +1196,305 @@ class PaperTradingState(BaseState):
             except Exception as e:
                 logger.error(f"Failed to get monthly performance: {e}")
                 return []
+
+    # Stock Discovery Methods (PT-002)
+
+    async def get_discovery_watchlist_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get stock discovery watchlist entry by symbol."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, symbol, company_name, sector, discovery_date,
+                             discovery_source, discovery_reason, current_price, market_cap,
+                             recommendation, confidence_score, research_summary,
+                             technical_indicators, fundamental_metrics, last_analyzed,
+                             status, created_at, updated_at
+                       FROM stock_discovery_watchlist
+                       WHERE symbol = ?
+                       ORDER BY discovery_date DESC
+                       LIMIT 1""",
+                    (symbol,)
+                )
+                row = await cursor.fetchone()
+
+                if row:
+                    return {
+                        "id": row[0],
+                        "symbol": row[1],
+                        "company_name": row[2],
+                        "sector": row[3],
+                        "discovery_date": row[4],
+                        "discovery_source": row[5],
+                        "discovery_reason": row[6],
+                        "current_price": row[7],
+                        "market_cap": row[8],
+                        "recommendation": row[9],
+                        "confidence_score": row[10],
+                        "research_summary": json.loads(row[11]) if row[11] else {},
+                        "technical_indicators": json.loads(row[12]) if row[12] else {},
+                        "fundamental_metrics": json.loads(row[13]) if row[13] else {},
+                        "last_analyzed": row[14],
+                        "status": row[15],
+                        "created_at": row[16],
+                        "updated_at": row[17]
+                    }
+                return None
+
+            except Exception as e:
+                logger.error(f"Failed to get discovery watchlist entry for {symbol}: {e}")
+                return None
+
+    async def add_to_discovery_watchlist(self, stock_data: Dict[str, Any]) -> bool:
+        """Add stock to discovery watchlist."""
+        async with self._lock:
+            try:
+                await self.db.connection.execute(
+                    """INSERT OR REPLACE INTO stock_discovery_watchlist
+                       (symbol, company_name, sector, discovery_date, discovery_source,
+                        discovery_reason, current_price, market_cap, recommendation,
+                        confidence_score, research_summary, technical_indicators,
+                        fundamental_metrics, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (stock_data["symbol"], stock_data.get("company_name"),
+                     stock_data.get("sector"), stock_data["discovery_date"],
+                     stock_data["discovery_source"], stock_data.get("discovery_reason"),
+                     stock_data.get("current_price"), stock_data.get("market_cap"),
+                     stock_data.get("recommendation", "WATCH"),
+                     stock_data.get("confidence_score", 0.5),
+                     json.dumps(stock_data.get("research_summary", {})),
+                     json.dumps(stock_data.get("technical_indicators", {})),
+                     json.dumps(stock_data.get("fundamental_metrics", {})),
+                     stock_data.get("status", "ACTIVE"),
+                     datetime.now(timezone.utc).isoformat(),
+                     datetime.now(timezone.utc).isoformat())
+                )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to add {stock_data.get('symbol')} to discovery watchlist: {e}")
+                return False
+
+    async def get_discovery_watchlist(self, limit: int = 50, status: str = "ACTIVE") -> List[Dict[str, Any]]:
+        """Get discovery watchlist with optional filters."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, symbol, company_name, sector, discovery_date,
+                             discovery_source, recommendation, confidence_score,
+                             current_price, status, last_analyzed, created_at
+                       FROM stock_discovery_watchlist
+                       WHERE status = ?
+                       ORDER BY confidence_score DESC, discovery_date DESC
+                       LIMIT ?""",
+                    (status, limit)
+                )
+                rows = await cursor.fetchall()
+
+                watchlist = []
+                for row in rows:
+                    watchlist.append({
+                        "id": row[0],
+                        "symbol": row[1],
+                        "company_name": row[2],
+                        "sector": row[3],
+                        "discovery_date": row[4],
+                        "discovery_source": row[5],
+                        "recommendation": row[6],
+                        "confidence_score": row[7],
+                        "current_price": row[8],
+                        "status": row[9],
+                        "last_analyzed": row[10],
+                        "created_at": row[11]
+                    })
+                return watchlist
+
+            except Exception as e:
+                logger.error(f"Failed to get discovery watchlist: {e}")
+                return []
+
+    async def create_discovery_session(self, session_data: Dict[str, Any]) -> str:
+        """Create a new stock discovery session."""
+        async with self._lock:
+            try:
+                session_id = session_data.get("id", f"session_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}")
+
+                await self.db.connection.execute(
+                    """INSERT OR REPLACE INTO stock_discovery_sessions
+                       (id, session_date, session_type, screening_criteria,
+                        total_stocks_scanned, stocks_discovered, high_potential_stocks,
+                        session_duration_ms, key_insights, market_conditions,
+                        session_status, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (session_id, session_data["session_date"], session_data["session_type"],
+                     json.dumps(session_data.get("screening_criteria", {})),
+                     session_data.get("total_stocks_scanned", 0),
+                     session_data.get("stocks_discovered", 0),
+                     session_data.get("high_potential_stocks", 0),
+                     session_data.get("session_duration_ms"),
+                     json.dumps(session_data.get("key_insights", [])),
+                     json.dumps(session_data.get("market_conditions", {})),
+                     session_data.get("session_status", "RUNNING"),
+                     datetime.now(timezone.utc).isoformat())
+                )
+                await self.db.connection.commit()
+                return session_id
+
+            except Exception as e:
+                logger.error(f"Failed to create discovery session: {e}")
+                return ""
+
+    async def update_discovery_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
+        """Update discovery session with results."""
+        async with self._lock:
+            try:
+                set_clauses = []
+                values = []
+
+                for key, value in updates.items():
+                    if key in ["session_status", "total_stocks_scanned", "stocks_discovered",
+                              "high_potential_stocks", "session_duration_ms", "error_message"]:
+                        set_clauses.append(f"{key} = ?")
+                        values.append(value)
+                    elif key in ["key_insights", "market_conditions"]:
+                        set_clauses.append(f"{key} = ?")
+                        values.append(json.dumps(value))
+
+                if updates.get("session_status") == "COMPLETED":
+                    set_clauses.append("completed_at = ?")
+                    values.append(datetime.now(timezone.utc).isoformat())
+
+                if not set_clauses:
+                    return True
+
+                values.append(session_id)
+
+                await self.db.connection.execute(
+                    f"""UPDATE stock_discovery_sessions
+                       SET {', '.join(set_clauses)}
+                       WHERE id = ?""",
+                    values
+                )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to update discovery session {session_id}: {e}")
+                return False
+
+    async def store_discovery_results(self, session_id: str, results: List[Dict[str, Any]]) -> bool:
+        """Store discovery results for a session."""
+        async with self._lock:
+            try:
+                for result in results:
+                    await self.db.connection.execute(
+                        """INSERT INTO stock_discovery_results
+                           (session_id, symbol, score, recommendation, analysis_summary,
+                            risk_level, catalyst_events, valuation_metrics,
+                            momentum_indicators, research_depth, confidence_level, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (session_id, result["symbol"], result["score"],
+                         result["recommendation"], json.dumps(result.get("analysis_summary", {})),
+                         result.get("risk_level"), json.dumps(result.get("catalyst_events", [])),
+                         json.dumps(result.get("valuation_metrics", {})),
+                         json.dumps(result.get("momentum_indicators", {})),
+                         result.get("research_depth", "BASIC"),
+                         result.get("confidence_level", 0.5),
+                         datetime.now(timezone.utc).isoformat())
+                    )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store discovery results for session {session_id}: {e}")
+                return False
+
+    async def get_discovery_sessions(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent discovery sessions."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, session_date, session_type, total_stocks_scanned,
+                             stocks_discovered, high_potential_stocks, session_duration_ms,
+                             session_status, created_at, completed_at
+                       FROM stock_discovery_sessions
+                       ORDER BY created_at DESC
+                       LIMIT ?""",
+                    (limit,)
+                )
+                rows = await cursor.fetchall()
+
+                sessions = []
+                for row in rows:
+                    sessions.append({
+                        "id": row[0],
+                        "session_date": row[1],
+                        "session_type": row[2],
+                        "total_stocks_scanned": row[3],
+                        "stocks_discovered": row[4],
+                        "high_potential_stocks": row[5],
+                        "session_duration_ms": row[6],
+                        "session_status": row[7],
+                        "created_at": row[8],
+                        "completed_at": row[9]
+                    })
+                return sessions
+
+            except Exception as e:
+                logger.error(f"Failed to get discovery sessions: {e}")
+                return []
+
+    async def get_automation_config(self) -> Dict[str, Any]:
+        """Get AI automation configuration."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT morning_session_enabled, morning_session_time,
+                             evening_review_enabled, evening_review_time,
+                             auto_trade_enabled, max_positions, max_position_size_percent,
+                             stop_loss_percent, target_profit_percent, risk_per_trade_percent,
+                             discovery_frequency, sectors_to_watch, market_cap_range, last_updated
+                       FROM ai_automation_config
+                       WHERE id = 1"""
+                )
+                row = await cursor.fetchone()
+
+                if row:
+                    return {
+                        "morning_session_enabled": bool(row[0]),
+                        "morning_session_time": row[1],
+                        "evening_review_enabled": bool(row[2]),
+                        "evening_review_time": row[3],
+                        "auto_trade_enabled": bool(row[4]),
+                        "max_positions": row[5],
+                        "max_position_size_percent": row[6],
+                        "stop_loss_percent": row[7],
+                        "target_profit_percent": row[8],
+                        "risk_per_trade_percent": row[9],
+                        "discovery_frequency": row[10],
+                        "sectors_to_watch": json.loads(row[11]) if row[11] else [],
+                        "market_cap_range": json.loads(row[12]) if row[12] else {},
+                        "last_updated": row[13]
+                    }
+
+                # Return default config if not found
+                return {
+                    "morning_session_enabled": False,
+                    "morning_session_time": "09:00",
+                    "evening_review_enabled": False,
+                    "evening_review_time": "16:00",
+                    "auto_trade_enabled": False,
+                    "max_positions": 10,
+                    "max_position_size_percent": 5.0,
+                    "stop_loss_percent": 2.0,
+                    "target_profit_percent": 5.0,
+                    "risk_per_trade_percent": 1.0,
+                    "discovery_frequency": "daily",
+                    "sectors_to_watch": [],
+                    "market_cap_range": {"min": 0, "max": 0},
+                    "last_updated": datetime.now(timezone.utc).isoformat()
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to get automation config: {e}")
+                return {}

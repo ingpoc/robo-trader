@@ -1,6 +1,7 @@
 ---
 name: token-efficient-mcp-template
-description: This skill should be used when creating token-efficient hook systems and MCP server architectures for web applications. Use for React/FastAPI, Django, Node.js projects that need smart caching, progressive context loading, and 95%+ token reduction. Essential for projects requiring monitoring, debugging, data analysis, and system health tools.
+version: 1.0.0
+description: This skill should be used when creating MCP servers for Claude Code CLI that need token efficiency, implementing progressive disclosure patterns, or reducing MCP tool context from 26K to 2-3K tokens. Achieves 85-90% token reduction through discovery-only tools pattern. Use when building custom MCP servers, optimizing existing servers, or debugging Claude Code token exhaustion.
 ---
 
 # Token-Efficient MCP & Hook System Template
@@ -50,6 +51,13 @@ Create sophisticated hook systems that provide real-time tool guidance and token
 
 Bootstrap production-ready MCP servers with modular tool categories and intelligent caching.
 
+**CRITICAL: Progressive Disclosure in Claude Code**
+- Claude Code does NOT respect `defer_loading` parameter in Tool definitions
+- `.mcp.json` toolset configurations don't work for progressive disclosure
+- **Solution**: Only return 3 discovery tools from `list_tools()`, keep others callable
+- Other tools discovered via `search_tools`, `list_directories`, `read_file`
+- Achieves 85-90% token reduction (3 tools vs 25 tools loaded upfront)
+
 **Tool Categories:**
 - **logs**: Error pattern analysis, log aggregation, troubleshooting
 - **system**: Health monitoring, performance metrics, status checks
@@ -60,7 +68,7 @@ Bootstrap production-ready MCP servers with modular tool categories and intellig
 
 **Built-in Features:**
 - Smart caching with configurable TTLs
-- Progressive disclosure patterns
+- Server-side progressive disclosure (not API defer_loading)
 - Background refresh strategies
 - Token usage optimization
 - Security sandboxing
@@ -202,6 +210,43 @@ Template files and configurations for different project types.
 - Use differential analysis for change detection
 - Batch operations when possible
 
+**Progressive Disclosure (Claude Code):**
+```python
+@server.list_tools()
+async def list_tools() -> List[Tool]:
+    """Only return discovery tools - others callable but not advertised."""
+    return [
+        Tool(name="list_directories", description="Browse categories",
+             inputSchema=ListDirectoriesInput.model_json_schema()),
+        Tool(name="search_tools", description="Search by keyword",
+             inputSchema=SearchToolsInput.model_json_schema()),
+        Tool(name="read_file", description="Read tool definitions",
+             inputSchema=ReadFileInput.model_json_schema())
+    ]
+    # Other 20+ tools remain in call_tool() handler - fully callable
+```
+
+### Edge Cases
+
+**More than 3 tool categories:**
+
+- Use nested naming: `list_portfolio_tools`, `list_analysis_tools`, `list_system_tools`
+- Each discovery tool can return 5-10 tools in its category
+- Total context still <5K tokens with 30+ tools available
+
+**When NOT to use this pattern:**
+
+- Interactive MCP servers with user-facing UIs (all tools should be visible)
+- Servers with <10 total tools (overhead not worth it)
+- When every tool must be visible in every context (rare)
+- API integrations expecting full tool list upfront
+
+**Multiple MCP servers:**
+
+- Each server implements its own progressive disclosure
+- Claude Code loads discovery tools from all servers (~2-3K per server)
+- Total context = (3 tools × number of servers) × ~800 tokens
+
 **Security:**
 - Configure sandboxing for code execution
 - Implement proper authentication and authorization
@@ -213,6 +258,46 @@ Template files and configurations for different project types.
 - Use background refresh for stale data
 - Implement proper error handling and recovery
 - Regular performance validation and tuning
+
+## Performance Metrics (robo-trader-dev Example)
+
+| Scenario | Before | After | Reduction |
+|----------|--------|-------|-----------|
+| Initial load | 26.6K tokens | 2-3K tokens | 88-90% |
+| Tool discovery | N/A | ~500 tokens | On-demand |
+| Follow-up calls | 26.6K tokens | ~500 tokens | 98%+ |
+
+**Calculation**:
+- All tools listed: 25 tools × ~1K tokens = 26.6K tokens
+- Discovery only: 3 tools × ~800 tokens = 2.4K tokens
+- Cached results: Differential updates = ~100-500 tokens
+
+## MCP Configuration
+
+**File**: `.mcp.json` (project root)
+
+```json
+{
+  "mcpServers": {
+    "robo-trader-dev": {
+      "command": "/path/to/start_mcp_server.sh",
+      "args": []
+    }
+  }
+}
+```
+
+**Key Points**:
+
+- Simple command/args format (no toolset config needed)
+- Progressive disclosure handled server-side in `list_tools()`
+- Environment variables in startup script if needed
+
+## See Also
+
+- **plugin-dev:hook-development** - Use hooks to trigger MCP tools efficiently
+- **plugin-dev:agent-development** - Integrate MCP servers with custom agents
+- **mcp-builder** - Create new MCP servers from scratch
 
 ---
 

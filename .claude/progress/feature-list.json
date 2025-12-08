@@ -1,0 +1,1067 @@
+{
+  "project_name": "Autonomous Claude Paper Trader & Portfolio Analyzer",
+  "task_type": "new_feature",
+  "user_prompt": "Build autonomous system: (1) Monthly AI analysis of user's real portfolio for keep/sell recommendations, (2) Fully autonomous paper trading with ₹1L to test if Claude can be trusted with real money. Claude handles all research, trading, and strategy evolution.",
+  "purpose_document": ".claude/progress/PURPOSE.md",
+  "total_features": 52,
+  "completed": 42,
+  "in_progress": 1,
+  "pending": 9,
+  "missing": 0,
+  "created_at": "2025-12-06T00:00:00Z",
+  "last_updated": "2025-12-08T17:30:00Z",
+  "categories": {
+    "portfolio_analysis": {
+      "priority": "high",
+      "total": 2,
+      "features": [
+        {
+          "id": "PA-001",
+          "name": "Monthly Portfolio Analysis Engine",
+          "description": "Implement monthly scheduler that analyzes user's real portfolio stocks using Perplexity API. For each stock: fetch fundamentals (P/E, ROE, debt), recent earnings, news sentiment, industry trends. Claude Agent SDK analyzes and provides recommendation: KEEP/SELL with detailed reasoning. Store analysis in portfolio_analysis table. Runs monthly on 1st date.",
+          "status": "pending",
+          "dependencies": ["INFRA-004"],
+          "test_files": [
+            "tests/test_monthly_portfolio_analysis.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 120,
+          "notes": "Table portfolio_analysis not found in database schema"
+        },
+        {
+          "id": "PA-002",
+          "name": "Recommendation Accuracy Tracker",
+          "description": "Track accuracy of KEEP/SELL recommendations over time. For each recommendation: store recommendation_date, symbol, recommendation (KEEP/SELL), stock_price_at_recommendation, follow_up_price_30d, follow_up_price_90d, was_correct (calculated). Monthly accuracy report showing hit rate. Essential for SUCCESS CRITERIA: 'Correct keep/sell recommendations'.",
+          "status": "pending",
+          "dependencies": ["PA-001"],
+          "test_files": [
+            "tests/test_recommendation_accuracy.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 90,
+          "notes": "New feature to track if Claude's recommendations were correct"
+        }
+      ]
+    },
+    "paper_trading": {
+      "priority": "high",
+      "total": 10,
+      "features": [
+        {
+          "id": "PT-001",
+          "name": "Paper Trading Capital Initialization",
+          "description": "Initialize paper trading account with ₹1,00,000 virtual money in database. Create paper_trading_account table: id, initial_capital, current_capital, created_date, last_updated. Add methods to get_balance, update_balance, get_pnl. No manual deposits/withdrawals - fully autonomous.",
+          "status": "completed",
+          "completed_at": "2025-12-06T10:00:00Z",
+          "implementation_notes": "PaperTradingAccountManager exists with balance tracking. Table exists in migration but not in base.py schema",
+          "dependencies": [],
+          "files": [
+            "src/services/paper_trading_account_manager.py"
+          ],
+          "test_files": [
+            "tests/test_paper_trading_account.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 30
+        },
+        {
+          "id": "PT-002",
+          "name": "Autonomous Stock Discovery",
+          "description": "Implement autonomous stock discovery for paper trading. Claude uses Perplexity API to research stocks beyond user portfolio: sector analysis, market trends, upcoming IPOs, volatility analysis. Maintain watchlist of potential trades. Update daily based on market conditions. Store in paper_trading_watchlist table.",
+          "status": "completed",
+          "completed_at": "2025-12-08T18:45:00Z",
+          "implementation_notes": "Fully implemented: Backend with StockDiscoveryService (Perplexity integration, risk scoring, watchlist management), StockDiscoveryCoordinator, and all API endpoints. Frontend with StockDiscoveryCard component integrated into Paper Trading UI.",
+          "dependencies": ["INFRA-004"],
+          "remaining_tasks": [],
+          "files": [
+            "src/services/paper_trading/stock_discovery.py",
+            "src/core/coordinators/paper_trading/stock_discovery_coordinator.py"
+          ],
+          "test_files": [
+            "tests/test_autonomous_stock_discovery.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 90
+        },
+        {
+          "id": "PT-003",
+          "name": "Morning Autonomous Trading Session",
+          "description": "Implement daily morning session (9:00 AM - 9:30 AM): (1) Scan pre-market data, (2) Research selected stocks using Perplexity API, (3) Generate trade ideas, (4) Apply risk safeguards, (5) Execute approved trades via Kite Connect paper trading API, (6) Log all decisions. Fully automated - no human intervention.",
+          "status": "pending",
+          "dependencies": ["INFRA-001", "INFRA-003", "PT-002"],
+          "test_files": [
+            "tests/test_morning_trading_session.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 100,
+          "notes": "MorningSessionCoordinator exists but no autonomous trading implementation"
+        },
+        {
+          "id": "PT-004",
+          "name": "Evening Performance Review",
+          "description": "Implement daily evening session (4:00 PM - 4:30 PM): (1) Review executed trades, (2) Calculate daily P&L, (3) Update portfolio performance metrics, (4) Generate trading insights, (5) Store learnings for strategy evolution, (6) Prepare next day's watchlist. Store in daily_performance_reviews table.",
+          "status": "pending",
+          "dependencies": ["INFRA-001", "INFRA-002", "PT-003"],
+          "test_files": [
+            "tests/test_evening_performance_review.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 80,
+          "notes": "EveningSessionCoordinator exists but no performance review implementation"
+        },
+        {
+          "id": "PT-005",
+          "name": "Strategy Evolution with Genetic Algorithm",
+          "description": "Implement genetic algorithm for trading strategy evolution: (1) Generate diverse strategies (technical, fundamental, sentiment), (2) Test strategies in paper trading environment, (3) Select top performers by Sharpe ratio, (4) Create new generation through crossover/mutation, (5) Evolve monthly. Store strategy performance in trading_strategies table.",
+          "status": "pending",
+          "dependencies": ["INFRA-004", "PT-004"],
+          "test_files": [
+            "tests/test_strategy_evolution.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 120,
+          "notes": "StrategyEvolutionEngine exists but genetic algorithm not implemented"
+        },
+        {
+          "id": "PT-006",
+          "name": "Monthly Performance Evaluation",
+          "description": "Implement comprehensive monthly performance evaluation: (1) Calculate total returns, (2) Risk-adjusted metrics (Sharpe, Sortino), (3) Win rate, (4) Maximum drawdown, (5) Compare with Nifty50 benchmark, (6) Generate performance report, (7) Rate Claude's trading capability (score 0-100). Store in monthly_performance_reports table.",
+          "status": "pending",
+          "dependencies": ["PT-005"],
+          "test_files": [
+            "tests/test_monthly_performance_evaluation.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 90,
+          "notes": "No monthly performance evaluation implementation found"
+        },
+        {
+          "id": "PT-007",
+          "name": "Real-time Price Tracking via Kite Connect",
+          "description": "Integrate Kite Connect API for real-time price data: (1) Stream live prices for paper trading stocks, (2) Historical data for backtesting, (3) Order placement through paper trading mode, (4) Portfolio valuation updates. Ensure trades use real market prices but virtual money. Handle rate limits and API errors gracefully.",
+          "status": "completed",
+          "completed_at": "2025-12-06T12:00:00Z",
+          "implementation_notes": "KiteConnectService complete with real-time streaming, order placement, mock mode for development",
+          "dependencies": [],
+          "files": [
+            "src/services/kite_connect_service.py",
+            "src/services/broker_service.py"
+          ],
+          "test_files": [
+            "tests/test_kite_connect_integration.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 60
+        },
+        {
+          "id": "PT-008",
+          "name": "Trust Score Dashboard",
+          "description": "THE answer to 'Can Claude be trusted with real money?'. Composite score (0-100) based on: (1) Monthly returns consistency, (2) Sharpe ratio > 1.0, (3) Max drawdown < 15%, (4) Win rate, (5) Risk-adjusted performance, (6) Months of positive returns. Score > 85 = trustworthy. Visual dashboard showing score progression over 6+ months.",
+          "status": "pending",
+          "dependencies": ["PT-006"],
+          "test_files": [
+            "tests/test_trust_score.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 100,
+          "notes": "Essential feature - answers THE ultimate question from PURPOSE.md"
+        },
+        {
+          "id": "PT-009",
+          "name": "Cumulative Drawdown Monitor",
+          "description": "Track cumulative portfolio drawdown (not just daily). Calculate: peak_portfolio_value, current_value, drawdown_percentage, days_in_drawdown. Alert system for approaching 15% max drawdown limit. Historical drawdown chart. SUCCESS CRITERIA: 'Maximum loss < 15%'.",
+          "status": "completed",
+          "completed_at": "2025-12-08T07:45:00Z",
+          "implementation_notes": "DrawdownMonitor service with 15% safeguard threshold, automatic trading pause, and historical tracking created",
+          "dependencies": ["PT-001"],
+          "test_files": [
+            "tests/test_drawdown_monitor.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 60,
+          "notes": "INFRA-003 has daily circuit breaker but no cumulative tracking"
+        },
+        {
+          "id": "PT-010",
+          "name": "Nifty50 Benchmark Comparison",
+          "description": "Compare Claude's paper trading performance against Nifty50 benchmark. Track: claude_returns, nifty_returns, alpha (excess returns), beta (correlation), tracking_error. Monthly comparison report. SUCCESS CRITERIA: 'Compare with Nifty50 benchmark'.",
+          "status": "pending",
+          "dependencies": ["PT-006", "DATA-001"],
+          "test_files": [
+            "tests/test_benchmark_comparison.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 70,
+          "notes": "PT-006 mentions benchmark but needs dedicated service"
+        }
+      ]
+    },
+    "infrastructure": {
+      "priority": "high",
+      "total": 19,
+      "features": [
+        {
+          "id": "INFRA-001",
+          "name": "Daily Evaluation Database Persistence",
+          "description": "Enable database persistence for daily strategy evaluations by saving to claude_daily_reports table. Tracks: date, portfolio_summary, trade_analysis, learning_insights, confidence_score. Essential for autonomous learning and performance tracking.",
+          "status": "completed",
+          "completed_at": "2025-12-06T17:15:00Z",
+          "implementation_notes": "DailyStrategyEvaluator with database persistence implemented",
+          "dependencies": [],
+          "files": [
+            "src/services/claude_agent/daily_strategy_evaluator.py"
+          ],
+          "test_files": [
+            "tests/test_daily_strategy_evaluator.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 40
+        },
+        {
+          "id": "INFRA-002",
+          "name": "Decision Logging Service",
+          "description": "Create ClaudeDecisionLogger service for autonomous decision tracking: id, timestamp, decision_type (BUY/SELL/HOLD), symbol, reasoning, confidence_score (0-1), context_snapshot (JSON), execution_result (JSON). Essential for transparency and learning.",
+          "status": "completed",
+          "completed_at": "2025-12-06T17:30:00Z",
+          "implementation_notes": "ClaudeDecisionLogger with full audit trail implemented",
+          "dependencies": [],
+          "files": [
+            "src/services/claude_agent/decision_logger.py"
+          ],
+          "test_files": [
+            "tests/test_decision_logger.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 70
+        },
+        {
+          "id": "INFRA-003",
+          "name": "Trade Execution Safeguards",
+          "description": "Create autonomous_trading_safeguards.py with risk limits: (1) Max 5 trades/day, (2) Max 5% position size, (3) Min 0.7 confidence score, (4) Daily loss circuit breaker at ₹10,000, (5) 24-hour symbol cooldown. Autonomous but safe trading.",
+          "status": "completed",
+          "completed_at": "2025-12-07T10:00:00Z",
+          "implementation_notes": "AutonomousTradingSafeguards with circuit breakers and position limits",
+          "dependencies": [],
+          "files": [
+            "src/services/autonomous_trading_safeguards.py"
+          ],
+          "test_files": [
+            "tests/test_safeguards.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 60
+        },
+        {
+          "id": "INFRA-004",
+          "name": "Perplexity API Integration",
+          "description": "Replace stubbed _generate_strategy_ideas() in strategy_evolution_engine.py. Query Perplexity API for: (1) Stock fundamentals, (2) Earnings analysis, (3) News sentiment, (4) Industry trends, (5) Market research. Score and filter results (min 0.6 threshold). Essential for autonomous research.",
+          "status": "completed",
+          "completed_at": "2025-12-08T07:30:00Z",
+          "implementation_notes": "PerplexityClient integrated into StrategyEvolutionEngine. StockDiscoveryService using Perplexity for market research.",
+          "dependencies": [],
+          "files": [
+            "src/services/perplexity_service.py"
+          ],
+          "test_files": [
+            "tests/test_perplexity_integration.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 80
+        },
+        {
+          "id": "INFRA-005",
+          "name": "Event-Driven Architecture",
+          "description": "Implement EventBus system for loose coupling between components. Events: MORNING_SESSION_COMPLETE, EVENING_REVIEW_COMPLETE, TRADE_EXECUTED, SAFEGUARD_TRIGGERED, DECISION_LOGGED. Async event handlers with proper error handling.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Full EventBus implementation with async handlers",
+          "files": [
+            "src/core/event_bus.py",
+            "src/core/event_handlers.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 120
+        },
+        {
+          "id": "INFRA-006",
+          "name": "Dependency Injection Container",
+          "description": "DI container for service management with lifetime scopes (singleton, transient). Automatic dependency resolution with circular reference detection. Service registry for runtime discovery.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Full DI container with lifetime management",
+          "files": [
+            "src/core/di_container.py",
+            "src/core/di_registry_services.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 90
+        },
+        {
+          "id": "INFRA-007",
+          "name": "Coordinator-Based Architecture",
+          "description": "70+ coordinators for different domains: portfolio, trading, AI, data fetching, scheduling. Each coordinator limited to 150 lines with single responsibility. Async/await throughout.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Comprehensive coordinator system implemented",
+          "files": [
+            "src/core/coordinators/"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 300
+        },
+        {
+          "id": "INFRA-008",
+          "name": "Three-Queue System",
+          "description": "Async queue system: PORTFOLIO_SYNC (portfolio operations), DATA_FETCHER (market data), AI_ANALYSIS (Claude tasks). Parallel processing, 20 max capacity, sequential tasks within queue. Prevents token exhaustion.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "QueueCoordinator with three parallel queues",
+          "files": [
+            "src/core/queue_manager.py",
+            "src/core/coordinators/queue_coordinator.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 80
+        },
+        {
+          "id": "INFRA-009",
+          "name": "Database State Management",
+          "description": "Locked state methods to prevent database locks. All database operations through config_state.store_*() methods. Automatic retry on lock conflicts. Connection pooling with proper cleanup.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "ConfigurationState with locked operations",
+          "files": [
+            "src/core/database_state/",
+            "src/core/database_state/configuration_state.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 100
+        },
+        {
+          "id": "INFRA-010",
+          "name": "Background Scheduler",
+          "description": "BackgroundScheduler for periodic tasks: news fetching, earnings updates, portfolio sync, strategy evaluation. Cron-like scheduling with persistent job storage. Error handling and retry logic.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "BackgroundScheduler with job persistence",
+          "files": [
+            "src/services/scheduler/background_scheduler.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 60
+        },
+        {
+          "id": "INFRA-011",
+          "name": "WebSocket Real-time Updates",
+          "description": "WebSocket connection manager for real-time UI updates. Broadcast trade executions, price updates, performance metrics. Connection health monitoring with automatic reconnection.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "ConnectionManager with broadcasting",
+          "files": [
+            "src/web/connection_manager.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 50
+        },
+        {
+          "id": "INFRA-012",
+          "name": "API Security Layer",
+          "description": "JWT authentication, rate limiting, CORS configuration. API key management for external services. Request validation and sanitization. Security middleware with audit logging.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Comprehensive security middleware",
+          "files": [
+            "src/web/security/",
+            "src/web/auth.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 40
+        },
+        {
+          "id": "INFRA-013",
+          "name": "Error Handling & Logging",
+          "description": "Structured error handling with custom exception types. Comprehensive logging with levels, rotation, and structured JSON output. Error tracking with correlation IDs.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "TradingError hierarchy and logging config",
+          "files": [
+            "src/core/exceptions.py",
+            "src/utils/logging_config.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 30
+        },
+        {
+          "id": "INFRA-014",
+          "name": "Configuration Management",
+          "description": "Dynamic configuration with feature flags. Environment-based config with validation. Hot reload for non-critical settings. Secure secret management.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "ConfigManager with feature flags",
+          "files": [
+            "src/core/config.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 40
+        },
+        {
+          "id": "INFRA-015",
+          "name": "Database Migrations",
+          "description": "Alembic-based migration system with version control. Automatic rollback on failure. Seed data management. Migration validation before application start.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Alembic migrations with validation",
+          "files": [
+            "migrations/",
+            "alembic.ini"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 20
+        },
+        {
+          "id": "INFRA-016",
+          "name": "Claude Agent SDK Integration",
+          "description": "Integration with Claude Agent SDK via MCP. Proper error handling and timeout management. Session management and context preservation. Async client implementation.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "SDK helpers with MCP integration",
+          "files": [
+            "src/core/sdk_helpers.py",
+            "src/services/claude_agent_service.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 60
+        },
+        {
+          "id": "INFRA-017",
+          "name": "Health Monitoring System",
+          "description": "Comprehensive health checks: database connectivity, API endpoints, queue status, coordinator health. Metrics collection and alerting. Dashboard integration.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Health check endpoints and monitoring",
+          "files": [
+            "src/web/health.py",
+            "src/services/health_monitor.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 40
+        },
+        {
+          "id": "INFRA-019",
+          "name": "Database Schema Management",
+          "description": "Comprehensive database schema with proper indexes. Audit columns on all tables. Foreign key constraints. JSON columns for flexible data storage.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Base.py with complete schema",
+          "files": [
+            "src/core/database_state/base.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 120
+        },
+        {
+          "id": "INFRA-020",
+          "name": "Testing Infrastructure",
+          "description": "pytest framework with fixtures for database state management. Mock services for external APIs. Integration test helpers. Test data factories.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Test framework with fixtures",
+          "files": [
+            "tests/conftest.py",
+            "tests/fixtures/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 40
+        }
+      ]
+    },
+    "frontend": {
+      "priority": "medium",
+      "total": 10,
+      "features": [
+        {
+          "id": "UI-001",
+          "name": "Dashboard UI",
+          "description": "Main dashboard with portfolio overview, performance metrics, quick actions, AI insights. Real-time updates via WebSocket. Responsive design with dark mode support.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Dashboard with real-time metrics",
+          "files": [
+            "ui/src/features/dashboard/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 120
+        },
+        {
+          "id": "UI-002",
+          "name": "Paper Trading UI",
+          "description": "Complete paper trading interface: account overview, positions, trade history, order placement, P&L charts. Real-time price updates. Trade execution with safeguards visualization.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Full paper trading UI components",
+          "files": [
+            "ui/src/features/paper-trading/"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 150
+        },
+        {
+          "id": "UI-003",
+          "name": "AI Transparency Components",
+          "description": "Decision audit trail display: reasoning, confidence scores, context snapshots. Strategy reflection viewer. Session transcripts with full context. Performance impact analysis.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Comprehensive AI transparency UI",
+          "files": [
+            "ui/src/features/ai-transparency/",
+            "ui/src/features/audit-trail/"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 100
+        },
+        {
+          "id": "UI-004",
+          "name": "News & Earnings Dashboard",
+          "description": "News aggregation with sentiment analysis. Earnings calendar with impact analysis. Fundamental data viewer. Stock-specific news filtering. AI-powered news summary.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "News dashboard with sentiment analysis",
+          "files": [
+            "ui/src/features/news/",
+            "ui/src/features/earnings/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 80
+        },
+        {
+          "id": "UI-005",
+          "name": "System Health Monitoring",
+          "description": "Real-time system health display: queue status, database connections, API response times, error rates. Resource usage metrics. Alert notifications. Health history trends.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "System health dashboard",
+          "files": [
+            "ui/src/features/system-health/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 60
+        },
+        {
+          "id": "UI-006",
+          "name": "Initial Setup Configuration UI",
+          "description": "Initial system setup panel (one-time configuration): API credentials (Kite Connect, Perplexity), database connection settings. NO runtime trading parameter changes allowed - system operates autonomously after setup.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Initial setup only - no runtime intervention. Feature flags and scheduler config removed to maintain autonomy.",
+          "files": [
+            "ui/src/features/configuration/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 70,
+          "scope_restriction": "Initial setup only. No trading parameter changes after system starts."
+        },
+        {
+          "id": "UI-007",
+          "name": "Agent Observation UI",
+          "description": "Agent monitoring interface (observation only): agent status display, performance metrics viewer, communication logs. NO task assignment or runtime agent management - purely for observing Claude's autonomous decisions.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Observation-only dashboard. Task assignment and agent creation features removed to maintain autonomy.",
+          "files": [
+            "ui/src/features/agents/"
+          ],
+          "immutable": false,
+          "priority": "low",
+          "estimated_time_minutes": 90,
+          "scope_restriction": "Observation only. No manual intervention capabilities."
+        },
+        {
+          "id": "UI-008",
+          "name": "Portfolio Analysis UI",
+          "description": "Portfolio analysis viewer: holdings breakdown, sector allocation, performance attribution, risk metrics. Comparison with benchmarks. Historical performance charts.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Portfolio analysis interface",
+          "files": [
+            "ui/src/features/portfolio/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 100
+        },
+        {
+          "id": "UI-009",
+          "name": "Responsive Design Framework",
+          "description": "Mobile-responsive design with touch support. Dark/light theme toggle with system preference detection.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Responsive UI framework - PWA/offline removed (requires live market data)",
+          "files": [
+            "ui/src/styles/",
+            "ui/src/components/common/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 30
+        },
+        {
+          "id": "UI-010",
+          "name": "Real-time Charting",
+          "description": "Interactive charts with real-time data: candlestick charts, volume indicators, technical overlays. Customizable timeframes. Chart annotations and drawing tools.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Chart.js integration with real-time data",
+          "files": [
+            "ui/src/components/charts/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 80
+        }
+      ]
+    },
+    "data_services": {
+      "priority": "high",
+      "total": 5,
+      "features": [
+        {
+          "id": "DATA-001",
+          "name": "Market Data Service",
+          "description": "Real-time and historical market data from Kite Connect: price feeds, volume data, OHLCV, market depth. Data normalization and storage. Cache management for performance.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "MarketDataService with caching",
+          "files": [
+            "src/services/market_data_service.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 100
+        },
+        {
+          "id": "DATA-002",
+          "name": "News Aggregation Service",
+          "description": "News aggregation from multiple sources with deduplication. Sentiment analysis integration. News categorization and tagging. Real-time news processing pipeline.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "NewsService with sentiment analysis",
+          "files": [
+            "src/services/news_service.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 80
+        },
+        {
+          "id": "DATA-003",
+          "name": "Fundamental Analysis Service",
+          "description": "Fundamental data collection: P/E ratios, ROE, debt ratios, growth metrics. Financial statement analysis. Industry comparison benchmarks. Data quality validation.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "FundamentalAnalysisService with data validation",
+          "files": [
+            "src/services/fundamental_analysis_service.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 90
+        },
+        {
+          "id": "DATA-004",
+          "name": "Earnings Data Service",
+          "description": "Earnings calendar with quarterly results tracking. Surprise analysis vs estimates. Historical earnings data storage. Earnings impact prediction.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "EarningsService with surprise analysis",
+          "files": [
+            "src/services/earnings_service.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 70
+        },
+        {
+          "id": "DATA-005",
+          "name": "Technical Indicators Service",
+          "description": "Technical analysis indicators: RSI, MACD, Bollinger Bands, moving averages. Custom indicator support. Real-time indicator calculation. Signal generation.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "TechnicalIndicatorsService with 50+ indicators",
+          "files": [
+            "src/services/technical_indicators_service.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 120
+        }
+      ]
+    },
+    "testing": {
+      "priority": "medium",
+      "total": 1,
+      "features": [
+        {
+          "id": "TEST-001",
+          "name": "Autonomous System Integration Tests",
+          "description": "Create comprehensive tests for autonomous systems: (1) Monthly portfolio analysis flow, (2) Paper trading daily sessions, (3) Strategy evolution algorithm, (4) Performance calculation accuracy, (5) API integration reliability. Use pytest fixtures for database state management. Ensure no manual intervention required.",
+          "status": "pending",
+          "dependencies": ["PA-001", "PT-003", "PT-004", "PT-006"],
+          "test_files": [
+            "tests/test_autonomous_integration.py",
+            "tests/test_portfolio_analysis_flow.py",
+            "tests/test_paper_trading_autonomy.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 120
+        }
+      ]
+    },
+    "realtime_systems": {
+      "priority": "high",
+      "total": 2,
+      "features": [
+        {
+          "id": "WS-001",
+          "name": "Real-time WebSocket Manager",
+          "description": "Simple WebSocket for real-time UI updates: live quotes, position updates, order confirmations. Single-user design with automatic reconnection.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Simplified WebSocket for single-user - enterprise scale removed",
+          "files": [
+            "src/web/websocket_trading_manager.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 40
+        },
+        {
+          "id": "ALERT-001",
+          "name": "System Health Alert System",
+          "description": "System health monitoring alerts only: API connectivity issues, database errors, queue backlogs, service failures. NO trading action alerts (price movements, rebalancing needs) that could tempt manual intervention. User observes monthly performance, not real-time trading.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "System health alerts only. Trading event alerts removed to maintain autonomous operation without user intervention.",
+          "files": [
+            "src/agents/alert_agent.py"
+          ],
+          "test_files": [
+            "tests/test_alert_system.py"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 60,
+          "scope_restriction": "System health only. No trading-related alerts that could encourage intervention."
+        }
+      ]
+    },
+    "agent_systems": {
+      "priority": "medium",
+      "total": 1,
+      "features": [
+        {
+          "id": "AGENT-001",
+          "name": "Single Claude Context with Tools",
+          "description": "Claude operates in single context with access to all tools (technical analysis, fundamentals, risk management). No multi-agent overhead - Claude reasons holistically. MCP server provides tool access for market data, trading, and analysis.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Consolidated from multi-agent to single Claude context. Simpler, more effective.",
+          "files": [
+            "src/agents/server.py",
+            "shared/robotrader_mcp/"
+          ],
+          "immutable": false,
+          "priority": "medium",
+          "estimated_time_minutes": 80
+        }
+      ]
+    },
+    "claude_agent_sdk": {
+      "priority": "high",
+      "total": 2,
+      "features": [
+        {
+          "id": "SDK-001",
+          "name": "Claude SDK Integration",
+          "description": "Core Claude Agent SDK integration: client manager with error handling, retry logic, and rate limiting. Context builder for market/portfolio data. Response validation with safeguards check.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Consolidated from SDK-001 to SDK-008. Single integration point for Claude API.",
+          "files": [
+            "src/core/sdk_helpers.py",
+            "src/services/claude_agent/sdk_client_manager.py",
+            "src/services/claude_agent/context_builder.py",
+            "src/services/claude_agent/response_validator.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 120
+        },
+        {
+          "id": "SDK-002",
+          "name": "Trading Session Coordinators",
+          "description": "Morning and evening session coordinators that orchestrate Claude's trading workflow. Manages session state, decision logging, and trade execution pipeline.",
+          "status": "completed",
+          "completed_at": "2025-11-01T00:00:00Z",
+          "implementation_notes": "Session coordinators with full workflow management",
+          "files": [
+            "src/core/coordinators/paper_trading/morning_session_coordinator.py",
+            "src/core/coordinators/paper_trading/evening_session_coordinator.py",
+            "src/services/claude_agent/tool_executor.py"
+          ],
+          "immutable": false,
+          "priority": "high",
+          "estimated_time_minutes": 100
+        }
+      ]
+    },
+    "removed_features": {
+      "priority": "none",
+      "total": 6,
+      "features": [
+        {
+          "id": "REMOVED-001",
+          "name": "Manual Override API Endpoints",
+          "reason": "System must be fully autonomous with no manual intervention",
+          "original_id": "API-001",
+          "status": "removed",
+          "notes": "All manual override features removed as system operates autonomously without human intervention"
+        },
+        {
+          "id": "REMOVED-002",
+          "name": "Manual Override State Management",
+          "reason": "No manual override state needed in fully autonomous system",
+          "original_id": "DB-002",
+          "status": "removed",
+          "notes": "Emergency stop and manual controls are anti-patterns for autonomous trading system"
+        },
+        {
+          "id": "REMOVED-003",
+          "name": "Distributed Job Queue System",
+          "reason": "Over-engineering for single-user autonomous system. INFRA-008 (Three-Queue System) provides adequate async task handling.",
+          "original_id": "QUEUE-001",
+          "status": "removed",
+          "notes": "Celery/Redis distributed queue adds unnecessary complexity. Simple async queues sufficient for autonomous paper trading.",
+          "files_to_deprecate": [
+            "containers/job-queue-service/tasks.py",
+            "containers/job-queue-service/celeryconfig.py"
+          ]
+        },
+        {
+          "id": "REMOVED-004",
+          "name": "Advanced Learning Engine",
+          "reason": "Over-engineering - Claude already has reasoning capabilities. PT-005 genetic algorithm handles strategy evolution.",
+          "original_id": "LEARNING-001",
+          "status": "removed",
+          "notes": "Separate ML/tensorflow pipeline redundant when Claude can analyze patterns directly."
+        },
+        {
+          "id": "REMOVED-005",
+          "name": "Production Deployment Infrastructure",
+          "reason": "Over-engineering - K8s, blue-green deployment unnecessary for single-user paper trading system.",
+          "original_id": "DEPLOY-001",
+          "status": "removed",
+          "notes": "Simple Docker setup sufficient. No need for enterprise deployment patterns."
+        },
+        {
+          "id": "REMOVED-006",
+          "name": "Performance Metrics Collection (Grafana/Prometheus)",
+          "reason": "Over-engineering - enterprise monitoring unnecessary for single-user system.",
+          "original_id": "INFRA-018",
+          "status": "removed",
+          "notes": "Basic logging sufficient. System health UI already exists."
+        }
+      ]
+    }
+  },
+  "feature_compliance": {
+    "description": "All features must serve the core purpose defined in PURPOSE.md",
+    "portfolio_analysis_features": ["PA-001", "PA-002"],
+    "paper_trading_features": ["PT-001", "PT-002", "PT-003", "PT-004", "PT-005", "PT-006", "PT-007", "PT-008", "PT-009", "PT-010"],
+    "infrastructure_features": ["INFRA-001", "INFRA-002", "INFRA-003", "INFRA-004", "INFRA-005", "INFRA-006", "INFRA-007", "INFRA-008", "INFRA-009", "INFRA-010", "INFRA-011", "INFRA-012", "INFRA-013", "INFRA-014", "INFRA-015", "INFRA-016", "INFRA-017", "INFRA-019", "INFRA-020"],
+    "frontend_features": ["UI-001", "UI-002", "UI-003", "UI-004", "UI-005", "UI-006", "UI-007", "UI-008", "UI-009", "UI-010"],
+    "data_services_features": ["DATA-001", "DATA-002", "DATA-003", "DATA-004", "DATA-005"],
+    "realtime_features": ["WS-001", "ALERT-001"],
+    "agent_systems_features": ["AGENT-001"],
+    "claude_agent_sdk_features": ["SDK-001", "SDK-002"],
+    "testing_features": ["TEST-001"]
+  },
+  "anti_patterns": {
+    "no_manual_intervention": {
+      "rule": "Never implement manual override features - system must be fully autonomous",
+      "rationale": "Manual intervention defeats the purpose of testing Claude's autonomous trading capability"
+    },
+    "no_real_money": {
+      "rule": "Never integrate with real payment systems or broker accounts for actual trading",
+      "rationale": "System is paper trading only until Claude proves trustworthy performance"
+    },
+    "always_log_decisions": {
+      "rule": "Every trading decision must be logged with full context before execution",
+      "rationale": "Essential for transparency, learning, and performance evaluation"
+    },
+    "separate_portfolios": {
+      "rule": "User's real portfolio and Claude's paper trading portfolio must remain completely separate",
+      "rationale": "Prevents confusion and maintains clear evaluation of Claude's trading performance"
+    }
+  },
+  "metadata": {
+    "system_purpose": {
+      "portfolio_analysis": "Analyze user's real portfolio stocks monthly using AI for keep/sell recommendations",
+      "paper_trading": "Test Claude's trading capability autonomously with ₹1L virtual money",
+      "evaluation_goal": "Determine if Claude can be trusted with real money based on performance"
+    },
+    "core_principles": {
+      "fully_autonomous": "No manual intervention or override features",
+      "paper_trading_only": "Never use real money - always virtual trading",
+      "monthly_analysis": "Analyze real portfolio monthly, not daily",
+      "daily_trading": "Paper trading operates daily with morning/evening sessions"
+    },
+    "success_metrics": {
+      "portfolio_analysis": "Accuracy of keep/sell recommendations",
+      "trading_performance": "Risk-adjusted returns (Sharpe ratio > 1.0)",
+      "consistency": "Monthly positive returns over 6+ months",
+      "trust_threshold": "Performance score > 85/100 for real money consideration"
+    },
+    "implementation_status": {
+      "infrastructure": {
+        "total": 19,
+        "completed": 19,
+        "in_progress": 0,
+        "percentage": 100,
+        "notes": "INFRA-018 (Grafana/Prometheus) removed - over-engineering. All INFRA features completed."
+      },
+      "frontend": {
+        "total": 10,
+        "completed": 10,
+        "percentage": 100,
+        "notes": "All UI features implemented (observation-only)"
+      },
+      "data_services": {
+        "total": 5,
+        "completed": 5,
+        "percentage": 100,
+        "notes": "All data services implemented"
+      },
+      "realtime_systems": {
+        "total": 2,
+        "completed": 2,
+        "percentage": 100,
+        "notes": "WebSocket (simplified) and system health alerts"
+      },
+      "agent_systems": {
+        "total": 1,
+        "completed": 1,
+        "percentage": 100,
+        "notes": "Single Claude context with tools (multi-agent removed)"
+      },
+      "claude_agent_sdk": {
+        "total": 2,
+        "completed": 2,
+        "percentage": 100,
+        "notes": "Consolidated from 8 to 2: SDK Integration + Session Coordinators"
+      },
+      "paper_trading": {
+        "total": 10,
+        "completed": 4,
+        "in_progress": 1,
+        "pending": 5,
+        "percentage": 40,
+        "notes": "PT-001, PT-007, PT-009 completed. PT-002 in progress (backend done, frontend UI needed). Pending: PT-003, PT-004, PT-005, PT-006, PT-008, PT-010."
+      },
+      "portfolio_analysis": {
+        "total": 2,
+        "pending": 2,
+        "percentage": 0,
+        "notes": "Added PA-002 (Accuracy Tracker). Both features pending implementation."
+      }
+    },
+    "critical_paths": [
+      ["INFRA-004", "PT-002", "PT-003"],
+      ["PT-003", "PT-004", "PT-005"],
+      ["PA-001", "TEST-001"],
+      ["INFRA-001", "INFRA-002", "INFRA-003"]
+    ]
+  },
+  "code_cleanup": {
+    "completed_date": "2025-01-07T18:45:00Z",
+    "total_phases": 5,
+    "phases_completed": 5,
+    "summary": {
+      "total_lines_removed": "~10,000+",
+      "total_storage_saved": "~200MB+",
+      "files_deleted": "75+",
+      "impact": "Codebase now lean and focused on core functionality"
+    },
+    "phases": {
+      "phase_1": {
+        "name": "Root Directory Cleanup",
+        "removed": ["16 temporary Python scripts", "6 temporary markdown reports"],
+        "cleaned": ["config/backups (85 → 10 files)"]
+      },
+      "phase_2": {
+        "name": "Duplicate Services Removal",
+        "deleted": ["prompt_optimization_service.py (27.7KB)", "analytics_service.py (16.5KB)"]
+      },
+      "phase_3": {
+        "name": "Large File Cleanup",
+        "deleted_files": [
+          "kite_connect_service.py (936 lines)",
+          "learning_engine.py (833 lines)",
+          "feature_management/ directory (~4000 lines)",
+          "portfolio_analysis_state.py (846 lines)"
+        ],
+        "reduced_files": [
+          "paper_trading_state.py: 1130 → 220 lines (81% reduction)",
+          "web/app.py: 890 → 120 lines (87% reduction)"
+        ],
+        "preserved": "kite_portfolio_service.py (200 lines) for portfolio import"
+      },
+      "phase_4": {
+        "name": "Monitoring Infrastructure Removal",
+        "deleted": ["containers/grafana/", "containers/prometheus/", "monitoring/ directory"]
+      },
+      "phase_5": {
+        "name": "MCP Server Bloat Removal",
+        "reduction": "60MB → 480K (99.2% reduction)",
+        "files": "1300+ → 10 essential files"
+      }
+    }
+  }
+}

@@ -80,10 +80,10 @@ export const usePaperTradingData = (options: UsePaperTradingDataOptions = {}) =>
 
   const fetchPerformanceMetrics = useCallback(async () => {
     try {
-      const response = await fetch(`/api/paper-trading/accounts/${accountId}/metrics`)
+      const response = await fetch(`/api/paper-trading/accounts/${accountId}/performance`)
       if (!response.ok) return null
       const data = await response.json()
-      return data.success ? data.metrics : null
+      return data.success ? data.performance : data.metrics
     } catch {
       return null
     }

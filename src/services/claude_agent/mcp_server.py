@@ -7,12 +7,14 @@ Provides standardized tool execution interface with proper SDK patterns.
 
 import logging
 import json
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
 
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ...core.di import DependencyContainer
 from .tool_executor import ToolExecutor
+
+if TYPE_CHECKING:
+    from ...core.di import DependencyContainer
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ class ClaudeAgentMCPServer:
         "search_tools": "Find tools"  # Meta-tool for progressive discovery
     }
 
-    def __init__(self, container: DependencyContainer):
+    def __init__(self, container: "DependencyContainer"):
         """Initialize MCP server."""
         self.container = container
         self.tool_executor: Optional[ToolExecutor] = None

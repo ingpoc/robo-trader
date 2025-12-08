@@ -26,6 +26,7 @@ from .coordinators.status.ai_status_coordinator import AIStatusCoordinator
 from .coordinators.status.agent_status_coordinator import AgentStatusCoordinator
 from .coordinators.status.portfolio_status_coordinator import PortfolioStatusCoordinator
 from .coordinators.portfolio.portfolio_analysis_coordinator import PortfolioAnalysisCoordinator
+from .coordinators.paper_trading.stock_discovery_coordinator import StockDiscoveryCoordinator
 from .orchestrator import RoboTraderOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -210,6 +211,16 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
 
     container._register_singleton("portfolio_analysis_coordinator", create_portfolio_analysis_coordinator)
 
+    # Stock Discovery Coordinator (PT-002)
+    async def create_stock_discovery_coordinator():
+        event_bus = await container.get("event_bus")
+        task_service = await container.get("task_service")
+        coordinator = StockDiscoveryCoordinator(container.config, task_service)
+        coordinator.event_bus = event_bus
+        return coordinator
+
+    container._register_singleton("stock_discovery_coordinator", create_stock_discovery_coordinator)
+
 
 async def register_orchestrator(container: 'DependencyContainer') -> None:
     """Register orchestrator - created last due to dependencies."""
@@ -251,6 +262,7 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
         # Initialize all coordinators BEFORE initializing orchestrator
         logger.info("Initializing coordinators...")
         portfolio_analysis_coordinator = await container.get("portfolio_analysis_coordinator")
+        stock_discovery_coordinator = await container.get("stock_discovery_coordinator")
         await asyncio.gather(
             session_coordinator.initialize(),
             query_coordinator.initialize(),
@@ -259,6 +271,7 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
             lifecycle_coordinator.initialize(),
             broadcast_coordinator.initialize(),
             portfolio_analysis_coordinator.initialize(),
+            stock_discovery_coordinator.initialize(),
         )
 
         # Initialize queue coordinator

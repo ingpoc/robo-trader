@@ -345,3 +345,98 @@ class ConfigurationState:
             except Exception as e:
                 logger.error(f"Failed to get analysis history: {e}")
                 return {"analyses": []}
+
+    # ===== Daily Strategy Reports (for Autonomous Trading) =====
+    async def store_daily_strategy_report(
+        self,
+        report_id: str,
+        evaluation_date: str,
+        account_type: str,
+        report_data: str,
+        confidence_score: float = 0.0
+    ) -> bool:
+        """
+        Store daily strategy report with proper locking.
+
+        Args:
+            report_id: Unique report identifier
+            evaluation_date: Date of evaluation (ISO format)
+            account_type: Account type (e.g., 'paper', 'live')
+            report_data: Full report as JSON string
+            confidence_score: Overall confidence score
+
+        Returns:
+            True if successful, False otherwise
+        """
+        async with self._lock:
+            try:
+                current_time = datetime.now(timezone.utc).isoformat()
+
+                await self.db.connection.execute(
+                    """INSERT INTO daily_strategy_reports
+                       (report_id, evaluation_date, account_type, report_data, confidence_score, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (report_id, evaluation_date, account_type, report_data, confidence_score, current_time)
+                )
+
+                await self.db.connection.commit()
+                logger.info(f"Stored daily strategy report: {report_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store daily strategy report: {e}")
+                return False
+
+    async def get_daily_strategy_reports(
+        self,
+        account_type: Optional[str] = None,
+        limit: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Get daily strategy reports with proper locking.
+
+        Args:
+            account_type: Filter by account type (optional)
+            limit: Maximum number of records
+
+        Returns:
+            List of report dictionaries
+        """
+        async with self._lock:
+            try:
+                if account_type:
+                    cursor = await self.db.connection.execute(
+                        """SELECT report_id, evaluation_date, account_type, report_data, confidence_score, created_at
+                           FROM daily_strategy_reports
+                           WHERE account_type = ?
+                           ORDER BY evaluation_date DESC
+                           LIMIT ?""",
+                        (account_type, limit)
+                    )
+                else:
+                    cursor = await self.db.connection.execute(
+                        """SELECT report_id, evaluation_date, account_type, report_data, confidence_score, created_at
+                           FROM daily_strategy_reports
+                           ORDER BY evaluation_date DESC
+                           LIMIT ?""",
+                        (limit,)
+                    )
+
+                rows = await cursor.fetchall()
+
+                reports = []
+                for row in rows:
+                    reports.append({
+                        "report_id": row[0],
+                        "evaluation_date": row[1],
+                        "account_type": row[2],
+                        "report_data": row[3],
+                        "confidence_score": row[4],
+                        "created_at": row[5]
+                    })
+
+                return reports
+
+            except Exception as e:
+                logger.error(f"Failed to get daily strategy reports: {e}")
+                return []

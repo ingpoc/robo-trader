@@ -14,6 +14,7 @@ from dataclasses import dataclass, asdict
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 from ...stores.claude_strategy_store import ClaudeStrategyStore
 from ...services.paper_trading.performance_calculator import PerformanceCalculator
+from ...core.database_state.configuration_state import ConfigurationState
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +102,15 @@ class DailyStrategyEvaluator:
     - Strategy evolution insights
     """
 
-    def __init__(self, strategy_store: ClaudeStrategyStore, performance_calculator: PerformanceCalculator):
+    def __init__(
+        self,
+        strategy_store: ClaudeStrategyStore,
+        performance_calculator: PerformanceCalculator,
+        config_state: Optional[ConfigurationState] = None
+    ):
         self.strategy_store = strategy_store
         self.performance_calculator = performance_calculator
+        self.config_state = config_state
         self.active_strategies = {}  # Cache of strategy configurations
 
     async def evaluate_daily_strategies(
@@ -363,11 +370,44 @@ class DailyStrategyEvaluator:
         account_type: Optional[str] = None,
         limit: int = 30
     ) -> List[DailyStrategyReport]:
-        """Get historical daily strategy reports."""
+        """Get historical daily strategy reports from database."""
 
-        # This would query the database for stored daily reports
-        # For now, return empty list
-        return []
+        if not self.config_state:
+            logger.warning("No config_state available, cannot retrieve reports")
+            return []
+
+        try:
+            reports_data = await self.config_state.get_daily_strategy_reports(
+                account_type=account_type,
+                limit=limit
+            )
+
+            reports = []
+            for data in reports_data:
+                report_dict = json.loads(data["report_data"])
+                # Reconstruct refinements
+                refinements = [
+                    StrategyRefinement(**r) for r in report_dict.get("refinements_recommended", [])
+                ]
+                reports.append(DailyStrategyReport(
+                    report_id=report_dict["report_id"],
+                    evaluation_date=report_dict["evaluation_date"],
+                    account_type=report_dict["account_type"],
+                    strategies_evaluated=report_dict["strategies_evaluated"],
+                    performance_summary=report_dict["performance_summary"],
+                    refinements_recommended=refinements,
+                    market_conditions=report_dict["market_conditions"],
+                    key_insights=report_dict["key_insights"],
+                    next_evaluation_date=report_dict["next_evaluation_date"],
+                    confidence_score=report_dict.get("confidence_score", 0.0),
+                    created_at=report_dict.get("created_at", "")
+                ))
+
+            return reports
+
+        except Exception as e:
+            logger.error(f"Failed to get daily reports: {e}")
+            return []
 
     async def get_strategy_evolution_timeline(
         self,
@@ -425,13 +465,23 @@ class DailyStrategyEvaluator:
 
     async def _save_daily_report(self, report: DailyStrategyReport) -> None:
         """Save daily strategy report to database."""
-
-        # This would save to a dedicated daily_reports table
-        # For now, we'll log the report data
         report_data = report.to_dict()
 
-        logger.info(f"Daily strategy report saved: {report.report_id}")
-        logger.debug(f"Report data: {json.dumps(report_data, indent=2)}")
+        if self.config_state:
+            success = await self.config_state.store_daily_strategy_report(
+                report_id=report.report_id,
+                evaluation_date=report.evaluation_date,
+                account_type=report.account_type,
+                report_data=json.dumps(report_data),
+                confidence_score=report.confidence_score
+            )
+            if success:
+                logger.info(f"Daily strategy report saved to database: {report.report_id}")
+            else:
+                logger.error(f"Failed to save daily strategy report to database: {report.report_id}")
+        else:
+            logger.warning(f"No config_state available, report not persisted: {report.report_id}")
+            logger.debug(f"Report data: {json.dumps(report_data, indent=2)}")
 
     async def cleanup_old_reports(self, days_to_keep: int = 90) -> int:
         """Clean up old daily reports."""

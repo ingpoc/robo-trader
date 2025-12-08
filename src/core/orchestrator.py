@@ -110,8 +110,9 @@ class RoboTraderOrchestrator:
         await self.conversation_manager.initialize()
         await self.learning_engine.initialize()
 
+        # TEMPORARILY DISABLED - BackgroundScheduler causing infinite loop
         # Start BackgroundScheduler if available
-        if self.background_scheduler:
+        if False and self.background_scheduler:
             logger.info("BackgroundScheduler found - starting...")
             self.background_scheduler._run_portfolio_scan = self.run_portfolio_scan
             self.background_scheduler._run_market_screening = self.run_market_screening
@@ -127,7 +128,7 @@ class RoboTraderOrchestrator:
                 logger.exception("BackgroundScheduler startup exception:")
                 raise
         else:
-            logger.error("BackgroundScheduler is None - not starting")
+            logger.info("BackgroundScheduler temporarily disabled - skipping startup")
 
         logger.info("Orchestrator initialized successfully")
 
