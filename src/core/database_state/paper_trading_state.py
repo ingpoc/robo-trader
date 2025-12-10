@@ -235,6 +235,31 @@ class PaperTradingState(BaseState):
                 created_at TEXT NOT NULL
             );
 
+            -- Evening Performance Reviews (PT-004)
+            CREATE TABLE IF NOT EXISTS daily_performance_reviews (
+                review_id TEXT PRIMARY KEY,
+                review_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                success BOOLEAN NOT NULL,
+                error_message TEXT,
+                review_data TEXT NOT NULL,  -- JSON blob with review metrics
+                trades_reviewed TEXT,  -- JSON array of trades reviewed
+                daily_pnl REAL NOT NULL,
+                daily_pnl_percent REAL NOT NULL,
+                open_positions_count INTEGER DEFAULT 0,
+                closed_positions_count INTEGER DEFAULT 0,
+                win_rate REAL DEFAULT 0.0,
+                trading_insights TEXT,  -- JSON array of key insights
+                strategy_performance TEXT,  -- JSON blob with strategy analysis
+                market_observations TEXT,  -- JSON blob with market notes
+                next_day_watchlist TEXT,  -- JSON array of symbols to watch
+                session_context TEXT,  -- JSON blob with market conditions, etc.
+                trigger_source TEXT DEFAULT 'SCHEDULED',  -- 'SCHEDULED', 'MANUAL'
+                total_duration_ms INTEGER,
+                created_at TEXT NOT NULL
+            );
+
             -- AI Automation Configuration (PT-003, PT-004 scheduling)
             CREATE TABLE IF NOT EXISTS ai_automation_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -272,6 +297,11 @@ class PaperTradingState(BaseState):
             -- Morning Session Indexes
             CREATE INDEX IF NOT EXISTS idx_morning_sessions_date ON morning_trading_sessions(session_date DESC);
             CREATE INDEX IF NOT EXISTS idx_morning_sessions_success ON morning_trading_sessions(success);
+
+            -- Evening Performance Review Indexes
+            CREATE INDEX IF NOT EXISTS idx_evening_reviews_date ON daily_performance_reviews(review_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_evening_reviews_success ON daily_performance_reviews(success);
+            CREATE INDEX IF NOT EXISTS idx_evening_reviews_pnl ON daily_performance_reviews(daily_pnl DESC);
 
             -- Stock Discovery Indexes
             CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_symbol ON stock_discovery_watchlist(symbol);
@@ -1568,6 +1598,262 @@ class PaperTradingState(BaseState):
             except Exception as e:
                 logger.error(f"Failed to store morning session {session_id}: {e}")
                 return False
+
+    async def store_evening_performance_review(self, review_id: str, review_data: Dict[str, Any]) -> bool:
+        """
+        Store evening performance review result.
+
+        Args:
+            review_id: Unique review identifier
+            review_data: Review data to store
+
+        Returns:
+            True if stored successfully
+        """
+        async with self._lock:
+            try:
+                await self.db.connection.execute(
+                    """
+                    INSERT INTO daily_performance_reviews (
+                        review_id, review_date, start_time, end_time,
+                        success, error_message, review_data, trades_reviewed,
+                        daily_pnl, daily_pnl_percent, open_positions_count,
+                        closed_positions_count, win_rate, trading_insights,
+                        strategy_performance, market_observations, next_day_watchlist,
+                        session_context, trigger_source, total_duration_ms, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        review_id,
+                        review_data["review_date"],
+                        review_data["start_time"],
+                        review_data["end_time"],
+                        review_data["success"],
+                        review_data.get("error_message"),
+                        json.dumps(review_data["review_data"]),
+                        json.dumps(review_data.get("trades_reviewed", [])),
+                        review_data.get("daily_pnl", 0.0),
+                        review_data.get("daily_pnl_percent", 0.0),
+                        review_data.get("open_positions_count", 0),
+                        review_data.get("closed_positions_count", 0),
+                        review_data.get("win_rate", 0.0),
+                        json.dumps(review_data.get("trading_insights", [])),
+                        json.dumps(review_data.get("strategy_performance", {})),
+                        json.dumps(review_data.get("market_observations", {})),
+                        json.dumps(review_data.get("next_day_watchlist", [])),
+                        json.dumps(review_data.get("session_context", {})),
+                        review_data.get("trigger_source", "SCHEDULED"),
+                        review_data.get("total_duration_ms", 0),
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                )
+
+                await self.db.connection.commit()
+                logger.info(f"Stored evening performance review: {review_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store evening performance review {review_id}: {e}")
+                return False
+
+    async def get_evening_performance_reviews(self, limit: int = 30, successful_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get recent evening performance reviews.
+
+        Args:
+            limit: Maximum number of reviews to return
+            successful_only: Only return successful reviews
+
+        Returns:
+            List of evening performance review data
+        """
+        async with self._lock:
+            try:
+                query = """
+                    SELECT * FROM daily_performance_reviews
+                    WHERE 1=1
+                """
+                params = []
+
+                if successful_only:
+                    query += " AND success = ?"
+                    params.append(True)
+
+                query += " ORDER BY review_date DESC, start_time DESC LIMIT ?"
+                params.append(limit)
+
+                cursor = await self.db.connection.execute(query, params)
+                rows = await cursor.fetchall()
+
+                reviews = []
+                for row in rows:
+                    review = dict(row)
+                    # Parse JSON fields
+                    review["review_data"] = json.loads(review["review_data"]) if review["review_data"] else {}
+                    review["trades_reviewed"] = json.loads(review["trades_reviewed"]) if review["trades_reviewed"] else []
+                    review["trading_insights"] = json.loads(review["trading_insights"]) if review["trading_insights"] else []
+                    review["strategy_performance"] = json.loads(review["strategy_performance"]) if review["strategy_performance"] else {}
+                    review["market_observations"] = json.loads(review["market_observations"]) if review["market_observations"] else {}
+                    review["next_day_watchlist"] = json.loads(review["next_day_watchlist"]) if review["next_day_watchlist"] else []
+                    review["session_context"] = json.loads(review["session_context"]) if review["session_context"] else {}
+                    reviews.append(review)
+
+                return reviews
+
+            except Exception as e:
+                logger.error(f"Failed to get evening performance reviews: {e}")
+                return []
+
+    async def calculate_daily_performance_metrics(self, review_date: str) -> Dict[str, Any]:
+        """
+        Calculate daily performance metrics for the evening review.
+
+        Args:
+            review_date: Date in YYYY-MM-DD format
+
+        Returns:
+            Dictionary with daily performance metrics
+        """
+        async with self._lock:
+            try:
+                # Get all trades executed on the review date
+                cursor = await self.db.connection.execute(
+                    """
+                    SELECT id, symbol, side, quantity, entry_price, exit_price,
+                           entry_date, exit_date, strategy_tag, status
+                    FROM paper_trades
+                    WHERE entry_date = ? OR exit_date = ?
+                    ORDER BY entry_date DESC
+                    """,
+                    (review_date, review_date)
+                )
+                rows = await cursor.fetchall()
+
+                trades_reviewed = []
+                daily_pnl = 0.0
+                open_positions_count = 0
+                closed_positions_count = 0
+                winning_trades = 0
+                losing_trades = 0
+
+                # Process trades
+                for row in rows:
+                    trade_id, symbol, side, quantity, entry_price, exit_price, entry_date, exit_date, strategy_tag, status = row
+
+                    trade_info = {
+                        "id": trade_id,
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "entry_price": entry_price,
+                        "exit_price": exit_price,
+                        "strategy_tag": strategy_tag,
+                        "status": status
+                    }
+
+                    trades_reviewed.append(trade_info)
+
+                    if status == "OPEN":
+                        open_positions_count += 1
+                        # For open positions, calculate unrealized P&L with current price
+                        cursor_price = await self.db.connection.execute(
+                            "SELECT current_price FROM paper_positions WHERE symbol = ?",
+                            (symbol,)
+                        )
+                        price_row = await cursor_price.fetchone()
+                        if price_row:
+                            current_price = price_row[0]
+                            if side == "BUY":
+                                unrealized_pnl = (current_price - entry_price) * quantity
+                            else:
+                                unrealized_pnl = (entry_price - current_price) * quantity
+                            daily_pnl += unrealized_pnl
+                    else:
+                        # For closed trades, calculate realized P&L
+                        closed_positions_count += 1
+                        if exit_price is not None:
+                            if side == "BUY":
+                                trade_pnl = (exit_price - entry_price) * quantity
+                            else:
+                                trade_pnl = (entry_price - exit_price) * quantity
+                            daily_pnl += trade_pnl
+
+                            if trade_pnl > 0:
+                                winning_trades += 1
+                            elif trade_pnl < 0:
+                                losing_trades += 1
+
+                # Calculate win rate
+                total_closed_trades = closed_positions_count
+                win_rate = (winning_trades / total_closed_trades * 100) if total_closed_trades > 0 else 0.0
+
+                # Get account data for P&L percentage
+                cursor = await self.db.connection.execute(
+                    "SELECT initial_capital, total_equity FROM paper_trading_account WHERE id = 1"
+                )
+                account_row = await cursor.fetchone()
+                daily_pnl_percent = 0.0
+                if account_row:
+                    initial_capital, total_equity = account_row
+                    if initial_capital > 0:
+                        daily_pnl_percent = (daily_pnl / initial_capital) * 100
+
+                # Get strategy performance breakdown
+                strategy_performance = {}
+                for trade in trades_reviewed:
+                    strategy = trade["strategy_tag"]
+                    if strategy not in strategy_performance:
+                        strategy_performance[strategy] = {
+                            "trades": 0,
+                            "winning_trades": 0,
+                            "total_pnl": 0.0
+                        }
+
+                    strategy_performance[strategy]["trades"] += 1
+
+                    # Add P&L if trade is closed
+                    if trade["status"] == "CLOSED" and trade["exit_price"]:
+                        if trade["side"] == "BUY":
+                            trade_pnl = (trade["exit_price"] - trade["entry_price"]) * trade["quantity"]
+                        else:
+                            trade_pnl = (trade["entry_price"] - trade["exit_price"]) * trade["quantity"]
+
+                        strategy_performance[strategy]["total_pnl"] += trade_pnl
+
+                        if trade_pnl > 0:
+                            strategy_performance[strategy]["winning_trades"] += 1
+
+                # Calculate strategy win rates
+                for strategy in strategy_performance:
+                    trades = strategy_performance[strategy]["trades"]
+                    wins = strategy_performance[strategy]["winning_trades"]
+                    strategy_performance[strategy]["win_rate"] = (wins / trades * 100) if trades > 0 else 0.0
+
+                return {
+                    "trades_reviewed": trades_reviewed,
+                    "daily_pnl": daily_pnl,
+                    "daily_pnl_percent": daily_pnl_percent,
+                    "open_positions_count": open_positions_count,
+                    "closed_positions_count": closed_positions_count,
+                    "win_rate": win_rate,
+                    "strategy_performance": strategy_performance,
+                    "winning_trades": winning_trades,
+                    "losing_trades": losing_trades
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to calculate daily performance metrics for {review_date}: {e}")
+                return {
+                    "trades_reviewed": [],
+                    "daily_pnl": 0.0,
+                    "daily_pnl_percent": 0.0,
+                    "open_positions_count": 0,
+                    "closed_positions_count": 0,
+                    "win_rate": 0.0,
+                    "strategy_performance": {},
+                    "winning_trades": 0,
+                    "losing_trades": 0
+                }
 
     async def get_morning_sessions(self, limit: int = 30, successful_only: bool = False) -> List[Dict[str, Any]]:
         """

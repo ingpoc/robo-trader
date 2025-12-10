@@ -28,6 +28,7 @@ from .coordinators.status.portfolio_status_coordinator import PortfolioStatusCoo
 from .coordinators.portfolio.portfolio_analysis_coordinator import PortfolioAnalysisCoordinator
 from .coordinators.paper_trading.stock_discovery_coordinator import StockDiscoveryCoordinator
 from .coordinators.paper_trading.morning_session_coordinator import MorningSessionCoordinator
+from .coordinators.paper_trading.evening_session_coordinator import EveningSessionCoordinator
 from .orchestrator import RoboTraderOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -232,6 +233,16 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
 
     container._register_singleton("morning_session_coordinator", create_morning_session_coordinator)
 
+    # Evening Session Coordinator (PT-004)
+    async def create_evening_session_coordinator():
+        config = {"session": container.config}
+        event_bus = await container.get("event_bus")
+        coordinator = EveningSessionCoordinator(config, event_bus, container)
+        await coordinator.initialize()
+        return coordinator
+
+    container._register_singleton("paper_trading_evening_coordinator", create_evening_session_coordinator)
+
 
 async def register_orchestrator(container: 'DependencyContainer') -> None:
     """Register orchestrator - created last due to dependencies."""
@@ -274,6 +285,8 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
         logger.info("Initializing coordinators...")
         portfolio_analysis_coordinator = await container.get("portfolio_analysis_coordinator")
         stock_discovery_coordinator = await container.get("stock_discovery_coordinator")
+        morning_session_coordinator = await container.get("morning_session_coordinator")
+        evening_session_coordinator = await container.get("paper_trading_evening_coordinator")
         await asyncio.gather(
             session_coordinator.initialize(),
             query_coordinator.initialize(),
@@ -283,6 +296,8 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
             broadcast_coordinator.initialize(),
             portfolio_analysis_coordinator.initialize(),
             stock_discovery_coordinator.initialize(),
+            morning_session_coordinator.initialize(),
+            evening_session_coordinator.initialize(),
         )
 
         # Initialize queue coordinator
