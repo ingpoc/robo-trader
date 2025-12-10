@@ -24,6 +24,9 @@ def get_claude_sdk_client():
     from claude_agent_sdk import ClaudeSDKClient
     return ClaudeSDKClient
 
+# Type alias for forward reference
+ClaudeSDKClient = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +41,7 @@ class MonthlyPortfolioAnalysisCoordinator(BaseCoordinator):
         task_service: Any,
         kite_portfolio_service: Optional[KitePortfolioService] = None,
         perplexity_client: Optional[PerplexityClient] = None,
-        claude_sdk_client: Optional[ClaudeSDKClient] = None
+        claude_sdk_client: Optional[Any] = None  # ClaudeSDKClient from lazy import
     ):
         """Initialize monthly portfolio analysis coordinator."""
         super().__init__(config, "MonthlyPortfolioAnalysisCoordinator")

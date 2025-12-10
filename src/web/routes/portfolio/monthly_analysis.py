@@ -20,7 +20,7 @@ except ImportError:
     # Fallback for testing
     DIContainer = type
 
-from src.core.exceptions import TradingError
+from src.core.errors import TradingError
 
 
 router = APIRouter(prefix="/api/portfolio/monthly-analysis", tags=["monthly-analysis"])

@@ -14,9 +14,9 @@ from loguru import logger
 from src.config import Config
 from src.core.event_bus import EventBus, Event, EventType
 from ..base_coordinator import BaseCoordinator
-from src.core.di import DependencyContainer
-from src.core.exceptions import TradingError, ErrorCategory, ErrorSeverity
-from src.services.perplexity_service import PerplexityService
+# DependencyContainer accessed via self.container
+from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.core.perplexity_client import PerplexityClient
 from src.services.kite_connect_service import KiteConnectService
 from src.services.autonomous_trading_safeguards import AutonomousTradingSafeguards
 # State managers accessed through state_manager
@@ -38,7 +38,7 @@ class EveningSessionCoordinator(BaseCoordinator):
         self,
         config: Config,
         event_bus: EventBus,
-        container: DependencyContainer
+        container: Any  # DependencyContainer
     ):
         super().__init__(config)
         self.event_bus = event_bus
