@@ -12,7 +12,7 @@ from datetime import datetime, date
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 
-from src.core.database_state.base_state import BaseState
+from src.core.database_state.base import BaseState
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 
 

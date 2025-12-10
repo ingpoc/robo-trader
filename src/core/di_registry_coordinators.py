@@ -27,6 +27,7 @@ from .coordinators.status.agent_status_coordinator import AgentStatusCoordinator
 from .coordinators.status.portfolio_status_coordinator import PortfolioStatusCoordinator
 from .coordinators.portfolio.portfolio_analysis_coordinator import PortfolioAnalysisCoordinator
 from .coordinators.paper_trading.stock_discovery_coordinator import StockDiscoveryCoordinator
+from .coordinators.paper_trading.morning_session_coordinator import MorningSessionCoordinator
 from .orchestrator import RoboTraderOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,16 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
         return coordinator
 
     container._register_singleton("stock_discovery_coordinator", create_stock_discovery_coordinator)
+
+    # Morning Session Coordinator (PT-003)
+    async def create_morning_session_coordinator():
+        config = {"session": container.config}
+        event_bus = await container.get("event_bus")
+        coordinator = MorningSessionCoordinator(config, event_bus, container)
+        await coordinator.initialize()
+        return coordinator
+
+    container._register_singleton("morning_session_coordinator", create_morning_session_coordinator)
 
 
 async def register_orchestrator(container: 'DependencyContainer') -> None:

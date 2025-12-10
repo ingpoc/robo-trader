@@ -134,6 +134,7 @@ from .routes.symbols import router as symbols_router
 from .routes.database_backups import router as database_backups_router
 from .routes.coordinators import router as coordinators_router
 from .routes.token_status import router as token_status_router
+from .routes.paper_trading_morning_session import router as morning_session_router
 # from .routes.manual_override_routes import router as manual_override_router
 
 # ============================================================================
@@ -510,6 +511,7 @@ app.include_router(prompt_optimization_router)
 app.include_router(database_backups_router)
 app.include_router(coordinators_router)
 app.include_router(token_status_router)
+app.include_router(morning_session_router)
 # app.include_router(manual_override_router)
 
 # ============================================================================

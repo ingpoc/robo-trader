@@ -217,6 +217,24 @@ class PaperTradingState(BaseState):
                 FOREIGN KEY (session_id) REFERENCES stock_discovery_sessions(id) ON DELETE CASCADE
             );
 
+            -- Morning Trading Sessions (PT-003)
+            CREATE TABLE IF NOT EXISTS morning_trading_sessions (
+                session_id TEXT PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                success BOOLEAN NOT NULL,
+                error_message TEXT,
+                metrics TEXT NOT NULL,  -- JSON blob with session metrics
+                pre_market_data TEXT,  -- JSON blob with scanned stocks
+                trade_ideas TEXT,  -- JSON array of generated ideas
+                executed_trades TEXT,  -- JSON array of executed trades
+                session_context TEXT,  -- JSON blob with market conditions, etc.
+                trigger_source TEXT DEFAULT 'SCHEDULED',  -- 'SCHEDULED', 'MANUAL', 'MARKET_EVENT'
+                total_duration_ms INTEGER,
+                created_at TEXT NOT NULL
+            );
+
             -- AI Automation Configuration (PT-003, PT-004 scheduling)
             CREATE TABLE IF NOT EXISTS ai_automation_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -250,6 +268,10 @@ class PaperTradingState(BaseState):
             CREATE INDEX IF NOT EXISTS idx_evolution_strategy ON strategy_evolution(strategy_tag);
             CREATE INDEX IF NOT EXISTS idx_evolution_date ON strategy_evolution(evolution_date DESC);
             CREATE INDEX IF NOT EXISTS idx_ai_automation_config ON ai_automation_config(id);
+
+            -- Morning Session Indexes
+            CREATE INDEX IF NOT EXISTS idx_morning_sessions_date ON morning_trading_sessions(session_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_morning_sessions_success ON morning_trading_sessions(success);
 
             -- Stock Discovery Indexes
             CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_symbol ON stock_discovery_watchlist(symbol);
@@ -1498,3 +1520,97 @@ class PaperTradingState(BaseState):
             except Exception as e:
                 logger.error(f"Failed to get automation config: {e}")
                 return {}
+
+    async def store_morning_session(self, session_id: str, session_data: Dict[str, Any]) -> bool:
+        """
+        Store morning trading session result.
+
+        Args:
+            session_id: Unique session identifier
+            session_data: Session data to store
+
+        Returns:
+            True if stored successfully
+        """
+        async with self._lock:
+            try:
+                await self.db.connection.execute(
+                    """
+                    INSERT INTO morning_trading_sessions (
+                        session_id, session_date, start_time, end_time,
+                        success, error_message, metrics, pre_market_data,
+                        trade_ideas, executed_trades, session_context,
+                        trigger_source, total_duration_ms, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session_id,
+                        session_data["session_date"],
+                        session_data["start_time"],
+                        session_data["end_time"],
+                        session_data["success"],
+                        session_data.get("error_message"),
+                        json.dumps(session_data["metrics"]),
+                        json.dumps(session_data.get("pre_market_data", [])),
+                        json.dumps(session_data.get("trade_ideas", [])),
+                        json.dumps(session_data.get("executed_trades", [])),
+                        json.dumps(session_data.get("session_context", {})),
+                        session_data.get("trigger_source", "SCHEDULED"),
+                        session_data.get("total_duration_ms", 0),
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                )
+
+                await self.db.connection.commit()
+                logger.info(f"Stored morning session: {session_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store morning session {session_id}: {e}")
+                return False
+
+    async def get_morning_sessions(self, limit: int = 30, successful_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get recent morning trading sessions.
+
+        Args:
+            limit: Maximum number of sessions to return
+            successful_only: Only return successful sessions
+
+        Returns:
+            List of morning session data
+        """
+        async with self._lock:
+            try:
+                query = """
+                    SELECT * FROM morning_trading_sessions
+                    WHERE 1=1
+                """
+                params = []
+
+                if successful_only:
+                    query += " AND success = ?"
+                    params.append(True)
+
+                query += " ORDER BY session_date DESC, start_time DESC LIMIT ?"
+                params.append(limit)
+
+                cursor = await self.db.connection.execute(query, params)
+                rows = await cursor.fetchall()
+
+                sessions = []
+                for row in rows:
+                    session = dict(row)
+                    # Parse JSON fields
+                    session["metrics"] = json.loads(session["metrics"]) if session["metrics"] else {}
+                    session["pre_market_data"] = json.loads(session["pre_market_data"]) if session["pre_market_data"] else []
+                    session["trade_ideas"] = json.loads(session["trade_ideas"]) if session["trade_ideas"] else []
+                    session["executed_trades"] = json.loads(session["executed_trades"]) if session["executed_trades"] else []
+                    session["session_context"] = json.loads(session["session_context"]) if session["session_context"] else {}
+                    sessions.append(session)
+
+                return sessions
+
+            except Exception as e:
+                logger.error(f"Failed to get morning sessions: {e}")
+                return []
