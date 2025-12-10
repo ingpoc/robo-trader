@@ -94,6 +94,16 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("paper_trading_state", create_paper_trading_state)
 
+    # Portfolio Monthly Analysis State - singleton (Database-backed monthly analysis)
+    async def create_portfolio_monthly_analysis_state():
+        from .database_state.portfolio_monthly_analysis_state import PortfolioMonthlyAnalysisState
+        state_manager = await container.get("state_manager")
+        portfolio_analysis_state = PortfolioMonthlyAnalysisState(state_manager.db)
+        await portfolio_analysis_state.initialize()
+        return portfolio_analysis_state
+
+    container._register_singleton("portfolio_monthly_analysis_state", create_portfolio_monthly_analysis_state)
+
     # ========================================
     # REPOSITORY LAYER (Phase 1)
     # ========================================

@@ -460,6 +460,68 @@ class DatabaseConnection:
             updated_at TEXT NOT NULL
         );
 
+        -- Portfolio Analysis (for user's real portfolio monthly analysis)
+        CREATE TABLE IF NOT EXISTS portfolio_analysis (
+            id INTEGER PRIMARY KEY,
+            analysis_date TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            company_name TEXT,
+            sector TEXT,
+            industry TEXT,
+
+            -- Fundamentals fetched from Perplexity API
+            pe_ratio REAL,
+            pb_ratio REAL,
+            roe REAL,
+            debt_to_equity REAL,
+            current_ratio REAL,
+            profit_margins REAL,
+            revenue_growth REAL,
+            earnings_growth REAL,
+            dividend_yield REAL,
+            market_cap REAL,
+
+            -- Analysis data
+            recent_earnings TEXT,  -- JSON with earnings summary
+            news_sentiment TEXT,  -- JSON with sentiment analysis
+            industry_trends TEXT,  -- JSON with industry analysis
+
+            -- Claude's recommendation
+            recommendation TEXT NOT NULL CHECK (recommendation IN ('KEEP', 'SELL')),
+            reasoning TEXT NOT NULL,
+            confidence_score REAL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+
+            -- Metadata
+            analysis_sources TEXT,  -- JSON array of sources
+            price_at_analysis REAL,
+            next_review_date TEXT,
+
+            -- Timestamps
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(symbol, analysis_date)
+        );
+
+        -- Monthly Analysis Summary
+        CREATE TABLE IF NOT EXISTS monthly_analysis_summary (
+            id INTEGER PRIMARY KEY,
+            analysis_month TEXT NOT NULL UNIQUE,  -- YYYY-MM format
+            total_stocks_analyzed INTEGER DEFAULT 0,
+            keep_recommendations INTEGER DEFAULT 0,
+            sell_recommendations INTEGER DEFAULT 0,
+            portfolio_value_at_analysis REAL,
+            market_conditions TEXT,  -- JSON with market snapshot
+
+            -- Analysis metadata
+            analysis_duration_seconds REAL,
+            perplexity_api_calls INTEGER DEFAULT 0,
+            claude_analysis_tokens INTEGER DEFAULT 0,
+
+            -- Timestamps
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
         -- Create indexes for performance
         CREATE INDEX IF NOT EXISTS idx_claude_decisions_symbol ON claude_decisions(symbol);
         CREATE INDEX IF NOT EXISTS idx_claude_decisions_timestamp ON claude_decisions(timestamp DESC);
@@ -501,6 +563,14 @@ class DatabaseConnection:
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_created ON optimized_prompts(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_data_type_created ON optimized_prompts(data_type, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_trading_safeguards_date ON trading_safeguards(safeguard_date DESC);
+
+        -- Indexes for portfolio analysis tables
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_symbol ON portfolio_analysis(symbol);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_date ON portfolio_analysis(analysis_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_symbol_date ON portfolio_analysis(symbol, analysis_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_recommendation ON portfolio_analysis(recommendation);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_confidence ON portfolio_analysis(confidence_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_monthly_analysis_month ON monthly_analysis_summary(analysis_month DESC);
         """
 
         await self._connection_pool.executescript(schema)

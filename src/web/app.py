@@ -136,6 +136,7 @@ from .routes.coordinators import router as coordinators_router
 from .routes.token_status import router as token_status_router
 from .routes.paper_trading_morning_session import router as morning_session_router
 from .routes.paper_trading_evening_session import router as evening_session_router
+from .routes.portfolio.monthly_analysis import router as monthly_analysis_router
 # from .routes.manual_override_routes import router as manual_override_router
 
 # ============================================================================
@@ -514,6 +515,7 @@ app.include_router(coordinators_router)
 app.include_router(token_status_router)
 app.include_router(morning_session_router)
 app.include_router(evening_session_router)
+app.include_router(monthly_analysis_router)
 # app.include_router(manual_override_router)
 
 # ============================================================================

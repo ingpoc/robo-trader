@@ -26,6 +26,7 @@ from .coordinators.status.ai_status_coordinator import AIStatusCoordinator
 from .coordinators.status.agent_status_coordinator import AgentStatusCoordinator
 from .coordinators.status.portfolio_status_coordinator import PortfolioStatusCoordinator
 from .coordinators.portfolio.portfolio_analysis_coordinator import PortfolioAnalysisCoordinator
+from .coordinators.portfolio.monthly_analysis_coordinator import MonthlyPortfolioAnalysisCoordinator
 from .coordinators.paper_trading.stock_discovery_coordinator import StockDiscoveryCoordinator
 from .coordinators.paper_trading.morning_session_coordinator import MorningSessionCoordinator
 from .coordinators.paper_trading.evening_session_coordinator import EveningSessionCoordinator
@@ -212,6 +213,47 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
         return coordinator
 
     container._register_singleton("portfolio_analysis_coordinator", create_portfolio_analysis_coordinator)
+
+    async def create_monthly_portfolio_analysis_coordinator():
+        # Get portfolio monthly analysis state
+        portfolio_monthly_analysis_state = await container.get("portfolio_monthly_analysis_state")
+        config_state = await container.get("configuration_state")
+        task_service = await container.get("task_service")
+        event_bus = await container.get("event_bus")
+
+        # Get optional services
+        kite_portfolio_service = None
+        try:
+            kite_portfolio_service = await container.get("kite_portfolio_service")
+        except:
+            logger.debug("Kite portfolio service not available")
+
+        perplexity_client = None
+        try:
+            perplexity_client = await container.get("perplexity_client")
+        except:
+            logger.debug("Perplexity client not available")
+
+        claude_sdk_client = None
+        try:
+            claude_sdk_client = await container.get("claude_sdk_client")
+        except:
+            logger.debug("Claude SDK client not available")
+
+        coordinator = MonthlyPortfolioAnalysisCoordinator(
+            container.config,
+            portfolio_monthly_analysis_state,
+            config_state,
+            task_service,
+            kite_portfolio_service,
+            perplexity_client,
+            claude_sdk_client
+        )
+        coordinator.event_bus = event_bus
+        await coordinator.initialize()
+        return coordinator
+
+    container._register_singleton("monthly_portfolio_analysis_coordinator", create_monthly_portfolio_analysis_coordinator)
 
     # Stock Discovery Coordinator (PT-002)
     async def create_stock_discovery_coordinator():
