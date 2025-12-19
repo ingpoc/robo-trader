@@ -16,7 +16,7 @@ from src.core.coordinators.paper_trading.evening_session_coordinator import Even
 from src.core.event_bus import EventBus, Event, EventType
 from src.core.di import DependencyContainer
 from src.config import Config
-from src.services.perplexity_service import PerplexityService
+from src.core.perplexity_client import PerplexityClient
 from src.services.kite_connect_service import KiteConnectService
 from src.services.autonomous_trading_safeguards import AutonomousTradingSafeguards
 from src.core.database_state.paper_trading_state import PaperTradingState
@@ -49,7 +49,7 @@ def container(config, event_bus):
 
     # Mock services
     container._services = {
-        "perplexity_service": AsyncMock(spec=PerplexityService),
+        "perplexity_service": AsyncMock(spec=PerplexityClient),
         "kite_connect_service": AsyncMock(spec=KiteConnectService),
         "autonomous_trading_safeguards": AsyncMock(spec=AutonomousTradingSafeguards),
         "state_manager": AsyncMock(),

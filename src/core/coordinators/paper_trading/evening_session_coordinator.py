@@ -49,15 +49,35 @@ class EveningSessionCoordinator(BaseCoordinator):
         """Initialize evening session coordinator."""
         self._log_info("Initializing EveningSessionCoordinator")
 
-        # Get required services
-        self.perplexity = await self.container.get("perplexity_service")
-        self.kite_service = await self.container.get("kite_connect_service")
-        self.safeguards = await self.container.get("autonomous_trading_safeguards")
-
         # Get state managers
         self.state_manager = await self.container.get("state_manager")
         self.paper_trading_state = self.state_manager.paper_trading
-        self.real_time_state = self.state_manager.real_time_trading
+
+        # Try to get real_time_trading_state if available, otherwise use paper_trading
+        try:
+            self.real_time_state = await self.container.get("real_time_trading_state")
+        except (ValueError, AttributeError, Exception) as e:
+            self._log_warning(f"real_time_trading_state not available ({type(e).__name__}) - using paper_trading_state")
+            self.real_time_state = self.paper_trading_state
+
+        # Optional services (may not be registered yet)
+        try:
+            self.perplexity = await self.container.get("perplexity_service")
+        except ValueError:
+            self._log_warning("perplexity_service not registered - analysis disabled")
+            self.perplexity = None
+
+        try:
+            self.kite_service = await self.container.get("kite_connect_service")
+        except ValueError:
+            self._log_warning("kite_connect_service not registered - using market_data_service")
+            self.kite_service = await self.container.get("market_data_service")
+
+        try:
+            self.safeguards = await self.container.get("autonomous_trading_safeguards")
+        except ValueError:
+            self._log_warning("autonomous_trading_safeguards not registered - safeguards disabled")
+            self.safeguards = None
 
         self._initialized = True
         self._log_info("EveningSessionCoordinator initialized successfully")
@@ -274,25 +294,28 @@ class EveningSessionCoordinator(BaseCoordinator):
             """
 
             # Query Perplexity for analysis
-            response = await self.perplexity.query_perplexity(
-                query=query,
-                context=context,
-                max_tokens=500
-            )
-
-            # Extract insights from response
             insights = []
-            if response and "content" in response:
-                # Parse numbered list from response
-                content = response["content"]
-                lines = content.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if line and (line[0].isdigit() or line.startswith('-')):
-                        # Clean up the insight
-                        insight = line.lstrip('0123456789.- ').strip()
-                        if insight:
-                            insights.append(insight)
+            if self.perplexity:
+                response = await self.perplexity.query_perplexity(
+                    query=query,
+                    context=context,
+                    max_tokens=500
+                )
+
+                # Extract insights from response
+                if response and "content" in response:
+                    # Parse numbered list from response
+                    content = response["content"]
+                    lines = content.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line and (line[0].isdigit() or line.startswith('-')):
+                            # Clean up the insight
+                            insight = line.lstrip('0123456789.- ').strip()
+                            if insight:
+                                insights.append(insight)
+            else:
+                self._log_warning("Perplexity service not available - skipping AI insights")
 
             # Ensure we have at least some insights
             if not insights:
@@ -492,6 +515,10 @@ class EveningSessionCoordinator(BaseCoordinator):
 
     async def _update_safeguards(self, performance_metrics: Dict[str, Any]) -> None:
         """Update trading safeguards with daily performance."""
+        if not self.safeguards:
+            self._log_warning("Safeguards service not available - skipping safeguard update")
+            return
+
         try:
             # Update daily P&L in safeguards
             daily_pnl = performance_metrics.get("daily_pnl", 0)

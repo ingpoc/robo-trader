@@ -10,7 +10,7 @@ from typing import Optional
 from loguru import logger
 
 from src.config import Config
-from ....auth.claude_auth import ClaudeAuthStatus, validate_claude_sdk_auth
+from src.auth.claude_auth import ClaudeAuthStatus, validate_claude_sdk_auth
 from ..base_coordinator import BaseCoordinator
 
 

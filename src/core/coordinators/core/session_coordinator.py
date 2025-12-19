@@ -11,7 +11,7 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from loguru import logger
 
 from src.config import Config
-from ....auth.claude_auth import ClaudeAuthStatus
+from src.auth.claude_auth import ClaudeAuthStatus
 from ..base_coordinator import BaseCoordinator
 from .session_authentication_coordinator import SessionAuthenticationCoordinator
 from .session_lifecycle_coordinator import SessionLifecycleCoordinator

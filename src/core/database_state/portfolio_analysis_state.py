@@ -35,8 +35,8 @@ class PortfolioAnalysisState(BaseState):
             schema = """
             PRAGMA foreign_keys = OFF;
 
-            -- Portfolio Analysis Results
-            CREATE TABLE IF NOT EXISTS portfolio_analysis (
+            -- Portfolio Intelligence Analysis Results (separate from monthly portfolio analysis)
+            CREATE TABLE IF NOT EXISTS portfolio_intelligence_analysis (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
                 analysis_date TEXT NOT NULL,
@@ -90,8 +90,8 @@ class PortfolioAnalysisState(BaseState):
                 UNIQUE(symbol, data_type, quality_date)
             );
 
-            -- Analysis Performance Tracking
-            CREATE TABLE IF NOT EXISTS portfolio_analysis_performance (
+            -- Intelligence Analysis Performance Tracking
+            CREATE TABLE IF NOT EXISTS portfolio_intelligence_performance (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 analysis_date TEXT NOT NULL,
                 symbols_analyzed INTEGER NOT NULL,
@@ -131,15 +131,15 @@ class PortfolioAnalysisState(BaseState):
             );
 
             -- Indexes for performance
-            CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_symbol ON portfolio_analysis(symbol);
-            CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_date ON portfolio_analysis(analysis_date DESC);
-            CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_type ON portfolio_analysis(analysis_type);
+            CREATE INDEX IF NOT EXISTS idx_portfolio_intelligence_analysis_symbol ON portfolio_intelligence_analysis(symbol);
+            CREATE INDEX IF NOT EXISTS idx_portfolio_intelligence_analysis_date ON portfolio_intelligence_analysis(analysis_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_portfolio_intelligence_analysis_type ON portfolio_intelligence_analysis(analysis_type);
             CREATE INDEX IF NOT EXISTS idx_prompt_templates_type ON portfolio_prompt_templates(template_type);
             CREATE INDEX IF NOT EXISTS idx_prompt_templates_active ON portfolio_prompt_templates(is_active);
             CREATE INDEX IF NOT EXISTS idx_optimization_history_date ON prompt_optimization_history(optimization_date DESC);
             CREATE INDEX IF NOT EXISTS idx_data_quality_symbol ON data_quality_metrics(symbol);
             CREATE INDEX IF NOT EXISTS idx_data_quality_date ON data_quality_metrics(quality_date DESC);
-            CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_performance_date ON portfolio_analysis_performance(analysis_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_portfolio_intelligence_performance_date ON portfolio_intelligence_performance(analysis_date DESC);
             CREATE INDEX IF NOT EXISTS idx_audit_hook_events_analysis_id ON audit_hook_events(analysis_id);
             CREATE INDEX IF NOT EXISTS idx_audit_hook_events_type ON audit_hook_events(event_type);
             CREATE INDEX IF NOT EXISTS idx_audit_hook_events_timestamp ON audit_hook_events(event_timestamp DESC);
@@ -344,7 +344,7 @@ Provide comprehensive investment recommendation.""",
                 analysis_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
                 await self.db.connection.execute(
-                    """INSERT OR REPLACE INTO portfolio_analysis
+                    """INSERT OR REPLACE INTO portfolio_intelligence_analysis
                        (symbol, analysis_date, analysis_type, analysis_data,
                         prompt_template_id, data_quality_score, confidence_score,
                         created_at, updated_at)
@@ -371,7 +371,7 @@ Provide comprehensive investment recommendation.""",
 
                 cursor = await self.db.connection.execute(
                     """SELECT analysis_data, prompt_template_id, data_quality_score, confidence_score
-                       FROM portfolio_analysis
+                       FROM portfolio_intelligence_analysis
                        WHERE symbol = ? AND analysis_type = ? AND analysis_date = ?
                        ORDER BY created_at DESC
                        LIMIT 1""",
@@ -399,7 +399,7 @@ Provide comprehensive investment recommendation.""",
                 cursor = await self.db.connection.execute(
                     """SELECT symbol, analysis_type, analysis_data, data_quality_score,
                           confidence_score, created_at
-                       FROM portfolio_analysis
+                       FROM portfolio_intelligence_analysis
                        ORDER BY created_at DESC
                        LIMIT ?""",
                     (limit,)
@@ -574,7 +574,7 @@ Provide comprehensive investment recommendation.""",
                 current_time = datetime.now(timezone.utc).isoformat()
 
                 await self.db.connection.execute(
-                    """INSERT OR REPLACE INTO analysis_performance
+                    """INSERT OR REPLACE INTO portfolio_intelligence_performance
                        (analysis_date, symbols_analyzed, avg_quality_score,
                         avg_confidence_score, total_analysis_time_ms,
                         optimization_suggestions, created_at)
@@ -599,7 +599,7 @@ Provide comprehensive investment recommendation.""",
                     """SELECT analysis_date, symbols_analyzed, avg_quality_score,
                           avg_confidence_score, total_analysis_time_ms,
                           optimization_suggestions, created_at
-                       FROM analysis_performance
+                       FROM portfolio_intelligence_performance
                        WHERE analysis_date >= date('now', '-{} days')
                        ORDER BY analysis_date DESC
                     """.format(days_back)
