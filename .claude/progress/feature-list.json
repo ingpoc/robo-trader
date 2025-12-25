@@ -165,6 +165,20 @@
               "root_cause": "Database connection was returning tuples instead of Row objects, causing .keys() AttributeError",
               "fix": "Added self._connection_pool.row_factory = aiosqlite.Row after aiosqlite.connect()",
               "tester_agent_id": "a35850d"
+            },
+            {
+              "date": "2025-12-25T16:15:00Z",
+              "description": "Registered perplexity_service and kite_connect_service in DI container",
+              "files_affected": [
+                "src/core/di_registry_services.py:198-239"
+              ],
+              "root_cause": "Services existed but were not registered in DI → MorningSessionCoordinator couldn't access them → empty data arrays",
+              "fix": "Added DI registration for both services with graceful fallback (return None if config missing)",
+              "commit": "b6afa9c",
+              "production_config_required": {
+                "perplexity": "API keys in config.perplexity.api_keys",
+                "kite_connect": "API credentials + real_time_trading_state"
+              }
             }
           ],
           "tested": false,
@@ -182,18 +196,20 @@
               "session_creation": "passed"
             },
             "core_functionality": {
-              "status": "not_configured",
-              "missing_services": [
-                "perplexity_service (research)",
-                "kite_connect_service (market data)",
-                "claude_sdk (AI decisions)"
+              "status": "services_registered_but_not_configured",
+              "services_registered": [
+                "perplexity_service (registered, returns None without API keys)",
+                "kite_connect_service (registered, returns None without real_time_trading_state)",
+                "claude_sdk (authenticated via Claude Code CLI)"
               ],
               "empty_data_confirmed": {
                 "pre_market_data": "[]",
                 "trade_ideas": "[]",
                 "executed_trades": "[]"
               },
-              "reason": "Services not registered in DI container - expected for development environment"
+              "reason": "Services registered in DI but return None without production config (API keys, credentials)",
+              "fix_date": "2025-12-25T16:15:00Z",
+              "fix_commit": "b6afa9c"
             },
             "ui_verification": {
               "status": "skipped",
