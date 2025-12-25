@@ -36,33 +36,42 @@ def config():
 
 
 @pytest.fixture
-def event_bus():
+async def event_bus(config):
     """Create an event bus for testing."""
-    return EventBus()
+    bus = EventBus(config)
+    await bus.initialize()
+    return bus
 
 
 @pytest.fixture
-def container(config, event_bus):
+async def container(config, event_bus):
     """Create a dependency container with mocked services."""
-    container = DependencyContainer()
-    container.config = config
-
-    # Mock services
-    container._services = {
-        "perplexity_service": AsyncMock(spec=PerplexityClient),
-        "kite_connect_service": AsyncMock(spec=KiteConnectService),
-        "autonomous_trading_safeguards": AsyncMock(spec=AutonomousTradingSafeguards),
-        "state_manager": AsyncMock(),
-    }
+    container = MagicMock(spec=DependencyContainer)
 
     # Mock state managers
     state_manager = Mock()
     state_manager.paper_trading = AsyncMock(spec=PaperTradingState)
+    state_manager.news_earnings_state = AsyncMock()
     state_manager.real_time_trading = AsyncMock(spec=RealTimeTradingState)
-    container._services["state_manager"] = state_manager
 
-    # Event bus
-    container._services["event_bus"] = event_bus
+    # Create service mapping
+    service_mapping = {
+        "perplexity_service": AsyncMock(spec=PerplexityClient),
+        "kite_connect_service": AsyncMock(spec=KiteConnectService),
+        "market_data_service": AsyncMock(spec=KiteConnectService),
+        "autonomous_trading_safeguards": AsyncMock(spec=AutonomousTradingSafeguards),
+        "state_manager": state_manager,
+        "event_bus": event_bus,
+    }
+
+    # Mock container.get() method
+    async def get_service(service_name):
+        if service_name in service_mapping:
+            return service_mapping[service_name]
+        raise ValueError(f"Service '{service_name}' not registered")
+
+    container.get = AsyncMock(side_effect=get_service)
+    container.config = config
 
     return container
 

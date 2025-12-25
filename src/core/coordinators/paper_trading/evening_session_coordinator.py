@@ -40,8 +40,7 @@ class EveningSessionCoordinator(BaseCoordinator):
         event_bus: EventBus,
         container: Any  # DependencyContainer
     ):
-        super().__init__(config)
-        self.event_bus = event_bus
+        super().__init__(config, event_bus)
         self.container = container
         self._running_sessions: Dict[str, Dict[str, Any]] = {}
 

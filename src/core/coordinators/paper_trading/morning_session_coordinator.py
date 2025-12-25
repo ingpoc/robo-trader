@@ -56,8 +56,7 @@ class MorningSessionCoordinator(BaseCoordinator):
     """
 
     def __init__(self, config: Config, event_bus: EventBus, container: 'DependencyContainer'):
-        super().__init__(config)
-        self.event_bus = event_bus
+        super().__init__(config, event_bus)
         self.container = container
 
         # Services to be initialized

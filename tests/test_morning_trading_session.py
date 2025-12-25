@@ -34,12 +34,13 @@ async def mock_container():
 
     # Configure container.get to return appropriate mocks
     service_mapping = {
-        "paper_trading_execution": mock_execution_service,
+        "paper_trading_execution_service": mock_execution_service,
         "autonomous_trading_safeguards": mock_safeguards,
-        "decision_logger": mock_decision_logger,
+        "trade_decision_logger": mock_decision_logger,
         "kite_connect_service": mock_kite_service,
+        "market_data_service": mock_kite_service,  # Fallback
         "perplexity_service": mock_perplexity_service,
-        "stock_discovery": mock_stock_discovery,
+        "stock_discovery_service": mock_stock_discovery,
         "paper_trading_state": mock_paper_trading_state,
         "task_service": mock_task_service
     }
@@ -55,7 +56,7 @@ async def mock_container():
         "execution": mock_execution_service,
         "safeguards": mock_safeguards,
         "logger": mock_decision_logger,
-        "kite": mock_kite_service,
+        "kite_service": mock_kite_service,
         "perplexity": mock_perplexity_service,
         "stock_discovery": mock_stock_discovery,
         "paper_trading_state": mock_paper_trading_state,
@@ -70,6 +71,7 @@ async def coordinator(mock_container):
     from src.config import Config
     config = Config()
     event_bus = EventBus(config)
+    await event_bus.initialize()  # Initialize EventBus database connection
 
     config = {"session": {"timeout": 180}}
     coordinator = MorningSessionCoordinator(config, event_bus, container)
@@ -78,7 +80,7 @@ async def coordinator(mock_container):
     coordinator.execution_service = services["execution"]
     coordinator.safeguards = services["safeguards"]
     coordinator.decision_logger = services["logger"]
-    coordinator.kite_service = services["kite"]
+    coordinator.kite_service = services["kite_service"]
     coordinator.perplexity_service = services["perplexity"]
     coordinator.stock_discovery = services["stock_discovery"]
 
@@ -97,6 +99,7 @@ class TestMorningSessionCoordinator:
         from src.config import Config
         config = Config()
         event_bus = EventBus(config)
+        await event_bus.initialize()  # Initialize EventBus database connection
 
         coordinator = MorningSessionCoordinator(config, event_bus, container)
 
@@ -107,7 +110,7 @@ class TestMorningSessionCoordinator:
         assert coordinator.execution_service == services["execution"]
         assert coordinator.safeguards == services["safeguards"]
         assert coordinator.decision_logger == services["logger"]
-        assert coordinator.kite_service == services["kite"]
+        assert coordinator.kite_service == services["kite_service"]
         assert coordinator.perplexity_service == services["perplexity"]
         assert coordinator.stock_discovery == services["stock_discovery"]
         assert coordinator._initialized is True

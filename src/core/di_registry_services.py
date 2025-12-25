@@ -194,3 +194,63 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
     #     return manual_override_service
 
     # container._register_singleton("manual_override_service", create_manual_override_service)
+
+    # Perplexity Service (AI research for stock discovery and analysis) - Optional for development
+    async def create_perplexity_service():
+        """
+        Create PerplexityClient with API keys from config.
+        Falls back to None if no API keys available (development mode).
+        """
+        try:
+            from src.core.perplexity_client import PerplexityClient
+
+            # Get API keys from config (if available)
+            perplexity_config = container.config.get("perplexity", {})
+            api_keys = perplexity_config.get("api_keys", [])
+
+            if not api_keys:
+                logger.warning("No Perplexity API keys configured - research features disabled")
+                return None
+
+            perplexity_service = PerplexityClient(api_keys=api_keys)
+            logger.info(f"PerplexityClient initialized with {len(api_keys)} API key(s)")
+            return perplexity_service
+
+        except Exception as e:
+            logger.warning(f"PerplexityClient not available: {e} - research features disabled")
+            return None
+
+    container._register_singleton("perplexity_service", create_perplexity_service)
+
+    # Kite Connect Service (market data and trading) - Optional for development
+    async def create_kite_connect_service():
+        """
+        Create KiteConnectService but only if real_time_trading_state is available.
+        Falls back to None if not available (development mode).
+        """
+        try:
+            # Try to get real_time_trading_state (may not be initialized)
+            real_time_state = await container.get("real_time_trading_state")
+
+            from src.services.kite_connect_service import KiteConnectService, KiteCredentials
+
+            # Initialize with mock credentials for development (no actual API calls)
+            mock_credentials = KiteCredentials(
+                api_key="MOCK_API_KEY",
+                api_secret="MOCK_API_SECRET"
+            )
+
+            kite_service = KiteConnectService(
+                config=container.config,
+                real_time_state=real_time_state
+            )
+            await kite_service.initialize(mock_credentials)
+            logger.info("KiteConnectService initialized (mock mode for development)")
+            return kite_service
+
+        except Exception as e:
+            logger.warning(f"KiteConnectService not available: {e} - using market_data_service fallback")
+            # Return None - coordinators will fall back to market_data_service
+            return None
+
+    container._register_singleton("kite_connect_service", create_kite_connect_service)
