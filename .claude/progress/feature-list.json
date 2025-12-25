@@ -118,7 +118,7 @@
           "description": "Implement daily morning session (9:00 AM - 9:30 AM): (1) Scan pre-market data, (2) Research selected stocks using Perplexity API, (3) Generate trade ideas, (4) Apply risk safeguards, (5) Execute approved trades via Kite Connect paper trading API, (6) Log all decisions. Fully automated - no human intervention.",
           "status": "completed",
           "completed_at": "2025-12-09T10:30:00Z",
-          "implementation_notes": "Implemented complete morning trading session coordinator with pre-market scanning, Claude AI research via Perplexity, trade idea generation, safeguard validation, and paper trading execution. Includes API endpoints for manual triggering and session history tracking. All decisions logged with full context. Database schema updated to store session results.",
+          "implementation_notes": "Implemented complete morning trading session coordinator with pre-market scanning, Claude AI research via Perplexity, trade idea generation, safeguard validation, and paper trading execution. Includes API endpoints for manual triggering and session history tracking. All decisions logged with full context. Database schema updated to store session results. Bug fix (2025-12-25): Fixed aiosqlite Row to dict conversion in get_morning_sessions() and get_evening_reviews() - replaced dict(row) with {key: row[key] for key in row.keys()}.",
           "dependencies": ["INFRA-001", "INFRA-003", "PT-002"],
           "remaining_tasks": [],
           "files": [
@@ -133,7 +133,30 @@
           ],
           "immutable": false,
           "priority": "high",
-          "estimated_time_minutes": 100
+          "estimated_time_minutes": 100,
+          "bug_fixes": [
+            {
+              "date": "2025-12-25T08:54:00Z",
+              "description": "Fixed aiosqlite Row to dict conversion bug",
+              "files_affected": [
+                "src/core/database_state/paper_trading_state.py:1774",
+                "src/core/database_state/paper_trading_state.py:1575",
+                "src/core/database_state/config_backup.py:88",
+                "src/core/database_state/config_backup.py:94"
+              ],
+              "commit": "49c4df0"
+            },
+            {
+              "date": "2025-12-25T15:30:00Z",
+              "description": "Fixed missing row_factory = aiosqlite.Row in DatabaseConnection.initialize()",
+              "files_affected": [
+                "src/core/database_state/base.py:78"
+              ],
+              "root_cause": "Database connection was returning tuples instead of Row objects, causing .keys() AttributeError",
+              "fix": "Added self._connection_pool.row_factory = aiosqlite.Row after aiosqlite.connect()",
+              "tester_agent_id": "a35850d"
+            }
+          ]
         },
         {
           "id": "PT-004",

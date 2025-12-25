@@ -74,6 +74,8 @@ class DatabaseConnection:
                     aiosqlite.connect(str(self.db_path)),
                     timeout=10.0
                 )
+                # Set row_factory to return Row objects instead of tuples
+                self._connection_pool.row_factory = aiosqlite.Row
                 logger.info("Database connection established")
 
                 await self._perform_operation_with_timeout(
