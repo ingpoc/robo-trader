@@ -95,9 +95,8 @@ class TestMorningSessionCoordinator:
         """Test successful initialization of coordinator."""
         container, services = mock_container
         from src.config import Config
-    config = Config()
-    event_bus = EventBus(config)
-        config = {"session": {}}
+        config = Config()
+        event_bus = EventBus(config)
 
         coordinator = MorningSessionCoordinator(config, event_bus, container)
 
@@ -304,9 +303,8 @@ class TestMorningSessionCoordinator:
         """Test error when coordinator is not initialized."""
         container, services = mock_container
         from src.config import Config
-    config = Config()
-    event_bus = EventBus(config)
-        config = {"session": {}}
+        config = Config()
+        event_bus = EventBus(config)
 
         coordinator = MorningSessionCoordinator(config, event_bus, container)
         # Don't initialize

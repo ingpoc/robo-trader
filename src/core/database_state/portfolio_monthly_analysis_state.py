@@ -91,7 +91,7 @@ class PortfolioMonthlyAnalysisState(BaseState):
 
             cursor = await self.db.connection.execute("""
                 INSERT OR REPLACE INTO portfolio_analysis (
-                    analysis_date, symbol, company_name, sector, industry,
+                    id, analysis_date, symbol, company_name, sector, industry,
                     pe_ratio, pb_ratio, roe, debt_to_equity, current_ratio,
                     profit_margins, revenue_growth, earnings_growth, dividend_yield, market_cap,
                     recent_earnings, news_sentiment, industry_trends,

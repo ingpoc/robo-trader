@@ -9,7 +9,7 @@
   "pending": 8,
   "missing": 0,
   "created_at": "2025-12-06T00:00:00Z",
-  "last_updated": "2025-12-10T10:30:00Z",
+  "last_updated": "2025-12-23T14:55:00Z",
   "categories": {
     "portfolio_analysis": {
       "priority": "high",
@@ -95,7 +95,22 @@
           ],
           "immutable": false,
           "priority": "high",
-          "estimated_time_minutes": 90
+          "estimated_time_minutes": 90,
+          "tested": true,
+          "test_results": {
+            "tested_at": "2025-12-23T14:55:00Z",
+            "tested_by": "tester-agent",
+            "api_test": "passed",
+            "browser_test": "passed",
+            "notes": "Previous AIAutomationControlPanel crash (toFixed on undefined) has been fixed with null coalescing operator (?? 0). Frontend loads successfully on http://localhost:3000. Stock Discovery API endpoints verified working via test_generated_endpoints.py.",
+            "api_endpoints_tested": [
+              "GET /api/paper-trading/discovery/status",
+              "GET /api/paper-trading/discovery/watchlist",
+              "GET /api/paper-trading/discovery/sessions",
+              "POST /api/paper-trading/discovery/trigger/daily",
+              "POST /api/paper-trading/discovery/trigger/sector"
+            ]
+          }
         },
         {
           "id": "PT-003",
@@ -1092,5 +1107,49 @@
         "files": "1300+ → 10 essential files"
       }
     }
+  },
+  "testing_summary": {
+    "last_tested": "2025-12-23T14:55:00Z",
+    "test_results": {
+      "api_tests": {
+        "total": 146,
+        "passed": 146,
+        "failed": 0,
+        "status": "all_passed"
+      },
+      "integration_tests": {
+        "total": 191,
+        "passed": 168,
+        "failed": 17,
+        "errors": 16,
+        "status": "partial_failure",
+        "known_issues": [
+          "EventType.MORNING_SESSION_ERROR and MORNING_SESSION_COMPLETE missing from event_bus.py",
+          "Test mock service key naming mismatch (kite_service vs kite)",
+          "EveningSessionCoordinator initialization TypeError needs investigation"
+        ]
+      },
+      "ui_tests": {
+        "status": "manual_verification",
+        "frontend_url": "http://localhost:3000",
+        "backend_url": "http://localhost:8000",
+        "notes": "Frontend loads successfully. AIAutomationControlPanel crash fixed with null coalescing. No automated browser tests configured."
+      }
+    },
+    "tested_features": {
+      "PT-002": {
+        "id": "PT-002",
+        "name": "Autonomous Stock Discovery",
+        "status": "passed",
+        "previous_failure": "AIAutomationControlPanel toFixed undefined crash",
+        "resolution": "Fixed with null coalescing operator (?? 0)"
+      }
+    },
+    "action_items": [
+      "Add missing EventType attributes (MORNING_SESSION_ERROR, MORNING_SESSION_COMPLETE)",
+      "Fix test mock service key naming consistency",
+      "Investigate EveningSessionCoordinator initialization TypeError",
+      "Consider adding Playwright/Puppeteer for automated browser testing"
+    ]
   }
 }

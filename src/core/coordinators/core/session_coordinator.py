@@ -77,12 +77,14 @@ class SessionCoordinator(BaseCoordinator):
 
     async def get_claude_status(self) -> Optional[ClaudeAuthStatus]:
         """Get current Claude Agent SDK status."""
+        from datetime import datetime, timezone
+
         # Always refresh authentication status first
         if not self.auth_coordinator.get_auth_status():
             await self.validate_authentication()
 
         status = self.auth_coordinator.get_auth_status()
-        
+
         # Check if we have a valid authentication status
         if status and status.is_valid:
             # Check if SDK client is actually connected to CLI process
@@ -103,7 +105,6 @@ class SessionCoordinator(BaseCoordinator):
 
             # Broadcast status update to UI via broadcast coordinator
             if self._broadcast_coordinator:
-                from datetime import datetime, timezone
                 status_data = {
                     "status": "connected/idle" if is_connected else "authenticated",
                     "auth_method": status.account_info.get("auth_method"),

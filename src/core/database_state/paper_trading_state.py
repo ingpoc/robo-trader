@@ -1572,7 +1572,7 @@ class PaperTradingState(BaseState):
 
                 reviews = []
                 for row in rows:
-                    review = dict(row)
+                    review = {key: row[key] for key in row.keys()}
                     # Parse JSON fields
                     review["review_data"] = json.loads(review["review_data"]) if review["review_data"] else {}
                     review["trades_reviewed"] = json.loads(review["trades_reviewed"]) if review["trades_reviewed"] else []
@@ -1771,7 +1771,7 @@ class PaperTradingState(BaseState):
 
                 sessions = []
                 for row in rows:
-                    session = dict(row)
+                    session = {key: row[key] for key in row.keys()}
                     # Parse JSON fields
                     session["metrics"] = json.loads(session["metrics"]) if session["metrics"] else {}
                     session["pre_market_data"] = json.loads(session["pre_market_data"]) if session["pre_market_data"] else []

@@ -124,18 +124,18 @@ export const AIAutomationControlPanel: React.FC = () => {
         <StatCard
           icon={<Activity className="w-4 h-4" />}
           label="Total Trades"
-          value={config.total_automated_trades}
+          value={config.total_automated_trades ?? 0}
         />
         <StatCard
           icon={<CheckCircle className="w-4 h-4 text-green-500" />}
           label="Success Rate"
-          value={`${config.success_rate.toFixed(1)}%`}
+          value={`${(config.success_rate ?? 0).toFixed(1)}%`}
         />
         <StatCard
           icon={<TrendingUp className="w-4 h-4" />}
           label="Total P&L"
-          value={`₹${config.total_automated_pnl.toLocaleString()}`}
-          valueColor={config.total_automated_pnl >= 0 ? 'text-green-500' : 'text-red-500'}
+          value={`₹${(config.total_automated_pnl ?? 0).toLocaleString()}`}
+          valueColor={(config.total_automated_pnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}
         />
         <StatCard
           icon={<Clock className="w-4 h-4" />}
@@ -219,11 +219,11 @@ interface RiskSettingsPanelProps {
 
 const RiskSettingsPanel: React.FC<RiskSettingsPanelProps> = ({ config, onUpdate, onClose }) => {
   const [limits, setLimits] = useState({
-    max_daily_loss_percent: config.risk_limits.max_daily_loss_percent,
-    max_position_size_percent: config.risk_limits.max_position_size_percent,
-    max_portfolio_risk_percent: config.risk_limits.max_portfolio_risk_percent,
-    max_concurrent_positions: config.risk_limits.max_concurrent_positions,
-    min_confidence_score: config.risk_limits.min_confidence_score
+    max_daily_loss_percent: config.risk_limits?.max_daily_loss_percent ?? 5,
+    max_position_size_percent: config.risk_limits?.max_position_size_percent ?? 10,
+    max_portfolio_risk_percent: config.risk_limits?.max_portfolio_risk_percent ?? 20,
+    max_concurrent_positions: config.risk_limits?.max_concurrent_positions ?? 3,
+    min_confidence_score: config.risk_limits?.min_confidence_score ?? 0.7
   })
   const [isSaving, setIsSaving] = useState(false)
 
@@ -296,7 +296,7 @@ const RiskInput: React.FC<RiskInputProps> = ({ label, value, onChange, step = 0.
     <Label className="text-xs text-muted-foreground">{label}</Label>
     <Input
       type="number"
-      value={value}
+      value={value ?? 0}
       onChange={e => onChange(parseFloat(e.target.value) || 0)}
       step={step}
       min={0}

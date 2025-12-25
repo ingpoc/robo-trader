@@ -210,7 +210,9 @@ class EveningSessionCoordinator(BaseCoordinator):
 
             # Publish completion event
             await self.event_bus.publish(Event(
-                event_type=EventType.EVENING_REVIEW_COMPLETE,
+                id=str(uuid.uuid4()),
+                type=EventType.EVENING_REVIEW_COMPLETE,
+                timestamp=datetime.utcnow().isoformat(),
                 data={
                     "session_id": session_id,
                     "review_date": review_date,

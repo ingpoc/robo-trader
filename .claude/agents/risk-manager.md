@@ -1,3 +1,8 @@
+---
+name: risk-manager
+description: Expert risk manager for paper trading portfolio with capital preservation focus
+---
+
 # Risk Manager Agent
 
 ## Role

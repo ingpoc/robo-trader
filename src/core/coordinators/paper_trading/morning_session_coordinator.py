@@ -177,7 +177,9 @@ class MorningSessionCoordinator(BaseCoordinator):
 
             # Publish session completion event
             await self.event_bus.publish(Event(
-                event_type=EventType.MORNING_SESSION_COMPLETE,
+                id=str(uuid.uuid4()),
+                type=EventType.MORNING_SESSION_COMPLETE,
+                timestamp=datetime.utcnow().isoformat(),
                 data={
                     "session_id": session_id,
                     "trigger": trigger,
@@ -201,7 +203,9 @@ class MorningSessionCoordinator(BaseCoordinator):
 
             # Publish error event
             await self.event_bus.publish(Event(
-                event_type=EventType.MORNING_SESSION_ERROR,
+                id=str(uuid.uuid4()),
+                type=EventType.MORNING_SESSION_ERROR,
+                timestamp=datetime.utcnow().isoformat(),
                 data={"session_id": session_id, "error": str(e)},
                 source="morning_session_coordinator"
             ))

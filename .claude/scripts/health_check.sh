@@ -1,81 +1,124 @@
 #!/bin/bash
+# System Health Manager for Robo Trader
+# Kills old servers, starts fresh, checks health, analyzes logs
 
-# Quick health check for Robo Trader services
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKEND_LOG="$PROJECT_ROOT/logs/backend.log"
-FRONTEND_LOG="$PROJECT_ROOT/logs/frontend.log"
+set -e
 
-echo "🔍 Robo Trader Health Check"
-echo "========================="
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-# Check if processes are running
+# Project root
+PROJECT_ROOT="/Users/gurusharan/Documents/remote-claude/robo-trader"
+cd "$PROJECT_ROOT"
+
+echo "=== Robo Trader System Health Manager ==="
+
+# Step 1: Kill existing processes
 echo ""
-echo "1. Process Status:"
-BACKEND_PID=$(cat "$PROJECT_ROOT/.backend_pid" 2>/dev/null || echo "")
-FRONTEND_PID=$(cat "$PROJECT_ROOT/.frontend_pid" 2>/dev/null || echo "")
+echo "Step 1: Killing existing processes..."
+lsof -ti:8000 | xargs kill -9 2>/dev/null && echo "  Port 8000 cleared" || echo "  Port 8000 already free"
+lsof -ti:3000 | xargs kill -9 2>/dev/null && echo "  Port 3000 cleared" || echo "  Port 3000 already free"
 
-if ps -p $BACKEND_PID > /dev/null 2>&1; then
-    echo "✅ Backend process running (PID: $BACKEND_PID)"
-else
-    echo "❌ Backend process not running"
-fi
-
-if ps -p $FRONTEND_PID > /dev/null 2>&1; then
-    echo "✅ Frontend process running (PID: $FRONTEND_PID)"
-else
-    echo "❌ Frontend process not running"
-fi
-
-# Check API health
+# Step 2: Start servers
 echo ""
-echo "2. API Health:"
-if curl -s -m 3 http://localhost:8000/api/health | grep -q "ok"; then
-    echo "✅ Backend API responding"
-    echo "   $(curl -s http://localhost:8000/api/health | jq -r '.status // "unknown status"')"
-else
-    echo "❌ Backend API not responding"
-fi
+echo "Step 2: Starting servers..."
+mkdir -p logs
 
-if curl -s -m 3 http://localhost:3000 > /dev/null 2>&1; then
-    echo "✅ Frontend responding"
-else
-    echo "❌ Frontend not responding"
-fi
+# Start backend
+PYTHONUNBUFFERED=1 \
+ROBO_TRADER_PROJECT_ROOT="$PROJECT_ROOT" \
+ROBO_TRADER_API="http://localhost:8000" \
+ROBO_TRADER_DB="$PROJECT_ROOT/state/robo_trader.db" \
+LOG_DIR="$PROJECT_ROOT/logs" \
+./venv/bin/python -m src.main --command web > logs/backend.log 2>&1 &
+BACKEND_PID=$!
+echo "  Backend starting (PID: $BACKEND_PID)"
 
-# Check database
+# Start frontend
+cd ui
+npm run dev > ../logs/frontend.log 2>&1 &
+FRONTEND_PID=$!
+cd ..
+echo "  Frontend starting (PID: $FRONTEND_PID)"
+
+# Step 3: Wait for startup with readiness check
 echo ""
-echo "3. Database:"
-DB_FILE="$PROJECT_ROOT/state/robo_trader.db"
-if [ -f "$DB_FILE" ]; then
-    echo "✅ Database file exists ($(du -h "$DB_FILE" | cut -f1))"
-    TABLES=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || echo "0")
-    echo "   Tables: $TABLES"
-else
-    echo "❌ Database file not found"
+echo "Step 3: Waiting for servers to be ready..."
+
+MAX_WAIT=60
+ELAPSED=0
+BACKEND_READY=false
+FRONTEND_READY=false
+
+while [ $ELAPSED -lt $MAX_WAIT ]; do
+  # Check backend
+  BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 2 http://localhost:8000/api/health 2>/dev/null || echo "000")
+  if [ "$BACKEND_STATUS" = "200" ]; then
+    BACKEND_READY=true
+  fi
+
+  # Check frontend
+  FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 2 http://localhost:3000 2>/dev/null || echo "000")
+  if [ "$FRONTEND_STATUS" = "200" ]; then
+    FRONTEND_READY=true
+  fi
+
+  # Show progress
+  if [ "$BACKEND_READY" = true ] && [ "$FRONTEND_READY" = true ]; then
+    echo "  ✓ Both servers ready (${ELAPSED}s)"
+    break
+  elif [ "$BACKEND_READY" = true ]; then
+    echo -n "  Backend ready, frontend starting... ($((MAX_WAIT - ELAPSED))s remaining) "
+  elif [ "$FRONTEND_READY" = true ]; then
+    echo -n "  Frontend ready, backend starting... ($((MAX_WAIT - ELAPSED))s remaining) "
+  else
+    echo -n "."
+  fi
+
+  sleep 2
+  ELAPSED=$((ELAPSED + 2))
+done
+
+echo ""
+
+# Timeout check
+if [ $ELAPSED -ge $MAX_WAIT ]; then
+  echo -e "${YELLOW}  Warning: Reached ${MAX_WAIT}s timeout${NC}"
 fi
 
-# Check for recent errors
+# Step 4: Health check (using readiness results)
 echo ""
-echo "4. Recent Errors (last 5 minutes):"
-if [ -f "$BACKEND_LOG" ]; then
-    ERRORS=$(find "$BACKEND_LOG" -mmin -5 -exec grep -l "ERROR\|Exception\|Traceback" {} \; 2>/dev/null | wc -l)
-    if [ $ERRORS -gt 0 ]; then
-        echo "⚠️  Found $ERRORS error(s) in backend log"
-        echo "   Latest error:"
-        tail -50 "$BACKEND_LOG" | grep -E "ERROR|Exception|Traceback" | tail -3 | sed 's/^/     /'
-    else
-        echo "✅ No recent errors in backend log"
-    fi
-else
-    echo "ℹ️  Backend log not found"
-fi
+echo "Step 4: Health check..."
 
-# Summary
+# Final status check
+BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 3 http://localhost:8000/api/health 2>/dev/null || echo "000")
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 3 http://localhost:3000 2>/dev/null || echo "000")
+
+echo "  Backend: $BACKEND_STATUS"
+echo "  Frontend: $FRONTEND_STATUS"
+
+# Step 5: Server status
 echo ""
-echo "5. Quick Actions:"
-if ! ps -p $BACKEND_PID > /dev/null 2>&1 || ! curl -s -m 3 http://localhost:8000/api/health > /dev/null 2>&1; then
-    echo "   → Run: ./scripts/start_servers.sh"
+echo "Step 5: Server Status..."
+echo ""
+echo "✓ Backend server started (PID: $BACKEND_PID)"
+echo "✓ Frontend server started (PID: $FRONTEND_PID)"
+echo ""
+echo "Logs: logs/backend.log, logs/frontend.log"
+
+# Final status
+echo ""
+echo "=== Status Summary ==="
+if [ "$BACKEND_STATUS" = "200" ] && [ "$FRONTEND_STATUS" = "200" ]; then
+  echo -e "${GREEN}HEALTH: OK${NC}"
+  exit 0
+elif [ "$BACKEND_STATUS" = "200" ]; then
+  echo -e "${YELLOW}HEALTH: PARTIAL (backend ok, frontend down)${NC}"
+  exit 1
 else
-    echo "   → View logs: tail -f logs/backend.log"
-    echo "   → Stop servers: ./scripts/kill_servers.sh"
+  echo -e "${RED}HEALTH: FAILED${NC}"
+  exit 2
 fi

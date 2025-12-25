@@ -1,0 +1,79 @@
+{
+  "project": {
+    "name": "robo-trader",
+    "type": "full-stack-web-app",
+    "language": {
+      "backend": "python",
+      "frontend": "typescript"
+    }
+  },
+
+  "servers": [
+    {
+      "name": "backend",
+      "port": 8000,
+      "start_cmd": "python -m src.main --command web",
+      "health_endpoint": "/api/health",
+      "log_path": "logs/backend.log",
+      "cwd": "."
+    },
+    {
+      "name": "frontend",
+      "port": 3000,
+      "start_cmd": "npm run dev",
+      "health_endpoint": "/",
+      "log_path": "logs/frontend.log",
+      "cwd": "./ui"
+    }
+  ],
+
+  "testing": {
+    "api": {
+      "test_path": "tests/api/",
+      "test_command": "pytest tests/api/",
+      "expected_endpoint_count": null
+    },
+    "ui": {
+      "test_path": "tests/ui/",
+      "test_command": "npm test",
+      "browser_url": "http://localhost:3000"
+    }
+  },
+
+  "architecture": {
+    "pattern": "coordinator-based-monolith",
+    "rules": [
+      "Use async/await throughout",
+      "Route AI tasks through AI_ANALYSIS queue",
+      "Max 150 lines per coordinator",
+      "Use locked state methods for database access (config_state.store_*())",
+      "Event-driven communication via EventBus",
+      "No direct database writes - use configuration_state.py",
+      "3 parallel queues: PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS"
+    ],
+    "file_structure": {
+      "backend": "src/",
+      "frontend": "ui/src/",
+      "tests": "tests/",
+      "config": ".claude/"
+    }
+  },
+
+  "auto_fix": {
+    "enabled": true,
+    "confidence_threshold": 0.8,
+    "max_cycles": 2,
+    "patterns": [
+      "import_errors",
+      "port_conflicts",
+      "missing_await",
+      "null_safety"
+    ]
+  },
+
+  "progress": {
+    "feature_list": ".claude/progress/feature-list.json",
+    "session_state": ".claude/progress/session-state.json",
+    "progress_summary": ".claude/progress/claude-progress.txt"
+  }
+}

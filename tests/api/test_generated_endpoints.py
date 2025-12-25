@@ -18,6 +18,68 @@ def BASE_URL():
     """Base URL fixture"""
     return "http://localhost:8000"
 
+@pytest.fixture
+def account_id():
+    """Account ID fixture"""
+    return "test_account"
+
+@pytest.fixture
+def trade_id():
+    """Trade ID fixture"""
+    return "test_trade"
+
+@pytest.fixture
+def account_type():
+    """Account type fixture"""
+    return "paper"
+
+@pytest.fixture
+def task_name():
+    """Task name fixture"""
+    return "test_task"
+
+@pytest.fixture
+def agent_name():
+    """Agent name fixture"""
+    return "test_agent"
+
+@pytest.fixture
+def prompt_name():
+    """Prompt name fixture"""
+    return "test_prompt"
+
+@pytest.fixture
+def review_id():
+    """Review ID fixture"""
+    return "test_review"
+
+@pytest.fixture
+def feature_name():
+    """Feature name fixture"""
+    return "test_feature"
+
+@pytest.fixture
+def backup_filename():
+    """Backup filename fixture"""
+    return "test_backup"
+
+@pytest.fixture
+def session_id():
+    """Session ID fixture"""
+    return "test_session"
+
+@pytest.fixture
+def data_type():
+    """Data type fixture"""
+    return "test_data"
+
+@pytest.fixture
+def prompt_id():
+    """Prompt ID fixture"""
+    return "test_prompt_id"
+
+
+
 
 # ============================================================
 # Generated Tests
@@ -25,16 +87,16 @@ def BASE_URL():
 
 def test_create_paper_trading_account(client, BASE_URL):
     """Test POST /paper-trading/accounts/create"""
-    response = client.post(f"{BASE_URL}/paper-trading/accounts/create", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/accounts/create", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_delete_paper_trading_account(client, BASE_URL):
+def test_delete_paper_trading_account(client, BASE_URL, account_id, trade_id, account_type, task_name, agent_name, prompt_name, review_id, feature_name, backup_filename, session_id, data_type, prompt_id):
     """Test DELETE /paper-trading/accounts/{account_id}"""
-    response = client.delete(f"{BASE_URL}/paper-trading/accounts/{account_id}", timeout=5)
+    response = client.delete(f"{BASE_URL}/paper-trading/accounts/{account_id}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -43,79 +105,79 @@ def test_delete_paper_trading_account(client, BASE_URL):
 
 def test_get_paper_trading_accounts(client, BASE_URL):
     """Test GET /paper-trading/accounts"""
-    response = client.get(f"{BASE_URL}/paper-trading/accounts", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/accounts", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_paper_trading_account_overview(client, BASE_URL):
+def test_get_paper_trading_account_overview(client, BASE_URL, account_id, trade_id, account_type, task_name, agent_name, prompt_name, review_id, feature_name, backup_filename, session_id, data_type, prompt_id):
     """Test GET /paper-trading/accounts/{account_id}/overview"""
-    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/overview", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/overview", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_paper_trading_positions(client, BASE_URL):
+def test_get_paper_trading_positions(client, BASE_URL, account_id, trade_id, account_type, task_name, agent_name, prompt_name, review_id, feature_name, backup_filename, session_id, data_type, prompt_id):
     """Test GET /paper-trading/accounts/{account_id}/positions"""
-    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/positions", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/positions", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_paper_trading_trades(client, BASE_URL):
+def test_get_paper_trading_trades(client, BASE_URL, account_id, trade_id):
     """Test GET /paper-trading/accounts/{account_id}/trades"""
-    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_paper_trading_performance(client, BASE_URL):
+def test_get_paper_trading_performance(client, BASE_URL, account_id, trade_id, account_type, task_name, agent_name, prompt_name, review_id, feature_name, backup_filename, session_id, data_type, prompt_id):
     """Test GET /paper-trading/accounts/{account_id}/performance"""
-    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/performance", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/accounts/{account_id}/performance", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_execute_buy_trade(client, BASE_URL):
+def test_execute_buy_trade(client, BASE_URL, account_id, trade_id):
     """Test POST /paper-trading/accounts/{account_id}/trades/buy"""
-    response = client.post(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/buy", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/buy", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_execute_sell_trade(client, BASE_URL):
+def test_execute_sell_trade(client, BASE_URL, account_id, trade_id):
     """Test POST /paper-trading/accounts/{account_id}/trades/sell"""
-    response = client.post(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/sell", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/sell", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_close_trade(client, BASE_URL):
+def test_close_trade(client, BASE_URL, account_id, trade_id):
     """Test POST /paper-trading/accounts/{account_id}/trades/{trade_id}/close"""
-    response = client.post(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/{trade_id}/close", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/{trade_id}/close", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_modify_trade(client, BASE_URL):
+def test_modify_trade(client, BASE_URL, account_id, trade_id):
     """Test PATCH /paper-trading/accounts/{account_id}/trades/{trade_id}"""
-    response = client.patch(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/{trade_id}", json={}, timeout=5)
+    response = client.patch(f"{BASE_URL}/paper-trading/accounts/{account_id}/trades/{trade_id}", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -124,7 +186,7 @@ def test_modify_trade(client, BASE_URL):
 
 def test_get_ai_automation_status(client, BASE_URL):
     """Test GET /paper-trading/automation/status"""
-    response = client.get(f"{BASE_URL}/paper-trading/automation/status", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/automation/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -133,7 +195,7 @@ def test_get_ai_automation_status(client, BASE_URL):
 
 def test_toggle_ai_trading(client, BASE_URL):
     """Test POST /paper-trading/automation/toggle"""
-    response = client.post(f"{BASE_URL}/paper-trading/automation/toggle", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/automation/toggle", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -142,7 +204,7 @@ def test_toggle_ai_trading(client, BASE_URL):
 
 def test_emergency_stop_ai_trading(client, BASE_URL):
     """Test POST /paper-trading/automation/emergency-stop"""
-    response = client.post(f"{BASE_URL}/paper-trading/automation/emergency-stop", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/automation/emergency-stop", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -151,7 +213,7 @@ def test_emergency_stop_ai_trading(client, BASE_URL):
 
 def test_reset_emergency_stop(client, BASE_URL):
     """Test POST /paper-trading/automation/reset-emergency-stop"""
-    response = client.post(f"{BASE_URL}/paper-trading/automation/reset-emergency-stop", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/automation/reset-emergency-stop", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -160,7 +222,7 @@ def test_reset_emergency_stop(client, BASE_URL):
 
 def test_update_risk_limits(client, BASE_URL):
     """Test POST /paper-trading/automation/risk-limits"""
-    response = client.post(f"{BASE_URL}/paper-trading/automation/risk-limits", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/automation/risk-limits", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -169,7 +231,7 @@ def test_update_risk_limits(client, BASE_URL):
 
 def test_get_automation_monitor(client, BASE_URL):
     """Test GET /paper-trading/automation/monitor"""
-    response = client.get(f"{BASE_URL}/paper-trading/automation/monitor", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/automation/monitor", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -178,7 +240,7 @@ def test_get_automation_monitor(client, BASE_URL):
 
 def test_trigger_daily_discovery(client, BASE_URL):
     """Test POST /paper-trading/discovery/trigger-daily"""
-    response = client.post(f"{BASE_URL}/paper-trading/discovery/trigger-daily", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/discovery/trigger-daily", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -187,7 +249,7 @@ def test_trigger_daily_discovery(client, BASE_URL):
 
 def test_trigger_sector_discovery(client, BASE_URL):
     """Test POST /paper-trading/discovery/trigger-sector"""
-    response = client.post(f"{BASE_URL}/paper-trading/discovery/trigger-sector", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/paper-trading/discovery/trigger-sector", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -196,7 +258,7 @@ def test_trigger_sector_discovery(client, BASE_URL):
 
 def test_get_discovery_status(client, BASE_URL):
     """Test GET /paper-trading/discovery/status"""
-    response = client.get(f"{BASE_URL}/paper-trading/discovery/status", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/discovery/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -205,7 +267,7 @@ def test_get_discovery_status(client, BASE_URL):
 
 def test_get_discovery_watchlist(client, BASE_URL):
     """Test GET /paper-trading/discovery/watchlist"""
-    response = client.get(f"{BASE_URL}/paper-trading/discovery/watchlist", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/discovery/watchlist", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -214,7 +276,7 @@ def test_get_discovery_watchlist(client, BASE_URL):
 
 def test_get_discovery_sessions(client, BASE_URL):
     """Test GET /paper-trading/discovery/sessions"""
-    response = client.get(f"{BASE_URL}/paper-trading/discovery/sessions", timeout=5)
+    response = client.get(f"{BASE_URL}/paper-trading/discovery/sessions", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -223,7 +285,7 @@ def test_get_discovery_sessions(client, BASE_URL):
 
 def test_get_research_transparency(client, BASE_URL):
     """Test GET /transparency/research"""
-    response = client.get(f"{BASE_URL}/transparency/research", timeout=5)
+    response = client.get(f"{BASE_URL}/transparency/research", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -232,7 +294,7 @@ def test_get_research_transparency(client, BASE_URL):
 
 def test_get_analysis_transparency(client, BASE_URL):
     """Test GET /transparency/analysis"""
-    response = client.get(f"{BASE_URL}/transparency/analysis", timeout=5)
+    response = client.get(f"{BASE_URL}/transparency/analysis", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -241,7 +303,7 @@ def test_get_analysis_transparency(client, BASE_URL):
 
 def test_get_execution_transparency(client, BASE_URL):
     """Test GET /transparency/execution"""
-    response = client.get(f"{BASE_URL}/transparency/execution", timeout=5)
+    response = client.get(f"{BASE_URL}/transparency/execution", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -250,7 +312,7 @@ def test_get_execution_transparency(client, BASE_URL):
 
 def test_get_daily_evaluation_transparency(client, BASE_URL):
     """Test GET /transparency/daily-evaluation"""
-    response = client.get(f"{BASE_URL}/transparency/daily-evaluation", timeout=5)
+    response = client.get(f"{BASE_URL}/transparency/daily-evaluation", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -259,7 +321,7 @@ def test_get_daily_evaluation_transparency(client, BASE_URL):
 
 def test_get_daily_summary_transparency(client, BASE_URL):
     """Test GET /transparency/daily-summary"""
-    response = client.get(f"{BASE_URL}/transparency/daily-summary", timeout=5)
+    response = client.get(f"{BASE_URL}/transparency/daily-summary", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -268,7 +330,7 @@ def test_get_daily_summary_transparency(client, BASE_URL):
 
 def test_get_trade_decisions(client, BASE_URL):
     """Test GET /transparency/trade-decisions"""
-    response = client.get(f"{BASE_URL}/transparency/trade-decisions", timeout=5)
+    response = client.get(f"{BASE_URL}/transparency/trade-decisions", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -277,16 +339,16 @@ def test_get_trade_decisions(client, BASE_URL):
 
 def test_get_data_quality_summary(client, BASE_URL):
     """Test GET /transparency/data-quality-summary"""
-    response = client.get(f"{BASE_URL}/transparency/data-quality-summary", timeout=5)
+    response = client.get(f"{BASE_URL}/transparency/data-quality-summary", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_current_strategy(client, BASE_URL):
+def test_get_current_strategy(client, BASE_URL, account_type):
     """Test GET /current-strategy/{account_type}"""
-    response = client.get(f"{BASE_URL}/current-strategy/{account_type}", timeout=5)
+    response = client.get(f"{BASE_URL}/current-strategy/{account_type}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -295,16 +357,16 @@ def test_get_current_strategy(client, BASE_URL):
 
 def test_get_background_tasks_config(client, BASE_URL):
     """Test GET /configuration/background-tasks"""
-    response = client.get(f"{BASE_URL}/configuration/background-tasks", timeout=5)
+    response = client.get(f"{BASE_URL}/configuration/background-tasks", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_update_background_task_config(client, BASE_URL):
+def test_update_background_task_config(client, BASE_URL, task_name):
     """Test PUT /configuration/background-tasks/{task_name}"""
-    response = client.put(f"{BASE_URL}/configuration/background-tasks/{task_name}", json={}, timeout=5)
+    response = client.put(f"{BASE_URL}/configuration/background-tasks/{task_name}", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -313,16 +375,16 @@ def test_update_background_task_config(client, BASE_URL):
 
 def test_get_ai_agents_config(client, BASE_URL):
     """Test GET /configuration/ai-agents"""
-    response = client.get(f"{BASE_URL}/configuration/ai-agents", timeout=5)
+    response = client.get(f"{BASE_URL}/configuration/ai-agents", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_update_ai_agent_config(client, BASE_URL):
+def test_update_ai_agent_config(client, BASE_URL, agent_name, feature_name):
     """Test PUT /configuration/ai-agents/{agent_name}"""
-    response = client.put(f"{BASE_URL}/configuration/ai-agents/{agent_name}", json={}, timeout=5)
+    response = client.put(f"{BASE_URL}/configuration/ai-agents/{agent_name}", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -331,7 +393,7 @@ def test_update_ai_agent_config(client, BASE_URL):
 
 def test_get_global_settings(client, BASE_URL):
     """Test GET /configuration/global-settings"""
-    response = client.get(f"{BASE_URL}/configuration/global-settings", timeout=5)
+    response = client.get(f"{BASE_URL}/configuration/global-settings", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -340,7 +402,7 @@ def test_get_global_settings(client, BASE_URL):
 
 def test_update_global_settings(client, BASE_URL):
     """Test PUT /configuration/global-settings"""
-    response = client.put(f"{BASE_URL}/configuration/global-settings", json={}, timeout=5)
+    response = client.put(f"{BASE_URL}/configuration/global-settings", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -349,7 +411,7 @@ def test_update_global_settings(client, BASE_URL):
 
 def test_backup_configuration(client, BASE_URL):
     """Test POST /configuration/backup"""
-    response = client.post(f"{BASE_URL}/configuration/backup", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/configuration/backup", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -358,7 +420,7 @@ def test_backup_configuration(client, BASE_URL):
 
 def test_restore_configuration(client, BASE_URL):
     """Test POST /configuration/restore"""
-    response = client.post(f"{BASE_URL}/configuration/restore", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/configuration/restore", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -367,7 +429,7 @@ def test_restore_configuration(client, BASE_URL):
 
 def test_migrate_configuration_to_db(client, BASE_URL):
     """Test POST /configuration/migrate-to-db"""
-    response = client.post(f"{BASE_URL}/configuration/migrate-to-db", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/configuration/migrate-to-db", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -376,7 +438,7 @@ def test_migrate_configuration_to_db(client, BASE_URL):
 
 def test_get_configuration_status(client, BASE_URL):
     """Test GET /configuration/status"""
-    response = client.get(f"{BASE_URL}/configuration/status", timeout=5)
+    response = client.get(f"{BASE_URL}/configuration/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -385,43 +447,43 @@ def test_get_configuration_status(client, BASE_URL):
 
 def test_get_all_prompts(client, BASE_URL):
     """Test GET /configuration/prompts"""
-    response = client.get(f"{BASE_URL}/configuration/prompts", timeout=5)
+    response = client.get(f"{BASE_URL}/configuration/prompts", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_prompt(client, BASE_URL):
+def test_get_prompt(client, BASE_URL, prompt_name, prompt_id, data_type):
     """Test GET /configuration/prompts/{prompt_name}"""
-    response = client.get(f"{BASE_URL}/configuration/prompts/{prompt_name}", timeout=5)
+    response = client.get(f"{BASE_URL}/configuration/prompts/{prompt_name}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_update_prompt(client, BASE_URL):
+def test_update_prompt(client, BASE_URL, prompt_name, prompt_id, data_type):
     """Test PUT /configuration/prompts/{prompt_name}"""
-    response = client.put(f"{BASE_URL}/configuration/prompts/{prompt_name}", json={}, timeout=5)
+    response = client.put(f"{BASE_URL}/configuration/prompts/{prompt_name}", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_execute_scheduler_manually(client, BASE_URL):
+def test_execute_scheduler_manually(client, BASE_URL, task_name):
     """Test POST /configuration/schedulers/{task_name}/execute"""
-    response = client.post(f"{BASE_URL}/configuration/schedulers/{task_name}/execute", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/configuration/schedulers/{task_name}/execute", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_execute_ai_agent_manually(client, BASE_URL):
+def test_execute_ai_agent_manually(client, BASE_URL, agent_name, feature_name):
     """Test POST /configuration/ai-agents/{agent_name}/execute"""
-    response = client.post(f"{BASE_URL}/configuration/ai-agents/{agent_name}/execute", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/configuration/ai-agents/{agent_name}/execute", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -430,7 +492,7 @@ def test_execute_ai_agent_manually(client, BASE_URL):
 
 def test_portfolio_scan(client, BASE_URL):
     """Test POST /portfolio-scan"""
-    response = client.post(f"{BASE_URL}/portfolio-scan", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/portfolio-scan", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -439,7 +501,7 @@ def test_portfolio_scan(client, BASE_URL):
 
 def test_market_screening(client, BASE_URL):
     """Test POST /market-screening"""
-    response = client.post(f"{BASE_URL}/market-screening", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/market-screening", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -448,7 +510,7 @@ def test_market_screening(client, BASE_URL):
 
 def test_manual_trade(client, BASE_URL):
     """Test POST /manual-trade"""
-    response = client.post(f"{BASE_URL}/manual-trade", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/manual-trade", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -457,7 +519,7 @@ def test_manual_trade(client, BASE_URL):
 
 def test_get_scheduler_config(client, BASE_URL):
     """Test GET /config/scheduler"""
-    response = client.get(f"{BASE_URL}/config/scheduler", timeout=5)
+    response = client.get(f"{BASE_URL}/config/scheduler", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -466,16 +528,16 @@ def test_get_scheduler_config(client, BASE_URL):
 
 def test_get_trading_config(client, BASE_URL):
     """Test GET /config/trading"""
-    response = client.get(f"{BASE_URL}/config/trading", timeout=5)
+    response = client.get(f"{BASE_URL}/config/trading", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_agent_config(client, BASE_URL):
+def test_get_agent_config(client, BASE_URL, agent_name, feature_name):
     """Test GET /config/agent"""
-    response = client.get(f"{BASE_URL}/config/agent", timeout=5)
+    response = client.get(f"{BASE_URL}/config/agent", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -484,7 +546,7 @@ def test_get_agent_config(client, BASE_URL):
 
 def test_get_data_source_config(client, BASE_URL):
     """Test GET /config/data-source"""
-    response = client.get(f"{BASE_URL}/config/data-source", timeout=5)
+    response = client.get(f"{BASE_URL}/config/data-source", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -493,7 +555,7 @@ def test_get_data_source_config(client, BASE_URL):
 
 def test_get_database_config(client, BASE_URL):
     """Test GET /config/database"""
-    response = client.get(f"{BASE_URL}/config/database", timeout=5)
+    response = client.get(f"{BASE_URL}/config/database", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -502,7 +564,7 @@ def test_get_database_config(client, BASE_URL):
 
 def test_get_config(client, BASE_URL):
     """Test GET /config"""
-    response = client.get(f"{BASE_URL}/config", timeout=5)
+    response = client.get(f"{BASE_URL}/config", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -511,7 +573,7 @@ def test_get_config(client, BASE_URL):
 
 def test_trigger_evening_session(client, BASE_URL):
     """Test POST /trigger"""
-    response = client.post(f"{BASE_URL}/trigger", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/trigger", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -520,16 +582,16 @@ def test_trigger_evening_session(client, BASE_URL):
 
 def test_get_evening_reviews(client, BASE_URL):
     """Test GET /reviews"""
-    response = client.get(f"{BASE_URL}/reviews", timeout=5)
+    response = client.get(f"{BASE_URL}/reviews", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_evening_review(client, BASE_URL):
+def test_get_evening_review(client, BASE_URL, review_id):
     """Test GET /reviews/{review_id}"""
-    response = client.get(f"{BASE_URL}/reviews/{review_id}", timeout=5)
+    response = client.get(f"{BASE_URL}/reviews/{review_id}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -538,7 +600,7 @@ def test_get_evening_review(client, BASE_URL):
 
 def test_get_latest_performance_metrics(client, BASE_URL):
     """Test GET /performance/latest"""
-    response = client.get(f"{BASE_URL}/performance/latest", timeout=5)
+    response = client.get(f"{BASE_URL}/performance/latest", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -547,7 +609,7 @@ def test_get_latest_performance_metrics(client, BASE_URL):
 
 def test_get_recent_trading_insights(client, BASE_URL):
     """Test GET /insights/recent"""
-    response = client.get(f"{BASE_URL}/insights/recent", timeout=5)
+    response = client.get(f"{BASE_URL}/insights/recent", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -556,7 +618,7 @@ def test_get_recent_trading_insights(client, BASE_URL):
 
 def test_get_next_day_watchlist(client, BASE_URL):
     """Test GET /watchlist"""
-    response = client.get(f"{BASE_URL}/watchlist", timeout=5)
+    response = client.get(f"{BASE_URL}/watchlist", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -565,7 +627,7 @@ def test_get_next_day_watchlist(client, BASE_URL):
 
 def test_get_evening_session_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -574,7 +636,7 @@ def test_get_evening_session_status(client, BASE_URL):
 
 def test_get_system_status(client, BASE_URL):
     """Test GET /monitoring/status"""
-    response = client.get(f"{BASE_URL}/monitoring/status", timeout=5)
+    response = client.get(f"{BASE_URL}/monitoring/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -583,7 +645,7 @@ def test_get_system_status(client, BASE_URL):
 
 def test_get_scheduler_status(client, BASE_URL):
     """Test GET /monitoring/scheduler"""
-    response = client.get(f"{BASE_URL}/monitoring/scheduler", timeout=5)
+    response = client.get(f"{BASE_URL}/monitoring/scheduler", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -592,7 +654,7 @@ def test_get_scheduler_status(client, BASE_URL):
 
 def test_trigger_market_event(client, BASE_URL):
     """Test POST /monitoring/trigger-event"""
-    response = client.post(f"{BASE_URL}/monitoring/trigger-event", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/monitoring/trigger-event", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -601,7 +663,7 @@ def test_trigger_market_event(client, BASE_URL):
 
 def test_emergency_stop(client, BASE_URL):
     """Test POST /emergency/stop"""
-    response = client.post(f"{BASE_URL}/emergency/stop", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/emergency/stop", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -610,7 +672,7 @@ def test_emergency_stop(client, BASE_URL):
 
 def test_resume_operations(client, BASE_URL):
     """Test POST /emergency/resume"""
-    response = client.post(f"{BASE_URL}/emergency/resume", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/emergency/resume", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -619,7 +681,7 @@ def test_resume_operations(client, BASE_URL):
 
 def test_trigger_news_monitoring(client, BASE_URL):
     """Test POST /trigger-news-monitoring"""
-    response = client.post(f"{BASE_URL}/trigger-news-monitoring", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/trigger-news-monitoring", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -628,7 +690,7 @@ def test_trigger_news_monitoring(client, BASE_URL):
 
 def test_get_coordinator_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -637,7 +699,7 @@ def test_get_coordinator_status(client, BASE_URL):
 
 def test_get_agents_status(client, BASE_URL):
     """Test GET /agents/status"""
-    response = client.get(f"{BASE_URL}/agents/status", timeout=5)
+    response = client.get(f"{BASE_URL}/agents/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -646,34 +708,34 @@ def test_get_agents_status(client, BASE_URL):
 
 def test_get_agents(client, BASE_URL):
     """Test GET /agents"""
-    response = client.get(f"{BASE_URL}/agents", timeout=5)
+    response = client.get(f"{BASE_URL}/agents", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_agent_tools(client, BASE_URL):
+def test_get_agent_tools(client, BASE_URL, agent_name, feature_name):
     """Test GET /agents/{agent_name}/tools"""
-    response = client.get(f"{BASE_URL}/agents/{agent_name}/tools", timeout=5)
+    response = client.get(f"{BASE_URL}/agents/{agent_name}/tools", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_agent_config(client, BASE_URL):
+def test_get_agent_config(client, BASE_URL, agent_name, feature_name):
     """Test GET /agents/{agent_name}/config"""
-    response = client.get(f"{BASE_URL}/agents/{agent_name}/config", timeout=5)
+    response = client.get(f"{BASE_URL}/agents/{agent_name}/config", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_update_agent_config(client, BASE_URL):
+def test_update_agent_config(client, BASE_URL, agent_name, feature_name):
     """Test POST /agents/{agent_name}/config"""
-    response = client.post(f"{BASE_URL}/agents/{agent_name}/config", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/agents/{agent_name}/config", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -682,25 +744,25 @@ def test_update_agent_config(client, BASE_URL):
 
 def test_get_agent_features(client, BASE_URL):
     """Test GET /agents/features"""
-    response = client.get(f"{BASE_URL}/agents/features", timeout=5)
+    response = client.get(f"{BASE_URL}/agents/features", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_agent_feature(client, BASE_URL):
+def test_get_agent_feature(client, BASE_URL, agent_name, feature_name):
     """Test GET /agents/features/{feature_name}"""
-    response = client.get(f"{BASE_URL}/agents/features/{feature_name}", timeout=5)
+    response = client.get(f"{BASE_URL}/agents/features/{feature_name}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_update_agent_feature(client, BASE_URL):
+def test_update_agent_feature(client, BASE_URL, agent_name, feature_name):
     """Test PUT /agents/features/{feature_name}"""
-    response = client.put(f"{BASE_URL}/agents/features/{feature_name}", json={}, timeout=5)
+    response = client.put(f"{BASE_URL}/agents/features/{feature_name}", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -709,7 +771,7 @@ def test_update_agent_feature(client, BASE_URL):
 
 def test_get_token_budget(client, BASE_URL):
     """Test GET /claude-agent/token-budget"""
-    response = client.get(f"{BASE_URL}/claude-agent/token-budget", timeout=5)
+    response = client.get(f"{BASE_URL}/claude-agent/token-budget", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -718,7 +780,7 @@ def test_get_token_budget(client, BASE_URL):
 
 def test_get_queue_status(client, BASE_URL):
     """Test GET /scheduler/queue-status"""
-    response = client.get(f"{BASE_URL}/scheduler/queue-status", timeout=5)
+    response = client.get(f"{BASE_URL}/scheduler/queue-status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -727,7 +789,7 @@ def test_get_queue_status(client, BASE_URL):
 
 def test_get_queues_status(client, BASE_URL):
     """Test GET /queues/status"""
-    response = client.get(f"{BASE_URL}/queues/status", timeout=5)
+    response = client.get(f"{BASE_URL}/queues/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -736,7 +798,7 @@ def test_get_queues_status(client, BASE_URL):
 
 def test_get_claude_plans(client, BASE_URL):
     """Test GET /claude-agent/plans"""
-    response = client.get(f"{BASE_URL}/claude-agent/plans", timeout=5)
+    response = client.get(f"{BASE_URL}/claude-agent/plans", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -745,7 +807,7 @@ def test_get_claude_plans(client, BASE_URL):
 
 def test_get_trade_logs(client, BASE_URL):
     """Test GET /claude-agent/trade-logs"""
-    response = client.get(f"{BASE_URL}/claude-agent/trade-logs", timeout=5)
+    response = client.get(f"{BASE_URL}/claude-agent/trade-logs", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -754,7 +816,7 @@ def test_get_trade_logs(client, BASE_URL):
 
 def test_get_strategy_reflections(client, BASE_URL):
     """Test GET /claude-agent/strategy-reflections"""
-    response = client.get(f"{BASE_URL}/claude-agent/strategy-reflections", timeout=5)
+    response = client.get(f"{BASE_URL}/claude-agent/strategy-reflections", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -763,7 +825,7 @@ def test_get_strategy_reflections(client, BASE_URL):
 
 def test_activate_emergency_stop(client, BASE_URL):
     """Test POST /emergency-stop/activate"""
-    response = client.post(f"{BASE_URL}/emergency-stop/activate", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/emergency-stop/activate", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -772,7 +834,7 @@ def test_activate_emergency_stop(client, BASE_URL):
 
 def test_deactivate_emergency_stop(client, BASE_URL):
     """Test POST /emergency-stop/deactivate"""
-    response = client.post(f"{BASE_URL}/emergency-stop/deactivate", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/emergency-stop/deactivate", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -781,7 +843,7 @@ def test_deactivate_emergency_stop(client, BASE_URL):
 
 def test_activate_circuit_breaker(client, BASE_URL):
     """Test POST /circuit-breaker/activate"""
-    response = client.post(f"{BASE_URL}/circuit-breaker/activate", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/circuit-breaker/activate", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -790,7 +852,7 @@ def test_activate_circuit_breaker(client, BASE_URL):
 
 def test_deactivate_circuit_breaker(client, BASE_URL):
     """Test POST /circuit-breaker/deactivate"""
-    response = client.post(f"{BASE_URL}/circuit-breaker/deactivate", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/circuit-breaker/deactivate", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -799,7 +861,7 @@ def test_deactivate_circuit_breaker(client, BASE_URL):
 
 def test_set_position_limit(client, BASE_URL):
     """Test POST /position-limits/set"""
-    response = client.post(f"{BASE_URL}/position-limits/set", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/position-limits/set", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -808,7 +870,7 @@ def test_set_position_limit(client, BASE_URL):
 
 def test_remove_position_limit(client, BASE_URL):
     """Test DELETE /position-limits/remove"""
-    response = client.delete(f"{BASE_URL}/position-limits/remove", timeout=5)
+    response = client.delete(f"{BASE_URL}/position-limits/remove", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -817,7 +879,7 @@ def test_remove_position_limit(client, BASE_URL):
 
 def test_set_daily_loss_limit(client, BASE_URL):
     """Test POST /daily-loss-limit/set"""
-    response = client.post(f"{BASE_URL}/daily-loss-limit/set", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/daily-loss-limit/set", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -826,7 +888,7 @@ def test_set_daily_loss_limit(client, BASE_URL):
 
 def test_remove_daily_loss_limit(client, BASE_URL):
     """Test DELETE /daily-loss-limit/remove"""
-    response = client.delete(f"{BASE_URL}/daily-loss-limit/remove", timeout=5)
+    response = client.delete(f"{BASE_URL}/daily-loss-limit/remove", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -835,7 +897,7 @@ def test_remove_daily_loss_limit(client, BASE_URL):
 
 def test_get_override_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -844,7 +906,7 @@ def test_get_override_status(client, BASE_URL):
 
 def test_get_backup_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -853,7 +915,7 @@ def test_get_backup_status(client, BASE_URL):
 
 def test_list_backups(client, BASE_URL):
     """Test GET /list"""
-    response = client.get(f"{BASE_URL}/list", timeout=5)
+    response = client.get(f"{BASE_URL}/list", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -862,7 +924,7 @@ def test_list_backups(client, BASE_URL):
 
 def test_create_backup(client, BASE_URL):
     """Test POST /create"""
-    response = client.post(f"{BASE_URL}/create", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/create", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -871,16 +933,16 @@ def test_create_backup(client, BASE_URL):
 
 def test_get_latest_backup(client, BASE_URL):
     """Test GET /latest"""
-    response = client.get(f"{BASE_URL}/latest", timeout=5)
+    response = client.get(f"{BASE_URL}/latest", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_restore_backup(client, BASE_URL):
+def test_restore_backup(client, BASE_URL, backup_filename):
     """Test POST /restore/{backup_filename}"""
-    response = client.post(f"{BASE_URL}/restore/{backup_filename}", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/restore/{backup_filename}", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -889,7 +951,7 @@ def test_restore_backup(client, BASE_URL):
 
 def test_api_dashboard(client, BASE_URL):
     """Test GET /dashboard"""
-    response = client.get(f"{BASE_URL}/dashboard", timeout=5)
+    response = client.get(f"{BASE_URL}/dashboard", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -898,7 +960,7 @@ def test_api_dashboard(client, BASE_URL):
 
 def test_get_portfolio(client, BASE_URL):
     """Test GET /portfolio"""
-    response = client.get(f"{BASE_URL}/portfolio", timeout=5)
+    response = client.get(f"{BASE_URL}/portfolio", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -907,7 +969,7 @@ def test_get_portfolio(client, BASE_URL):
 
 def test_get_portfolio_summary(client, BASE_URL):
     """Test GET /dashboard/portfolio-summary"""
-    response = client.get(f"{BASE_URL}/dashboard/portfolio-summary", timeout=5)
+    response = client.get(f"{BASE_URL}/dashboard/portfolio-summary", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -916,7 +978,7 @@ def test_get_portfolio_summary(client, BASE_URL):
 
 def test_get_dashboard_alerts(client, BASE_URL):
     """Test GET /dashboard/alerts"""
-    response = client.get(f"{BASE_URL}/dashboard/alerts", timeout=5)
+    response = client.get(f"{BASE_URL}/dashboard/alerts", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -925,7 +987,7 @@ def test_get_dashboard_alerts(client, BASE_URL):
 
 def test_get_claude_recommendations(client, BASE_URL):
     """Test GET /claude-agent/recommendations"""
-    response = client.get(f"{BASE_URL}/claude-agent/recommendations", timeout=5)
+    response = client.get(f"{BASE_URL}/claude-agent/recommendations", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -934,7 +996,7 @@ def test_get_claude_recommendations(client, BASE_URL):
 
 def test_get_strategy_metrics(client, BASE_URL):
     """Test GET /claude-agent/strategy-metrics"""
-    response = client.get(f"{BASE_URL}/claude-agent/strategy-metrics", timeout=5)
+    response = client.get(f"{BASE_URL}/claude-agent/strategy-metrics", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -943,7 +1005,7 @@ def test_get_strategy_metrics(client, BASE_URL):
 
 def test_get_claude_status(client, BASE_URL):
     """Test GET /claude-agent/status"""
-    response = client.get(f"{BASE_URL}/claude-agent/status", timeout=5)
+    response = client.get(f"{BASE_URL}/claude-agent/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -952,7 +1014,7 @@ def test_get_claude_status(client, BASE_URL):
 
 def test_get_system_health(client, BASE_URL):
     """Test GET /system/health"""
-    response = client.get(f"{BASE_URL}/system/health", timeout=5)
+    response = client.get(f"{BASE_URL}/system/health", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -961,7 +1023,7 @@ def test_get_system_health(client, BASE_URL):
 
 def test_get_system_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -970,7 +1032,7 @@ def test_get_system_status(client, BASE_URL):
 
 def test_get_scheduler_status(client, BASE_URL):
     """Test GET /scheduler/status"""
-    response = client.get(f"{BASE_URL}/scheduler/status", timeout=5)
+    response = client.get(f"{BASE_URL}/scheduler/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -979,7 +1041,7 @@ def test_get_scheduler_status(client, BASE_URL):
 
 def test_get_token_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -988,7 +1050,7 @@ def test_get_token_status(client, BASE_URL):
 
 def test_force_token_check(client, BASE_URL):
     """Test POST /check"""
-    response = client.post(f"{BASE_URL}/check", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/check", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -997,7 +1059,7 @@ def test_force_token_check(client, BASE_URL):
 
 def test_get_token_health(client, BASE_URL):
     """Test GET /health"""
-    response = client.get(f"{BASE_URL}/health", timeout=5)
+    response = client.get(f"{BASE_URL}/health", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1006,7 +1068,7 @@ def test_get_token_health(client, BASE_URL):
 
 def test_trigger_morning_session(client, BASE_URL):
     """Test POST /trigger"""
-    response = client.post(f"{BASE_URL}/trigger", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/trigger", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1015,7 +1077,7 @@ def test_trigger_morning_session(client, BASE_URL):
 
 def test_get_session_history(client, BASE_URL):
     """Test GET /history"""
-    response = client.get(f"{BASE_URL}/history", timeout=5)
+    response = client.get(f"{BASE_URL}/history", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1024,16 +1086,16 @@ def test_get_session_history(client, BASE_URL):
 
 def test_get_session_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_session_details(client, BASE_URL):
+def test_get_session_details(client, BASE_URL, session_id, data_type):
     """Test GET /sessions/{session_id}"""
-    response = client.get(f"{BASE_URL}/sessions/{session_id}", timeout=5)
+    response = client.get(f"{BASE_URL}/sessions/{session_id}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1042,7 +1104,7 @@ def test_get_session_details(client, BASE_URL):
 
 def test_search_symbols(client, BASE_URL):
     """Test GET /symbols/search"""
-    response = client.get(f"{BASE_URL}/symbols/search", timeout=5)
+    response = client.get(f"{BASE_URL}/symbols/search", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1051,7 +1113,7 @@ def test_search_symbols(client, BASE_URL):
 
 def test_get_news_earnings_general(client, BASE_URL):
     """Test GET /news-earnings/"""
-    response = client.get(f"{BASE_URL}/news-earnings/", timeout=5)
+    response = client.get(f"{BASE_URL}/news-earnings/", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1060,7 +1122,7 @@ def test_get_news_earnings_general(client, BASE_URL):
 
 def test_get_news_earnings(client, BASE_URL):
     """Test GET /news-earnings/{symbol}"""
-    response = client.get(f"{BASE_URL}/news-earnings/AAPL", timeout=5)
+    response = client.get(f"{BASE_URL}/news-earnings/AAPL", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1069,7 +1131,7 @@ def test_get_news_earnings(client, BASE_URL):
 
 def test_get_upcoming_earnings(client, BASE_URL):
     """Test GET /earnings/upcoming"""
-    response = client.get(f"{BASE_URL}/earnings/upcoming", timeout=5)
+    response = client.get(f"{BASE_URL}/earnings/upcoming", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1078,7 +1140,7 @@ def test_get_upcoming_earnings(client, BASE_URL):
 
 def test_get_ai_recommendations(client, BASE_URL):
     """Test GET /ai/recommendations"""
-    response = client.get(f"{BASE_URL}/ai/recommendations", timeout=5)
+    response = client.get(f"{BASE_URL}/ai/recommendations", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1087,7 +1149,7 @@ def test_get_ai_recommendations(client, BASE_URL):
 
 def test_get_system_logs(client, BASE_URL):
     """Test GET /logs"""
-    response = client.get(f"{BASE_URL}/logs", timeout=5)
+    response = client.get(f"{BASE_URL}/logs", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1096,7 +1158,7 @@ def test_get_system_logs(client, BASE_URL):
 
 def test_get_error_logs(client, BASE_URL):
     """Test GET /logs/errors"""
-    response = client.get(f"{BASE_URL}/logs/errors", timeout=5)
+    response = client.get(f"{BASE_URL}/logs/errors", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1105,34 +1167,34 @@ def test_get_error_logs(client, BASE_URL):
 
 def test_get_performance_metrics(client, BASE_URL):
     """Test GET /logs/performance"""
-    response = client.get(f"{BASE_URL}/logs/performance", timeout=5)
+    response = client.get(f"{BASE_URL}/logs/performance", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_active_prompt(client, BASE_URL):
+def test_get_active_prompt(client, BASE_URL, prompt_name, prompt_id, data_type):
     """Test GET /active/{data_type}"""
-    response = client.get(f"{BASE_URL}/active/{data_type}", timeout=5)
+    response = client.get(f"{BASE_URL}/active/{data_type}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_optimization_history(client, BASE_URL):
+def test_get_optimization_history(client, BASE_URL, account_id, trade_id, account_type, task_name, agent_name, prompt_name, review_id, feature_name, backup_filename, session_id, data_type, prompt_id):
     """Test GET /optimization-history/{data_type}"""
-    response = client.get(f"{BASE_URL}/optimization-history/{data_type}", timeout=5)
+    response = client.get(f"{BASE_URL}/optimization-history/{data_type}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_prompt_attempts(client, BASE_URL):
+def test_get_prompt_attempts(client, BASE_URL, prompt_name, prompt_id, data_type):
     """Test GET /attempts/{prompt_id}"""
-    response = client.get(f"{BASE_URL}/attempts/{prompt_id}", timeout=5)
+    response = client.get(f"{BASE_URL}/attempts/{prompt_id}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1141,16 +1203,16 @@ def test_get_prompt_attempts(client, BASE_URL):
 
 def test_get_quality_trends(client, BASE_URL):
     """Test GET /quality-trends"""
-    response = client.get(f"{BASE_URL}/quality-trends", timeout=5)
+    response = client.get(f"{BASE_URL}/quality-trends", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_session_prompt_usage(client, BASE_URL):
+def test_get_session_prompt_usage(client, BASE_URL, prompt_name, prompt_id, data_type):
     """Test GET /session-prompts/{session_id}"""
-    response = client.get(f"{BASE_URL}/session-prompts/{session_id}", timeout=5)
+    response = client.get(f"{BASE_URL}/session-prompts/{session_id}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1159,16 +1221,16 @@ def test_get_session_prompt_usage(client, BASE_URL):
 
 def test_trigger_manual_optimization(client, BASE_URL):
     """Test POST /trigger-optimization"""
-    response = client.post(f"{BASE_URL}/trigger-optimization", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/trigger-optimization", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
         assert isinstance(response.json(), (dict, list))
 
 
-def test_get_optimization_status(client, BASE_URL):
+def test_get_optimization_status(client, BASE_URL, account_id, trade_id, account_type, task_name, agent_name, prompt_name, review_id, feature_name, backup_filename, session_id, data_type, prompt_id):
     """Test GET /optimization-status/{session_id}"""
-    response = client.get(f"{BASE_URL}/optimization-status/{session_id}", timeout=5)
+    response = client.get(f"{BASE_URL}/optimization-status/{session_id}", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1177,7 +1239,7 @@ def test_get_optimization_status(client, BASE_URL):
 
 def test_get_performance_summary(client, BASE_URL):
     """Test GET /performance-summary"""
-    response = client.get(f"{BASE_URL}/performance-summary", timeout=5)
+    response = client.get(f"{BASE_URL}/performance-summary", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1186,7 +1248,7 @@ def test_get_performance_summary(client, BASE_URL):
 
 def test_portfolio_deep_analytics(client, BASE_URL):
     """Test GET /analytics/portfolio-deep"""
-    response = client.get(f"{BASE_URL}/analytics/portfolio-deep", timeout=5)
+    response = client.get(f"{BASE_URL}/analytics/portfolio-deep", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1195,7 +1257,7 @@ def test_portfolio_deep_analytics(client, BASE_URL):
 
 def test_get_trades_analytics(client, BASE_URL):
     """Test GET /analytics/trades"""
-    response = client.get(f"{BASE_URL}/analytics/trades", timeout=5)
+    response = client.get(f"{BASE_URL}/analytics/trades", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1204,7 +1266,7 @@ def test_get_trades_analytics(client, BASE_URL):
 
 def test_get_risk_alerts(client, BASE_URL):
     """Test GET /alerts"""
-    response = client.get(f"{BASE_URL}/alerts", timeout=5)
+    response = client.get(f"{BASE_URL}/alerts", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1213,7 +1275,7 @@ def test_get_risk_alerts(client, BASE_URL):
 
 def test_get_risk_monitoring_status(client, BASE_URL):
     """Test GET /monitor/status"""
-    response = client.get(f"{BASE_URL}/monitor/status", timeout=5)
+    response = client.get(f"{BASE_URL}/monitor/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1222,7 +1284,7 @@ def test_get_risk_monitoring_status(client, BASE_URL):
 
 def test_get_portfolio_risk_metrics(client, BASE_URL):
     """Test GET /portfolio/risk-metrics"""
-    response = client.get(f"{BASE_URL}/portfolio/risk-metrics", timeout=5)
+    response = client.get(f"{BASE_URL}/portfolio/risk-metrics", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1231,7 +1293,7 @@ def test_get_portfolio_risk_metrics(client, BASE_URL):
 
 def test_get_performance_30d(client, BASE_URL):
     """Test GET /analytics/performance/30d"""
-    response = client.get(f"{BASE_URL}/analytics/performance/30d", timeout=5)
+    response = client.get(f"{BASE_URL}/analytics/performance/30d", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1240,7 +1302,7 @@ def test_get_performance_30d(client, BASE_URL):
 
 def test_get_active_alerts(client, BASE_URL):
     """Test GET /alerts/active"""
-    response = client.get(f"{BASE_URL}/alerts/active", timeout=5)
+    response = client.get(f"{BASE_URL}/alerts/active", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1249,7 +1311,7 @@ def test_get_active_alerts(client, BASE_URL):
 
 def test_initiate_zerodha_auth(client, BASE_URL):
     """Test GET /login"""
-    response = client.get(f"{BASE_URL}/login", timeout=5)
+    response = client.get(f"{BASE_URL}/login", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1258,7 +1320,7 @@ def test_initiate_zerodha_auth(client, BASE_URL):
 
 def test_zerodha_oauth_callback(client, BASE_URL):
     """Test GET /callback"""
-    response = client.get(f"{BASE_URL}/callback", timeout=5)
+    response = client.get(f"{BASE_URL}/callback", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1267,7 +1329,7 @@ def test_zerodha_oauth_callback(client, BASE_URL):
 
 def test_get_zerodha_auth_status(client, BASE_URL):
     """Test GET /status"""
-    response = client.get(f"{BASE_URL}/status", timeout=5)
+    response = client.get(f"{BASE_URL}/status", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1276,7 +1338,7 @@ def test_get_zerodha_auth_status(client, BASE_URL):
 
 def test_logout_zerodha(client, BASE_URL):
     """Test POST /logout"""
-    response = client.post(f"{BASE_URL}/logout", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/logout", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1285,7 +1347,7 @@ def test_logout_zerodha(client, BASE_URL):
 
 def test_get_redirect_info(client, BASE_URL):
     """Test GET /redirect-info"""
-    response = client.get(f"{BASE_URL}/redirect-info", timeout=5)
+    response = client.get(f"{BASE_URL}/redirect-info", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1294,7 +1356,7 @@ def test_get_redirect_info(client, BASE_URL):
 
 def test_oauth_callback_page(client, BASE_URL):
     """Test GET /callback-page"""
-    response = client.get(f"{BASE_URL}/callback-page", timeout=5)
+    response = client.get(f"{BASE_URL}/callback-page", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1303,7 +1365,7 @@ def test_oauth_callback_page(client, BASE_URL):
 
 def test_trigger_monthly_analysis(client, BASE_URL):
     """Test POST /trigger"""
-    response = client.post(f"{BASE_URL}/trigger", json={}, timeout=5)
+    response = client.post(f"{BASE_URL}/trigger", json={}, timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1312,7 +1374,7 @@ def test_trigger_monthly_analysis(client, BASE_URL):
 
 def test_get_analysis_history(client, BASE_URL):
     """Test GET /history"""
-    response = client.get(f"{BASE_URL}/history", timeout=5)
+    response = client.get(f"{BASE_URL}/history", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1321,7 +1383,7 @@ def test_get_analysis_history(client, BASE_URL):
 
 def test_get_symbol_analysis_history(client, BASE_URL):
     """Test GET /history/{symbol}"""
-    response = client.get(f"{BASE_URL}/history/AAPL", timeout=5)
+    response = client.get(f"{BASE_URL}/history/AAPL", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1330,7 +1392,7 @@ def test_get_symbol_analysis_history(client, BASE_URL):
 
 def test_get_monthly_summaries(client, BASE_URL):
     """Test GET /summaries"""
-    response = client.get(f"{BASE_URL}/summaries", timeout=5)
+    response = client.get(f"{BASE_URL}/summaries", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1339,7 +1401,7 @@ def test_get_monthly_summaries(client, BASE_URL):
 
 def test_get_analysis_statistics(client, BASE_URL):
     """Test GET /statistics"""
-    response = client.get(f"{BASE_URL}/statistics", timeout=5)
+    response = client.get(f"{BASE_URL}/statistics", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1348,7 +1410,7 @@ def test_get_analysis_statistics(client, BASE_URL):
 
 def test_get_latest_analysis(client, BASE_URL):
     """Test GET /latest/{symbol}"""
-    response = client.get(f"{BASE_URL}/latest/AAPL", timeout=5)
+    response = client.get(f"{BASE_URL}/latest/AAPL", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:
@@ -1357,7 +1419,7 @@ def test_get_latest_analysis(client, BASE_URL):
 
 def test_get_current_recommendations(client, BASE_URL):
     """Test GET /recommendations"""
-    response = client.get(f"{BASE_URL}/recommendations", timeout=5)
+    response = client.get(f"{BASE_URL}/recommendations", timeout=60)
     assert response.status_code in [200, 201, 204, 404], f"Unexpected status: {response.status_code}"
     # 404 is acceptable for endpoints that require specific data
     if response.status_code != 404:

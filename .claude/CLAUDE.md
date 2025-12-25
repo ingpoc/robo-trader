@@ -75,8 +75,18 @@ New project/complex task → initializer-agent (creates feature-list.json)
 ## MCP & Debugging
 
 - Use robo-trader-dev MCP: `list_categories` → `load_category`
+- Use token-efficient MCP for code (supports heredocs)
+- Use dev-browser skill for UI testing
 - Native hooks enforce two-agent system automatically
-- Debug with robo-trader-dev MCP first (95%+ token reduction)
+
+## Project-Specific MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__robo-trader-dev__check_system_health` | Health check |
+| `mcp__robo-trader-dev__analyze_logs` | Log analysis |
+| `mcp__robo-trader-dev__queue_status` | Queue status |
+| `mcp__robo-trader-dev__coordinator_status` | Coordinator status |
 
 ## Session Recovery
 

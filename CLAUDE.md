@@ -30,6 +30,13 @@ The `.claude/` folder is shared by both Claude Code and the Agent SDK bot:
 | Event-driven comms | No direct service calls, loose coupling |
 | Always async/await | Non-blocking, proper concurrency |
 
+## Browser Testing Rules
+| Rule | Reason |
+|------|--------|
+| NEVER take screenshots | Avoids base64 bloat, faster testing |
+| Use read_page() only | Get page structure without images |
+| computer() for actions | Click, type, wait - no screenshots |
+
 ## Task Payload Example
 Updated for STOCK_ANALYSIS with batch processing (max 3 stocks):
 ```
@@ -38,7 +45,6 @@ payload={"agent_name": "scan", "symbols": ["AAPL", "GOOGL", "MSFT"]}
 
 ## Layer-Specific Guides
 Read before modifying: `src/CLAUDE.md`, `src/core/CLAUDE.md`, `src/services/CLAUDE.md`, `src/web/CLAUDE.md`
-MCP integration: `.claude/INTEGRATION_GUIDE.md` for workflow mappings
 
 ## Common Issues & Fixes
 | Error | Fix |

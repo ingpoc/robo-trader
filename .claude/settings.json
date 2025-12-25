@@ -1,4 +1,5 @@
 {
+ 
   "permissions": {
     "allow": [
       "Bash(python -m py_compile:*)",
@@ -54,21 +55,8 @@
       "Bash(sudo rm:*)",
       "Bash(sudo python:*)",
       "Bash(sudo npm:*)",
-      "mcp__playwright__browser_navigate",
-      "mcp__playwright__browser_click",
-      "mcp__playwright__browser_wait_for",
-      "mcp__playwright__browser_take_screenshot",
-      "mcp__playwright__browser_evaluate",
-      "mcp__playwright__browser_snapshot",
-      "mcp__playwright__browser_hover",
-      "mcp__playwright__browser_press_key",
-      "mcp__playwright__browser_console_messages",
-      "mcp__playwright__browser_type",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "mcp__playwright__browser_network_requests",
-      "mcp__playwright__browser_close",
-      "mcp__playwright__browser_tabs",
       "Skill(document-skills:pptx)"
     ],
     "deny": [],
@@ -78,9 +66,10 @@
   "enabledMcpjsonServers": [
     "claude-agent-sdk-python Docs",
     "context7",
-    "kite",
-    "playwright",
-    "hookify"
+    "kite"
   ],
-  "hooks": {}
+  "hooks": {},
+  "enabledPlugins": {
+    "dev-browser@dev-browser-marketplace": true
+  }
 }

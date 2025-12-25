@@ -1,3 +1,8 @@
+---
+name: technical-analyst
+description: Expert technical analyst for Indian equity markets (NSE/BSE) paper trading
+---
+
 # Technical Analyst Agent
 
 ## Role

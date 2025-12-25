@@ -85,13 +85,13 @@ class ConfigBackupManager:
             }
 
         rows = await cursor.fetchall()
-        return {backup_type: [dict(row) for row in rows]}
+        return {backup_type: [{key: row[key] for key in row.keys()} for row in rows]}
 
     async def _get_table_data(self, table_name: str) -> List[Dict[str, Any]]:
         """Get all data from a table."""
         cursor = await self.db.connection.execute(f"SELECT * FROM {table_name}")
         rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [{key: row[key] for key in row.keys()} for row in rows]
 
     async def get_backup_history(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
