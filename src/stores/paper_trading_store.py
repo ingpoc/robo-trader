@@ -335,11 +335,34 @@ class PaperTradingStore:
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
             "SELECT * FROM paper_trades WHERE account_id = ? AND status = ?",
-            (account_id, TradeStatus.OPEN.value)
+            (account_id, 'OPEN')  # Use uppercase to match DB CHECK constraint
         )
         rows = await cursor.fetchall()
         await cursor.close()
-        return [PaperTrade.from_dict(dict(row)) for row in rows]
+        return [PaperTrade.from_dict(self._map_db_row_to_trade(dict(row))) for row in rows]
+
+    def _map_db_row_to_trade(self, row: dict) -> dict:
+        """Map DB column names to PaperTrade field names."""
+        return {
+            'trade_id': row.get('id'),
+            'account_id': row.get('account_id'),
+            'symbol': row.get('symbol'),
+            'trade_type': row.get('side', 'buy').lower(),  # DB: BUY/SELL -> Model: buy/sell
+            'quantity': row.get('quantity'),
+            'entry_price': row.get('entry_price'),
+            'entry_timestamp': row.get('created_at') or row.get('entry_date'),
+            'strategy_rationale': row.get('entry_reason', ''),
+            'claude_session_id': row.get('claude_session_id') or '',
+            'exit_price': row.get('exit_price'),
+            'exit_timestamp': row.get('exit_timestamp') or row.get('exit_date'),
+            'realized_pnl': row.get('realized_pnl'),
+            'unrealized_pnl': row.get('unrealized_pnl'),
+            'status': row.get('status', 'OPEN').lower(),  # DB: OPEN/CLOSED -> Model: open/closed
+            'stop_loss': row.get('stop_loss'),
+            'target_price': row.get('target_price'),
+            'created_at': row.get('created_at'),
+            'updated_at': row.get('updated_at'),
+        }
 
     async def close_trade(
         self,

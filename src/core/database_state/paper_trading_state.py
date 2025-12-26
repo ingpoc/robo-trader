@@ -565,11 +565,12 @@ class PaperTradingState(BaseState):
                     """INSERT INTO paper_trades
                        (id, symbol, side, quantity, entry_price, entry_date, entry_reason,
                         strategy_tag, confidence_score, research_sources, market_conditions,
-                        risk_metrics, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        risk_metrics, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (trade_id, symbol, side, quantity, entry_price, entry_date, entry_reason,
                      strategy_tag, confidence_score, json.dumps(research_sources),
                      json.dumps(market_conditions), json.dumps(risk_metrics),
+                     'OPEN',  # Match CHECK constraint (uppercase)
                      current_time, current_time)
                 )
 
