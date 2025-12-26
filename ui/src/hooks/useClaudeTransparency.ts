@@ -100,17 +100,24 @@ export function useClaudeTransparency() {
       // API returns {"analysis": {...}} structure
       const analysisData = data.analysis || data
       setAnalysisActivity(analysisData)
-      // Populate tradeLogs from portfolio_analyses for Trades/Recommendations tabs
-      if (analysisData && analysisData.portfolio_analyses) {
-        setTradeLogs(analysisData.portfolio_analyses)
-      } else if (analysisData && analysisData.recent_decisions) {
-        setTradeLogs(analysisData.recent_decisions)
+    } catch (err) {
+      console.error('Failed to fetch analysis activity:', err)
+      setAnalysisActivity(null)
+    }
+  }
+
+  const fetchTradeDecisions = async () => {
+    try {
+      const response = await apiClient.get('/api/claude/transparency/trade-decisions')
+      const data = response.data as any
+      // API returns {"decisions": [...], "stats": {...}, "last_updated": "..."} structure
+      if (data && data.decisions) {
+        setTradeLogs(data.decisions)
       } else {
         setTradeLogs([])
       }
     } catch (err) {
-      console.error('Failed to fetch analysis activity:', err)
-      setAnalysisActivity(null)
+      console.error('Failed to fetch trade decisions:', err)
       setTradeLogs([])
     }
   }
@@ -123,8 +130,8 @@ export function useClaudeTransparency() {
       const executionData = data.execution || data
       setExecutionActivity(executionData)
       // Map execution data to session format expected by SessionTranscripts component
-      if (executionData && executionData.recent_sessions) {
-        const mappedSessions = executionData.recent_sessions.map((session: any) => ({
+      if (executionData && executionData.recent_executions) {
+        const mappedSessions = executionData.recent_executions.map((session: any) => ({
           type: session.session_type || 'unknown',
           timestamp: session.timestamp,
           duration: 0, // Not available in current API
@@ -210,7 +217,8 @@ export function useClaudeTransparency() {
         fetchAnalysisActivity(),
         fetchExecutionActivity(),
         fetchDailyEvaluation(),
-        fetchDailySummary()
+        fetchDailySummary(),
+        fetchTradeDecisions()
       ])
     } catch (err) {
       setError('Failed to refresh transparency data')
