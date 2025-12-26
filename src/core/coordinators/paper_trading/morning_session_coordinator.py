@@ -516,12 +516,14 @@ Return ONLY the JSON array, no additional text."""
         for idea in trade_ideas:
             try:
                 # Check if trade passes all safeguards
-                can_trade = await self.safeguards.can_execute_trade(
+                safeguard_status = await self.safeguards.check_trade_allowed(
                     symbol=idea["symbol"],
-                    action=idea["action"],  # BUY or SELL
+                    trade_type=idea["action"],  # BUY or SELL
                     quantity=idea.get("quantity", 0),
-                    price=idea.get("price", 0)
+                    estimated_value=idea.get("price", 0) * idea.get("quantity", 0),
+                    portfolio_value=100000.0
                 )
+                can_trade = safeguard_status.can_trade
 
                 if can_trade:
                     # Add safeguard metadata
@@ -533,13 +535,13 @@ Return ONLY the JSON array, no additional text."""
                     }
                     approved_trades.append(idea)
                 else:
-                    await self.decision_logger.log_decision(
-                        decision_type="SAFEGUARD_REJECT",
-                        symbol=idea["symbol"],
-                        reasoning="Trade rejected by safeguards",
-                        confidence=1.0,
-                        context={"trade_idea": idea}
-                    )
+                    await self.decision_logger.log_decision({
+                        "decision_type": "SAFEGUARD_REJECT",
+                        "symbol": idea["symbol"],
+                        "reasoning": "Trade rejected by safeguards",
+                        "confidence": 1.0,
+                        "context": {"trade_idea": idea}
+                    })
 
             except Exception as e:
                 self._log_error(f"Safeguard check failed for {idea['symbol']}: {e}")
@@ -578,13 +580,13 @@ Return ONLY the JSON array, no additional text."""
                 self._log_error(f"Trade execution failed for {trade['symbol']}: {e}")
 
                 # Log failed execution
-                await self.decision_logger.log_decision(
-                    decision_type="EXECUTION_FAILED",
-                    symbol=trade["symbol"],
-                    reasoning=f"Execution failed: {str(e)}",
-                    confidence=1.0,
-                    context={"trade": trade}
-                )
+                await self.decision_logger.log_decision({
+                    "decision_type": "EXECUTION_FAILED",
+                    "symbol": trade["symbol"],
+                    "reasoning": f"Execution failed: {str(e)}",
+                    "confidence": 1.0,
+                    "context": {"trade": trade}
+                })
 
         return execution_results
 
@@ -599,46 +601,46 @@ Return ONLY the JSON array, no additional text."""
 
         # Log trade ideas
         for idea in trade_ideas:
-            await self.decision_logger.log_decision(
-                decision_type="TRADE_IDEA",
-                symbol=idea["symbol"],
-                reasoning=idea.get("rationale", ""),
-                confidence=idea.get("confidence", 0),
-                context={
+            await self.decision_logger.log_decision({
+                "decision_type": "TRADE_IDEA",
+                "symbol": idea["symbol"],
+                "reasoning": idea.get("rationale", ""),
+                "confidence": idea.get("confidence", 0),
+                "context": {
                     "session_id": session_id,
                     "action": idea.get("action"),
                     "quantity": idea.get("quantity"),
                     "price": idea.get("price")
                 }
-            )
+            })
 
         # Log approved trades
         for trade in approved_trades:
-            await self.decision_logger.log_decision(
-                decision_type="TRADE_APPROVED",
-                symbol=trade["symbol"],
-                reasoning="Passed all safeguards",
-                confidence=trade.get("confidence", 0),
-                context={
+            await self.decision_logger.log_decision({
+                "decision_type": "TRADE_APPROVED",
+                "symbol": trade["symbol"],
+                "reasoning": "Passed all safeguards",
+                "confidence": trade.get("confidence", 0),
+                "context": {
                     "session_id": session_id,
                     "safeguards": trade.get("safeguard_checks", {})
                 }
-            )
+            })
 
         # Log execution results
         for result in execution_results:
-            await self.decision_logger.log_decision(
-                decision_type="TRADE_EXECUTED",
-                symbol=result["symbol"],
-                reasoning=f"Trade executed at {result['price']}",
-                confidence=1.0,
-                context={
+            await self.decision_logger.log_decision({
+                "decision_type": "TRADE_EXECUTED",
+                "symbol": result["symbol"],
+                "reasoning": f"Trade executed at {result['price']}",
+                "confidence": 1.0,
+                "context": {
                     "session_id": session_id,
                     "trade_id": result["trade_id"],
                     "quantity": result["quantity"],
                     "side": result["side"]
                 }
-            )
+            })
 
     async def _store_session_result(self, result: MorningSessionResult, trigger: str = "scheduled") -> None:
         """Store morning session result in database."""
