@@ -299,10 +299,16 @@ class Config(BaseModel):
         self.integration.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY', self.integration.anthropic_api_key)
 
         perplexity_keys = []
-        for i in range(1, 10):
-            key = os.getenv(f'PERPLEXITY_API_KEY_{i}')
-            if key:
-                perplexity_keys.append(key)
+        # Check PERPLEXITY_API_KEYS (comma-separated) first
+        comma_keys = os.getenv('PERPLEXITY_API_KEYS')
+        if comma_keys:
+            perplexity_keys = [k.strip() for k in comma_keys.split(',') if k.strip()]
+        else:
+            # Fall back to PERPLEXITY_API_KEY_1, _2, etc.
+            for i in range(1, 10):
+                key = os.getenv(f'PERPLEXITY_API_KEY_{i}')
+                if key:
+                    perplexity_keys.append(key)
         if perplexity_keys:
             self.integration.perplexity_api_keys = perplexity_keys
 

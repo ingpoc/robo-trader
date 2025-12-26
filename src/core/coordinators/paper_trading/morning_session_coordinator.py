@@ -11,9 +11,12 @@ Implements autonomous morning trading session (9:00 AM - 9:30 AM):
 
 import asyncio
 import uuid
+import json
 from datetime import datetime, time
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+
+from claude_agent_sdk import ClaudeAgentOptions
 
 from src.config import Config
 
@@ -26,6 +29,8 @@ from src.services.claude_agent.decision_logger import ClaudeDecisionLogger
 from src.services.kite_connect_service import KiteConnectService
 from src.core.perplexity_client import PerplexityClient
 from src.services.paper_trading.stock_discovery import StockDiscoveryService
+from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+from src.core.sdk_helpers import query_with_timeout
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -214,7 +219,7 @@ class MorningSessionCoordinator(BaseCoordinator):
             self._session_active = False
 
         # Store session result
-        await self._store_session_result(result)
+        await self._store_session_result(result, trigger)
 
         return result
 
@@ -228,14 +233,17 @@ class MorningSessionCoordinator(BaseCoordinator):
             pre_market_data = []
             for stock in watchlist:
                 try:
-                    # Use kite_service if available, otherwise skip pre-market data
+                    # Use kite_service if available, otherwise use stock discovery data
                     if self.kite_service and hasattr(self.kite_service, 'get_pre_market_data'):
                         data = await self.kite_service.get_pre_market_data(stock["symbol"])
                     else:
-                        # Fallback: use current market data
+                        # Fallback: use stock from discovery with zero-volume market data
+                        # For paper trading, we still want to research these stocks
                         data = {"last_price": 0, "change": 0, "volume": 0}
 
-                    if data and data.get("volume", 0) > 0:
+                    # Include stocks even with zero volume for paper trading research
+                    # Filter only if we have stock data (symbol exists)
+                    if stock.get("symbol"):
                         pre_market_data.append({
                             "symbol": stock["symbol"],
                             "price": data.get("last_price", 0),
@@ -244,10 +252,20 @@ class MorningSessionCoordinator(BaseCoordinator):
                             "risk_score": stock.get("risk_score", 0.5)
                         })
                 except Exception as e:
-                    self._log_warning(f"Failed to get pre-market data for {stock['symbol']}: {e}")
+                    self._log_warning(f"Failed to get pre-market data for {stock.get('symbol', 'unknown')}: {e}")
+                    # Still include the stock if we have basic info
+                    if stock.get("symbol"):
+                        pre_market_data.append({
+                            "symbol": stock["symbol"],
+                            "price": 0,
+                            "change": 0,
+                            "volume": 0,
+                            "risk_score": stock.get("risk_score", 0.5)
+                        })
 
-            # Sort by volume and change
-            pre_market_data.sort(key=lambda x: (x["volume"], abs(x["change"])), reverse=True)
+            # Sort by risk_score (lower is better), then by volume, then by change magnitude
+            # For paper trading, prioritize stocks with better risk scores
+            pre_market_data.sort(key=lambda x: (-x.get("risk_score", 0.5), x["volume"], abs(x["change"])), reverse=True)
 
             return pre_market_data[:10]  # Return top 10
 
@@ -271,21 +289,39 @@ class MorningSessionCoordinator(BaseCoordinator):
                 })
             return research_results
 
-        for stock in stocks:
-            try:
-                research = await self.perplexity_service.research_stock(
-                    symbol=stock["symbol"],
-                    focus="pre-market sentiment, news, technical indicators",
-                    max_tokens=500
-                )
+        try:
+            # Use fetch_batch_data to research all stocks at once
+            from src.core.perplexity_client import QueryType
+            symbols = [stock["symbol"] for stock in stocks]
+            batch_result = await self.perplexity_service.fetch_batch_data(
+                symbols=symbols,
+                query_type=QueryType.COMPREHENSIVE,
+                batch_size=5,
+                max_concurrent=2
+            )
+
+            # Map batch results to individual stocks
+            fundamentals_map = {f.symbol: f for f in batch_result.fundamentals}
+            news_map = {n.symbol: n for n in batch_result.news}
+
+            for stock in stocks:
+                symbol = stock["symbol"]
+                research_data = {
+                    "fundamentals": fundamentals_map.get(symbol).model_dump() if symbol in fundamentals_map else None,
+                    "news": news_map.get(symbol).model_dump() if symbol in news_map else None,
+                    "note": "Research completed successfully"
+                }
                 research_results.append({
-                    "symbol": stock["symbol"],
+                    "symbol": symbol,
                     "market_data": stock,
-                    "research": research,
+                    "research": research_data,
                     "timestamp": datetime.utcnow().isoformat()
                 })
-            except Exception as e:
-                self._log_warning(f"Research failed for {stock['symbol']}: {e}")
+
+        except Exception as e:
+            self._log_warning(f"Batch research failed: {e}")
+            # Fallback: return empty research for all stocks
+            for stock in stocks:
                 research_results.append({
                     "symbol": stock["symbol"],
                     "market_data": stock,
@@ -300,37 +336,145 @@ class MorningSessionCoordinator(BaseCoordinator):
         if not research_results:
             return []
 
-        # Queue AI analysis task to prevent token exhaustion
-        task_service = await self.container.get("task_service")
-        symbols = [r["symbol"] for r in research_results]
+        # Limit to max 3 stocks to prevent token exhaustion
+        batch_size = min(3, len(research_results))
+        research_batch = research_results[:batch_size]
 
-        task_id = await task_service.create_task(
-            queue_name="AI_ANALYSIS",
-            task_type="STOCK_ANALYSIS",
-            payload={
-                "agent_name": "trading_analyst",
-                "symbols": symbols,
-                "context": "morning_session",
-                "research_data": research_results
+        self._log_info(f"Generating trade ideas for {batch_size} stocks using Claude SDK")
+
+        try:
+            # Get Claude SDK client manager
+            manager = await ClaudeSDKClientManager.get_instance()
+
+            # Create client for trade analysis
+            options = ClaudeAgentOptions(
+                model="claude-sonnet-4-20250514",
+                enable_reasoning=True,
+                timeout=45.0
+            )
+            client = await manager.get_client("trade_analysis", options)
+
+            # Build prompt with research data
+            prompt = self._build_trade_analysis_prompt(research_batch)
+
+            # Query with timeout
+            response_text = await query_with_timeout(client, prompt, timeout=45.0)
+
+            # Parse JSON response
+            trade_ideas = self._parse_trade_ideas_response(response_text)
+
+            # Filter by confidence threshold (>= 0.6)
+            filtered_ideas = [
+                idea for idea in trade_ideas
+                if idea.get("confidence", 0) >= 0.6
+            ]
+
+            self._log_info(f"Generated {len(filtered_ideas)} trade ideas (confidence >= 0.6)")
+            return filtered_ideas
+
+        except Exception as e:
+            self._log_warning(f"Trade idea generation failed: {e}")
+            # Return empty list on failure - don't stop the session
+            return []
+
+    def _build_trade_analysis_prompt(self, research_results: List[Dict[str, Any]]) -> str:
+        """Build prompt for Claude trade analysis."""
+        stocks_data = []
+        for result in research_results:
+            stock_info = {
+                "symbol": result.get("symbol"),
+                "price": result.get("market_data", {}).get("price", 0),
+                "fundamentals": result.get("research", {}).get("fundamentals", {}),
+                "news": result.get("research", {}).get("news", {}),
+                "timestamp": result.get("timestamp")
             }
-        )
+            stocks_data.append(stock_info)
 
-        # Wait for task completion (with timeout)
-        timeout = 180  # 3 minutes
-        elapsed = 0
-        while elapsed < timeout:
-            task = await task_service.get_task(task_id)
-            if task["status"] == "completed":
-                return task.get("result", {}).get("trade_ideas", [])
-            elif task["status"] == "failed":
-                self._log_error(f"AI analysis task failed: {task.get('error', 'Unknown error')}")
+        prompt = f"""You are an expert stock trader analyzing stocks for potential trades.
+
+RESEARCH DATA:
+{json.dumps(stocks_data, indent=2)}
+
+TASK:
+Analyze each stock and generate trade ideas (BUY or SELL) based on:
+1. Fundamental strength (P/E, ROE, debt ratios)
+2. News sentiment and recent developments
+3. Price momentum and market conditions
+4. Risk-reward potential
+
+REQUIREMENTS:
+- Only recommend trades with confidence >= 0.6 (60%)
+- Calculate realistic entry, target, and stop-loss prices
+- Limit position size to 5% of capital per stock
+- Provide clear reasoning for each recommendation
+
+OUTPUT FORMAT (JSON array):
+[
+  {{
+    "symbol": "STOCK_SYMBOL",
+    "action": "BUY" or "SELL",
+    "confidence": 0.75,
+    "reasoning": "Clear 2-3 sentence explanation",
+    "entry_price": 2450.0,
+    "target_price": 2550.0,
+    "stop_loss": 2380.0,
+    "position_size_pct": 5.0,
+    "risk_reward_ratio": 1.5
+  }}
+]
+
+Return ONLY the JSON array, no additional text."""
+
+        return prompt
+
+    def _parse_trade_ideas_response(self, response_text: str) -> List[Dict[str, Any]]:
+        """Parse trade ideas from Claude's JSON response."""
+        try:
+            # Extract JSON from response (may have markdown code blocks)
+            response_text = response_text.strip()
+
+            # Remove markdown code blocks if present
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+
+            response_text = response_text.strip()
+
+            # Parse JSON
+            trade_ideas = json.loads(response_text)
+
+            # Validate structure
+            if not isinstance(trade_ideas, list):
+                self._log_warning("Expected JSON array, got different type")
                 return []
 
-            await asyncio.sleep(5)
-            elapsed += 5
+            # Validate each trade idea has required fields
+            validated_ideas = []
+            for idea in trade_ideas:
+                if all(key in idea for key in ["symbol", "action", "confidence", "reasoning"]):
+                    # Ensure numeric fields are floats
+                    idea["confidence"] = float(idea.get("confidence", 0))
+                    idea["entry_price"] = float(idea.get("entry_price", 0))
+                    idea["target_price"] = float(idea.get("target_price", 0))
+                    idea["stop_loss"] = float(idea.get("stop_loss", 0))
+                    idea["position_size_pct"] = float(idea.get("position_size_pct", 5.0))
+                    idea["risk_reward_ratio"] = float(idea.get("risk_reward_ratio", 1.0))
+                    validated_ideas.append(idea)
+                else:
+                    self._log_warning(f"Skipping invalid trade idea: {idea}")
 
-        self._log_warning("AI analysis task timed out")
-        return []
+            return validated_ideas
+
+        except json.JSONDecodeError as e:
+            self._log_warning(f"Failed to parse JSON response: {e}")
+            self._log_debug(f"Response text: {response_text[:500]}")
+            return []
+        except Exception as e:
+            self._log_warning(f"Error parsing trade ideas: {e}")
+            return []
 
     async def _apply_safeguards(self, trade_ideas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Apply risk safeguards to trade ideas."""
@@ -474,7 +618,7 @@ class MorningSessionCoordinator(BaseCoordinator):
                 }
             )
 
-    async def _store_session_result(self, result: MorningSessionResult) -> None:
+    async def _store_session_result(self, result: MorningSessionResult, trigger: str = "scheduled") -> None:
         """Store morning session result in database."""
         try:
             # Get paper trading state manager
@@ -482,6 +626,9 @@ class MorningSessionCoordinator(BaseCoordinator):
 
             # Calculate duration in milliseconds
             duration_ms = int((result.end_time - result.start_time).total_seconds() * 1000)
+
+            # Normalize trigger source to uppercase for database
+            trigger_source = str(trigger).upper() if trigger else "MANUAL"
 
             # Store session data
             session_data = {
@@ -505,7 +652,7 @@ class MorningSessionCoordinator(BaseCoordinator):
                     "market_open": True,
                     "session_duration_minutes": duration_ms / 60000
                 },
-                "trigger_source": "scheduled",
+                "trigger_source": trigger_source,
                 "total_duration_ms": duration_ms
             }
 

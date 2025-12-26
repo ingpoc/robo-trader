@@ -212,27 +212,53 @@ class RealTimeTradingState(BaseState):
     def __init__(self, db_path: str):
         super().__init__(db_path)
         self._lock = asyncio.Lock()
+        import logging
+        self.logger = logging.getLogger(__name__)
 
     async def initialize(self) -> None:
         """Initialize real-time trading tables."""
         async with self._lock:
             try:
-                # Read and execute schema
-                schema_path = "/Users/gurusharan/Documents/remote-claude/robo-trader/src/core/database_state/schemas/real_time_trading_schema.sql"
-                async with self._aiofiles_open(schema_path, 'r') as f:
-                    schema_sql = await f.read()
+                # Create tables inline (same pattern as paper_trading_state)
+                schema = """
+                CREATE TABLE IF NOT EXISTS real_time_quotes (
+                    symbol TEXT PRIMARY KEY,
+                    last_price REAL NOT NULL,
+                    change_price REAL DEFAULT 0.0,
+                    change_percent REAL DEFAULT 0.0,
+                    volume INTEGER DEFAULT 0,
+                    timestamp TEXT NOT NULL,
+                    source TEXT DEFAULT 'kite'
+                );
 
-                # Execute schema
-                await self._execute_schema(schema_sql)
-                await self.db.commit()
+                CREATE TABLE IF NOT EXISTS kite_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL UNIQUE,
+                    user_id TEXT NOT NULL,
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    exchanges TEXT DEFAULT 'NSE,BSE',
+                    active INTEGER DEFAULT 1,
+                    expires_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_used_at TEXT
+                );
 
+                CREATE INDEX IF NOT EXISTS idx_quotes_symbol ON real_time_quotes(symbol);
+                CREATE INDEX IF NOT EXISTS idx_sessions_active ON kite_sessions(active);
+                """
+                for statement in schema.strip().split(';'):
+                    if statement.strip():
+                        await self.db.connection.execute(statement)
+                await self.db.connection.commit()
                 self.logger.info("Real-time trading state initialized successfully")
 
             except Exception as e:
                 self.logger.error(f"Failed to initialize real-time trading state: {e}")
                 raise TradingError(
                     f"Real-time trading state initialization failed: {e}",
-                    category=ErrorCategory.DATABASE,
+                    category=ErrorCategory.SYSTEM,
                     severity=ErrorSeverity.HIGH,
                     recoverable=False
                 )

@@ -195,62 +195,82 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
 
     # container._register_singleton("manual_override_service", create_manual_override_service)
 
-    # Perplexity Service (AI research for stock discovery and analysis) - Optional for development
+    # Perplexity Service (AI research for stock discovery and analysis)
     async def create_perplexity_service():
-        """
-        Create PerplexityClient with API keys from config.
-        Falls back to None if no API keys available (development mode).
-        """
+        """Create PerplexityClient with API keys from config.integration."""
         try:
             from src.core.perplexity_client import PerplexityClient
 
-            # Get API keys from config (if available)
-            perplexity_config = container.config.get("perplexity", {})
-            api_keys = perplexity_config.get("api_keys", [])
+            # Get API keys from config.integration (loaded from env vars)
+            api_keys = container.config.integration.perplexity_api_keys
 
             if not api_keys:
-                logger.warning("No Perplexity API keys configured - research features disabled")
-                return None
+                logger.error("No Perplexity API keys - set PERPLEXITY_API_KEY_1 in env")
+                raise ValueError("PERPLEXITY_API_KEY_1 required for PT-003")
 
             perplexity_service = PerplexityClient(api_keys=api_keys)
             logger.info(f"PerplexityClient initialized with {len(api_keys)} API key(s)")
             return perplexity_service
 
         except Exception as e:
-            logger.warning(f"PerplexityClient not available: {e} - research features disabled")
-            return None
+            logger.error(f"PerplexityClient failed: {e}")
+            raise
 
     container._register_singleton("perplexity_service", create_perplexity_service)
 
-    # Kite Connect Service (market data and trading) - Optional for development
+    # Kite Connect Service (market data and trading)
     async def create_kite_connect_service():
-        """
-        Create KiteConnectService but only if real_time_trading_state is available.
-        Falls back to None if not available (development mode).
-        """
+        """Create KiteConnectService with credentials from config.integration."""
         try:
-            # Try to get real_time_trading_state (may not be initialized)
-            real_time_state = await container.get("real_time_trading_state")
-
             from src.services.kite_connect_service import KiteConnectService, KiteCredentials
 
-            # Initialize with mock credentials for development (no actual API calls)
-            mock_credentials = KiteCredentials(
-                api_key="MOCK_API_KEY",
-                api_secret="MOCK_API_SECRET"
+            # Get credentials from config.integration (loaded from env vars)
+            api_key = container.config.integration.zerodha_api_key
+            api_secret = container.config.integration.zerodha_api_secret
+
+            if not api_key or not api_secret:
+                logger.error("No Zerodha credentials - set ZERODHA_API_KEY and ZERODHA_API_SECRET in env")
+                raise ValueError("ZERODHA_API_KEY and ZERODHA_API_SECRET required for PT-003")
+
+            real_time_state = await container.get("real_time_trading_state")
+
+            credentials = KiteCredentials(
+                api_key=api_key,
+                api_secret=api_secret
             )
 
             kite_service = KiteConnectService(
                 config=container.config,
                 real_time_state=real_time_state
             )
-            await kite_service.initialize(mock_credentials)
-            logger.info("KiteConnectService initialized (mock mode for development)")
+            await kite_service.initialize(credentials)
+            logger.info(f"KiteConnectService initialized with API key: {api_key[:4]}***")
             return kite_service
 
         except Exception as e:
-            logger.warning(f"KiteConnectService not available: {e} - using market_data_service fallback")
-            # Return None - coordinators will fall back to market_data_service
-            return None
+            logger.error(f"KiteConnectService failed: {e}")
+            raise
 
     container._register_singleton("kite_connect_service", create_kite_connect_service)
+
+    # Autonomous Trading Safeguards (risk limits and circuit breakers)
+    async def create_autonomous_trading_safeguards():
+        """Create AutonomousTradingSafeguards for paper trading risk management."""
+        try:
+            from src.services.autonomous_trading_safeguards import AutonomousTradingSafeguards
+
+            config_state = await container.get("configuration_state")
+            event_bus = await container.get("event_bus")
+
+            safeguards = AutonomousTradingSafeguards(
+                config_state=config_state,
+                event_bus=event_bus
+            )
+            logger.info("AutonomousTradingSafeguards initialized")
+            return safeguards
+
+        except Exception as e:
+            logger.error(f"AutonomousTradingSafeguards failed: {e}")
+            raise
+
+    container._register_singleton("autonomous_trading_safeguards", create_autonomous_trading_safeguards)

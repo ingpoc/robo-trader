@@ -95,8 +95,8 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
     # Real-Time Trading State
     async def create_real_time_trading_state():
         from src.core.database_state.real_time_trading_state import RealTimeTradingState
-        db_path = container.config.state_dir / "robo_trader.db"
-        state = RealTimeTradingState(str(db_path))
+        state_manager = await container.get("state_manager")
+        state = RealTimeTradingState(state_manager.db)
         await state.initialize()
         logger.info("RealTimeTradingState initialized with enhanced schema")
         return state

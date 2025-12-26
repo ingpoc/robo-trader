@@ -410,6 +410,32 @@ class StockDiscoveryService(EventHandler):
 
         return scored_stocks
 
+    async def get_watchlist(
+        self,
+        status: str = "ACTIVE",
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get stocks from the discovery watchlist.
+
+        Args:
+            status: Filter by status (ACTIVE, ARCHIVED, etc.)
+            limit: Maximum number of stocks to return
+
+        Returns:
+            List of watchlist stocks with their analysis data
+        """
+        try:
+            watchlist = await self.state_manager.paper_trading.get_discovery_watchlist(
+                status=status,
+                limit=limit
+            )
+            logger.info(f"Retrieved {len(watchlist)} stocks from watchlist")
+            return watchlist
+        except Exception as e:
+            logger.error(f"Failed to get watchlist: {e}")
+            return []
+
     async def _update_watchlist(
         self,
         stocks: List[Dict[str, Any]]
