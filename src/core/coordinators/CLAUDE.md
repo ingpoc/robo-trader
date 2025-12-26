@@ -56,3 +56,19 @@ class MyCoordinator(BaseCoordinator, EventHandler):
 
 BaseCoordinator, EventBus, Config, injected services
 
+## Paper Trading Data Flow
+
+Integration contract between components - verify each step works:
+
+| Step | Component | Writes To | Verifiable Via |
+|------|-----------|-----------|----------------|
+| 1. Decision | `trade_decision_logger` | `data/trade_decisions.jsonl` | AI Transparency tab |
+| 2. Execution | `paper_trading_execution_service` | `paper_positions` + `paper_trades` DB | Paper Trading tab |
+
+**⚠️ If Step 2 incomplete**: AI Transparency shows trades, Paper Trading shows 0 positions.
+
+| Symptom | Likely Cause |
+|---------|--------------|
+| AI Transparency has trades, Paper Trading empty | Execution service is mock (no DB writes) |
+| Account ID mismatch errors | Hardcoded wrong ID, check Canonical Constants in root CLAUDE.md |
+

@@ -48,6 +48,18 @@ Atomic writes: write to temp → `os.replace(temp, final)`
 | Hardcoded config | Load from DI container: `await container.get("config")` |
 | Event loop closure | Use `asyncio.get_running_loop()` not `get_event_loop()` |
 
+## Implementation Status
+
+Track mock vs real implementations to prevent silent failures:
+
+| Service | Method | Status | Missing |
+|---------|--------|--------|---------|
+| `paper_trading_execution_service` | `execute_buy_trade` | ⚠️ MOCK | DB writes to `paper_positions`/`paper_trades` |
+| `paper_trading_execution_service` | `execute_sell_trade` | ⚠️ MOCK | DB writes |
+| `kite_connect_service` | `get_ltp` | ✅ REAL | - |
+
+**⚠️ MOCK** = Returns success but doesn't persist to DB. Verify before relying on data.
+
 ## Read Before Changing
 
 - `src/CLAUDE.md` - Backend patterns (SDK, event loop, DI, locked state)

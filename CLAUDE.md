@@ -28,6 +28,19 @@ PERPLEXITY_API_KEYS=pplx-xxx,...
 
 **Setup**: `cp .env.example .env` then edit with your credentials.
 
+## Canonical Constants (Source of Truth)
+
+| Constant | Value | Defined In | Used By |
+|----------|-------|------------|---------|
+| Paper Trading Account | `paper_swing_main` | `paper_trading_state.py` | All paper trading operations |
+| DI Service Names | See `di_registry_*.py` | `src/core/di_registry_*.py` | `container.get()` calls |
+| Queue Names | `QueueName.*` enum | `src/models/queue.py` | Task creation |
+
+| Never | Always |
+|-------|--------|
+| Hardcode account IDs in coordinators | Load from config/state or use constant above |
+| Guess DI service names | Check `di_registry_*.py` for exact names |
+
 ## Component Locations (.claude/ Shared by Claude Code + Agent SDK)
 
 The `.claude/` folder is shared by both Claude Code and the Agent SDK bot:
