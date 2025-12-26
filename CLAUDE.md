@@ -8,6 +8,26 @@
 - Event-driven via EventBus
 - 3 queues: PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS (parallel, sequential tasks within)
 
+## Environment Variables (Single Source of Truth)
+
+**ALL credentials go in `.env` file at project root** - NOT in shell startup files.
+
+```
+# .env file (ONLY place for credentials)
+ZERODHA_API_KEY=xxx
+ZERODHA_API_SECRET=xxx
+ZERODHA_ACCESS_TOKEN=xxx        # Auto-added by OAuth
+PERPLEXITY_API_KEYS=pplx-xxx,...
+```
+
+| Rule | Reason |
+|------|--------|
+| `.env` only | Single source of truth, less confusion |
+| Never export in shell | `load_dotenv()` reads .env automatically |
+| Use `.env.example` | Template for new developers |
+
+**Setup**: `cp .env.example .env` then edit with your credentials.
+
 ## Component Locations (.claude/ Shared by Claude Code + Agent SDK)
 
 The `.claude/` folder is shared by both Claude Code and the Agent SDK bot:
@@ -29,6 +49,21 @@ The `.claude/` folder is shared by both Claude Code and the Agent SDK bot:
 | Max 150 lines/coordinator | Maintainability, single responsibility |
 | Event-driven comms | No direct service calls, loose coupling |
 | Always async/await | Non-blocking, proper concurrency |
+
+## Token Efficiency Rules
+
+| Task | Tool | Savings |
+|------|------|---------|
+| Log analysis | `mcp__token-efficient__process_logs(pattern="...")` | 90% vs reading full file |
+| CSV/data processing | `mcp__token-efficient__process_csv` | Pagination, never loads all rows |
+| Code execution | `mcp__token-efficient__execute_code` | Sandboxed, output summarized |
+| Find right tool | `mcp__token-efficient__search_tools(query)` | 95% vs loading all definitions |
+
+| Never | Always |
+|-------|--------|
+| Read entire log files with `Read` tool | Use regex patterns for log search |
+| Process >50 items in context | Use offset/limit for large datasets |
+| Run untested code in project directory | Execute experimental code in sandbox first |
 
 ## Browser Testing Rules
 | Rule | Reason |
