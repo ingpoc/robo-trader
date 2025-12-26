@@ -178,8 +178,8 @@ Respond with ONLY the JSON object. No explanation text."""
             trade_price = result.get('trade_price', 2000.0)
 
             # Write to database (BUG-002 fix: actually persist the trade)
-            if self._state_manager and hasattr(self._state_manager, 'paper_trading_state'):
-                db_success = await self._state_manager.paper_trading_state.create_trade(
+            if self._state_manager and hasattr(self._state_manager, 'paper_trading'):
+                db_success = await self._state_manager.paper_trading.create_trade(
                     trade_id=trade_id,
                     symbol=symbol,
                     side="BUY",
@@ -361,8 +361,8 @@ Respond with ONLY the JSON object. No explanation text."""
             realized_pnl = result.get('realized_pnl', proceeds - (quantity * 2750.0))
 
             # Write to database (BUG-002 fix: actually persist the trade)
-            if self._state_manager and hasattr(self._state_manager, 'paper_trading_state'):
-                db_success = await self._state_manager.paper_trading_state.create_trade(
+            if self._state_manager and hasattr(self._state_manager, 'paper_trading'):
+                db_success = await self._state_manager.paper_trading.create_trade(
                     trade_id=trade_id,
                     symbol=symbol,
                     side="SELL",

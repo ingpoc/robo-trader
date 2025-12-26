@@ -27,13 +27,17 @@
       "id": "BUG-001",
       "location": "morning_session_coordinator.py:639",
       "issue": "Uses paper_trading_main but DB has paper_swing_main",
-      "status": "pending_fix"
+      "status": "fixed",
+      "fixed_at": "2025-12-26T17:15:00Z",
+      "commit": "dc20b52"
     },
     {
       "id": "BUG-002",
       "location": "paper_trading_execution_service.py:183-194",
       "issue": "Returns success but never writes to paper_positions/paper_trades DB tables",
-      "status": "pending_fix"
+      "status": "fixed",
+      "fixed_at": "2025-12-26T17:15:00Z",
+      "commit": "dc20b52"
     }
   ],
   "commits_this_session": [

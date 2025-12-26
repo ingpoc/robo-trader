@@ -1,6 +1,19 @@
 # Robo Trader - Quick Guide
 
-**Backend**: `python -m src.main --command web` | **Frontend**: `cd ui && npm run dev` | **Health**: `curl -m 3 http://localhost:8000/api/health`
+## Server Management (ALWAYS use this)
+
+```bash
+./.claude/scripts/health_check.sh   # Start/restart both servers with health verification
+```
+
+| What It Does | Why |
+|--------------|-----|
+| Kills ports 8000 + 3000 | Clean slate, no orphan processes |
+| Starts backend + frontend | Correct env vars, proper venv |
+| Waits for readiness (60s) | Deterministic startup confirmation |
+| Returns exit code | 0=OK, 1=partial, 2=failed |
+
+**Manual (only if script unavailable)**: Backend: `python -m src.main --command web` | Frontend: `cd ui && npm run dev`
 
 ## Architecture
 - Coordinator-based monolith (async/await throughout)
