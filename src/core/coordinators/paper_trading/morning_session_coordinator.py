@@ -349,7 +349,6 @@ class MorningSessionCoordinator(BaseCoordinator):
             # Create client for trade analysis
             options = ClaudeAgentOptions(
                 model="claude-sonnet-4-20250514",
-                enable_reasoning=True,
                 timeout=45.0
             )
             client = await manager.get_client("trade_analysis", options)
