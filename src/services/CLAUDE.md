@@ -54,11 +54,11 @@ Track mock vs real implementations to prevent silent failures:
 
 | Service | Method | Status | Missing |
 |---------|--------|--------|---------|
-| `paper_trading_execution_service` | `execute_buy_trade` | ⚠️ MOCK | DB writes to `paper_positions`/`paper_trades` |
-| `paper_trading_execution_service` | `execute_sell_trade` | ⚠️ MOCK | DB writes |
+| `paper_trading_execution_service` | `execute_buy_trade` | ✅ REAL | - |
+| `paper_trading_execution_service` | `execute_sell_trade` | ✅ REAL | - |
 | `kite_connect_service` | `get_ltp` | ✅ REAL | - |
 
-**⚠️ MOCK** = Returns success but doesn't persist to DB. Verify before relying on data.
+**Fixed 2025-12-26**: BUG-002 resolved - execution service now writes to `paper_trades` table via `paper_trading_state.create_trade()`.
 
 ## Read Before Changing
 

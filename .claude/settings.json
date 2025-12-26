@@ -15,6 +15,7 @@
       "Bash(curl:*)",
       "Bash(cat:*)",
       "Bash(git add:*)",
+      "Bash(git commit:*)",
       "Bash(claude auth:*)",
       "Bash(claude --version:*)",
       "Bash(claude --print:*)",

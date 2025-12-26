@@ -247,6 +247,14 @@ class AutonomousTradingSafeguards:
                     }
                 ))
 
+    async def get_remaining_daily_trades(self) -> int:
+        """Get remaining trades allowed for today."""
+        today = date.today().isoformat()
+        state = await self._get_or_create_today_state(today)
+        max_trades = state.get("max_trades_limit", self.DEFAULT_MAX_TRADES)
+        trades_today = state.get("trades_today", 0)
+        return max(0, max_trades - trades_today)
+
     async def get_current_status(self) -> Dict[str, Any]:
         """Get current safeguard status for today."""
         today = date.today().isoformat()

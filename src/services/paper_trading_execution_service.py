@@ -174,9 +174,30 @@ Respond with ONLY the JSON object. No explanation text."""
 
             # Create trade record
             trade_id = f"trade_{uuid.uuid4().hex[:8]}"
-            session_id = f"session_{uuid.uuid4().hex[:8]}"
             now = datetime.now(timezone.utc).isoformat()
             trade_price = result.get('trade_price', 2000.0)
+
+            # Write to database (BUG-002 fix: actually persist the trade)
+            if self._state_manager and hasattr(self._state_manager, 'paper_trading_state'):
+                db_success = await self._state_manager.paper_trading_state.create_trade(
+                    trade_id=trade_id,
+                    symbol=symbol,
+                    side="BUY",
+                    quantity=quantity,
+                    entry_price=float(trade_price),
+                    entry_reason=strategy_rationale,
+                    strategy_tag="morning_session",
+                    confidence_score=0.7,
+                    research_sources=["claude_agent_sdk"],
+                    market_conditions={"order_type": order_type},
+                    risk_metrics={"account_id": account_id}
+                )
+                if db_success:
+                    loguru_logger.info(f"Buy trade persisted to DB: {trade_id} for {quantity} {symbol} at ₹{trade_price}")
+                else:
+                    loguru_logger.warning(f"Buy trade executed but DB write failed: {trade_id}")
+            else:
+                loguru_logger.warning(f"Buy trade executed but no state_manager available for persistence: {trade_id}")
 
             loguru_logger.info(f"Buy trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}")
 
@@ -334,11 +355,32 @@ Respond with ONLY the JSON object. No explanation text."""
 
             # Create sell trade
             trade_id = f"trade_{uuid.uuid4().hex[:8]}"
-            session_id = f"session_{uuid.uuid4().hex[:8]}"
             now = datetime.now(timezone.utc).isoformat()
             trade_price = result.get('trade_price', 2000.0)
             proceeds = result.get('proceeds', quantity * trade_price)
             realized_pnl = result.get('realized_pnl', proceeds - (quantity * 2750.0))
+
+            # Write to database (BUG-002 fix: actually persist the trade)
+            if self._state_manager and hasattr(self._state_manager, 'paper_trading_state'):
+                db_success = await self._state_manager.paper_trading_state.create_trade(
+                    trade_id=trade_id,
+                    symbol=symbol,
+                    side="SELL",
+                    quantity=quantity,
+                    entry_price=float(trade_price),
+                    entry_reason=strategy_rationale,
+                    strategy_tag="morning_session",
+                    confidence_score=0.7,
+                    research_sources=["claude_agent_sdk"],
+                    market_conditions={"order_type": order_type, "realized_pnl": realized_pnl},
+                    risk_metrics={"account_id": account_id, "proceeds": proceeds}
+                )
+                if db_success:
+                    loguru_logger.info(f"Sell trade persisted to DB: {trade_id} for {quantity} {symbol} at ₹{trade_price}")
+                else:
+                    loguru_logger.warning(f"Sell trade executed but DB write failed: {trade_id}")
+            else:
+                loguru_logger.warning(f"Sell trade executed but no state_manager available for persistence: {trade_id}")
 
             loguru_logger.info(f"Sell trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}, P&L: ₹{realized_pnl}")
 

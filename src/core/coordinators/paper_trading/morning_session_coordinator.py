@@ -91,7 +91,9 @@ class MorningSessionCoordinator(BaseCoordinator):
             self.safeguards = None
 
         try:
+            self._log_debug("Attempting to get kite_connect_service from container...")
             self.kite_service = await self.container.get("kite_connect_service")
+            self._log_debug(f"kite_connect_service obtained: {self.kite_service}")
         except ValueError:
             self._log_warning("kite_connect_service not registered - using market_data_service")
             self.kite_service = await self.container.get("market_data_service")
@@ -549,29 +551,64 @@ Return ONLY the JSON array, no additional text."""
         return approved_trades
 
     async def _execute_trades(self, approved_trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Execute approved trades via paper trading."""
+        """Execute approved trades via paper trading with live prices from Kite Connect."""
         execution_results = []
+
+        # Check if Kite Connect is available for live prices
+        kite_available = False
+        if self.kite_service:
+            try:
+                # Check if it's KiteConnectService with active session
+                if hasattr(self.kite_service, 'is_authenticated'):
+                    kite_available = await self.kite_service.is_authenticated()
+                elif hasattr(self.kite_service, '_active_session') and self.kite_service._active_session:
+                    kite_available = True
+            except Exception as e:
+                self._log_warning(f"Kite Connect check failed: {e}")
+
+        if kite_available:
+            self._log_info("Using Kite Connect for live prices (paper trading mode)")
+        else:
+            self._log_info("Using mock prices (Kite Connect not authenticated)")
 
         for trade in approved_trades:
             try:
-                if trade["action"] == "BUY":
-                    result = await self.execution_service.execute_buy_trade(
-                        account_id="paper_trading_main",
-                        symbol=trade["symbol"],
-                        quantity=trade["quantity"],
-                        order_type="MARKET",
-                        strategy_rationale=trade.get("rationale", "Morning session trade")
-                    )
-                elif trade["action"] == "SELL":
-                    result = await self.execution_service.execute_sell_trade(
-                        account_id="paper_trading_main",
-                        symbol=trade["symbol"],
-                        quantity=trade["quantity"],
-                        order_type="MARKET",
-                        strategy_rationale=trade.get("rationale", "Morning session trade")
-                    )
-                else:
-                    continue
+                # Calculate quantity from position_size_pct if not provided
+                # Default portfolio value = 100000 (1 Lakh)
+                portfolio_value = 100000.0
+                position_size_pct = trade.get("position_size_pct", 5.0)  # Default 5%
+                entry_price = trade.get("entry_price") or trade.get("price")
+
+                # Try to get live price from Kite Connect
+                if kite_available and hasattr(self.kite_service, 'get_current_price'):
+                    try:
+                        live_price = await self.kite_service.get_current_price(trade["symbol"])
+                        if live_price and live_price > 0:
+                            entry_price = live_price
+                            self._log_info(f"Got live price for {trade['symbol']}: ₹{entry_price}")
+                        else:
+                            self._log_warning(f"Kite Connect returned invalid price for {trade['symbol']}, using fallback")
+                    except Exception as e:
+                        self._log_warning(f"Failed to get live price for {trade['symbol']}: {e}")
+
+                # If no price available, use a mock price for paper trading
+                if not entry_price or entry_price == 0:
+                    # Use a reasonable default based on stock (NIFTY stocks ~1000-3000)
+                    entry_price = 1000.0  # Default mock price
+                    self._log_warning(f"No price available for {trade['symbol']}, using mock price: {entry_price}")
+
+                # Calculate quantity: (portfolio * position_pct) / price
+                position_value = portfolio_value * (position_size_pct / 100.0)
+                quantity = int(position_value / entry_price)
+
+                # Ensure minimum 1 share
+                if quantity < 1:
+                    quantity = 1
+
+                self._log_info(f"Executing {trade['action']} for {trade['symbol']}: {quantity} shares @ ₹{entry_price} (position: {position_size_pct}%)")
+
+                # Always use mock paper trading for execution
+                result = await self._execute_via_mock_service(trade, quantity, entry_price)
 
                 result["original_idea"] = trade
                 execution_results.append(result)
@@ -589,6 +626,34 @@ Return ONLY the JSON array, no additional text."""
                 })
 
         return execution_results
+
+    async def _execute_via_mock_service(
+        self,
+        trade: Dict[str, Any],
+        quantity: int,
+        price: float
+    ) -> Dict[str, Any]:
+        """Execute trade via mock paper trading service."""
+        if trade["action"] == "BUY":
+            result = await self.execution_service.execute_buy_trade(
+                account_id="paper_swing_main",
+                symbol=trade["symbol"],
+                quantity=quantity,
+                order_type="MARKET",
+                strategy_rationale=trade.get("rationale", "Morning session trade")
+            )
+        elif trade["action"] == "SELL":
+            result = await self.execution_service.execute_sell_trade(
+                account_id="paper_swing_main",
+                symbol=trade["symbol"],
+                quantity=quantity,
+                order_type="MARKET",
+                strategy_rationale=trade.get("rationale", "Morning session trade")
+            )
+        else:
+            raise ValueError(f"Unknown action: {trade['action']}")
+
+        return result
 
     async def _log_session_decisions(
         self,

@@ -68,7 +68,8 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
     # Paper Trading Execution Service
     async def create_paper_trading_execution_service():
         from src.services.paper_trading_execution_service import PaperTradingExecutionService
-        execution_service = PaperTradingExecutionService()
+        state_manager = await container.get("state_manager")
+        execution_service = PaperTradingExecutionService(state_manager=state_manager)
         await execution_service.initialize()
         return execution_service
 
