@@ -406,6 +406,19 @@ REQUIREMENTS:
 - Limit position size to 5% of capital per stock
 - Provide clear reasoning for each recommendation
 
+IMPORTANT - HANDLING MISSING PRICE DATA:
+If price data is unavailable (price=0 or missing), you MUST still generate trade ideas based on:
+- Fundamentals strength (P/E, ROE, debt levels)
+- News sentiment (positive/negative developments)
+- Sector momentum and industry trends
+
+When price is unavailable:
+- Set entry_price, target_price, stop_loss to null
+- Base confidence score on fundamentals and news quality only
+- Include in reasoning: "Price data unavailable - recommendation based on fundamentals"
+- DO NOT attempt to fetch additional data or use tools
+- Work only with the provided research data
+
 OUTPUT FORMAT (JSON array):
 [
   {{
@@ -413,11 +426,11 @@ OUTPUT FORMAT (JSON array):
     "action": "BUY" or "SELL",
     "confidence": 0.75,
     "reasoning": "Clear 2-3 sentence explanation",
-    "entry_price": 2450.0,
-    "target_price": 2550.0,
-    "stop_loss": 2380.0,
+    "entry_price": 2450.0,  // null if price unavailable
+    "target_price": 2550.0,  // null if price unavailable
+    "stop_loss": 2380.0,  // null if price unavailable
     "position_size_pct": 5.0,
-    "risk_reward_ratio": 1.5
+    "risk_reward_ratio": 1.5  // null if price unavailable
   }}
 ]
 
@@ -453,13 +466,24 @@ Return ONLY the JSON array, no additional text."""
             validated_ideas = []
             for idea in trade_ideas:
                 if all(key in idea for key in ["symbol", "action", "confidence", "reasoning"]):
-                    # Ensure numeric fields are floats
+                    # Ensure numeric fields are floats (handle null for missing price data)
                     idea["confidence"] = float(idea.get("confidence", 0))
-                    idea["entry_price"] = float(idea.get("entry_price", 0))
-                    idea["target_price"] = float(idea.get("target_price", 0))
-                    idea["stop_loss"] = float(idea.get("stop_loss", 0))
+
+                    # Handle null values for price-related fields
+                    entry_price = idea.get("entry_price")
+                    idea["entry_price"] = float(entry_price) if entry_price is not None else None
+
+                    target_price = idea.get("target_price")
+                    idea["target_price"] = float(target_price) if target_price is not None else None
+
+                    stop_loss = idea.get("stop_loss")
+                    idea["stop_loss"] = float(stop_loss) if stop_loss is not None else None
+
                     idea["position_size_pct"] = float(idea.get("position_size_pct", 5.0))
-                    idea["risk_reward_ratio"] = float(idea.get("risk_reward_ratio", 1.0))
+
+                    risk_reward = idea.get("risk_reward_ratio")
+                    idea["risk_reward_ratio"] = float(risk_reward) if risk_reward is not None else None
+
                     validated_ideas.append(idea)
                 else:
                     self._log_warning(f"Skipping invalid trade idea: {idea}")
