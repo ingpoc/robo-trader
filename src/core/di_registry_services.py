@@ -8,7 +8,7 @@ Handles registration of business logic services:
 - Event routing and feature management
 """
 
-import logging
+from loguru import logger
 from src.services.portfolio_service import PortfolioService
 from src.services.risk_service import RiskService
 from src.services.execution_service import ExecutionService
@@ -21,7 +21,7 @@ from src.services.event_router_service import EventRouterService
 from src.services.token_refresh_manager import TokenRefreshManager
 # from src.services.manual_override_service import ManualOverrideService
 
-logger = logging.getLogger(__name__)
+# Using loguru logger imported at top
 
 
 async def register_domain_services(container: 'DependencyContainer') -> None:
@@ -227,10 +227,17 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
             # Get credentials from config.integration (loaded from env vars)
             api_key = container.config.integration.zerodha_api_key
             api_secret = container.config.integration.zerodha_api_secret
+            access_token = container.config.integration.zerodha_access_token
+
+            # DEBUG: Log credential values (masked)
+            logger.info(f"[KiteConnect Factory] api_key: {api_key[:4] if api_key else 'None'}***")
+            logger.info(f"[KiteConnect Factory] api_secret: {api_secret[:4] if api_secret else 'None'}***")
+            logger.info(f"[KiteConnect Factory] access_token: {access_token[:10] if access_token else 'None'}***")
 
             if not api_key or not api_secret:
-                logger.error("No Zerodha credentials - set ZERODHA_API_KEY and ZERODHA_API_SECRET in env")
-                raise ValueError("ZERODHA_API_KEY and ZERODHA_API_SECRET required for PT-003")
+                logger.warning("No Zerodha credentials in environment - market data will be mock")
+                # Don't raise error - allow mock fallback for paper trading
+                return None
 
             real_time_state = await container.get("real_time_trading_state")
 
@@ -244,12 +251,19 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
                 real_time_state=real_time_state
             )
             await kite_service.initialize(credentials)
+
+            # If access_token is available in env, use it directly (skip OAuth for paper trading)
+            if access_token:
+                logger.info(f"Using ZERODHA_ACCESS_TOKEN from environment for market data")
+                await kite_service._set_access_token(access_token)
+
             logger.info(f"KiteConnectService initialized with API key: {api_key[:4]}***")
             return kite_service
 
         except Exception as e:
-            logger.error(f"KiteConnectService failed: {e}")
-            raise
+            logger.warning(f"KiteConnectService failed to initialize: {e} - market data will be mock")
+            # Don't raise - allow mock fallback
+            return None
 
     container._register_singleton("kite_connect_service", create_kite_connect_service)
 
