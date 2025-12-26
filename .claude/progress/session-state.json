@@ -1,51 +1,54 @@
 {
-  "session_number": 4,
-  "started_at": "2025-12-26T12:00:00Z",
-  "last_action": "environment_variables_best_practice",
-  "last_action_at": "2025-12-26T12:00:00Z",
+  "session_number": 5,
+  "started_at": "2025-12-26T16:30:00Z",
+  "last_action": "integration_gap_analysis",
+  "last_action_at": "2025-12-26T17:00:00Z",
   "last_feature_id": "PT-003",
-  "agent_type": "coding",
-  "status": "completed",
+  "agent_type": "opus",
+  "status": "active",
   "heartbeat": {
     "enabled": true,
     "interval_seconds": 300,
-    "last_heartbeat": "2025-12-26T12:00:00Z"
+    "last_heartbeat": "2025-12-26T17:00:00Z"
   },
   "previous_session": {
-    "session_number": 3,
+    "session_number": 4,
     "agent_type": "coding",
-    "features_completed": 1
+    "features_completed": 0,
+    "work_summary": "Environment variables consolidation to .env"
   },
   "current_activity": {
     "feature_id": "PT-003",
-    "status": "completed",
-    "work_summary": "Environment Variables Best Practice Implementation: (1) Consolidated all credentials to .env file as single source of truth, (2) Moved ZERODHA_API_KEY and ZERODHA_API_SECRET from system environment to .env, (3) Consolidated PERPLEXITY_API_KEYS to comma-separated format in .env, (4) Created .env.example template for new developers, (5) Removed ZERODHA and PERPLEXITY exports from ~/.zshrc and ~/.bash_profile, (6) Updated CLAUDE.md with environment variables section. Key finding: Backend uses python-dotenv's load_dotenv() which reads .env file directly, NOT from parent shell environment."
+    "status": "debugging",
+    "work_summary": "Integration Gap Analysis: (1) Fixed loguru logging in di_registry_services.py, (2) Added Token Efficiency Rules to CLAUDE.md, (3) Added Canonical Constants pattern to CLAUDE.md, (4) Added Implementation Status tracking to src/services/CLAUDE.md, (5) Added Paper Trading Data Flow contract to src/core/coordinators/CLAUDE.md. Discovered 2 bugs: account ID mismatch (paper_trading_main vs paper_swing_main) and mock execution service that doesn't write to DB."
   },
+  "bugs_discovered": [
+    {
+      "id": "BUG-001",
+      "location": "morning_session_coordinator.py:639",
+      "issue": "Uses paper_trading_main but DB has paper_swing_main",
+      "status": "pending_fix"
+    },
+    {
+      "id": "BUG-002",
+      "location": "paper_trading_execution_service.py:183-194",
+      "issue": "Returns success but never writes to paper_positions/paper_trades DB tables",
+      "status": "pending_fix"
+    }
+  ],
+  "commits_this_session": [
+    "e42596f fix: Switch di_registry_services to loguru for proper log routing",
+    "c32d689 docs: Add token efficiency rules to CLAUDE.md",
+    "d327e82 docs: Add integration patterns to CLAUDE.md files"
+  ],
   "metrics": {
-    "total_features_this_session": 0,
-    "total_commits_this_session": 0,
-    "total_tests_run": 0,
-    "average_feature_time_minutes": 0,
-    "test_pass_rate": 0,
+    "total_commits_this_session": 3,
+    "bugs_discovered": 2,
     "bugs_fixed": 0,
-    "configuration_improvements": 1
+    "documentation_improvements": 3
   },
   "notes": {
     "project_context": "Autonomous Claude Paper Trader & Portfolio Analyzer",
-    "critical_constraints": [
-      "Max 150 lines per coordinator",
-      "Use EventBus for inter-coordinator communication",
-      "All code must be async/await",
-      "Use config_state.store_*() for database operations",
-      "Queue AI analysis tasks to prevent token exhaustion"
-    ],
-    "env_vars_best_practice": [
-      "ALL credentials in .env file only (single source of truth)",
-      "NEVER export credentials in shell startup files",
-      "Use .env.example as template for new developers",
-      "Backend uses load_dotenv() to read .env file directly",
-      "OAuth tokens auto-saved to .env after authentication"
-    ],
-    "next_action": "Test Kite Connect integration with live prices - restart backend and trigger morning session"
+    "next_action": "Fix BUG-001 (account ID) and BUG-002 (mock execution) to enable actual paper trading"
   }
 }
