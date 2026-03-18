@@ -334,6 +334,23 @@ export const useSystemStatusStore = create<SystemStatusState>()(
               }
               break
 
+            case 'CLAUDE_ANALYSIS_COMPLETED':
+            case 'claude_analysis_completed':
+              set((state) => ({
+                lastUpdate: message.timestamp || new Date().toISOString(),
+                claudeStatus: state.claudeStatus
+                  ? {
+                      ...state.claudeStatus,
+                      timestamp: message.timestamp || new Date().toISOString(),
+                      data: {
+                        ...(state.claudeStatus.data || {}),
+                        last_analysis_completed_at: message.timestamp || new Date().toISOString(),
+                      },
+                    }
+                  : state.claudeStatus,
+              }))
+              break
+
             case 'connection_established':
               if (process.env.NODE_ENV === 'development') {
                 console.log('WebSocket connection established:', message.client_id)

@@ -63,6 +63,12 @@ class IntegrationConfig(BaseModel):
     zerodha_api_secret: Optional[str] = Field(default=None, description="Zerodha API secret")
     zerodha_access_token: Optional[str] = Field(default=None, description="Zerodha access token")
     zerodha_request_token: Optional[str] = Field(default=None, description="Zerodha request token")
+    upstox_api_key: Optional[str] = Field(default=None, description="Upstox API key")
+    upstox_api_secret: Optional[str] = Field(default=None, description="Upstox API secret")
+    upstox_redirect_uri: Optional[str] = Field(default=None, description="Upstox OAuth redirect URI")
+    upstox_access_token: Optional[str] = Field(default=None, description="Upstox access token")
+    quote_stream_provider: str = Field(default="upstox", description="Default paper-mode quote stream provider")
+    upstox_stream_mode: str = Field(default="ltpc", description="Default Upstox stream mode")
     anthropic_api_key: Optional[str] = Field(default=None, description="Anthropic API key")
     perplexity_api_keys: List[str] = Field(default_factory=list, description="Perplexity API keys (with automatic failover)")
 
@@ -296,6 +302,12 @@ class Config(BaseModel):
         self.integration.zerodha_api_secret = os.getenv('ZERODHA_API_SECRET', self.integration.zerodha_api_secret)
         self.integration.zerodha_access_token = os.getenv('ZERODHA_ACCESS_TOKEN', self.integration.zerodha_access_token)
         self.integration.zerodha_request_token = os.getenv('ZERODHA_REQUEST_TOKEN', self.integration.zerodha_request_token)
+        self.integration.upstox_api_key = os.getenv('UPSTOX_API_KEY', self.integration.upstox_api_key)
+        self.integration.upstox_api_secret = os.getenv('UPSTOX_API_SECRET', self.integration.upstox_api_secret)
+        self.integration.upstox_redirect_uri = os.getenv('UPSTOX_REDIRECT_URI', self.integration.upstox_redirect_uri)
+        self.integration.upstox_access_token = os.getenv('UPSTOX_ACCESS_TOKEN', self.integration.upstox_access_token)
+        self.integration.quote_stream_provider = os.getenv('QUOTE_STREAM_PROVIDER', self.integration.quote_stream_provider)
+        self.integration.upstox_stream_mode = os.getenv('UPSTOX_STREAM_MODE', self.integration.upstox_stream_mode)
         self.integration.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY', self.integration.anthropic_api_key)
 
         perplexity_keys = []
@@ -332,9 +344,11 @@ class Config(BaseModel):
             logger.info("✓ Live trading credentials configured")
 
         elif self.environment in ['paper', 'dry-run']:
-            # Paper and dry-run modes allow missing credentials for demo purposes
+            # Paper and dry-run modes allow broker credentials to remain optional.
             if not self.integration.zerodha_api_key or not self.integration.zerodha_api_secret:
-                logger.info(f"✓ {self.environment.title()} mode - using mock/demo data (no real API credentials needed)")
+                logger.info(
+                    f"✓ {self.environment.title()} mode - Zerodha broker credentials are optional until broker-backed execution is enabled"
+                )
             else:
                 logger.info(f"✓ {self.environment.title()} mode with API credentials configured")
 

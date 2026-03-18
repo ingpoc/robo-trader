@@ -13,60 +13,58 @@ export interface MetricsGridProps {
 }
 
 export const MetricsGrid: React.FC<MetricsGridProps> = ({ portfolio, analytics }) => {
+  const summary = portfolio?.summary
+  const paperTrading = analytics?.paper_trading
   const metrics = [
     {
       label: "Available Cash",
-      value: portfolio?.cash.free || 0,
+      value: summary?.cash_available ?? portfolio?.cash.free ?? 0,
       format: "currency",
       icon: "dollar",
-      tooltip: "The amount of cash available for trading and investments"
+      tooltip: "Capital available for new paper-trading positions."
     },
     {
-      label: "Total Exposure",
-      value: portfolio?.exposure_total || 0,
+      label: "Portfolio Value",
+      value: summary?.total_balance ?? analytics?.portfolio_value ?? portfolio?.cash.total ?? 0,
       format: "currency",
       icon: "pie",
-      tooltip: "Total market value of all your current positions"
+      tooltip: "Current paper-trading equity across the active operator portfolio."
     },
     {
       label: "Active Positions",
-      value: portfolio?.holdings?.length || 0,
+      value: summary?.active_positions ?? portfolio?.holdings?.length ?? 0,
       format: "number",
       icon: "users",
-      tooltip: "Number of different securities you currently hold"
+      tooltip: "Number of open paper-trading positions."
     },
     {
-      label: "Risk Score",
+      label: "Concentration Risk",
       value: analytics?.portfolio?.concentration_risk || 0,
       format: "percent",
       icon: "alert",
       changeLabel: analytics?.portfolio?.dominant_sector,
-      tooltip: "Portfolio concentration risk based on sector allocation"
+      tooltip: "Largest single-position concentration as a share of deployed paper capital."
     },
     {
-      label: "Paper Trading P&L",
-      value: analytics?.paper_trading?.pnl || 0,
+      label: "30d P&L",
+      value: analytics?.pnl_absolute ?? paperTrading?.pnl ?? 0,
       format: "currency",
       icon: "activity",
-      tooltip: "Claude's paper trading performance today"
+      tooltip: "Aggregate paper-trading profit and loss over the active dashboard window."
     },
     {
       label: "AI Win Rate",
-      value: analytics?.paper_trading?.win_rate || 0,
+      value: paperTrading?.win_rate ?? analytics?.win_rate ?? 0,
       format: "percent",
       icon: "trending-up",
-      tooltip: "Claude's trading success rate in paper account"
+      tooltip: "Share of closed paper trades that finished positive."
     }
   ]
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-      {metrics.map((metric, index) => (
-        <div
-          key={metric.label}
-          style={{ animationDelay: `${index * 50}ms` }}
-          className="animate-metric-pop"
-        >
+      {metrics.map((metric) => (
+        <div key={metric.label}>
           <MetricCard
             label={metric.label}
             value={metric.value}

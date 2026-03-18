@@ -1,3 +1,5 @@
+import type { HTMLAttributes } from 'react'
+
 import { cn } from '@/lib/utils'
 
 interface SkeletonLoaderProps {
@@ -103,15 +105,18 @@ export function SkeletonGrid({ rows, cols, className }: SkeletonGridProps) {
   )
 }
 
-interface SkeletonCardProps {
+interface SkeletonCardProps extends HTMLAttributes<HTMLDivElement> {
   className?: string
   showAvatar?: boolean
   lines?: number
 }
 
-export function SkeletonCard({ className, showAvatar = false, lines = 3 }: SkeletonCardProps) {
+export function SkeletonCard({ className, showAvatar = false, lines = 3, ...props }: SkeletonCardProps) {
   return (
-    <div className={cn('shadow-professional rounded-xl p-6 bg-gradient-to-br from-white/95 to-warmgray-50/70 backdrop-blur-sm ring-1 ring-warmgray-300/50 animate-scale-in', className)}>
+    <div
+      className={cn('rounded-xl border border-border bg-card p-6 shadow-sm animate-fade-in', className)}
+      {...props}
+    >
       {showAvatar && (
         <div className="flex items-center space-x-4 mb-4">
           <SkeletonLoader variant="circle" className="w-12 h-12" />

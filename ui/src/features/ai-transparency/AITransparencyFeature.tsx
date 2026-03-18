@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { PageHeader } from '@/components/common/PageHeader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Eye, Brain, TrendingUp, Shield, BookOpen, MessageSquare, BarChart3, Clock, Database } from 'lucide-react'
 import { useAITransparency } from './hooks/useAITransparency'
@@ -17,35 +18,30 @@ import { SessionTranscripts } from './components/SessionTranscripts'
 import { PerformanceAttribution } from './components/PerformanceAttribution'
 import { DataPipelineAnalysis, PromptOptimizationHistory } from './components'
 
-export const AITransparencyFeature: React.FC = () => {
+interface AITransparencyFeatureProps {
+  embedded?: boolean
+}
+
+export const AITransparencyFeature: React.FC<AITransparencyFeatureProps> = ({ embedded = false }) => {
   const { tradeLogs, reflections, sessions, isLoading } = useAITransparency()
   const [selectedPromptId, setSelectedPromptId] = useState<string | undefined>(undefined)
 
   return (
-    <div className="page-wrapper">
-      <div className="flex flex-col gap-4 animate-fade-in-luxury">
-        <Breadcrumb />
+    <div className={embedded ? 'space-y-6' : 'page-wrapper'}>
+      <div className="flex flex-col gap-6">
+        {!embedded ? <Breadcrumb /> : null}
 
-        {/* Header */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-copper-100 dark:bg-copper-950 rounded-lg">
-              <Eye className="w-6 h-6 text-copper-600 dark:text-copper-400" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-warmgray-900 dark:text-warmgray-100">
-                AI Transparency
-              </h1>
-              <p className="text-sm text-warmgray-600 dark:text-warmgray-400 mt-1">
-                Real-time view of Claude's decisions and learning
-              </p>
-            </div>
-          </div>
-        </div>
+        {!embedded ? (
+          <PageHeader
+            title="AI Transparency"
+            description="Review the real research, decision, execution, and learning traces produced by the Claude trading runtime."
+            icon={<Eye className="h-5 w-5" />}
+          />
+        ) : null}
 
         {/* Tabs Section */}
         <Tabs defaultValue="trades" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-6 p-1.5 bg-warmgray-100 dark:bg-warmgray-800 rounded-lg border border-warmgray-300 dark:border-warmgray-700 shadow-sm">
+          <TabsList className="mb-6 grid w-full grid-cols-6 rounded-xl border border-border bg-muted/50 p-1">
             <TabsTrigger value="trades" className="text-sm font-semibold rounded-md flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
               <span className="hidden sm:inline">Trades</span>
@@ -93,7 +89,7 @@ export const AITransparencyFeature: React.FC = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Database className="w-6 h-6 text-copper-600 dark:text-copper-400" />
+                  <Database className="h-6 w-6 text-muted-foreground" />
                   Claude's Prompt Optimization System
                 </CardTitle>
                 <CardDescription>
@@ -104,21 +100,21 @@ export const AITransparencyFeature: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <h4 className="font-semibold mb-2 text-blue-900 dark:text-blue-100">Quality Analysis</h4>
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                  <div className="rounded-lg border border-border bg-muted/40 p-4">
+                    <h4 className="mb-2 font-semibold text-foreground">Quality Analysis</h4>
+                    <p className="text-sm text-muted-foreground">
                       Claude rates data quality (1-10) and identifies what's missing or redundant
                     </p>
                   </div>
-                  <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800">
-                    <h4 className="font-semibold mb-2 text-purple-900 dark:text-purple-100">Iterative Improvement</h4>
-                    <p className="text-sm text-purple-700 dark:text-purple-300">
+                  <div className="rounded-lg border border-border bg-muted/40 p-4">
+                    <h4 className="mb-2 font-semibold text-foreground">Iterative Improvement</h4>
+                    <p className="text-sm text-muted-foreground">
                       Up to 3 optimization attempts per data fetch until quality threshold is met
                     </p>
                   </div>
-                  <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
-                    <h4 className="font-semibold mb-2 text-green-900 dark:text-green-100">Continuous Learning</h4>
-                    <p className="text-sm text-green-700 dark:text-green-300">
+                  <div className="rounded-lg border border-border bg-muted/40 p-4">
+                    <h4 className="mb-2 font-semibold text-foreground">Continuous Learning</h4>
+                    <p className="text-sm text-muted-foreground">
                       Optimized prompts are saved and reused, improving over time
                     </p>
                   </div>

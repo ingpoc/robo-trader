@@ -94,50 +94,21 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       setIsLoading(true)
       setError(null)
 
-      // For now, we'll fetch accounts from the backend
-      // Since the backend doesn't have a list accounts endpoint yet, we'll start with the default account
-      const defaultAccountId = 'paper_swing_main'
-
-      const response = await fetch(`/api/paper-trading/accounts/${defaultAccountId}/overview`)
+      const response = await fetch('/api/paper-trading/accounts')
       if (!response.ok) {
-        throw new Error('Failed to fetch account')
+        throw new Error('Failed to fetch accounts')
       }
 
-      const accountData = await response.json()
-      const account: Account = {
+      const data = await response.json()
+      const loadedAccounts: Account[] = (data.accounts || []).map((accountData: any) => ({
         account_id: accountData.accountId,
-        account_name: 'Paper Trading - Swing Trading Account',
+        account_name: accountData.accountName || accountData.accountId,
         account_type: accountData.accountType,
-        strategy_type: accountData.activeStrategy,
-        risk_level: 'moderate', // Default for now
+        strategy_type: accountData.accountType,
+        risk_level: accountData.riskLevel || 'moderate',
         balance: accountData.currentBalance || 0,
         buying_power: accountData.marginAvailable || 0,
-        deployed_capital: accountData.deployedCapital || 0,
-        total_pnl: accountData.todayPnL || 0,
-        total_pnl_pct: accountData.monthlyROI || 0,
-        monthly_pnl: accountData.todayPnL || 0,
-        monthly_pnl_pct: accountData.monthlyROI || 0,
-        open_positions_count: accountData.openPositions || 0,
-        today_trades: accountData.closedTodayCount || 0,
-        win_rate: accountData.winRate || 0,
-        created_at: accountData.createdDate || new Date().toISOString(),
-        reset_date: '',
-      }
-
-      setAccounts([account])
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load accounts')
-      // Fallback to default account structure
-      const fallbackAccount: Account = {
-        account_id: 'paper_swing_main',
-        account_name: 'Paper Trading - Swing Trading Account',
-        account_type: 'swing_trading',
-        strategy_type: 'swing',
-        risk_level: 'moderate',
-        balance: 100000,
-        buying_power: 100000,
-        deployed_capital: 0,
+        deployed_capital: accountData.totalInvested || 0,
         total_pnl: 0,
         total_pnl_pct: 0,
         monthly_pnl: 0,
@@ -145,10 +116,22 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         open_positions_count: 0,
         today_trades: 0,
         win_rate: 0,
-        created_at: new Date().toISOString(),
+        created_at: accountData.createdDate || new Date().toISOString(),
         reset_date: '',
+      }))
+
+      setAccounts(loadedAccounts)
+
+      if (loadedAccounts.length === 0) {
+        setSelectedAccount(null)
+        localStorage.removeItem(STORAGE_KEY)
       }
-      setAccounts([fallbackAccount])
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load accounts')
+      setAccounts([])
+      setSelectedAccount(null)
+      localStorage.removeItem(STORAGE_KEY)
     } finally {
       setIsLoading(false)
     }

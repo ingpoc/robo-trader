@@ -4,21 +4,21 @@
  */
 
 import { usePortfolio } from '@/hooks/usePortfolio'
-import { useAnalytics } from '@/hooks/useAnalytics'
-import { useAgents } from '@/hooks/useAgents'
 
 export const useDashboardData = () => {
-  const { portfolio, analytics: portfolioAnalytics, isLoading, portfolioScan, marketScreening, isScanning } = usePortfolio()
-  const { data: performanceData, isLoading: isAnalyticsLoading } = useAnalytics('30d')
-  const { agents, isLoading: isAgentsLoading } = useAgents()
+  const {
+    portfolio,
+    analytics,
+    aiStatus,
+    alerts,
+    isLoading,
+  } = usePortfolio()
 
   return {
     portfolio,
-    analytics: { ...portfolioAnalytics, chart_data: performanceData?.chart_data },
-    agents,
-    isLoading: isLoading || isAnalyticsLoading || isAgentsLoading,
-    portfolioScan,
-    marketScreening,
-    isScanning,
+    analytics,
+    aiStatus,
+    alerts,
+    isLoading,
   }
 }

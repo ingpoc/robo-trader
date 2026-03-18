@@ -1,6 +1,15 @@
 import type { DashboardData } from '@/types/api'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
+const getDefaultWebSocketUrl = () => {
+  if (typeof window === 'undefined') {
+    return 'ws://localhost:8000/ws'
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws`
+}
+
+const WS_URL = import.meta.env.VITE_WS_URL || getDefaultWebSocketUrl()
 
 type WebSocketCallback = (data: DashboardData) => void
 type ErrorCallback = (error: Event) => void

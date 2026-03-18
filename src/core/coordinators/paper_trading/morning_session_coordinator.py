@@ -24,6 +24,7 @@ from src.core.coordinators.base_coordinator import BaseCoordinator
 from src.core.event_bus import EventBus, Event, EventType
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 from src.services.paper_trading_execution_service import PaperTradingExecutionService
+from src.services.paper_trading.account_manager import PaperTradingAccountManager
 from src.services.autonomous_trading_safeguards import AutonomousTradingSafeguards
 from src.services.claude_agent.decision_logger import ClaudeDecisionLogger
 from src.services.kite_connect_service import KiteConnectService
@@ -66,6 +67,7 @@ class MorningSessionCoordinator(BaseCoordinator):
 
         # Services to be initialized
         self.execution_service: Optional[PaperTradingExecutionService] = None
+        self.account_manager: Optional[PaperTradingAccountManager] = None
         self.safeguards: Optional[AutonomousTradingSafeguards] = None
         self.decision_logger: Optional[ClaudeDecisionLogger] = None
         self.kite_service: Optional[KiteConnectService] = None
@@ -80,6 +82,7 @@ class MorningSessionCoordinator(BaseCoordinator):
 
         # Get all required services from DI container
         self.execution_service = await self.container.get("paper_trading_execution_service")
+        self.account_manager = await self.container.get("paper_trading_account_manager")
         self.decision_logger = await self.container.get("trade_decision_logger")
         self.stock_discovery = await self.container.get("stock_discovery_service")
 
@@ -569,7 +572,7 @@ Return ONLY the JSON array, no additional text."""
         if kite_available:
             self._log_info("Using Kite Connect for live prices (paper trading mode)")
         else:
-            self._log_info("Using mock prices (Kite Connect not authenticated)")
+            self._log_warning("Kite Connect is unavailable; morning session will require explicit decision prices")
 
         for trade in approved_trades:
             try:
@@ -587,15 +590,24 @@ Return ONLY the JSON array, no additional text."""
                             entry_price = live_price
                             self._log_info(f"Got live price for {trade['symbol']}: ₹{entry_price}")
                         else:
-                            self._log_warning(f"Kite Connect returned invalid price for {trade['symbol']}, using fallback")
+                            self._log_warning(
+                                f"Kite Connect returned no usable live price for {trade['symbol']}; "
+                                "decision packet price will be required"
+                            )
                     except Exception as e:
                         self._log_warning(f"Failed to get live price for {trade['symbol']}: {e}")
 
-                # If no price available, use a mock price for paper trading
+                # Never fabricate a paper execution price. Require either live market data
+                # or an explicit decision-packet entry price from upstream reasoning.
                 if not entry_price or entry_price == 0:
-                    # Use a reasonable default based on stock (NIFTY stocks ~1000-3000)
-                    entry_price = 1000.0  # Default mock price
-                    self._log_warning(f"No price available for {trade['symbol']}, using mock price: {entry_price}")
+                    raise TradingError(
+                        (
+                            f"Morning session cannot execute {trade['symbol']} because no live price "
+                            "or decision entry price is available"
+                        ),
+                        category=ErrorCategory.VALIDATION,
+                        severity=ErrorSeverity.HIGH,
+                    )
 
                 # Calculate quantity: (portfolio * position_pct) / price
                 position_value = portfolio_value * (position_size_pct / 100.0)
@@ -607,8 +619,7 @@ Return ONLY the JSON array, no additional text."""
 
                 self._log_info(f"Executing {trade['action']} for {trade['symbol']}: {quantity} shares @ ₹{entry_price} (position: {position_size_pct}%)")
 
-                # Always use mock paper trading for execution
-                result = await self._execute_via_mock_service(trade, quantity, entry_price)
+                result = await self._execute_via_paper_service(trade, quantity, entry_price)
 
                 result["original_idea"] = trade
                 execution_results.append(result)
@@ -627,16 +638,17 @@ Return ONLY the JSON array, no additional text."""
 
         return execution_results
 
-    async def _execute_via_mock_service(
+    async def _execute_via_paper_service(
         self,
         trade: Dict[str, Any],
         quantity: int,
         price: float
     ) -> Dict[str, Any]:
-        """Execute trade via mock paper trading service."""
+        """Execute trade via the paper-trading service."""
+        account_id = await self._resolve_execution_account_id()
         if trade["action"] == "BUY":
             result = await self.execution_service.execute_buy_trade(
-                account_id="paper_swing_main",
+                account_id=account_id,
                 symbol=trade["symbol"],
                 quantity=quantity,
                 order_type="MARKET",
@@ -644,7 +656,7 @@ Return ONLY the JSON array, no additional text."""
             )
         elif trade["action"] == "SELL":
             result = await self.execution_service.execute_sell_trade(
-                account_id="paper_swing_main",
+                account_id=account_id,
                 symbol=trade["symbol"],
                 quantity=quantity,
                 order_type="MARKET",
@@ -654,6 +666,33 @@ Return ONLY the JSON array, no additional text."""
             raise ValueError(f"Unknown action: {trade['action']}")
 
         return result
+
+    async def _resolve_execution_account_id(self) -> str:
+        """Resolve the paper account used by the autonomous morning session."""
+        if not self.account_manager:
+            raise TradingError(
+                "PaperTradingAccountManager is not initialized",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.CRITICAL,
+            )
+
+        accounts = await self.account_manager.get_all_accounts()
+        if not accounts:
+            raise TradingError(
+                "Morning session cannot execute trades because no paper trading account exists",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+            )
+
+        if len(accounts) > 1:
+            account_ids = ", ".join(account.account_id for account in accounts)
+            raise TradingError(
+                f"Morning session requires an explicit paper trading account selection; available accounts: {account_ids}",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+            )
+
+        return accounts[0].account_id
 
     async def _log_session_decisions(
         self,

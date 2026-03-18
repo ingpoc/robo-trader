@@ -1,176 +1,154 @@
 /**
  * System Health Hook
- * Uses centralized system status store for consistent state management
+ * Uses the monitoring summary API as the authoritative source for health state.
  */
 
-import { useState, useEffect } from 'react'
-import { useSystemStatusStore } from '@/stores/systemStatusStore'
+import { useEffect, useMemo, useState } from 'react'
 import { monitoringAPI } from '@/api/endpoints'
+import { useSystemStatusStore } from '@/stores/systemStatusStore'
+
+type MonitoringComponent = {
+  status?: string
+  summary?: string
+  error?: string
+  [key: string]: any
+}
+
+type MonitoringSummary = {
+  status: string
+  timestamp: string
+  blockers: string[]
+  initialization: {
+    orchestrator_initialized: boolean
+    bootstrap_completed: boolean
+    initialization_errors: string[]
+    last_error: string | null
+  }
+  components: {
+    orchestrator?: MonitoringComponent
+    database?: MonitoringComponent
+    event_bus?: MonitoringComponent
+    background_scheduler?: MonitoringComponent
+    websocket?: MonitoringComponent
+  }
+}
+
+const dedupeErrors = (errors: string[]) => Array.from(new Set(errors.filter(Boolean)))
 
 export const useSystemHealth = () => {
-  const {
-    systemStatus,
-    queueStatus,
-    isConnected,
-    errors,
-    lastUpdate,
-    getOverallHealth,
-    getComponentHealth
-  } = useSystemStatusStore()
+  const { isConnected, errors: websocketErrors, lastUpdate } = useSystemStatusStore()
 
-  // WebSocket is now initialized globally in App.tsx, so no need to initialize here
-  // This hook now only reads from the store
+  const [systemSummary, setSystemSummary] = useState<MonitoringSummary | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Local state for scheduler data from monitoring API
-  const [schedulerData, setSchedulerData] = useState<any>(null)
-
-  // Fetch scheduler data from monitoring API
   useEffect(() => {
-    const fetchSchedulerData = async () => {
+    let cancelled = false
+
+    const fetchHealthData = async () => {
       try {
-        const response = await monitoringAPI.getSchedulerStatus()
-        setSchedulerData(response)
+        const summary = await monitoringAPI.getSystemStatus()
+
+        if (cancelled) {
+          return
+        }
+
+        setSystemSummary(summary)
+        setFetchError(null)
       } catch (error) {
-        console.error('Failed to fetch scheduler data:', error)
-      }
-    }
+        if (cancelled) {
+          return
+        }
 
-    fetchSchedulerData()
-    // Set up polling to refresh scheduler data every 30 seconds
-    const interval = setInterval(fetchSchedulerData, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Extract component-specific data
-  const dbHealth = getComponentHealth('database')
-  const resources = getComponentHealth('resources')
-  const websocketHealth = getComponentHealth('websocket')
-  const claudeHealth = getComponentHealth('claudeAgent')
-
-  // Queue health comes from dedicated queueStatus property, not from systemStatus.components.queue
-  // The queueStatus is populated by queue_status_update WebSocket messages with proper field mapping
-  const queueHealth = queueStatus ? {
-    status: 'healthy', // queueStatus messages indicate health via data
-    totalTasks: queueStatus.stats?.totalTasks || 0,
-    runningQueues: queueStatus.stats?.runningQueues || 0,
-    totalQueues: queueStatus.stats?.totalQueues || 0,
-    queues: queueStatus.queues
-  } : null
-
-  // Calculate scheduler health from monitoring API data
-  const calculateSchedulerHealth = () => {
-    if (!schedulerData || !schedulerData.schedulers) {
-      return {
-        healthy: false,
-        status: 'attention_required',
-        healthySchedulers: 0,
-        totalSchedulers: 0,
-        hasActiveJobs: false,
-        hasCompletedJobs: false,
-        details: {
-          running: 0,
-          degraded: 0,
-          failed: 0
+        const message =
+          error instanceof Error ? error.message : 'Failed to fetch system health status'
+        setFetchError(message)
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
         }
       }
     }
 
-    const { schedulers } = schedulerData
+    fetchHealthData()
+    const interval = setInterval(fetchHealthData, 15000)
 
-    // Calculate overall scheduler health
-    const healthySchedulers = schedulers.filter(s => s.status === 'running').length
-    const totalSchedulers = schedulers.length
-    const hasActiveJobs = schedulers.some(s => s.active_jobs > 0)
-    const hasCompletedJobs = schedulers.some(s => (s.completed_jobs || 0) > 0)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
 
-    // Consider healthy if:
-    // 1. All schedulers are running, OR
-    // 2. At least some schedulers are running AND there's activity
-    const isHealthy = healthySchedulers === totalSchedulers ||
-                     (healthySchedulers > 0 && (hasActiveJobs || hasCompletedJobs))
+  const components = systemSummary?.components ?? {}
+
+  const databaseComponent = components.database
+  const dbHealth = databaseComponent
+    ? {
+        healthy: databaseComponent.status === 'healthy',
+        activeConnections: databaseComponent.connections || 0,
+        portfolioLoaded: Boolean(databaseComponent.portfolioLoaded),
+        status: databaseComponent.status,
+        summary: databaseComponent.summary,
+        error: databaseComponent.error,
+      }
+    : null
+
+  const websocketComponent = components.websocket
+  const websocketHealth = useMemo(() => {
+    if (!websocketComponent && !isConnected) {
+      return null
+    }
+
+    const reportedClients = Number(websocketComponent?.clients || 0)
+    const effectiveClients = isConnected ? Math.max(1, reportedClients) : reportedClients
+    const localConnectionOverridesSummary = isConnected && reportedClients === 0
+    const status =
+      localConnectionOverridesSummary
+        ? 'healthy'
+        : websocketComponent?.status || (isConnected ? 'healthy' : 'idle')
+
+    const summary =
+      localConnectionOverridesSummary
+        ? 'This operator session is connected to the live WebSocket.'
+        : websocketComponent?.summary ||
+          (isConnected
+            ? 'This operator session is connected to the live WebSocket.'
+            : 'No WebSocket clients are currently connected.')
 
     return {
-      healthy: isHealthy,
-      status: isHealthy ? 'healthy' : 'attention_required',
-      healthySchedulers,
-      totalSchedulers,
-      hasActiveJobs,
-      hasCompletedJobs,
-      details: {
-        running: healthySchedulers,
-        degraded: healthySchedulers > 0 && healthySchedulers < totalSchedulers,
-        failed: schedulers.filter(s => s.status === 'error').length
-      }
+      healthy: status === 'healthy',
+      status,
+      clients: effectiveClients,
+      summary,
     }
-  }
+  }, [isConnected, websocketComponent])
 
-  const schedulerHealth = calculateSchedulerHealth()
+  const eventBusHealth = components.event_bus
+    ? {
+        status: components.event_bus.status,
+        summary: components.event_bus.summary || 'Event bus status unavailable.',
+      }
+    : null
 
-  // Format data for compatibility with enhanced components
-  const formattedData = {
-    scheduler: schedulerData ? {
-      healthy: schedulerHealth.healthy,
-      lastRun: schedulerData?.lastRun,
-      activeJobs: schedulerData?.schedulers?.reduce((sum: number, s: any) => sum + (s.active_jobs || 0), 0) || 0,
-      completedJobs: schedulerData?.schedulers?.reduce((sum: number, s: any) => sum + (s.completed_jobs || 0), 0) || 0,
-      schedulers: schedulerData?.schedulers || [],
-      totalSchedulers: schedulerHealth.totalSchedulers,
-      runningSchedulers: schedulerHealth.details.running,
-      healthySchedulers: schedulerHealth.healthySchedulers,
-      failedSchedulers: schedulerHealth.details.failed
-    } : null,
-
-    queue: queueHealth ? {
-      healthy: ['healthy', 'idle'].includes(queueHealth.status),
-      totalTasks: queueHealth.totalTasks,
-      runningQueues: queueHealth.runningQueues,
-      totalQueues: queueHealth.totalQueues,
-      queues: queueHealth.queues
-    } : null,
-
-    database: dbHealth ? {
-      healthy: dbHealth.status === 'connected',
-      activeConnections: dbHealth.connections,
-      portfolioLoaded: dbHealth.portfolioLoaded
-    } : null,
-
-    resources: resources ? {
-      cpu: resources.cpu,
-      memory: resources.memory,
-      disk: resources.disk
-    } : null,
-
-    websocket: websocketHealth ? {
-      healthy: websocketHealth.status === 'connected',
-      clients: websocketHealth.clients
-    } : null,
-
-    claudeAgent: claudeHealth ? {
-      healthy: ['active', 'authenticated'].includes(claudeHealth.status),
-      status: claudeHealth.status,
-      authMethod: claudeHealth.authMethod,
-      tasksCompleted: claudeHealth.tasksCompleted
-    } : null
-  }
+  const mergedErrors = dedupeErrors([
+    ...(systemSummary?.blockers || []),
+    ...(websocketErrors || []),
+    ...(fetchError ? [fetchError] : []),
+    ...(systemSummary?.initialization?.initialization_errors || []),
+  ])
 
   return {
-    // System-wide data
-    overallHealth: getOverallHealth(),
+    overallHealth: systemSummary?.status || 'unknown',
     isConnected,
-    lastUpdate,
-    errors,
-    isLoading: systemStatus === null,
-
-    // Component-specific data (formatted for existing UI)
-    schedulerStatus: formattedData.scheduler,
-    queueHealth: formattedData.queue,
-    dbHealth: formattedData.database,
-    resources: formattedData.resources,
-    websocketHealth: formattedData.websocket,
-    claudeHealth: formattedData.claudeAgent,
-
-    // Raw data access
-    rawSystemStatus: systemStatus,
-    getComponentHealth
+    lastUpdate: systemSummary?.timestamp || lastUpdate,
+    errors: mergedErrors,
+    isLoading,
+    dbHealth,
+    resources: null,
+    websocketHealth,
+    eventBusHealth,
+    claudeHealth: null,
+    rawSystemStatus: systemSummary,
+    getComponentHealth: (component: keyof MonitoringSummary['components']) => components[component] || null,
   }
 }

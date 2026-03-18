@@ -424,16 +424,24 @@ class ClaudeAgentMCPServer:
         """Get current portfolio status."""
         try:
             account_manager = await self.container.get("paper_trading_account_manager")
-            account = await account_manager.get_account("paper_swing_main")
+            accounts = await account_manager.get_all_accounts()
+            if not accounts:
+                return {"error": "No paper trading account exists"}
 
-            if not account:
-                return {"error": "Account not found"}
-
-            balance = await account_manager.get_account_balance("paper_swing_main")
+            summaries = []
+            for account in accounts:
+                balance = await account_manager.get_account_balance(account.account_id)
+                summaries.append(
+                    {
+                        "account_id": account.account_id,
+                        "strategy_type": getattr(account.strategy_type, "value", str(account.strategy_type)),
+                        "balance": balance,
+                    }
+                )
 
             return {
-                "account_id": account.account_id,
-                "balance": balance,
+                "accounts": summaries,
+                "account_count": len(summaries),
                 "timestamp": datetime.utcnow().isoformat()
             }
 
@@ -444,12 +452,39 @@ class ClaudeAgentMCPServer:
     async def _get_trading_history(self) -> Dict[str, Any]:
         """Get recent trading history."""
         try:
-            store = await self.container.get("paper_trading_store")
-            # This would need to be implemented in the store
-            # For now, return mock data
+            account_manager = await self.container.get("paper_trading_account_manager")
+            accounts = await account_manager.get_all_accounts()
+            if not accounts:
+                return {"recent_trades": [], "total_trades": 0, "timestamp": datetime.utcnow().isoformat()}
+
+            recent_trades: List[Dict[str, Any]] = []
+            for account in accounts:
+                closed_trades = await account_manager.get_closed_trades(account.account_id, limit=10)
+                for trade in closed_trades:
+                    recent_trades.append(
+                        {
+                            "trade_id": trade.trade_id,
+                            "account_id": account.account_id,
+                            "symbol": trade.symbol,
+                            "trade_type": trade.trade_type,
+                            "quantity": trade.quantity,
+                            "entry_price": trade.entry_price,
+                            "exit_price": trade.exit_price,
+                            "realized_pnl": trade.realized_pnl,
+                            "entry_date": trade.entry_date,
+                            "exit_date": trade.exit_date,
+                            "holding_period_days": trade.holding_period_days,
+                        }
+                    )
+
+            recent_trades.sort(
+                key=lambda trade: trade.get("exit_date") or trade.get("entry_date") or "",
+                reverse=True,
+            )
+            recent_trades = recent_trades[:10]
             return {
-                "recent_trades": [],
-                "total_trades": 0,
+                "recent_trades": recent_trades,
+                "total_trades": len(recent_trades),
                 "timestamp": datetime.utcnow().isoformat()
             }
 

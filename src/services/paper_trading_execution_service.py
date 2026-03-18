@@ -1,50 +1,49 @@
-"""Paper Trading Execution Service - Handles buy/sell/close operations using Claude Agent SDK."""
+"""Native paper-trade execution service.
 
-import uuid
-import json
+This service no longer uses Claude for trade approval. Execution-critical
+validation must remain deterministic and tied to explicit prices or live
+market data.
+"""
+
+from __future__ import annotations
+
 import logging
-import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, TYPE_CHECKING
-from decimal import Decimal
+from typing import Dict, Optional, TYPE_CHECKING
 
 from loguru import logger as loguru_logger
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
-from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
 
 if TYPE_CHECKING:
-    from src.core.database_state.database_state import DatabaseStateManager
+    from src.services.paper_trading.trade_executor import PaperTradeExecutor
+    from src.services.paper_trading.account_manager import PaperTradingAccountManager
+    from src.stores.paper_trading_store import PaperTradingStore
 
 logger = logging.getLogger(__name__)
 
 
 class PaperTradingExecutionService:
-    """Service for executing paper trades using Claude Agent SDK for decision-making."""
+    """Store-backed execution facade with explicit-price or real-price enforcement."""
 
-    def __init__(self, state_manager: Optional['DatabaseStateManager'] = None):
-        """Initialize execution service."""
-        self._state_manager = state_manager
+    def __init__(
+        self,
+        trade_executor: "PaperTradeExecutor",
+        account_manager: "PaperTradingAccountManager",
+        store: "PaperTradingStore",
+    ):
+        self._trade_executor = trade_executor
+        self._account_manager = account_manager
+        self._store = store
         self._initialized = False
-        self._client: Optional[ClaudeSDKClient] = None
 
     async def initialize(self) -> None:
-        """Initialize service and set up Claude SDK client."""
-        loguru_logger.info("PaperTradingExecutionService initializing")
-        await self._ensure_client()
         self._initialized = True
-        loguru_logger.info("PaperTradingExecutionService ready with Claude Agent SDK")
+        loguru_logger.info("PaperTradingExecutionService initialized in native validation mode")
 
     async def cleanup(self) -> None:
-        """Clean up SDK client."""
-        if self._client:
-            try:
-                await self._client.__aexit__(None, None, None)
-                loguru_logger.info("PaperTradingExecutionService client cleaned up")
-            except Exception as e:
-                loguru_logger.warning(f"Error cleaning up client: {e}")
-            finally:
-                self._client = None
+        self._initialized = False
+        loguru_logger.info("PaperTradingExecutionService cleanup complete")
 
     async def execute_buy_trade(
         self,
@@ -53,177 +52,45 @@ class PaperTradingExecutionService:
         quantity: int,
         order_type: str = "MARKET",
         price: Optional[float] = None,
-        strategy_rationale: str = "User initiated trade"
-    ) -> Dict[str, Any]:
-        """
-        Execute buy trade with Claude Agent SDK validation and decision-making.
+        strategy_rationale: str = "User initiated trade",
+    ) -> Dict[str, object]:
+        await self._ensure_initialized()
+        await self._require_account(account_id)
+        symbol = self._normalize_symbol(symbol)
+        self._validate_quantity(quantity)
 
-        Args:
-            account_id: Paper trading account ID
-            symbol: Stock symbol (uppercase)
-            quantity: Number of shares
-            order_type: MARKET or LIMIT
-            price: Limit price for LIMIT orders
-            strategy_rationale: Reason for the trade
-
-        Returns:
-            Trade execution result with trade_id and status
-
-        Raises:
-            TradingError: If validation fails or insufficient balance
-        """
-        try:
-            # Validate inputs
-            symbol = symbol.upper()
-            if not symbol or len(symbol) > 20:
-                raise TradingError(
-                    f"Invalid symbol: {symbol}",
-                    category=ErrorCategory.VALIDATION,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
-                )
-
-            if quantity <= 0 or quantity > 10000:
-                raise TradingError(
-                    f"Invalid quantity: {quantity}. Must be between 1 and 10000",
-                    category=ErrorCategory.VALIDATION,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
-                )
-
-            # Use Claude Agent SDK to validate and execute trade (create fresh client)
-            prompt = f"""You are a paper trading execution engine. Your ONLY job is to validate trade parameters and return a JSON decision.
-
-TRADE REQUEST:
-- Account ID: {account_id}
-- Symbol: {symbol}
-- Quantity: {quantity} shares
-- Order Type: {order_type}
-- Price: {price if price else 'Market price'}
-- Strategy Rationale: {strategy_rationale}
-
-VALIDATION RULES:
-- Symbol must be uppercase, 1-10 characters, letters only
-- Quantity must be positive integer ≤ 10000
-- Assume account balance: ₹100,000
-- Assume reasonable market price: ₹2000-3000 for Indian stocks
-- Required amount = price × quantity
-
-RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
-{{
-  "decision": "APPROVE" or "REJECT",
-  "reason": "Brief explanation",
-  "trade_price": assumed_market_price_number,
-  "required_amount": calculated_amount
-}}
-
-Example:
-{{"decision": "APPROVE", "reason": "Valid parameters", "trade_price": 2500, "required_amount": 25000}}
-
-Respond with ONLY the JSON object. No explanation text."""
-
-            try:
-                await self._ensure_client()
-                # Use timeout helpers (MANDATORY per architecture pattern)
-                from src.core.sdk_helpers import query_with_timeout
-                # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
-
-                loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
-
-                # Parse Claude's response
-                result = self._parse_claude_response(response_text)
-            except ConnectionError as e:
-                loguru_logger.error(f"Claude SDK connection failed: {e}")
-                raise TradingError(
-                    "Failed to connect to Claude Agent SDK. Ensure Claude Code CLI is authenticated.",
-                    category=ErrorCategory.SYSTEM,
-                    severity=ErrorSeverity.CRITICAL,
-                    recoverable=True,
-                    metadata={"error": str(e), "error_type": "connection"}
-                )
-            except Exception as e:
-                error_str = str(e).lower()
-                if "auth" in error_str or "api key" in error_str or "invalid" in error_str:
-                    loguru_logger.error(f"Claude SDK authentication failed: {e}")
-                    raise TradingError(
-                        "Claude Agent SDK authentication failed. Run 'claude auth' to authenticate.",
-                        category=ErrorCategory.SYSTEM,
-                        severity=ErrorSeverity.CRITICAL,
-                        recoverable=True,
-                        metadata={"error": str(e), "error_type": "authentication"}
-                    )
-                else:
-                    loguru_logger.error(f"Claude SDK query failed: {e}")
-                    raise TradingError(
-                        f"Failed to execute trade via Claude Agent: {str(e)}",
-                        category=ErrorCategory.SYSTEM,
-                        severity=ErrorSeverity.HIGH,
-                        recoverable=True,
-                        metadata={"error": str(e), "error_type": "query_execution"}
-                    )
-
-            if result['decision'] != 'APPROVE':
-                raise TradingError(
-                    f"Trade rejected: {result['reason']}",
-                    category=ErrorCategory.TRADING,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=True,
-                    metadata={"reason": result['reason']}
-                )
-
-            # Create trade record
-            trade_id = f"trade_{uuid.uuid4().hex[:8]}"
-            now = datetime.now(timezone.utc).isoformat()
-            trade_price = result.get('trade_price', 2000.0)
-
-            # Write to database (BUG-002 fix: actually persist the trade)
-            if self._state_manager and hasattr(self._state_manager, 'paper_trading'):
-                db_success = await self._state_manager.paper_trading.create_trade(
-                    trade_id=trade_id,
-                    symbol=symbol,
-                    side="BUY",
-                    quantity=quantity,
-                    entry_price=float(trade_price),
-                    entry_reason=strategy_rationale,
-                    strategy_tag="morning_session",
-                    confidence_score=0.7,
-                    research_sources=["claude_agent_sdk"],
-                    market_conditions={"order_type": order_type},
-                    risk_metrics={"account_id": account_id}
-                )
-                if db_success:
-                    loguru_logger.info(f"Buy trade persisted to DB: {trade_id} for {quantity} {symbol} at ₹{trade_price}")
-                else:
-                    loguru_logger.warning(f"Buy trade executed but DB write failed: {trade_id}")
-            else:
-                loguru_logger.warning(f"Buy trade executed but no state_manager available for persistence: {trade_id}")
-
-            loguru_logger.info(f"Buy trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}")
-
-            return {
-                "success": True,
-                "trade_id": trade_id,
-                "symbol": symbol,
-                "side": "BUY",
-                "quantity": quantity,
-                "price": float(trade_price),
-                "status": "COMPLETED",
-                "timestamp": now,
-                "account_id": account_id,
-                "remaining_balance": 100000.0 - (quantity * trade_price)
-            }
-
-        except TradingError:
-            raise
-        except Exception as e:
-            loguru_logger.exception(f"Buy trade execution failed: {e}")
+        execution_price = await self._resolve_execution_price(symbol, order_type, price)
+        execution_result = await self._trade_executor.execute_buy(
+            account_id=account_id,
+            symbol=symbol,
+            quantity=quantity,
+            entry_price=execution_price,
+            strategy_rationale=strategy_rationale,
+            claude_session_id="paper_trading_execution_service",
+        )
+        if not execution_result.get("success"):
             raise TradingError(
-                f"Trade execution failed: {str(e)}",
-                category=ErrorCategory.SYSTEM,
+                str(execution_result.get("error", f"Failed to execute BUY trade for {symbol}")),
+                category=ErrorCategory.EXECUTION,
                 severity=ErrorSeverity.HIGH,
-                recoverable=False
+                recoverable=True,
             )
+
+        balance_info = await self._account_manager.get_account_balance(account_id)
+        return {
+            "success": True,
+            "trade_id": execution_result["trade_id"],
+            "symbol": symbol,
+            "side": "BUY",
+            "quantity": quantity,
+            "price": float(execution_price),
+            "status": "COMPLETED",
+            "timestamp": execution_result.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            "account_id": account_id,
+            "remaining_balance": balance_info["current_balance"],
+            "buying_power": balance_info["buying_power"],
+            "validation_reason": "Validated natively using explicit account context and real or explicit price.",
+        }
 
     async def execute_sell_trade(
         self,
@@ -232,442 +99,170 @@ Respond with ONLY the JSON object. No explanation text."""
         quantity: int,
         order_type: str = "MARKET",
         price: Optional[float] = None,
-        strategy_rationale: str = "User initiated trade"
-    ) -> Dict[str, Any]:
-        """
-        Execute sell trade with Claude Agent SDK validation.
+        strategy_rationale: str = "User initiated trade",
+    ) -> Dict[str, object]:
+        await self._ensure_initialized()
+        await self._require_account(account_id)
+        symbol = self._normalize_symbol(symbol)
+        self._validate_quantity(quantity)
 
-        Args:
-            account_id: Paper trading account ID
-            symbol: Stock symbol (uppercase)
-            quantity: Number of shares
-            order_type: MARKET or LIMIT
-            price: Limit price for LIMIT orders
-            strategy_rationale: Reason for the trade
-
-        Returns:
-            Trade execution result
-
-        Raises:
-            TradingError: If validation fails or insufficient position
-        """
-        try:
-            # Validate inputs
-            symbol = symbol.upper()
-            if not symbol or len(symbol) > 20:
-                raise TradingError(
-                    f"Invalid symbol: {symbol}",
-                    category=ErrorCategory.VALIDATION,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
-                )
-
-            if quantity <= 0 or quantity > 10000:
-                raise TradingError(
-                    f"Invalid quantity: {quantity}. Must be between 1 and 10000",
-                    category=ErrorCategory.VALIDATION,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=False
-                )
-
-            # Use Claude Agent SDK to validate and execute SELL trade (create fresh client)
-            prompt = f"""You are a paper trading execution engine. Your ONLY job is to validate sell trade parameters and return a JSON decision.
-
-TRADE REQUEST:
-- Account ID: {account_id}
-- Symbol: {symbol}
-- Quantity: {quantity} shares
-- Order Type: {order_type}
-- Price: {price if price else 'Market price'}
-- Strategy Rationale: {strategy_rationale}
-
-VALIDATION RULES:
-- Symbol must be uppercase, 1-10 characters, letters only
-- Quantity must be positive integer ≤ 10000
-- Assume we hold position: 10 shares at ₹2750 entry price
-- Assume reasonable market price: ₹2000-3000 for Indian stocks
-- Proceeds = price × quantity
-- Realized P&L = proceeds - (quantity × 2750)
-
-RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
-{{
-  "decision": "APPROVE" or "REJECT",
-  "reason": "Brief explanation",
-  "trade_price": assumed_market_price_number,
-  "proceeds": calculated_proceeds,
-  "realized_pnl": calculated_pnl
-}}
-
-Example:
-{{"decision": "APPROVE", "reason": "Valid sell parameters", "trade_price": 2500, "proceeds": 25000, "realized_pnl": -2500}}
-
-Respond with ONLY the JSON object. No explanation text."""
-
-            try:
-                await self._ensure_client()
-                # Use timeout helpers (MANDATORY per architecture pattern)
-                from src.core.sdk_helpers import query_with_timeout
-                # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
-
-                loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
-
-                # Parse Claude's response
-                result = self._parse_claude_response(response_text)
-            except ConnectionError as e:
-                loguru_logger.error(f"Claude SDK connection failed: {e}")
-                raise TradingError(
-                    "Failed to connect to Claude Agent SDK. Ensure Claude Code CLI is authenticated.",
-                    category=ErrorCategory.SYSTEM,
-                    severity=ErrorSeverity.CRITICAL,
-                    recoverable=True,
-                    metadata={"error": str(e), "error_type": "connection"}
-                )
-            except Exception as e:
-                error_str = str(e).lower()
-                if "auth" in error_str or "api key" in error_str or "invalid" in error_str:
-                    loguru_logger.error(f"Claude SDK authentication failed: {e}")
-                    raise TradingError(
-                        "Claude Agent SDK authentication failed. Run 'claude auth' to authenticate.",
-                        category=ErrorCategory.SYSTEM,
-                        severity=ErrorSeverity.CRITICAL,
-                        recoverable=True,
-                        metadata={"error": str(e), "error_type": "authentication"}
-                    )
-                else:
-                    loguru_logger.error(f"Claude SDK query failed: {e}")
-                    raise TradingError(
-                        f"Failed to execute trade via Claude Agent: {str(e)}",
-                        category=ErrorCategory.SYSTEM,
-                        severity=ErrorSeverity.HIGH,
-                        recoverable=True,
-                        metadata={"error": str(e), "error_type": "query_execution"}
-                    )
-
-            if result['decision'] != 'APPROVE':
-                raise TradingError(
-                    f"Trade rejected: {result['reason']}",
-                    category=ErrorCategory.TRADING,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=True,
-                    metadata={"reason": result['reason']}
-                )
-
-            # Create sell trade
-            trade_id = f"trade_{uuid.uuid4().hex[:8]}"
-            now = datetime.now(timezone.utc).isoformat()
-            trade_price = result.get('trade_price', 2000.0)
-            proceeds = result.get('proceeds', quantity * trade_price)
-            realized_pnl = result.get('realized_pnl', proceeds - (quantity * 2750.0))
-
-            # Write to database (BUG-002 fix: actually persist the trade)
-            if self._state_manager and hasattr(self._state_manager, 'paper_trading'):
-                db_success = await self._state_manager.paper_trading.create_trade(
-                    trade_id=trade_id,
-                    symbol=symbol,
-                    side="SELL",
-                    quantity=quantity,
-                    entry_price=float(trade_price),
-                    entry_reason=strategy_rationale,
-                    strategy_tag="morning_session",
-                    confidence_score=0.7,
-                    research_sources=["claude_agent_sdk"],
-                    market_conditions={"order_type": order_type, "realized_pnl": realized_pnl},
-                    risk_metrics={"account_id": account_id, "proceeds": proceeds}
-                )
-                if db_success:
-                    loguru_logger.info(f"Sell trade persisted to DB: {trade_id} for {quantity} {symbol} at ₹{trade_price}")
-                else:
-                    loguru_logger.warning(f"Sell trade executed but DB write failed: {trade_id}")
-            else:
-                loguru_logger.warning(f"Sell trade executed but no state_manager available for persistence: {trade_id}")
-
-            loguru_logger.info(f"Sell trade executed by Claude Agent: {trade_id} for {quantity} {symbol} at ₹{trade_price}, P&L: ₹{realized_pnl}")
-
-            return {
-                "success": True,
-                "trade_id": trade_id,
-                "symbol": symbol,
-                "side": "SELL",
-                "quantity": quantity,
-                "price": float(trade_price),
-                "status": "COMPLETED",
-                "timestamp": now,
-                "account_id": account_id,
-                "realized_pnl": float(realized_pnl),
-                "proceeds": float(proceeds),
-                "new_balance": 100000.0 + proceeds
-            }
-
-        except TradingError:
-            raise
-        except Exception as e:
-            loguru_logger.exception(f"Sell trade execution failed: {e}")
+        execution_price = await self._resolve_execution_price(symbol, order_type, price)
+        execution_result = await self._trade_executor.execute_sell(
+            account_id=account_id,
+            symbol=symbol,
+            quantity=quantity,
+            exit_price=execution_price,
+            strategy_rationale=strategy_rationale,
+            claude_session_id="paper_trading_execution_service",
+        )
+        if not execution_result.get("success"):
             raise TradingError(
-                f"Trade execution failed: {str(e)}",
-                category=ErrorCategory.SYSTEM,
+                str(execution_result.get("error", f"Failed to execute SELL trade for {symbol}")),
+                category=ErrorCategory.EXECUTION,
                 severity=ErrorSeverity.HIGH,
-                recoverable=False
+                recoverable=True,
             )
+
+        balance_info = await self._account_manager.get_account_balance(account_id)
+        return {
+            "success": True,
+            "trade_id": execution_result["trade_id"],
+            "symbol": symbol,
+            "side": "SELL",
+            "quantity": quantity,
+            "price": float(execution_price),
+            "status": "COMPLETED",
+            "timestamp": execution_result.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            "account_id": account_id,
+            "remaining_balance": balance_info["current_balance"],
+            "buying_power": balance_info["buying_power"],
+            "validation_reason": "Validated natively using explicit account context and real or explicit price.",
+        }
 
     async def close_trade(
         self,
-        account_id: str,
-        trade_id: str
-    ) -> Dict[str, Any]:
-        """
-        Close an existing open trade using Claude Agent SDK.
-
-        Args:
-            account_id: Paper trading account ID
-            trade_id: Trade ID to close
-
-        Returns:
-            Close operation result with P&L
-
-        Raises:
-            TradingError: If trade not found or already closed
-        """
-        try:
-            # Use Claude Agent SDK to validate and close trade (create fresh client)
-            prompt = f"""
-            Close a paper trading position with these parameters:
-            - Account ID: {account_id}
-            - Trade ID: {trade_id}
-            - Assume trade: 10 shares at ₹2750 entry price for {trade_id}
-
-            Please:
-            1. Validate the trade parameters
-            2. Calculate current exit price at market conditions
-            3. Calculate realized P&L
-            4. Provide decision: APPROVE or REJECT with reason
-
-            Return a JSON response with:
-            {{
-              "decision": "APPROVE" or "REJECT",
-              "reason": "explanation",
-              "exit_price": number or null,
-              "realized_pnl": number or null,
-              "execution_details": {{...}} or null
-            }}
-            """
-
-            try:
-                await self._ensure_client()
-                # Use timeout helpers (MANDATORY per architecture pattern)
-                from src.core.sdk_helpers import query_with_timeout
-                # query_with_timeout handles both query() and receive_response() internally
-                response_text = await query_with_timeout(self._client, prompt, timeout=30.0)
-
-                loguru_logger.debug(f"Claude SDK response received: {response_text[:200]}...")
-
-                # Parse Claude's response
-                result = self._parse_claude_response(response_text)
-            except ConnectionError as e:
-                loguru_logger.error(f"Claude SDK connection failed: {e}")
-                raise TradingError(
-                    "Failed to connect to Claude Agent SDK. Ensure Claude Code CLI is authenticated.",
-                    category=ErrorCategory.SYSTEM,
-                    severity=ErrorSeverity.CRITICAL,
-                    recoverable=True,
-                    metadata={"error": str(e), "error_type": "connection"}
-                )
-            except Exception as e:
-                error_str = str(e).lower()
-                if "auth" in error_str or "api key" in error_str or "invalid" in error_str:
-                    loguru_logger.error(f"Claude SDK authentication failed: {e}")
-                    raise TradingError(
-                        "Claude Agent SDK authentication failed. Run 'claude auth' to authenticate.",
-                        category=ErrorCategory.SYSTEM,
-                        severity=ErrorSeverity.CRITICAL,
-                        recoverable=True,
-                        metadata={"error": str(e), "error_type": "authentication"}
-                    )
-                else:
-                    loguru_logger.error(f"Claude SDK query failed: {e}")
-                    raise TradingError(
-                        f"Failed to execute trade via Claude Agent: {str(e)}",
-                        category=ErrorCategory.SYSTEM,
-                        severity=ErrorSeverity.HIGH,
-                        recoverable=True,
-                        metadata={"error": str(e), "error_type": "query_execution"}
-                    )
-
-            if result['decision'] != 'APPROVE':
-                raise TradingError(
-                    f"Trade close rejected: {result['reason']}",
-                    category=ErrorCategory.TRADING,
-                    severity=ErrorSeverity.MEDIUM,
-                    recoverable=True,
-                    metadata={"reason": result['reason']}
-                )
-
-            # Close trade
-            now = datetime.now(timezone.utc).isoformat()
-            exit_price = result.get('exit_price', 2050.0)
-            realized_pnl = result.get('realized_pnl', (exit_price - 2750.0) * 10)
-
-            loguru_logger.info(f"Trade closed by Claude Agent: {trade_id}, exit_price={exit_price}, P&L: ₹{realized_pnl}")
-
-            return {
-                "success": True,
-                "trade_id": trade_id,
-                "status": "CLOSED",
-                "exit_price": float(exit_price),
-                "realized_pnl": float(realized_pnl),
-                "timestamp": now
-            }
-
-        except TradingError:
-            raise
-        except Exception as e:
-            loguru_logger.exception(f"Trade close failed: {e}")
+        trade_id: str,
+        order_type: str = "MARKET",
+        price: Optional[float] = None,
+        reason: str = "User initiated close",
+    ) -> Dict[str, object]:
+        await self._ensure_initialized()
+        trade = await self._store.get_trade(trade_id)
+        if trade is None:
             raise TradingError(
-                f"Trade close failed: {str(e)}",
-                category=ErrorCategory.SYSTEM,
+                f"Trade {trade_id} was not found.",
+                category=ErrorCategory.VALIDATION,
                 severity=ErrorSeverity.HIGH,
-                recoverable=False
+                recoverable=False,
             )
 
-    async def _ensure_client(self) -> None:
-        """Lazy initialization of Claude SDK client - called once at service init and on-demand."""
-        if self._client is None:
-            try:
-                # CRITICAL: Remove ANTHROPIC_API_KEY from env to force CLI auth
-                # The OAuth token in .env is NOT valid for direct API calls
-                import os
-                original_api_key = os.environ.pop("ANTHROPIC_API_KEY", None)
-                loguru_logger.info(f"Removed ANTHROPIC_API_KEY from env (was set: {original_api_key is not None})")
+        explicit_price = self._validate_explicit_price(price) if price is not None else None
+        use_market_price = explicit_price is None and order_type.upper() == "MARKET"
+        if explicit_price is None and order_type.upper() != "MARKET":
+            raise TradingError(
+                "LIMIT trade close requires an explicit price.",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
 
-                try:
-                    # Pass empty env to prevent SDK from using ANTHROPIC_API_KEY
-                    # SDK will use Claude CLI authentication instead
-                    options = ClaudeAgentOptions(
-                        allowed_tools=[],
-                        system_prompt=self._get_trading_prompt(),
-                        max_turns=1,
-                        disallowed_tools=["WebSearch", "WebFetch", "Bash", "Read", "Write", "Task", "TodoWrite", "Glob", "Grep", "Edit"],
-                        permission_mode="bypassPermissions",  # Bypass all permission checks for pure validation
-                        env={},  # Empty env = use CLI auth, not ANTHROPIC_API_KEY
-                    )
-                    # Use client manager with unique client type for paper trading
-                    from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
-                    client_manager = await ClaudeSDKClientManager.get_instance()
-                    # Force recreate to ensure clean client without API key
-                    self._client = await client_manager.get_client("paper_trading", options, force_recreate=True)
-                finally:
-                    # Restore API key for other services that need it
-                    if original_api_key:
-                        os.environ["ANTHROPIC_API_KEY"] = original_api_key
-                loguru_logger.debug("Initialized Claude SDK client for trade execution via manager")
-            except Exception as e:
-                loguru_logger.error(f"Failed to initialize Claude SDK client: {e}")
-                raise TradingError(
-                    "Failed to initialize Claude Agent SDK. Ensure Claude Code CLI is authenticated.",
-                    category=ErrorCategory.SYSTEM,
-                    severity=ErrorSeverity.HIGH,
-                    recoverable=True,
-                    metadata={"error": str(e)}
-                )
+        close_result = await self._trade_executor.close_position(
+            trade_id=trade_id,
+            exit_price=explicit_price,
+            reason=reason,
+            use_market_price=use_market_price,
+        )
+        if not close_result.get("success"):
+            raise TradingError(
+                str(close_result.get("error", f"Failed to close trade {trade_id}")),
+                category=ErrorCategory.EXECUTION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=True,
+            )
 
-    def _get_trading_prompt(self) -> str:
-        """Get the system prompt for paper trading execution."""
-        return """You are an expert paper trading execution engine and risk manager for Indian markets (INR).
+        return {
+            "success": True,
+            "trade_id": trade_id,
+            "status": "CLOSED",
+            "exit_price": float(close_result["exit_price"]),
+            "realized_pnl": float(close_result["realized_pnl"]),
+            "timestamp": close_result.get("timestamp", datetime.now(timezone.utc).isoformat()),
+        }
 
-IMPORTANT CONSTRAINTS:
-- You do NOT have access to real-time market data APIs
-- You do NOT have access to web search
-- You MUST make reasonable assumptions about stock prices
-- You CANNOT use external tools to fetch data
+    async def _ensure_initialized(self) -> None:
+        if not self._initialized:
+            raise TradingError(
+                "PaperTradingExecutionService is not initialized.",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
 
-Your role is to:
-- Validate paper trade requests thoroughly
-- Assume reasonable market prices (e.g., ₹2000-3000 for typical stocks, ₹200-500 for AAPL equivalent)
-- Calculate required amounts and P&L accurately based on assumed prices
-- Make APPROVE or REJECT decisions based on validation logic only
+    async def _require_account(self, account_id: str) -> None:
+        account = await self._account_manager.get_account(account_id)
+        if account is None:
+            raise TradingError(
+                f"Paper trading account '{account_id}' was not found.",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
 
-CRITICAL RESPONSE FORMAT:
-You MUST respond with ONLY a JSON object. No explanation text before or after.
-Do NOT wrap in markdown code blocks.
-Do NOT try to fetch real data.
-Just return the raw JSON.
+    async def _resolve_execution_price(self, symbol: str, order_type: str, price: Optional[float]) -> float:
+        explicit_price = self._validate_explicit_price(price) if price is not None else None
+        if explicit_price is not None:
+            return explicit_price
 
-Required JSON format:
-{
-  "decision": "APPROVE",
-  "reason": "Valid trade parameters",
-  "trade_price": 2500,
-  "required_amount": 25000,
-  "proceeds": 0,
-  "realized_pnl": 0,
-  "execution_details": {
-    "timestamp": "2025-10-24T10:30:00Z",
-    "market_conditions": "Assumed market conditions"
-  }
-}
+        if order_type.upper() != "MARKET":
+            raise TradingError(
+                f"{order_type.upper()} orders require an explicit price.",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
 
-Price assumptions:
-- Indian stocks: ₹2000-3000 per share
-- US stocks (AAPL, GOOGL, etc.): ₹200-400 per share
-- Calculate required_amount = trade_price * quantity
-- For sells: proceeds = trade_price * quantity
-- For closes: realized_pnl = (exit_price - entry_price) * quantity
-
-ALWAYS approve valid trades (proper symbol format, positive quantity, reasonable parameters).
-Only REJECT if parameters are invalid (empty symbol, negative quantity, etc.).
-"""
-
-    def _parse_claude_response(self, response_text: str) -> Dict[str, Any]:
-        """Parse Claude's JSON response from trade execution."""
         try:
-            import re
+            return float(await self._trade_executor.get_current_price(symbol))
+        except Exception as exc:
+            loguru_logger.error("Failed to fetch live price for %s: %s", symbol, exc)
+            raise TradingError(
+                f"Cannot execute {symbol}: live market price is unavailable and no explicit price was provided.",
+                category=ErrorCategory.MARKET_DATA,
+                severity=ErrorSeverity.HIGH,
+                recoverable=True,
+            ) from exc
 
-            # Step 1: Try to extract JSON from markdown code blocks (```json...```)
-            markdown_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-            if markdown_match:
-                json_str = markdown_match.group(1)
-                result = json.loads(json_str)
-                return result
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        clean = symbol.strip().upper()
+        if not clean:
+            raise TradingError(
+                "Symbol is required.",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
+        return clean
 
-            # Step 2: Find any JSON object (handles nested braces properly)
-            # Use a more robust pattern that finds the first complete JSON object
-            brace_count = 0
-            start_idx = response_text.find('{')
-            if start_idx != -1:
-                for i, char in enumerate(response_text[start_idx:], start=start_idx):
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            json_str = response_text[start_idx:i+1]
-                            result = json.loads(json_str)
-                            return result
+    @staticmethod
+    def _validate_quantity(quantity: int) -> None:
+        if quantity <= 0:
+            raise TradingError(
+                "Quantity must be a positive integer.",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
 
-            # Step 3: Fallback - try parsing entire response
-            result = json.loads(response_text)
-            return result
-
-        except json.JSONDecodeError as e:
-            loguru_logger.warning(f"Failed to parse Claude response as JSON: {response_text[:200]}... Error: {e}")
-            # Return default rejection if parsing fails
-            return {
-                "decision": "REJECT",
-                "reason": "Failed to parse trading response from Claude",
-                "trade_price": None,
-                "proceeds": None,
-                "realized_pnl": None
-            }
-        except Exception as e:
-            loguru_logger.error(f"Unexpected error parsing Claude response: {e}")
-            return {
-                "decision": "REJECT",
-                "reason": f"Error parsing response: {str(e)}",
-                "trade_price": None,
-                "proceeds": None,
-                "realized_pnl": None
-            }
-
-    async def cleanup(self) -> None:
-        """Cleanup resources (clients are created per-request and auto-cleaned)."""
-        loguru_logger.info("PaperTradingExecutionService cleanup complete")
+    @staticmethod
+    def _validate_explicit_price(price: Optional[float]) -> Optional[float]:
+        if price is None:
+            return None
+        if price <= 0:
+            raise TradingError(
+                "Price must be greater than zero.",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
+        return float(price)

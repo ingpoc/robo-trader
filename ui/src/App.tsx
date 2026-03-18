@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Navigation } from '@/components/Sidebar/Navigation'
 import { Toaster } from '@/components/common/Toaster'
@@ -9,13 +9,20 @@ import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBounda
 import { useSystemStatusStore } from '@/stores/systemStatusStore'
 import { AccountProvider } from '@/contexts/AccountContext'
 import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
-import { NewsEarningsFeature } from '@/features/news-earnings/NewsEarningsFeature'
-import { AITransparencyFeature } from '@/features/ai-transparency/AITransparencyFeature'
 import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeature'
 import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
 import { PaperTradingFeature } from '@/features/paper-trading/PaperTradingFeature'
+import type {
+  AccountOverviewResponse,
+  ClosedTradeResponse,
+  OpenPositionResponse,
+  PerformanceMetricsResponse,
+  TradingCapabilitySnapshot,
+} from '@/features/paper-trading/types'
+import { useAccount } from '@/contexts/AccountContext'
 import { Button } from '@/components/ui/Button'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { useTheme } from '@/hooks/useTheme'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,40 +36,76 @@ const queryClient = new QueryClient({
 
 // Wrapper for PaperTradingFeature - READ-ONLY observatory
 function PaperTradingFeatureWrapper() {
-  const [accountOverview, setAccountOverview] = useState(null)
-  const [openPositions, setOpenPositions] = useState([])
-  const [closedTrades, setClosedTrades] = useState([])
-  const [performanceMetrics, setPerformanceMetrics] = useState(null)
+  const { accounts, selectedAccount, selectAccount, isLoading: isAccountsLoading, refreshAccounts } = useAccount()
+  const [accountOverview, setAccountOverview] = useState<AccountOverviewResponse | null>(null)
+  const [openPositions, setOpenPositions] = useState<OpenPositionResponse[]>([])
+  const [closedTrades, setClosedTrades] = useState<ClosedTradeResponse[]>([])
+  const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetricsResponse | null>(null)
+  const [capabilitySnapshot, setCapabilitySnapshot] = useState<TradingCapabilitySnapshot | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const fetchData = async () => {
+    const accountId = selectedAccount?.account_id
+    if (!selectedAccount?.account_id) {
+      setAccountOverview(null)
+      setOpenPositions([])
+      setClosedTrades([])
+      setPerformanceMetrics(null)
+    }
+
     setIsLoading(true)
     try {
-      const accountId = 'paper_swing_main'
-      const [overviewRes, positionsRes, tradesRes] = await Promise.all([
-        fetch(`/api/paper-trading/accounts/${accountId}/overview`),
-        fetch(`/api/paper-trading/accounts/${accountId}/positions`),
-        fetch(`/api/paper-trading/accounts/${accountId}/trades`)
+      const capabilityUrl = accountId
+        ? `/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`
+        : '/api/paper-trading/capabilities'
+
+      const responses = await Promise.all([
+        fetch(capabilityUrl),
+        ...(accountId
+          ? [
+              fetch(`/api/paper-trading/accounts/${accountId}/overview`),
+              fetch(`/api/paper-trading/accounts/${accountId}/positions`),
+              fetch(`/api/paper-trading/accounts/${accountId}/trades`),
+              fetch(`/api/paper-trading/accounts/${accountId}/performance?period=month`),
+            ]
+          : []),
       ])
 
-      if (overviewRes.ok) {
-        const data = await overviewRes.json()
-        // Map API response to expected format
-        setAccountOverview({
-          balance: data.currentBalance || data.balance || 0,
-          deployed_capital: data.deployedCapital || data.deployed_capital || 0,
-          available_margin: data.marginAvailable || data.cashAvailable || 0,
-          total_pnl: data.todayPnL || 0,
-          open_positions_count: data.openPositions || 0
-        })
+      const capabilityRes = responses[0]
+      if (capabilityRes.ok) {
+        setCapabilitySnapshot(await capabilityRes.json())
+      } else {
+        setCapabilitySnapshot(null)
       }
-      if (positionsRes.ok) {
-        const data = await positionsRes.json()
-        setOpenPositions(data.positions || data || [])
-      }
-      if (tradesRes.ok) {
-        const data = await tradesRes.json()
-        setClosedTrades(data.trades || data || [])
+
+      if (accountId) {
+        const [overviewRes, positionsRes, tradesRes, performanceRes] = responses.slice(1)
+
+        if (overviewRes?.ok) {
+          const data = await overviewRes.json()
+          setAccountOverview({
+            account_id: data.accountId || accountId,
+            balance: data.balance || data.currentBalance || 0,
+            deployed_capital: data.deployedCapital || data.deployed_capital || 0,
+            buying_power: data.marginAvailable || data.buyingPower || 0,
+            cash_available: data.cashAvailable || data.cash_available || 0,
+            last_updated: data.lastUpdated || new Date().toISOString(),
+          })
+        }
+        if (positionsRes?.ok) {
+          const data = await positionsRes.json()
+          setOpenPositions(data.positions || data || [])
+        }
+        if (tradesRes?.ok) {
+          const data = await tradesRes.json()
+          setClosedTrades(data.trades || data || [])
+        }
+        if (performanceRes?.ok) {
+          const data = await performanceRes.json()
+          setPerformanceMetrics(data.performance || data.metrics || null)
+        } else {
+          setPerformanceMetrics(null)
+        }
       }
     } catch (error) {
       console.error('Error fetching paper trading data:', error)
@@ -75,21 +118,41 @@ function PaperTradingFeatureWrapper() {
     fetchData()
     const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [selectedAccount?.account_id, isAccountsLoading])
+
+  const handleRefresh = async () => {
+    await refreshAccounts()
+    await fetchData()
+  }
 
   return (
     <PaperTradingFeature
+      accounts={accounts.map(account => ({
+        account_id: account.account_id,
+        account_name: account.account_name,
+        strategy_type: account.strategy_type,
+      }))}
+      selectedAccountId={selectedAccount?.account_id ?? null}
+      onSelectAccount={(accountId) => {
+        const account = accounts.find(item => item.account_id === accountId)
+        if (account) {
+          selectAccount(account)
+        }
+      }}
       accountOverview={accountOverview}
       openPositions={openPositions}
       closedTrades={closedTrades}
       performanceMetrics={performanceMetrics}
-      onRefresh={fetchData}
-      isLoading={isLoading}
+      capabilitySnapshot={capabilitySnapshot}
+      onRefresh={handleRefresh}
+      isLoading={isLoading || isAccountsLoading}
     />
   )
 }
 
 function AppContent() {
+  useTheme()
+
   // Initialize WebSocket connection globally for the entire app
   const initializeWebSocket = useSystemStatusStore((state) => state.initializeWebSocket)
 
@@ -118,12 +181,23 @@ function AppContent() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  const closeSidebar = React.useCallback(() => {
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement) {
+      const navigationRoot = document.getElementById('navigation')
+      if (navigationRoot?.contains(activeElement)) {
+        activeElement.blur()
+      }
+    }
+    setSidebarOpen(false)
+  }, [])
+
   // Keyboard navigation for sidebar and global shortcuts
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Sidebar shortcuts
       if (event.key === 'Escape' && sidebarOpen) {
-        setSidebarOpen(false)
+        closeSidebar()
       }
 
       // Global shortcuts (only when not typing in inputs)
@@ -160,7 +234,7 @@ function AppContent() {
             if (event.altKey) {
               event.preventDefault()
               // Navigate to different sections based on number
-              const routes = ['/', '/news-earnings', '/configuration', '/paper-trading', '/ai-transparency', '/system-health', '/config']
+              const routes = ['/', '/paper-trading', '/system-health', '/configuration']
               const index = parseInt(event.key) - 1
               if (routes[index]) {
                 window.location.href = routes[index]
@@ -173,7 +247,7 @@ function AppContent() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [sidebarOpen])
+  }, [closeSidebar, sidebarOpen])
 
   return (
     <WebSocketErrorBoundary>
@@ -191,14 +265,14 @@ function AppContent() {
         Skip to navigation
       </a>
 
-      <div className="flex h-screen overflow-hidden bg-warmgray-50">
+      <div className="flex h-screen overflow-hidden bg-transparent">
         {/* Mobile sidebar backdrop */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 z-40 bg-warmgray-900/50 backdrop-blur-sm lg:hidden"
-            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-sm lg:hidden"
+            onClick={closeSidebar}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setSidebarOpen(false)
+              if (e.key === 'Escape') closeSidebar()
             }}
             aria-hidden="true"
             tabIndex={-1}
@@ -215,7 +289,7 @@ function AppContent() {
           aria-hidden={!sidebarOpen && window.innerWidth < 1024}
         >
           <div className="flex h-full flex-col">
-            <Navigation onClose={() => setSidebarOpen(false)} />
+            <Navigation onClose={closeSidebar} />
           </div>
         </aside>
 
@@ -223,7 +297,7 @@ function AppContent() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Mobile header */}
           <header
-            className="flex h-14 items-center gap-4 border-b border-warmgray-300 bg-white/80 backdrop-blur-sm px-4 lg:hidden"
+            className="flex h-14 items-center gap-4 border-b border-border/80 bg-card/85 px-4 backdrop-blur-sm lg:hidden"
             role="banner"
           >
             <Button
@@ -233,17 +307,17 @@ function AppContent() {
               className="lg:hidden"
               aria-label="Open navigation menu"
               aria-expanded={sidebarOpen}
-              aria-controls="sidebar"
+              aria-controls="navigation"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </Button>
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded bg-copper-500 flex items-center justify-center" aria-hidden="true">
-                <span className="text-white text-xs font-bold">R</span>
+              <div className="flex h-6 w-6 items-center justify-center rounded border border-border bg-muted text-foreground" aria-hidden="true">
+                <span className="text-xs font-bold">R</span>
               </div>
-              <span className="text-sm font-semibold text-warmgray-900">Robo Trader</span>
+              <span className="text-sm font-semibold text-foreground">Robo Trader</span>
             </div>
           </header>
 
@@ -256,11 +330,10 @@ function AppContent() {
           >
             <Routes>
               <Route path="/" element={<DashboardErrorBoundary><DashboardFeature /></DashboardErrorBoundary>} />
-              <Route path="/news-earnings" element={<NewsEarningsFeature />} />
               <Route path="/configuration" element={<ConfigurationFeature />} />
               <Route path="/paper-trading" element={<PaperTradingFeatureWrapper />} />
-              <Route path="/ai-transparency" element={<AITransparencyFeature />} />
               <Route path="/system-health" element={<SystemHealthFeature />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
         </div>

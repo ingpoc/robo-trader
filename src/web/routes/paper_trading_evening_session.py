@@ -37,6 +37,45 @@ class EveningSessionListResponse(BaseModel):
     message: Optional[str] = None
 
 
+async def _resolve_single_account_id(container: DependencyContainer) -> str:
+    """Resolve a single explicit paper-trading account for evening-session read paths."""
+    account_manager = await container.get("paper_trading_account_manager")
+    accounts = await account_manager.get_all_accounts()
+    if not accounts:
+        raise TradingError(
+            "No paper trading account exists",
+            category=ErrorCategory.VALIDATION,
+            severity=ErrorSeverity.HIGH,
+        )
+
+    if len(accounts) > 1:
+        account_ids = ", ".join(account.account_id for account in accounts)
+        raise TradingError(
+            f"Multiple paper accounts exist; explicit account selection is required: {account_ids}",
+            category=ErrorCategory.VALIDATION,
+            severity=ErrorSeverity.HIGH,
+        )
+
+    return accounts[0].account_id
+
+
+async def _fetch_current_prices(container: DependencyContainer, account_id: str) -> Dict[str, float]:
+    """Fetch current prices for open positions without fabricating marks."""
+    store = await container.get("paper_trading_store")
+    market_data_service = await container.get("market_data_service")
+    open_trades = await store.get_open_trades(account_id)
+    symbols = sorted({trade.symbol for trade in open_trades})
+    if not symbols:
+        return {}
+
+    market_data_map = await market_data_service.get_multiple_market_data(symbols)
+    return {
+        symbol: market_data.ltp
+        for symbol, market_data in market_data_map.items()
+        if market_data and market_data.ltp is not None
+    }
+
+
 @router.post("/trigger", response_model=EveningSessionResponse)
 async def trigger_evening_session(
     request: EveningSessionTriggerRequest,
@@ -184,12 +223,20 @@ async def get_latest_performance_metrics(
         if not reviews:
             # No reviews yet, calculate today's metrics
             today = datetime.now().strftime("%Y-%m-%d")
-            metrics = await paper_trading_state.calculate_daily_performance_metrics(today)
+            account_id = await _resolve_single_account_id(container)
+            store = await container.get("paper_trading_store")
+            current_prices = await _fetch_current_prices(container, account_id)
+            metrics = await store.calculate_daily_performance_metrics(
+                account_id=account_id,
+                review_date=today,
+                current_prices=current_prices,
+            )
 
             return EveningSessionResponse(
                 success=True,
                 data={
                     "review_date": today,
+                    "account_id": account_id,
                     "metrics": metrics,
                     "has_review": False
                 },

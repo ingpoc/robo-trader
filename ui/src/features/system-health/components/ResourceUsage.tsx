@@ -47,6 +47,21 @@ export const ResourceUsage: React.FC<ResourceUsageProps> = ({ resources, isLoadi
     )
   }
 
+  if (!resources || resources.status === 'error') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>System Resources</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {resources?.error || 'System resource metrics are currently unavailable.'}
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <Card>
       <CardHeader>

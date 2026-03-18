@@ -58,10 +58,9 @@ Track mock vs real implementations to prevent silent failures:
 | `paper_trading_execution_service` | `execute_sell_trade` | ✅ REAL | - |
 | `kite_connect_service` | `get_ltp` | ✅ REAL | - |
 
-**Fixed 2025-12-26**: BUG-002 resolved - execution service now writes to `paper_trades` table via `paper_trading_state.create_trade()`.
+**Updated 2026-03-17**: `paper_trading_execution_service` now persists through the store-backed `paper_trade_executor` / `paper_trading_store` path instead of `paper_trading_state.create_trade()`. Treat the store-backed path as the execution authority for account/trade writes.
 
 ## Read Before Changing
 
 - `src/CLAUDE.md` - Backend patterns (SDK, event loop, DI, locked state)
 - `src/core/CLAUDE.md` - Core infrastructure (events, coordinators)
-

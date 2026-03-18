@@ -1,30 +1,25 @@
 import React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/Label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Brain, RefreshCw, Play, Loader2 } from 'lucide-react'
+import { Brain, RefreshCw } from 'lucide-react'
 import type { AIAgentConfig } from '@/types/api'
 import { getFrequencyDisplay, getScopeColor, formatTaskName } from '../utils'
 
 interface AIAgentConfigProps {
   aiAgents: Record<string, AIAgentConfig>
-  executingAgents: Set<string>
   isLoading: boolean
   onUpdateAgent: (agentName: string, field: keyof AIAgentConfig, value: any) => void
-  onExecuteAgent: (agentName: string) => void
 }
 
 export const AIAgentConfigComponent: React.FC<AIAgentConfigProps> = ({
   aiAgents,
-  executingAgents,
   isLoading,
   onUpdateAgent,
-  onExecuteAgent,
 }) => {
   if (isLoading) {
     return (
@@ -48,8 +43,8 @@ export const AIAgentConfigComponent: React.FC<AIAgentConfigProps> = ({
     <div className="space-y-6">
       <Alert>
         <AlertDescription>
-          Configure AI agents that perform specialized analysis and decision-making tasks.
-          Control their tools, response frequency, and analysis scope.
+          Configure the Claude-powered roles that generate discovery, decisions, and review artifacts.
+          Manual runs now happen from Paper Trading or an external trigger, not from this page.
         </AlertDescription>
       </Alert>
 
@@ -162,30 +157,7 @@ export const AIAgentConfigComponent: React.FC<AIAgentConfigProps> = ({
 
               <div className="text-sm text-gray-600">
                 <Brain className="inline w-3 h-3 mr-1" />
-                Responds every {getFrequencyDisplay(config.responseFrequency, config.responseFrequencyUnit)}
-              </div>
-
-              {/* Action Button */}
-              <div className="pt-4 border-t">
-                <Button
-                  variant="tertiary"
-                  size="sm"
-                  onClick={() => onExecuteAgent(agentName)}
-                  disabled={executingAgents.has(agentName) || !config.enabled}
-                  className="w-full"
-                >
-                  {executingAgents.has(agentName) ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4 mr-2" />
-                      Run Now
-                    </>
-                  )}
-                </Button>
+                Cadence hint: {getFrequencyDisplay(config.responseFrequency, config.responseFrequencyUnit)}
               </div>
             </CardContent>
           </Card>

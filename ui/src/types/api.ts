@@ -34,13 +34,36 @@ export interface Portfolio {
   holdings: Holding[]
   cash: Cash
   exposure_total: number
+  summary?: {
+    accounts: number
+    total_balance: number
+    cash_available: number
+    deployed_capital: number
+    active_positions: number
+    unrealized_pnl: number
+  }
 }
 
 export interface Analytics {
   portfolio: {
     concentration_risk: number
     dominant_sector: string
+    active_accounts?: number
   }
+  paper_trading?: {
+    pnl: number
+    win_rate: number
+    portfolio_value: number
+    unrealized_pnl: number
+    total_closed_trades: number
+    capability_status: string
+    blockers: string[]
+  }
+  chart_data?: ChartDataPoint[]
+  portfolio_value?: number
+  pnl_absolute?: number
+  pnl_percentage?: number
+  win_rate?: number
 }
 
 export interface Recommendation {
@@ -76,7 +99,7 @@ export interface AIStatus {
 export interface DashboardData {
   portfolio: Portfolio
   analytics: Analytics
-  recommendations: Recommendation[]
+  recommendations?: Recommendation[]
   alerts: Alert[]
   ai_status: AIStatus
   timestamp: string
@@ -186,15 +209,6 @@ export interface ErrorResponse {
   details?: ErrorDetails
 }
 
-// Configuration Types
-export interface BackgroundTaskConfig {
-  enabled: boolean
-  frequency: number
-  frequencyUnit: 'seconds' | 'minutes' | 'hours' | 'days'
-  useClaude: boolean
-  priority: 'low' | 'medium' | 'high'
-}
-
 export interface AIAgentConfig {
   enabled: boolean
   useClaude: boolean
@@ -222,12 +236,7 @@ export interface GlobalConfig {
   maxTurns: number
   riskTolerance: number
   dailyApiLimit: number
-}
-
-export interface PromptConfig {
-  prompt_name: string
-  content: string
-  description: string
-  created_at: string
-  updated_at: string
+  quoteStreamProvider?: 'upstox' | 'zerodha_kite' | 'none'
+  quoteStreamMode?: 'ltpc' | 'full'
+  quoteStreamSymbolLimit?: number
 }

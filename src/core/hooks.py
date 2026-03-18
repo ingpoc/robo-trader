@@ -287,14 +287,32 @@ async def session_start_hook(session_id: str, context: Dict[str, Any]) -> Dict[s
         pos_count = 0
 
         try:
-            paper_trading_state = getattr(state_manager, 'paper_trading_state', None)
-            if paper_trading_state:
-                account = await paper_trading_state.get_account()
-                if account:
-                    bal = account.get("current_cash", 0)
+            db = getattr(getattr(state_manager, "db", None), "connection", None)
+            if db:
+                cursor = await db.execute(
+                    """
+                    SELECT COALESCE(SUM(current_balance), 0)
+                    FROM paper_trading_accounts
+                    WHERE is_active = 1
+                    """
+                )
+                balance_row = await cursor.fetchone()
+                await cursor.close()
+                if balance_row:
+                    bal = balance_row[0] or 0
 
-                open_trades = await paper_trading_state.get_open_trades()
-                pos_count = len(open_trades) if open_trades else 0
+                cursor = await db.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM paper_trades
+                    WHERE status = ?
+                    """,
+                    ("open",),
+                )
+                positions_row = await cursor.fetchone()
+                await cursor.close()
+                if positions_row:
+                    pos_count = positions_row[0] or 0
         except Exception as e:
             logger.warning(f"SessionStart: Failed to get portfolio: {e}")
 

@@ -3,8 +3,8 @@
 import logging
 import asyncio
 import uuid
-from datetime import datetime
-from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List, Dict, Any, Tuple
 import aiosqlite
 
 from ..models.paper_trading import (
@@ -176,8 +176,8 @@ class PaperTradingStore:
         async with self._lock:
             if not account_id:
                 account_id = f"paper_{strategy_type.value}_{uuid.uuid4().hex[:8]}"
-            now = datetime.utcnow().isoformat()
-            today = datetime.utcnow().strftime("%Y-%m-%d")
+            now = datetime.now(timezone.utc).isoformat()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
             cursor = await self.db_connection.execute(
                 """
@@ -263,7 +263,7 @@ class PaperTradingStore:
     async def update_account_balance(self, account_id: str, new_balance: float, buying_power: float) -> None:
         """Update account balance and buying power."""
         async with self._lock:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             cursor = await self.db_connection.execute(
                 """
                 UPDATE paper_trading_accounts
@@ -290,7 +290,7 @@ class PaperTradingStore:
         """Create new trade record."""
         async with self._lock:
             trade_id = f"trade_{uuid.uuid4().hex[:16]}"
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             cursor = await self.db_connection.execute(
                 """
@@ -322,7 +322,7 @@ class PaperTradingStore:
         row = await cursor.fetchone()
         await cursor.close()
         if row:
-            return PaperTrade.from_dict(dict(row))
+            return PaperTrade.from_dict(self._normalize_trade_row(dict(row)))
         return None
 
     async def get_trade(self, trade_id: str) -> Optional[PaperTrade]:
@@ -335,34 +335,103 @@ class PaperTradingStore:
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
             "SELECT * FROM paper_trades WHERE account_id = ? AND status = ?",
-            (account_id, 'OPEN')  # Use uppercase to match DB CHECK constraint
+            (account_id, TradeStatus.OPEN.value)
         )
         rows = await cursor.fetchall()
         await cursor.close()
-        return [PaperTrade.from_dict(self._map_db_row_to_trade(dict(row))) for row in rows]
+        return [PaperTrade.from_dict(self._normalize_trade_row(dict(row))) for row in rows]
 
-    def _map_db_row_to_trade(self, row: dict) -> dict:
-        """Map DB column names to PaperTrade field names."""
+    async def update_trade_risk_levels(
+        self,
+        account_id: str,
+        trade_id: str,
+        stop_loss: Optional[float] = None,
+        target_price: Optional[float] = None,
+    ) -> Optional[PaperTrade]:
+        """Update stop-loss and target-price values for an open trade."""
+        async with self._lock:
+            existing_trade = await self._get_trade_unlocked(trade_id)
+            if existing_trade is None or existing_trade.account_id != account_id:
+                return None
+
+            if existing_trade.status != TradeStatus.OPEN:
+                return None
+
+            now = datetime.now(timezone.utc).isoformat()
+            cursor = await self.db_connection.execute(
+                """
+                UPDATE paper_trades
+                SET stop_loss = COALESCE(?, stop_loss),
+                    target_price = COALESCE(?, target_price),
+                    updated_at = ?
+                WHERE trade_id = ? AND account_id = ? AND status = ?
+                """,
+                (
+                    stop_loss,
+                    target_price,
+                    now,
+                    trade_id,
+                    account_id,
+                    TradeStatus.OPEN.value,
+                ),
+            )
+            await cursor.close()
+            await self.db_connection.commit()
+            return await self._get_trade_unlocked(trade_id)
+
+    def _normalize_trade_row(self, row: dict) -> dict:
+        """Map both current and legacy DB column names to the PaperTrade model."""
         return {
-            'trade_id': row.get('id'),
+            'trade_id': row.get('trade_id') or row.get('id'),
             'account_id': row.get('account_id'),
             'symbol': row.get('symbol'),
-            'trade_type': row.get('side', 'buy').lower(),  # DB: BUY/SELL -> Model: buy/sell
+            'trade_type': (row.get('trade_type') or row.get('side') or 'buy').lower(),
             'quantity': row.get('quantity'),
             'entry_price': row.get('entry_price'),
-            'entry_timestamp': row.get('created_at') or row.get('entry_date'),
-            'strategy_rationale': row.get('entry_reason', ''),
+            'entry_timestamp': row.get('entry_timestamp') or row.get('entry_date') or row.get('created_at'),
+            'strategy_rationale': row.get('strategy_rationale') or row.get('entry_reason') or row.get('strategy_tag') or '',
             'claude_session_id': row.get('claude_session_id') or '',
             'exit_price': row.get('exit_price'),
             'exit_timestamp': row.get('exit_timestamp') or row.get('exit_date'),
             'realized_pnl': row.get('realized_pnl'),
             'unrealized_pnl': row.get('unrealized_pnl'),
-            'status': row.get('status', 'OPEN').lower(),  # DB: OPEN/CLOSED -> Model: open/closed
+            'status': (row.get('status') or 'open').lower(),
             'stop_loss': row.get('stop_loss'),
             'target_price': row.get('target_price'),
             'created_at': row.get('created_at'),
             'updated_at': row.get('updated_at'),
         }
+
+    @staticmethod
+    def _get_period_bounds(start_day: str) -> Tuple[str, str]:
+        """Return ISO timestamp bounds for a day."""
+        start = datetime.fromisoformat(start_day)
+        end = start + timedelta(days=1)
+        return start.isoformat(), end.isoformat()
+
+    @staticmethod
+    def _get_month_bounds(year: int, month: int) -> Tuple[str, str]:
+        """Return ISO timestamp bounds for a month."""
+        start = datetime(year, month, 1)
+        if month == 12:
+            end = datetime(year + 1, 1, 1)
+        else:
+            end = datetime(year, month + 1, 1)
+        return start.isoformat(), end.isoformat()
+
+    @staticmethod
+    def _calculate_realized_pnl(trade: PaperTrade) -> float:
+        """Calculate realized P&L when it is not already persisted."""
+        if trade.realized_pnl is not None:
+            return trade.realized_pnl
+
+        if trade.exit_price is None:
+            return 0.0
+
+        if trade.trade_type == TradeType.BUY:
+            return (trade.exit_price - trade.entry_price) * trade.quantity
+
+        return (trade.entry_price - trade.exit_price) * trade.quantity
 
     async def close_trade(
         self,
@@ -373,7 +442,7 @@ class PaperTradingStore:
     ) -> Optional[PaperTrade]:
         """Close a trade."""
         async with self._lock:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             cursor = await self.db_connection.execute(
                 """
@@ -392,7 +461,7 @@ class PaperTradingStore:
     async def mark_stopped_out(self, trade_id: str, exit_price: float, realized_pnl: float) -> Optional[PaperTrade]:
         """Mark trade as stopped out."""
         async with self._lock:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             cursor = await self.db_connection.execute(
                 """
@@ -410,11 +479,7 @@ class PaperTradingStore:
 
     async def get_monthly_trades(self, account_id: str, year: int, month: int) -> List[PaperTrade]:
         """Get all trades for a specific month."""
-        start_date = f"{year:04d}-{month:02d}-01"
-        if month == 12:
-            end_date = f"{year+1:04d}-01-01"
-        else:
-            end_date = f"{year:04d}-{month+1:02d}-01"
+        start_date, end_date = self._get_month_bounds(year, month)
 
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
@@ -427,7 +492,7 @@ class PaperTradingStore:
         )
         rows = await cursor.fetchall()
         await cursor.close()
-        return [PaperTrade.from_dict(dict(row)) for row in rows]
+        return [PaperTrade.from_dict(self._normalize_trade_row(dict(row))) for row in rows]
 
     async def calculate_account_pnl(self, account_id: str, current_prices: Dict[str, float]) -> tuple[float, float]:
         """
@@ -451,7 +516,7 @@ class PaperTradingStore:
 
         # Get realized PnL from closed trades
         realized_pnl = 0.0
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
             """
@@ -478,8 +543,8 @@ class PaperTradingStore:
         if not account:
             return
 
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        now = datetime.utcnow().isoformat()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        now = datetime.now(timezone.utc).isoformat()
 
         cursor = await self.db_connection.execute(
             """
@@ -503,12 +568,8 @@ class PaperTradingStore:
         params = [account_id, TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value]
 
         if month and year:
-            start_date = f"{year:04d}-{month:02d}-01"
-            if month == 12:
-                end_date = f"{year+1:04d}-01-01"
-            else:
-                end_date = f"{year:04d}-{month+1:02d}-01"
-            query += " AND entry_timestamp >= ? AND entry_timestamp < ?"
+            start_date, end_date = self._get_month_bounds(year, month)
+            query += " AND exit_timestamp >= ? AND exit_timestamp < ?"
             params.extend([start_date, end_date])
 
         if symbol:
@@ -522,4 +583,201 @@ class PaperTradingStore:
         cursor = await self.db_connection.execute(query, params)
         rows = await cursor.fetchall()
         await cursor.close()
-        return [PaperTrade.from_dict(dict(row)) for row in rows]
+        return [PaperTrade.from_dict(self._normalize_trade_row(dict(row))) for row in rows]
+
+    async def calculate_daily_performance_metrics(
+        self,
+        account_id: str,
+        review_date: str,
+        current_prices: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """Calculate truthful daily performance metrics from the store-backed authority path."""
+        current_prices = current_prices or {}
+        start_ts, end_ts = self._get_period_bounds(review_date)
+
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+
+            cursor = await self.db_connection.execute(
+                """
+                SELECT * FROM paper_trades
+                WHERE account_id = ?
+                  AND (
+                    (entry_timestamp >= ? AND entry_timestamp < ?)
+                    OR (exit_timestamp >= ? AND exit_timestamp < ?)
+                  )
+                ORDER BY COALESCE(exit_timestamp, entry_timestamp) DESC
+                """,
+                (account_id, start_ts, end_ts, start_ts, end_ts),
+            )
+            reviewed_rows = await cursor.fetchall()
+            await cursor.close()
+
+            trades_reviewed: List[Dict[str, Any]] = []
+            strategy_performance: Dict[str, Dict[str, Any]] = {}
+            realized_pnl = 0.0
+            closed_positions_count = 0
+            winning_trades = 0
+            losing_trades = 0
+
+            for row in reviewed_rows:
+                trade = PaperTrade.from_dict(self._normalize_trade_row(dict(row)))
+                realized = self._calculate_realized_pnl(trade)
+                strategy_tag = trade.strategy_rationale or "unclassified"
+                status_value = trade.status.value.upper()
+
+                trades_reviewed.append({
+                    "id": trade.trade_id,
+                    "symbol": trade.symbol,
+                    "side": trade.trade_type.value.upper(),
+                    "quantity": trade.quantity,
+                    "entry_price": trade.entry_price,
+                    "exit_price": trade.exit_price,
+                    "strategy_tag": strategy_tag,
+                    "status": status_value,
+                })
+
+                metrics = strategy_performance.setdefault(
+                    strategy_tag,
+                    {"trades": 0, "winning_trades": 0, "total_pnl": 0.0},
+                )
+                metrics["trades"] += 1
+
+                exit_ts = trade.exit_timestamp
+                if exit_ts and start_ts <= exit_ts < end_ts and trade.status in {TradeStatus.CLOSED, TradeStatus.STOPPED_OUT}:
+                    closed_positions_count += 1
+                    realized_pnl += realized
+                    metrics["total_pnl"] += realized
+                    if realized > 0:
+                        winning_trades += 1
+                        metrics["winning_trades"] += 1
+                    elif realized < 0:
+                        losing_trades += 1
+
+            cursor = await self.db_connection.execute(
+                """
+                SELECT * FROM paper_trades
+                WHERE account_id = ? AND status = ?
+                ORDER BY entry_timestamp DESC
+                """,
+                (account_id, TradeStatus.OPEN.value),
+            )
+            open_rows = await cursor.fetchall()
+            await cursor.close()
+            open_trades = [PaperTrade.from_dict(self._normalize_trade_row(dict(row))) for row in open_rows]
+
+            unrealized_pnl = 0.0
+            for trade in open_trades:
+                current_price = current_prices.get(trade.symbol, trade.entry_price)
+                trade_pnl, _ = trade.calculate_pnl(current_price)
+                unrealized_pnl += trade_pnl
+
+            account = await self._get_account_unlocked(account_id)
+            initial_balance = account.initial_balance if account else 0.0
+            daily_pnl = realized_pnl + unrealized_pnl
+            daily_pnl_percent = (daily_pnl / initial_balance * 100) if initial_balance > 0 else 0.0
+
+            for metrics in strategy_performance.values():
+                trades = metrics["trades"]
+                wins = metrics["winning_trades"]
+                metrics["win_rate"] = (wins / trades * 100) if trades > 0 else 0.0
+
+            total_closed_trades = winning_trades + losing_trades
+            win_rate = (winning_trades / total_closed_trades * 100) if total_closed_trades > 0 else 0.0
+
+            return {
+                "trades_reviewed": trades_reviewed,
+                "daily_pnl": daily_pnl,
+                "daily_pnl_percent": daily_pnl_percent,
+                "realized_pnl": realized_pnl,
+                "unrealized_pnl": unrealized_pnl,
+                "open_positions_count": len(open_trades),
+                "closed_positions_count": closed_positions_count,
+                "win_rate": win_rate,
+                "strategy_performance": strategy_performance,
+                "winning_trades": winning_trades,
+                "losing_trades": losing_trades,
+            }
+
+    async def calculate_monthly_pnl(self, account_id: str, year: int, month: int) -> Dict[str, Any]:
+        """Calculate truthful monthly P&L summary from closed trades."""
+        start_ts, end_ts = self._get_month_bounds(year, month)
+
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                """
+                SELECT * FROM paper_trades
+                WHERE account_id = ?
+                  AND status IN (?, ?)
+                  AND exit_timestamp >= ?
+                  AND exit_timestamp < ?
+                ORDER BY exit_timestamp DESC
+                """,
+                (
+                    account_id,
+                    TradeStatus.CLOSED.value,
+                    TradeStatus.STOPPED_OUT.value,
+                    start_ts,
+                    end_ts,
+                ),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+
+            trades = [PaperTrade.from_dict(self._normalize_trade_row(dict(row))) for row in rows]
+            strategy_breakdown: Dict[str, Dict[str, Any]] = {}
+            total_pnl = 0.0
+            winning_trades = 0
+            best_trade = 0.0
+            worst_trade = 0.0
+
+            for trade in trades:
+                realized = self._calculate_realized_pnl(trade)
+                total_pnl += realized
+                if realized > 0:
+                    winning_trades += 1
+                    best_trade = max(best_trade, realized)
+                else:
+                    worst_trade = min(worst_trade, realized)
+
+                strategy_tag = trade.strategy_rationale or "unclassified"
+                strategy_metrics = strategy_breakdown.setdefault(
+                    strategy_tag,
+                    {"name": strategy_tag, "pnl": 0.0, "trades": 0, "winning_trades": 0},
+                )
+                strategy_metrics["pnl"] += realized
+                strategy_metrics["trades"] += 1
+                if realized > 0:
+                    strategy_metrics["winning_trades"] += 1
+
+            top_strategies = sorted(
+                [
+                    {
+                        "name": name,
+                        "pnl": metrics["pnl"],
+                        "trades": metrics["trades"],
+                        "win_rate": (metrics["winning_trades"] / metrics["trades"] * 100) if metrics["trades"] else 0.0,
+                    }
+                    for name, metrics in strategy_breakdown.items()
+                ],
+                key=lambda item: item["pnl"],
+                reverse=True,
+            )
+
+            total_trades = len(trades)
+            win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+
+            return {
+                "account_id": account_id,
+                "year": year,
+                "month": month,
+                "total_pnl": total_pnl,
+                "win_rate": win_rate,
+                "total_trades": total_trades,
+                "winning_trades": winning_trades,
+                "best_trade": best_trade if total_trades else 0.0,
+                "worst_trade": worst_trade if total_trades else 0.0,
+                "top_strategies": top_strategies,
+                "strategy_breakdown": strategy_breakdown,
+            }

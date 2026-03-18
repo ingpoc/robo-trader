@@ -1,7 +1,7 @@
 """Calculate paper trading performance metrics."""
 
-from datetime import datetime, date
-from typing import Dict, List, Any, Optional
+from datetime import datetime, date, timezone
+from typing import Dict, List, Any, Optional, Union
 from ...models.paper_trading import PaperTrade, TradeType
 import logging
 
@@ -12,7 +12,25 @@ class PerformanceCalculator:
     """Calculate trading performance metrics."""
 
     @staticmethod
-    def calculate_days_held(entry_timestamp: datetime, exit_timestamp: Optional[datetime] = None) -> int:
+    def _coerce_timestamp(timestamp: Union[str, datetime, None]) -> Optional[datetime]:
+        """Convert persisted ISO timestamps into datetime objects."""
+        if timestamp is None:
+            return None
+        if isinstance(timestamp, datetime):
+            return timestamp
+        if isinstance(timestamp, str):
+            return datetime.fromisoformat(timestamp)
+        raise TypeError(f"Unsupported timestamp type: {type(timestamp)!r}")
+
+    @staticmethod
+    def _current_time_like(reference: Optional[datetime] = None) -> datetime:
+        """Return a timezone-compatible current timestamp for arithmetic."""
+        if reference and reference.tzinfo is not None:
+            return datetime.now(reference.tzinfo)
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def calculate_days_held(entry_timestamp: Union[str, datetime], exit_timestamp: Optional[Union[str, datetime]] = None) -> int:
         """Calculate days held for a trade.
 
         Args:
@@ -22,10 +40,13 @@ class PerformanceCalculator:
         Returns:
             Number of days held
         """
-        if exit_timestamp is None:
-            exit_timestamp = datetime.now()
+        entry_dt = PerformanceCalculator._coerce_timestamp(entry_timestamp)
 
-        delta = exit_timestamp - entry_timestamp
+        if entry_dt is None:
+            return 0
+
+        exit_dt = PerformanceCalculator._coerce_timestamp(exit_timestamp) or PerformanceCalculator._current_time_like(entry_dt)
+        delta = exit_dt - entry_dt
         return max(1, delta.days)
 
     @staticmethod
@@ -93,8 +114,8 @@ class PerformanceCalculator:
             "pnl_percentage": pnl_percentage,
             "days_held": days_held,
             "is_open": is_open,
-            "entry_date": trade.entry_timestamp.isoformat(),
-            "exit_date": trade.exit_timestamp.isoformat() if trade.exit_timestamp else None,
+            "entry_date": PerformanceCalculator._coerce_timestamp(trade.entry_timestamp).isoformat(),
+            "exit_date": PerformanceCalculator._coerce_timestamp(trade.exit_timestamp).isoformat() if trade.exit_timestamp else None,
         }
 
     @staticmethod
@@ -184,7 +205,13 @@ class PerformanceCalculator:
         largest_loss = min(losing_pnls) if losing_pnls else 0.0
 
         # Monthly ROI (approximate)
-        days_elapsed = (datetime.now() - closed_trades[0].entry_timestamp).days if closed_trades else 1
+        first_entry = (
+            PerformanceCalculator._coerce_timestamp(closed_trades[0].entry_timestamp)
+            if closed_trades
+            else None
+        )
+        now = PerformanceCalculator._current_time_like(first_entry)
+        days_elapsed = (now - first_entry).days if first_entry else 1
         monthly_roi = (total_pnl_pct / max(1, days_elapsed / 30)) if days_elapsed > 0 else 0.0
 
         return {

@@ -166,18 +166,18 @@ class MCPTradeExecutionHandler:
     def __init__(self, container):
         self.container = container
         self._workflow_manager = None
-        self._paper_trading_state = None
+        self._paper_trade_executor = None
 
     async def initialize(self) -> None:
         """Initialize handler dependencies."""
         self._workflow_manager = await get_workflow_sdk_manager()
-        state_manager = await self.container.get("state_manager")
-        self._paper_trading_state = state_manager.paper_trading_state
+        self._paper_trade_executor = await self.container.get("paper_trade_executor")
 
     async def handle_paper_trade_execution(self, task: SchedulerTask) -> Dict[str, Any]:
         """Handle paper trade execution with real market prices."""
         try:
             payload = task.payload
+            account_id = payload["account_id"]
             symbol = payload["symbol"]
             action = payload["action"]
             quantity = payload["quantity"]
@@ -212,50 +212,60 @@ class MCPTradeExecutionHandler:
                     recoverable=True
                 )
 
-            # Create and execute paper trade
-            trade_id = f"paper_{symbol}_{action}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-
-            success = await self._paper_trading_state.create_trade(
-                trade_id=trade_id,
-                symbol=symbol,
-                side=action,
-                quantity=quantity,
-                entry_price=market_price,
-                entry_reason=entry_reason,
-                strategy_tag=strategy_tag,
-                confidence_score=confidence_score,
-                research_sources=["Claude Validation", "Market Data"],
-                market_conditions={
-                    "market_price": market_price,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "validation_response": validation_response
-                },
-                risk_metrics={
-                    "confidence_score": confidence_score,
-                    "strategy_tag": strategy_tag
-                }
+            strategy_rationale = (
+                f"{entry_reason}\n\n"
+                f"Strategy: {strategy_tag}\n"
+                f"Confidence: {confidence_score:.2f}\n"
+                f"Validation: {validation_response}"
             )
 
-            if success:
-                logger.info(f"Paper trade executed successfully: {trade_id}")
-                return {
-                    "status": "executed",
-                    "trade_id": trade_id,
-                    "symbol": symbol,
-                    "action": action,
-                    "quantity": quantity,
-                    "entry_price": market_price,
-                    "strategy_tag": strategy_tag,
-                    "validation": validation_response,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
+            if action == "BUY":
+                result = await self._paper_trade_executor.execute_buy(
+                    account_id=account_id,
+                    symbol=symbol,
+                    quantity=quantity,
+                    entry_price=market_price,
+                    strategy_rationale=strategy_rationale,
+                    claude_session_id=str(task.task_id),
+                )
+            elif action == "SELL":
+                result = await self._paper_trade_executor.execute_sell(
+                    account_id=account_id,
+                    symbol=symbol,
+                    quantity=quantity,
+                    exit_price=market_price,
+                    strategy_rationale=strategy_rationale,
+                    claude_session_id=str(task.task_id),
+                )
             else:
                 raise TradingError(
-                    f"Failed to execute paper trade: {trade_id}",
-                    category=ErrorCategory.SYSTEM,
+                    f"Unsupported action: {action}",
+                    category=ErrorCategory.VALIDATION,
                     severity=ErrorSeverity.HIGH,
-                    recoverable=True
+                    recoverable=False,
                 )
+
+            if not result.get("success"):
+                raise TradingError(
+                    result.get("error", f"Failed to execute paper trade for {symbol}"),
+                    category=ErrorCategory.EXECUTION,
+                    severity=ErrorSeverity.HIGH,
+                    recoverable=True,
+                )
+
+            logger.info(f"Paper trade executed successfully for account {account_id}: {result.get('trade_id')}")
+            return {
+                "status": "executed",
+                "account_id": account_id,
+                "trade_id": result.get("trade_id"),
+                "symbol": symbol,
+                "action": action,
+                "quantity": quantity,
+                "entry_price": market_price,
+                "strategy_tag": strategy_tag,
+                "validation": validation_response,
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
         except Exception as e:
             logger.error(f"Error in paper trade execution: {e}")

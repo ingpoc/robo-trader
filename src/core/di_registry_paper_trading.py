@@ -68,12 +68,25 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
     # Paper Trading Execution Service
     async def create_paper_trading_execution_service():
         from src.services.paper_trading_execution_service import PaperTradingExecutionService
-        state_manager = await container.get("state_manager")
-        execution_service = PaperTradingExecutionService(state_manager=state_manager)
+        trade_executor = await container.get("paper_trade_executor")
+        account_manager = await container.get("paper_trading_account_manager")
+        store = await container.get("paper_trading_store")
+        execution_service = PaperTradingExecutionService(
+            trade_executor=trade_executor,
+            account_manager=account_manager,
+            store=store,
+        )
         await execution_service.initialize()
         return execution_service
 
     container._register_singleton("paper_trading_execution_service", create_paper_trading_execution_service)
+
+    async def create_agent_artifact_service():
+        from src.services.claude_agent.agent_artifact_service import AgentArtifactService
+
+        return AgentArtifactService(container)
+
+    container._register_singleton("agent_artifact_service", create_agent_artifact_service)
 
     # Performance Calculator (paper trading metrics)
     async def create_performance_calculator():

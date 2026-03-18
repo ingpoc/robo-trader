@@ -51,6 +51,8 @@ class EveningSessionCoordinator(BaseCoordinator):
         # Get state managers
         self.state_manager = await self.container.get("state_manager")
         self.paper_trading_state = self.state_manager.paper_trading
+        self.paper_trading_store = await self.container.get("paper_trading_store")
+        self.account_manager = await self.container.get("paper_trading_account_manager")
 
         # Try to get real_time_trading_state if available, otherwise use paper_trading
         try:
@@ -71,6 +73,12 @@ class EveningSessionCoordinator(BaseCoordinator):
         except ValueError:
             self._log_warning("kite_connect_service not registered - using market_data_service")
             self.kite_service = await self.container.get("market_data_service")
+
+        try:
+            self.market_data_service = await self.container.get("market_data_service")
+        except ValueError:
+            self._log_warning("market_data_service not registered - real-time evening marks disabled")
+            self.market_data_service = None
 
         try:
             self.safeguards = await self.container.get("autonomous_trading_safeguards")
@@ -117,15 +125,21 @@ class EveningSessionCoordinator(BaseCoordinator):
                 "review_date": review_date
             }
 
+            account_id = await self._resolve_review_account_id()
+            self._running_sessions[session_id]["account_id"] = account_id
+
             # Step 1: Calculate daily performance metrics
             self._log_info("Calculating daily performance metrics...")
-            performance_metrics = await self.paper_trading_state.calculate_daily_performance_metrics(
-                review_date
+            current_prices = await self._fetch_current_prices(account_id)
+            performance_metrics = await self.paper_trading_store.calculate_daily_performance_metrics(
+                account_id=account_id,
+                review_date=review_date,
+                current_prices=current_prices,
             )
 
             # Step 2: Get current positions
             self._log_info("Fetching current positions...")
-            open_positions = await self.paper_trading_state.get_open_trades()
+            open_positions = await self.account_manager.get_open_positions(account_id)
 
             # Step 3: Analyze trading patterns with Perplexity
             self._log_info("Analyzing trading patterns with AI...")
@@ -144,7 +158,7 @@ class EveningSessionCoordinator(BaseCoordinator):
             self._log_info("Preparing next day's watchlist...")
             watchlist = await self._prepare_next_day_watchlist(
                 performance_metrics,
-                trading_insights
+                open_positions,
             )
 
             # Step 6: Compile market observations
@@ -165,6 +179,7 @@ class EveningSessionCoordinator(BaseCoordinator):
 
             session_data = {
                 "review_id": session_id,
+                "account_id": account_id,
                 "review_date": review_date,
                 "start_time": start_time.isoformat(),
                 "end_time": end_time.isoformat(),
@@ -211,7 +226,7 @@ class EveningSessionCoordinator(BaseCoordinator):
             await self.event_bus.publish(Event(
                 id=str(uuid.uuid4()),
                 type=EventType.EVENING_REVIEW_COMPLETE,
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 data={
                     "session_id": session_id,
                     "review_date": review_date,
@@ -232,6 +247,7 @@ class EveningSessionCoordinator(BaseCoordinator):
             error_data = {
                 "review_id": session_id,
                 "review_date": review_date,
+                "account_id": self._running_sessions.get(session_id, {}).get("account_id"),
                 "start_time": start_time.isoformat(),
                 "end_time": datetime.now(timezone.utc).isoformat(),
                 "success": False,
@@ -394,7 +410,7 @@ class EveningSessionCoordinator(BaseCoordinator):
     async def _prepare_next_day_watchlist(
         self,
         performance_metrics: Dict[str, Any],
-        trading_insights: List[str]
+        open_positions: List[Any],
     ) -> List[Dict[str, Any]]:
         """Prepare watchlist for next trading day."""
         try:
@@ -405,9 +421,8 @@ class EveningSessionCoordinator(BaseCoordinator):
             for trade in performance_metrics.get("trades_reviewed", []):
                 traded_symbols.add(trade["symbol"])
 
-            # Get current positions
-            open_positions = await self.paper_trading_state.get_open_trades()
-            position_symbols = set(pos["symbol"] for pos in open_positions)
+            # Keep current positions on the watchlist.
+            position_symbols = {pos.symbol for pos in open_positions}
 
             # Combine for monitoring
             watch_symbols = traded_symbols.union(position_symbols)
@@ -432,6 +447,43 @@ class EveningSessionCoordinator(BaseCoordinator):
         except Exception as e:
             self._log_error(f"Failed to prepare next day watchlist: {e}")
             return []
+
+    async def _resolve_review_account_id(self) -> str:
+        """Resolve the paper account used by the evening review."""
+        accounts = await self.account_manager.get_all_accounts()
+        if not accounts:
+            raise TradingError(
+                "Evening review cannot run because no paper trading account exists",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+            )
+
+        if len(accounts) > 1:
+            account_ids = ", ".join(account.account_id for account in accounts)
+            raise TradingError(
+                f"Evening review requires an explicit paper trading account selection; available accounts: {account_ids}",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+            )
+
+        return accounts[0].account_id
+
+    async def _fetch_current_prices(self, account_id: str) -> Dict[str, float]:
+        """Fetch current prices for open positions without fabricating marks."""
+        if not self.market_data_service:
+            return {}
+
+        open_trades = await self.paper_trading_store.get_open_trades(account_id)
+        symbols = sorted({trade.symbol for trade in open_trades})
+        if not symbols:
+            return {}
+
+        market_data_map = await self.market_data_service.get_multiple_market_data(symbols)
+        return {
+            symbol: market_data.ltp
+            for symbol, market_data in market_data_map.items()
+            if market_data and market_data.ltp is not None
+        }
 
     async def _compile_market_observations(self) -> Dict[str, Any]:
         """Compile market observations and conditions."""

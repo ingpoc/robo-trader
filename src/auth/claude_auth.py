@@ -5,7 +5,7 @@ Ensures the system has valid Claude Agent SDK access and displays status.
 SDK uses Claude Code CLI for authentication, no direct API keys needed.
 """
 
-import os
+import json
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
 
@@ -93,8 +93,8 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
     """
     Check if Claude Code CLI is installed and authenticated.
 
-    The Claude Agent SDK runs through Claude Code CLI, which can be
-    authenticated via Claude Pro subscription or OAuth token.
+    The Claude Agent SDK runs through Claude Code CLI, which should be
+    authenticated via `claude auth login` for subscription-based usage.
 
     Returns:
         {
@@ -106,176 +106,94 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
         }
     """
     import asyncio
-    import os
+    from claude_agent_sdk import ClaudeAgentOptions
+    from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
 
-    # Check if ANTHROPIC_API_KEY with OAuth token is set
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if api_key.startswith("sk-ant-oat"):
-        logger.debug("OAuth token (sk-ant-oat*) found in ANTHROPIC_API_KEY")
-        return {
-            "authenticated": True,
-            "cli_installed": True,
-            "version": "oauth_token",
-            "user": "oauth_user",
-            "auth_method": "oauth_token",
-            "rate_limit_info": {"limited": False}
-        }
+    version = None
+    auth_status = {}
 
     try:
-        # Check if claude CLI is installed and authenticated (non-blocking)
-        # The correct command is 'claude', not 'claude-code'
-        process = await asyncio.create_subprocess_exec(
+        version_process = await asyncio.create_subprocess_exec(
             "claude", "--version",
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
         )
-
-        try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
-            result_code = process.returncode
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-            logger.debug("Claude CLI version check timed out")
+        stdout, _ = await asyncio.wait_for(version_process.communicate(), timeout=2.0)
+        if version_process.returncode != 0:
             return {
                 "authenticated": False,
-                "cli_installed": True,
+                "cli_installed": False,
                 "version": None,
                 "user": None,
-                "auth_method": None
+                "auth_method": None,
+                "rate_limit_info": {},
             }
-
-        if result_code == 0:
-            version = stdout.decode().strip()
-            logger.debug(f"Claude CLI version: {version}")
-
-            # Test if authentication is working by attempting a simple text input
-            # Claude Code 2.0+ responds to any input if authenticated
-            # Use echo to pipe input instead of --print which is for file operations
-            test_process = await asyncio.create_subprocess_exec(
-                "bash", "-c", "echo 'test' | claude",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            try:
-                test_stdout, test_stderr = await asyncio.wait_for(test_process.communicate(), timeout=10.0)
-                test_result_code = test_process.returncode
-            except asyncio.TimeoutError:
-                test_process.kill()
-                await test_process.wait()
-                logger.debug("Claude CLI auth test timed out")
-                return {
-                    "authenticated": False,
-                    "cli_installed": True,
-                    "version": version,
-                    "user": None,
-                    "auth_method": None,
-                    "rate_limit_info": {}
-                }
-
-            # Parse the output for rate limit information
-            output = test_stdout.decode() + test_stderr.decode()
-            rate_limit_info = {}
-
-            # Check if response contains Claude's output (indicating auth success)
-            # Authentication is successful if:
-            # 1. Return code is 0 (success), OR
-            # 2. Output contains Claude's response (even if it's a rate limit message)
-            is_authenticated = False
-
-            # Look for Claude's response patterns - simplified to just check for any response
-            # The SDK documentation shows that authentication is confirmed by any response from claude CLI
-            claude_indicators = [
-                "I'm ready to help",
-                "I can help",
-                "I'm Claude",
-                "I'm here to help",
-                "How can I help",
-                "How can I help you",
-                "help you with",
-                "help you with your",
-                "I see you've entered",
-                "How can I help you with",
-                "limit reached",
-                "usage limit",
-                "rate limit",
-                "weekly limit",
-                "daily limit",
-                # Any non-empty response from claude CLI indicates authentication
-            ]
-
-            # According to SDK docs, any response from claude CLI indicates authentication
-            # The CLI will respond if authenticated, regardless of the model underneath
-            if output.strip():
-                is_authenticated = True
-                logger.debug("Claude CLI authentication confirmed - received response from CLI")
-            elif test_result_code == 0:
-                is_authenticated = True
-                logger.debug("Claude CLI authentication confirmed via successful exit code")
-
-            if "limit" in output.lower():
-                # Extract rate limit details
-                if "weekly limit reached" in output.lower():
-                    rate_limit_info["limited"] = True
-                    rate_limit_info["type"] = "weekly"
-                    # Try to extract reset time
-                    import re
-                    reset_match = re.search(r'resets\s+(\d+:\d+\s*[ap]m)', output, re.IGNORECASE)
-                    if reset_match:
-                        rate_limit_info["resets_at"] = reset_match.group(1)
-                elif "daily limit" in output.lower():
-                    rate_limit_info["limited"] = True
-                    rate_limit_info["type"] = "daily"
-                else:
-                    rate_limit_info["limited"] = True
-                    rate_limit_info["type"] = "unknown"
-            else:
-                rate_limit_info["limited"] = False
-
-            if is_authenticated:
-                # Auth method is determined by CLI settings, not response content
-                # The SDK uses whatever model is configured in ~/.claude/settings.json
-                auth_method = "cli_configured"  # Generic method - actual model determined by settings
-                logger.debug(f"Claude CLI authenticated successfully via {auth_method}")
-                return {
-                    "authenticated": True,
-                    "cli_installed": True,
-                    "version": version,
-                    "user": "claude_user",
-                    "auth_method": auth_method,
-                    "rate_limit_info": rate_limit_info
-                }
-            else:
-                logger.debug(f"Claude CLI not authenticated: {test_stderr.decode()}")
-                return {
-                    "authenticated": False,
-                    "cli_installed": True,
-                    "version": version,
-                    "user": None,
-                    "auth_method": None,
-                    "rate_limit_info": {}
-                }
-
+        version = stdout.decode().strip()
     except FileNotFoundError:
-        # claude CLI not found in PATH
         logger.debug("Claude CLI not found in PATH")
         return {
             "authenticated": False,
             "cli_installed": False,
             "version": None,
             "user": None,
-            "auth_method": None
+            "auth_method": None,
+            "rate_limit_info": {},
         }
-    except Exception as e:
-        logger.debug(f"Claude Code CLI check failed: {e}")
+    except Exception as exc:
+        logger.debug(f"Claude CLI version check failed: {exc}")
         return {
             "authenticated": False,
             "cli_installed": False,
             "version": None,
             "user": None,
-            "auth_method": None
+            "auth_method": None,
+            "rate_limit_info": {},
         }
+
+    try:
+        status_process = await asyncio.create_subprocess_exec(
+            "claude", "auth", "status",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        status_stdout, _ = await asyncio.wait_for(status_process.communicate(), timeout=2.0)
+        if status_stdout:
+            auth_status = json.loads(status_stdout.decode())
+    except Exception as exc:
+        logger.debug(f"Claude auth status probe failed: {exc}")
+
+    # Primary signal: can the real SDK client path initialize?
+    try:
+        manager = await ClaudeSDKClientManager.get_instance()
+        options = ClaudeAgentOptions(
+            allowed_tools=[],
+            max_turns=1,
+            system_prompt="Return OK.",
+        )
+        await manager.get_client("auth_probe", options, force_recreate=True)
+        sdk_authenticated = True
+    except Exception as exc:
+        logger.debug(f"Claude SDK auth probe failed: {exc}")
+        sdk_authenticated = False
+
+    if sdk_authenticated:
+        return {
+            "authenticated": True,
+            "cli_installed": True,
+            "version": version,
+            "user": auth_status.get("user"),
+            "auth_method": auth_status.get("authMethod") or "sdk_available",
+            "rate_limit_info": auth_status.get("rate_limit_info", {}),
+        }
+
+    return {
+        "authenticated": bool(auth_status.get("loggedIn")),
+        "cli_installed": True,
+        "version": version,
+        "user": auth_status.get("user"),
+        "auth_method": auth_status.get("authMethod"),
+        "rate_limit_info": auth_status.get("rate_limit_info", {}),
+    }
 
 
 async def get_claude_sdk_status() -> ClaudeAuthStatus:
@@ -331,6 +249,16 @@ async def get_claude_sdk_status_cached() -> ClaudeAuthStatus:
         _cached_status = await validate_claude_sdk_auth()
 
     return _cached_status
+
+
+async def get_claude_status() -> ClaudeAuthStatus:
+    """Backward-compatible alias for SDK status lookup."""
+    return await get_claude_sdk_status()
+
+
+async def get_claude_status_cached() -> ClaudeAuthStatus:
+    """Backward-compatible alias for cached SDK status lookup."""
+    return await get_claude_sdk_status_cached()
 
 
 def invalidate_status_cache():

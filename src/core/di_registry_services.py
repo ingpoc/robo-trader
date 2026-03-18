@@ -15,7 +15,10 @@ from src.services.execution_service import ExecutionService
 from src.services.analytics_service import AnalyticsService
 from src.services.learning_service import LearningService
 from src.services.strategy_evolution_engine import StrategyEvolutionEngine
+from src.models.market_data import MarketDataProvider
 from src.services.market_data_service import MarketDataService
+from src.services.quote_stream_adapter import NullQuoteStreamAdapter, UpstoxQuoteStreamAdapter
+from src.services.trading_capability_service import TradingCapabilityService
 from src.services.feature_management.service import FeatureManagementService
 from src.services.event_router_service import EventRouterService
 from src.services.token_refresh_manager import TokenRefreshManager
@@ -63,14 +66,49 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("analytics_service", create_analytics_service)
 
+    async def create_quote_stream_adapter():
+        provider = (container.config.integration.quote_stream_provider or "upstox").strip().lower()
+        async def _discard_quote_update(_market_data):
+            return None
+
+        if provider == MarketDataProvider.UPSTOX.value:
+            return UpstoxQuoteStreamAdapter(container.config, on_quote_update=_discard_quote_update)
+        if provider in {"none", "", "disabled"}:
+            return NullQuoteStreamAdapter("QUOTE_STREAM_PROVIDER is disabled for this runtime.")
+        logger.warning("Unknown quote stream provider '%s'; paper-mode live marks will stay unavailable", provider)
+        return NullQuoteStreamAdapter(f"Unsupported quote stream provider '{provider}'.")
+
+    container._register_singleton("quote_stream_adapter", create_quote_stream_adapter)
+
     # Market Data Service (real-time price tracking)
     async def create_market_data_service():
         event_bus = await container.get("event_bus")
-        market_data_service = MarketDataService(container.config, event_bus, broker=None)
+        broker = await container.get("kite_connect_service")
+        provider_value = (container.config.integration.quote_stream_provider or "upstox").strip().lower()
+        try:
+            default_provider = MarketDataProvider(provider_value)
+        except ValueError:
+            default_provider = MarketDataProvider.UPSTOX
+
+        market_data_service = MarketDataService(
+            container.config,
+            event_bus,
+            broker=broker,
+            default_provider=default_provider,
+        )
+        quote_stream_adapter = await container.get("quote_stream_adapter")
+        quote_stream_adapter.set_quote_update_callback(market_data_service._update_market_data)
+        market_data_service.quote_stream_adapter = quote_stream_adapter
         await market_data_service.initialize()
         return market_data_service
 
     container._register_singleton("market_data_service", create_market_data_service)
+
+    # Trading Capability Service
+    async def create_trading_capability_service():
+        return TradingCapabilityService(container)
+
+    container._register_singleton("trading_capability_service", create_trading_capability_service)
 
     # Learning Service
     async def create_learning_service():
@@ -235,8 +273,7 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
             logger.info(f"[KiteConnect Factory] access_token: {access_token[:10] if access_token else 'None'}***")
 
             if not api_key or not api_secret:
-                logger.warning("No Zerodha credentials in environment - market data will be mock")
-                # Don't raise error - allow mock fallback for paper trading
+                logger.warning("No Zerodha credentials in environment - market data capability will remain unavailable")
                 return None
 
             real_time_state = await container.get("real_time_trading_state")
@@ -261,8 +298,7 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
             return kite_service
 
         except Exception as e:
-            logger.warning(f"KiteConnectService failed to initialize: {e} - market data will be mock")
-            # Don't raise - allow mock fallback
+            logger.warning(f"KiteConnectService failed to initialize: {e} - market data capability is unavailable")
             return None
 
     container._register_singleton("kite_connect_service", create_kite_connect_service)

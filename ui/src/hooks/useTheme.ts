@@ -1,37 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 
-type Theme = 'light' | 'dark'
+type Theme = 'light'
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    // Check localStorage first, then system preference
-    const saved = localStorage.getItem('theme') as Theme
-    if (saved) return saved
-
-    // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark'
-    }
-
-    return 'light'
-  })
-
   useEffect(() => {
     const root = window.document.documentElement
 
-    // Remove previous theme classes
-    root.classList.remove('light', 'dark')
+    // Dark mode is not visually complete across the product yet.
+    // Force the supported theme so pages do not drift into half-styled states.
+    root.classList.remove('dark')
+    root.classList.add('light')
+    localStorage.setItem('theme', 'light')
+  }, [])
 
-    // Add current theme class
-    root.classList.add(theme)
-
-    // Save to localStorage
-    localStorage.setItem('theme', theme)
-  }, [theme])
-
-  const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light')
-  }
-
-  return { theme, toggleTheme }
+  return { theme: 'light' as Theme }
 }

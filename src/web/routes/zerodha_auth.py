@@ -14,7 +14,6 @@ from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
 from src.core.errors import TradingError
-from src.core.event_bus import EventType
 from src.web.dependencies import get_container
 from src.web.utils.error_handlers import (
     handle_trading_error,
@@ -112,47 +111,54 @@ async def zerodha_oauth_callback(
 
         logger.info("Zerodha OAuth authentication successful")
 
-        # Automatically trigger portfolio scan after successful authentication
+        # Bind the authenticated session into the live runtime services.
         try:
-            logger.info("Auto-triggering portfolio scan after OAuth success...")
+            logger.info("Binding Zerodha OAuth session into live broker services...")
 
-            # Get config from container
-            config = await container.get("config")
+            kite_service = await container.get("kite_connect_service")
+            if kite_service is None:
+                raise RuntimeError(
+                    "Zerodha OAuth token was stored, but the live KiteConnectService is unavailable."
+                )
 
-            # Initialize broker client with the new token
-            from src.mcp.broker import get_broker
-            broker = await get_broker(config)
-            if broker:
-                logger.info("Initializing broker client with new OAuth token...")
-                auth_success = await broker.authenticate()
-                if auth_success:
-                    logger.info(f"Broker client initialized successfully for user: {result.get('user_id')}")
-                else:
-                    logger.warning("Failed to initialize broker client with new token")
-            else:
-                logger.warning("Broker client not available")
+            runtime_session = await kite_service.authenticate(request_token)
+            logger.info(
+                "Live KiteConnectService session updated successfully for user: %s",
+                runtime_session.get("user_name") or runtime_session.get("user_id"),
+            )
 
-            # Now run portfolio scan
-            orchestrator = await container.get_orchestrator()
-            if orchestrator:
-                # Run portfolio scan
-                scan_result = await orchestrator.run_portfolio_scan()
-                logger.info(f"Portfolio scan completed after OAuth: {scan_result.get('source', 'unknown')}")
-            else:
-                logger.warning("Orchestrator not available for auto portfolio scan")
+            market_data_service = await container.get("market_data_service")
+            refreshed_symbols = []
+            if market_data_service is not None:
+                refreshed_symbols = await market_data_service.refresh_active_subscriptions()
+                logger.info(
+                    "Refreshed %d market-data subscription(s) after Zerodha auth",
+                    len(refreshed_symbols),
+                )
         except Exception as e:
-            logger.error(f"Failed to auto-trigger portfolio scan after OAuth: {e}", exc_info=True)
-            # Don't fail the OAuth callback if portfolio scan fails
+            logger.error(f"Failed to bind Zerodha OAuth session into live runtime: {e}", exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "error": "Zerodha OAuth completed but runtime broker binding failed",
+                    "message": str(e),
+                    "user_id": result.get("user_id"),
+                    "login_time": result.get("login_time"),
+                    "expires_at": result.get("expires_at"),
+                }
+            )
 
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
-                "message": "Successfully authenticated with Zerodha. Portfolio scan initiated automatically.",
+                "message": "Successfully authenticated with Zerodha and bound the live broker session.",
                 "user_id": result["user_id"],
                 "login_time": result["login_time"],
                 "expires_at": result["expires_at"],
-                "portfolio_scan_triggered": True
+                "broker_session_bound": True,
+                "market_data_refreshed": len(refreshed_symbols),
             }
         )
 

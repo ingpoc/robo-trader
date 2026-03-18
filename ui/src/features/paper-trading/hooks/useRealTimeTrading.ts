@@ -43,7 +43,7 @@ interface UseRealTimeTradingOptions {
 
 export const useRealTimeTrading = (options: UseRealTimeTradingOptions = {}) => {
   const {
-    accountId = 'paper_swing_main',
+    accountId,
     symbols = [],
     autoConnect = true,
     reconnectInterval = 5000
@@ -61,10 +61,32 @@ export const useRealTimeTrading = (options: UseRealTimeTradingOptions = {}) => {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  const getTradingWebSocketUrl = useCallback(() => {
+    if (import.meta.env.VITE_WS_URL) {
+      return import.meta.env.VITE_WS_URL.replace(/\/ws$/, `/ws/trading?account_id=${accountId}`)
+    }
+
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${protocol}//${window.location.host}/ws/trading?account_id=${accountId}`
+    }
+
+    return `ws://localhost:8000/ws/trading?account_id=${accountId}`
+  }, [accountId])
+
   const connectWebSocket = useCallback(() => {
+    if (!accountId) {
+      setState(prev => ({
+        ...prev,
+        isConnected: false,
+        error: null
+      }))
+      return
+    }
+
     try {
       // Create WebSocket connection
-      const wsUrl = `ws://localhost:8000/ws/trading?account_id=${accountId}`
+      const wsUrl = getTradingWebSocketUrl()
       wsRef.current = new WebSocket(wsUrl)
 
       wsRef.current.onopen = () => {
@@ -192,7 +214,7 @@ export const useRealTimeTrading = (options: UseRealTimeTradingOptions = {}) => {
         error: 'Failed to connect to real-time data'
       }))
     }
-  }, [accountId, symbols, autoConnect, reconnectInterval])
+  }, [accountId, getTradingWebSocketUrl, symbols, autoConnect, reconnectInterval])
 
   const disconnectWebSocket = useCallback(() => {
     if (reconnectTimeoutRef.current) {

@@ -2,7 +2,7 @@
 
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Callable
 from collections import defaultdict
 
@@ -33,7 +33,7 @@ class CircuitBreaker:
     def record_failure(self) -> None:
         """Record failed execution."""
         self._failures += 1
-        self._last_failure_time = datetime.utcnow()
+        self._last_failure_time = datetime.now(timezone.utc)
 
         if self._failures >= self.failure_threshold:
             self._state = "open"
@@ -46,7 +46,7 @@ class CircuitBreaker:
 
         if self._state == "open":
             # Check if timeout elapsed
-            if self._last_failure_time and (datetime.utcnow() - self._last_failure_time) > timedelta(seconds=self.timeout_seconds):
+            if self._last_failure_time and (datetime.now(timezone.utc) - self._last_failure_time) > timedelta(seconds=self.timeout_seconds):
                 self._state = "half_open"
                 logger.info("Circuit breaker entering half-open state")
                 return True
@@ -66,7 +66,7 @@ class RateLimiter:
 
     def can_call(self, tool_name: str) -> bool:
         """Check if tool can be called."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         one_minute_ago = now - timedelta(minutes=1)
 
         # Clean old history
@@ -83,7 +83,7 @@ class RateLimiter:
 
     def record_call(self, tool_name: str) -> None:
         """Record tool call."""
-        self._call_history[tool_name].append(datetime.utcnow())
+        self._call_history[tool_name].append(datetime.now(timezone.utc))
 
 
 class ToolExecutor:
@@ -208,6 +208,14 @@ class ToolExecutor:
         """Execute a trade via paper trading service."""
         # Get paper trading executor
         executor = await self.container.get("paper_trade_executor")
+        account_id = input_data.get("account_id")
+        if not account_id:
+            raise TradingError(
+                "account_id is required for execute_trade; implicit default accounts are not allowed",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
 
         symbol = input_data.get("symbol")
         action = input_data.get("action")  # "buy" or "sell"
@@ -221,7 +229,7 @@ class ToolExecutor:
         # Execute based on action
         if action.lower() == "buy":
             result = await executor.execute_buy(
-                account_id=input_data.get("account_id", "paper_swing_main"),
+                account_id=account_id,
                 symbol=symbol,
                 quantity=quantity,
                 entry_price=entry_price,
@@ -232,7 +240,7 @@ class ToolExecutor:
             )
         elif action.lower() == "sell":
             result = await executor.execute_sell(
-                account_id=input_data.get("account_id", "paper_swing_main"),
+                account_id=account_id,
                 symbol=symbol,
                 quantity=quantity,
                 exit_price=entry_price,
@@ -280,8 +288,14 @@ class ToolExecutor:
     async def _handle_check_balance(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Check account balance."""
         account_manager = await self.container.get("paper_trading_account_manager")
-
-        account_id = input_data.get("account_id", "paper_swing_main")
+        account_id = input_data.get("account_id")
+        if not account_id:
+            raise TradingError(
+                "account_id is required for check_balance; implicit default accounts are not allowed",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.HIGH,
+                recoverable=False,
+            )
         account = await account_manager.get_account(account_id)
 
         if not account:
@@ -302,7 +316,7 @@ class ToolExecutor:
     def _validate_schema(self, tool_name: str, input_data: Dict[str, Any]) -> Optional[str]:
         """Validate tool input against schema."""
         if tool_name == "execute_trade":
-            required = ["symbol", "action", "quantity", "entry_price", "strategy_rationale"]
+            required = ["account_id", "symbol", "action", "quantity", "entry_price", "strategy_rationale"]
             missing = [f for f in required if f not in input_data]
             if missing:
                 return f"Missing required fields: {missing}"
@@ -335,15 +349,18 @@ class ToolExecutor:
                 return "Exit price must be positive number"
 
         elif tool_name == "check_balance":
-            # No validation needed
-            pass
+            if "account_id" not in input_data:
+                return "Missing required fields: ['account_id']"
 
         return None
 
     async def _validate_business_rules(self, tool_name: str, input_data: Dict[str, Any]) -> Optional[str]:
         """Validate against business rules (risk limits, position size)."""
         if tool_name == "execute_trade":
-            account_id = input_data.get("account_id", "paper_swing_main")
+            account_id = input_data.get("account_id")
+            if not account_id:
+                return "account_id is required for execute_trade; implicit default accounts are not allowed"
+
             account_manager = await self.container.get("paper_trading_account_manager")
 
             # Check if account exists

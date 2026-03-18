@@ -30,25 +30,25 @@ const severityConfig = {
     iconColor: 'text-red-600'
   },
   high: {
-    bgColor: 'bg-orange-50 border-orange-200',
-    badgeColor: 'bg-orange-100 text-orange-800 border-orange-200',
-    textColor: 'text-orange-900',
+    bgColor: 'bg-red-50 border-red-200',
+    badgeColor: 'bg-red-100 text-red-800 border-red-200',
+    textColor: 'text-red-900',
     icon: AlertTriangle,
-    iconColor: 'text-orange-600'
+    iconColor: 'text-red-600'
   },
   medium: {
-    bgColor: 'bg-yellow-50 border-yellow-200',
-    badgeColor: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    textColor: 'text-yellow-900',
+    bgColor: 'bg-amber-50 border-amber-200',
+    badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+    textColor: 'text-amber-900',
     icon: AlertTriangle,
-    iconColor: 'text-yellow-600'
+    iconColor: 'text-amber-600'
   },
   low: {
-    bgColor: 'bg-copper-50 border-copper-200',
-    badgeColor: 'bg-copper-100 text-copper-800 border-copper-200',
-    textColor: 'text-copper-900',
+    bgColor: 'bg-slate-50 border-slate-200',
+    badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
+    textColor: 'text-slate-900',
     icon: Info,
-    iconColor: 'text-copper-600'
+    iconColor: 'text-slate-600'
   },
   info: {
     bgColor: 'bg-blue-50 border-blue-200',
@@ -72,7 +72,7 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
   const alertTitle = alert.title || alert.message.substring(0, 50) + (alert.message.length > 50 ? '...' : '')
 
   return (
-    <div className={`p-4 border rounded-xl transition-all duration-300 hover:shadow-md ${config.bgColor} group`}>
+    <div className={`group rounded-xl border p-4 transition-shadow duration-200 hover:shadow-sm ${config.bgColor}`}>
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-1">
           <div className={`p-2 rounded-lg ${config.bgColor.replace('border-', 'bg-').replace('-200', '-100')}`}>
@@ -100,11 +100,11 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
               <h4 className={`text-sm font-bold ${config.textColor} mb-2 leading-tight`}>
                 {alertTitle}
               </h4>
-              <p className="text-sm text-warmgray-700 leading-relaxed mb-2">
+              <p className="mb-2 text-sm leading-relaxed text-muted-foreground">
                 {alert.message}
               </p>
               {alert.symbol && (
-                <div className="inline-flex items-center px-2 py-1 bg-warmgray-100 text-warmgray-700 text-xs font-semibold rounded-md border">
+                <div className="inline-flex items-center rounded-md border bg-background px-2 py-1 text-xs font-semibold text-foreground">
                   {alert.symbol}
                 </div>
               )}
@@ -116,7 +116,7 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
                   size="sm"
                   variant="ghost"
                   onClick={() => setIsExpanded(!isExpanded)}
-                  className="text-warmgray-600 hover:text-warmgray-900 hover:bg-warmgray-100 p-2 rounded-lg transition-colors"
+                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                   aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
                 >
                   {isExpanded ? (
@@ -144,7 +144,7 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
                     variant="ghost"
                     onClick={() => handleAction('dismiss')}
                     disabled={isHandlingAction}
-                    className="text-warmgray-600 hover:text-warmgray-700 hover:bg-warmgray-50 px-3 py-2 rounded-lg transition-colors"
+                    className="rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                     title="Dismiss alert"
                   >
                     <XCircle className="w-4 h-4" />
@@ -155,8 +155,8 @@ export function AlertItem({ alert, onAction, isHandlingAction }: AlertItemProps)
           </div>
 
           {isExpanded && alert.details && (
-            <div className="mt-4 pt-4 border-t border-warmgray-200 bg-warmgray-50/50 rounded-lg p-3">
-              <div className="text-sm text-warmgray-700 leading-relaxed whitespace-pre-wrap">
+            <div className="mt-4 rounded-lg border border-border/60 bg-background/80 p-3 pt-4">
+              <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                 {alert.details}
               </div>
             </div>

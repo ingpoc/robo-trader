@@ -7,11 +7,13 @@ Extracted from QueueCoordinator for single responsibility.
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional
 
 from src.config import Config
 from src.models.scheduler import QueueName
 from ..base_coordinator import BaseCoordinator
+from ...errors import TradingError, ErrorCategory, ErrorSeverity
 
 logger = logging.getLogger(__name__)
 

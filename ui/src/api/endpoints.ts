@@ -13,42 +13,16 @@ import type {
 import { api } from './client'
 import type {
   DashboardData,
-  TradeRequest,
   AIStatus,
   Recommendation,
   Alert,
-  AgentStatus,
-  AgentConfig,
-  PerformanceData,
   SymbolData,
-  BackgroundTaskConfig,
   AIAgentConfig,
   GlobalConfig,
-  PromptConfig,
 } from '@/types/api'
 
 export const dashboardAPI = {
   getDashboardData: () => api.get<DashboardData>('/api/dashboard'),
-  portfolioScan: () => api.post<{ 
-    status: string
-    message?: string
-    auth_url?: string
-    state?: string
-    redirect_url?: string
-    instructions?: string
-    source?: string
-    holdings_count?: number
-    portfolio?: unknown
-  }>('/api/portfolio-scan'),
-  marketScreening: () => api.post<{ status: string }>('/api/market-screening'),
-}
-
-export const tradingAPI = {
-  executeTrade: (trade: TradeRequest) =>
-    api.post<{ status: string; intent_id?: string; reasons?: string[] }>(
-      '/api/manual-trade',
-      trade
-    ),
 }
 
 export const aiAPI = {
@@ -78,29 +52,22 @@ export const monitoringAPI = {
   getSystemStatus: () =>
     api.get<{
       status: string
-      agents: Record<string, unknown>
-      scheduler: Record<string, unknown>
+      timestamp: string
+      blockers: string[]
+      initialization: {
+        orchestrator_initialized: boolean
+        bootstrap_completed: boolean
+        initialization_errors: string[]
+        last_error: string | null
+      }
+      components: {
+        orchestrator?: Record<string, unknown>
+        database?: Record<string, unknown>
+        event_bus?: Record<string, unknown>
+        background_scheduler?: Record<string, unknown>
+        websocket?: Record<string, unknown>
+      }
     }>('/api/monitoring/status'),
-  getSchedulerStatus: () =>
-    api.get<{
-      status: string
-      schedulers: Array<{
-        scheduler_id: string
-        name: string
-        status: string
-        event_driven: boolean
-        uptime_seconds: number
-        jobs_processed: number
-        jobs_failed: number
-        active_jobs: number
-        completed_jobs: number
-        last_run_time: string
-        execution_history?: Array<any>
-        total_executions?: number
-        jobs?: Array<any>
-      }>
-      total_schedulers: number
-    }>('/api/monitoring/scheduler'),
 }
 
 export const alertsAPI = {
@@ -109,39 +76,12 @@ export const alertsAPI = {
     api.post<{ status: string }>(`/api/alerts/${alertId}/action`, { action }),
 }
 
-export const agentsAPI = {
-  getStatus: () =>
-    api.get<{ agents: Record<string, AgentStatus> }>('/api/agents/status'),
-  getTools: (agentName: string) =>
-    api.get<{ tools: string[] }>(`/api/agents/${agentName}/tools`),
-  getConfig: (agentName: string) =>
-    api.get<{ config: AgentConfig }>(`/api/agents/${agentName}/config`),
-  updateConfig: (agentName: string, config: AgentConfig) =>
-    api.post<{ status: string; agent: string; config: AgentConfig }>(
-      `/api/agents/${agentName}/config`,
-      config
-    ),
-}
-
 export const emergencyAPI = {
   stop: () => api.post<{ status: string }>('/api/emergency/stop'),
   resume: () => api.post<{ status: string }>('/api/emergency/resume'),
 }
 
-export const configAPI = {
-  get: () => api.get<Record<string, unknown>>('/api/config'),
-  update: (config: Record<string, unknown>) =>
-    api.post<{ status: string }>('/api/config', config),
-}
-
 export const configurationAPI = {
-  // Background tasks configuration
-  getBackgroundTasks: () =>
-    api.get<{ background_tasks: Record<string, BackgroundTaskConfig> }>('/api/configuration/background-tasks'),
-
-  updateBackgroundTask: (taskName: string, config: Partial<BackgroundTaskConfig>) =>
-    api.put<{ status: string; task: string }>(`/api/configuration/background-tasks/${taskName}`, config),
-
   // AI agents configuration
   getAIAgents: () =>
     api.get<{ ai_agents: Record<string, AIAgentConfig> }>('/api/configuration/ai-agents'),
@@ -156,83 +96,8 @@ export const configurationAPI = {
   updateGlobalSettings: (settings: Partial<GlobalConfig>) =>
     api.put<{ status: string }>('/api/configuration/global-settings', settings),
 
-  // Configuration management
-  backupConfiguration: () =>
-    api.post<{ status: string; timestamp: string }>('/api/configuration/backup'),
-
-  restoreConfiguration: (timestamp: string) =>
-    api.post<{ status: string; timestamp: string }>('/api/configuration/restore', { timestamp }),
-
   getStatus: () =>
     api.get<{ configuration_status: Record<string, unknown> }>('/api/configuration/status'),
-
-  // AI prompts configuration (individual)
-  getPrompt: (promptName: string) =>
-    api.get<PromptConfig>(`/api/configuration/prompts/${promptName}`),
-  updatePrompt: (promptName: string, prompt: Partial<PromptConfig>) =>
-    api.put<{ status: string; prompt: string }>(`/api/configuration/prompts/${promptName}`, prompt),
-
-  // Manual scheduler execution
-  executeScheduler: (taskName: string) =>
-    api.post<{
-      status: string;
-      task_id: string;
-      task_name: string;
-      task_type: string;
-      message: string;
-      timestamp: string;
-    }>(`/api/configuration/schedulers/${taskName}/execute`),
-
-  // Manual AI agent execution
-  executeAgent: (agentName: string) =>
-    api.post<{
-      status: string;
-      agent_name: string;
-      analysis_id: string;
-      symbols_analyzed: number;
-      recommendations_count: number;
-      prompt_updates: number;
-      message: string;
-      timestamp: string;
-    }>(`/api/configuration/ai-agents/${agentName}/execute`),
-}
-
-export const analyticsAPI = {
-  getPortfolioDeep: () =>
-    api.get<PerformanceData>('/api/analytics/portfolio-deep'),
-  getPerformance: (period: string) =>
-    api.get<PerformanceData>(`/api/analytics/performance/${period}`),
-  optimizeStrategy: (strategyName: string) =>
-    api.post<{ status: string; optimization: Record<string, unknown> }>(
-      '/api/analytics/optimize-strategy',
-      { strategy_name: strategyName }
-    ),
-}
-
-export const chatAPI = {
-  query: (query: string, sessionId?: string) =>
-    api.post<{
-      response: string
-      session_id: string
-      intents: string[]
-      actions: string[]
-      timestamp: string
-    }>('/api/chat/query', { query, session_id: sessionId }),
-}
-
-export const logsAPI = {
-  getLogs: (limit: number = 100) => api.get<{ logs: Array<{
-    timestamp: string
-    level: string
-    message: string
-    source?: string
-  }> }>(`/api/logs?limit=${limit}`),
-  logError: (error: {
-    level: string
-    message: string
-    context?: Record<string, unknown>
-    stack_trace?: string
-  }) => api.post<{ status: string; timestamp: string }>('/api/logs/errors', error),
 }
 
 export const newsEarningsAPI = {

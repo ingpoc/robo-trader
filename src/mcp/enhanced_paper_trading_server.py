@@ -11,7 +11,7 @@ Architecture: SDK @tools → Task Creation → Queue Processing → Workflow SDK
 import asyncio
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from claude_agent_sdk import tool, create_sdk_mcp_server
 from src.core.di import DependencyContainer
@@ -20,6 +20,64 @@ from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 from .progressive_discovery_manager import ProgressiveDiscoveryManager
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_month_value(month_value: Any) -> int:
+    """Parse a month name or number into a numeric month."""
+    if isinstance(month_value, int):
+        if 1 <= month_value <= 12:
+            return month_value
+        raise ValueError("Month integer must be between 1 and 12")
+
+    if not month_value:
+        return datetime.now().month
+
+    if isinstance(month_value, str) and month_value.isdigit():
+        month_number = int(month_value)
+        if 1 <= month_number <= 12:
+            return month_number
+        raise ValueError("Month string must be between 1 and 12")
+
+    normalized = str(month_value).strip().lower()
+    month_map = {
+        "january": 1, "jan": 1,
+        "february": 2, "feb": 2,
+        "march": 3, "mar": 3,
+        "april": 4, "apr": 4,
+        "may": 5,
+        "june": 6, "jun": 6,
+        "july": 7, "jul": 7,
+        "august": 8, "aug": 8,
+        "september": 9, "sep": 9, "sept": 9,
+        "october": 10, "oct": 10,
+        "november": 11, "nov": 11,
+        "december": 12, "dec": 12,
+    }
+    if normalized not in month_map:
+        raise ValueError(f"Unsupported month value: {month_value}")
+    return month_map[normalized]
+
+
+async def _resolve_single_account_id(container: DependencyContainer) -> str:
+    """Resolve a single active paper account or fail loud."""
+    account_manager = await container.get("paper_trading_account_manager")
+    accounts = await account_manager.get_all_accounts()
+    if not accounts:
+        raise TradingError(
+            "Monthly P&L analysis cannot run because no paper trading account exists",
+            category=ErrorCategory.VALIDATION,
+            severity=ErrorSeverity.HIGH,
+        )
+
+    if len(accounts) > 1:
+        account_ids = ", ".join(account.account_id for account in accounts)
+        raise TradingError(
+            f"Monthly P&L analysis requires an explicit paper trading account selection; available accounts: {account_ids}",
+            category=ErrorCategory.VALIDATION,
+            severity=ErrorSeverity.HIGH,
+        )
+
+    return accounts[0].account_id
 
 
 # Tool implementations using SDK @tool decorator
@@ -82,7 +140,7 @@ async def research_symbol(args: Dict[str, Any], container: Optional[DependencyCo
                 "research_type": research_type,
                 "discovery_context": {
                     "tool_name": "research_symbol",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             },
             priority=priority
@@ -116,6 +174,7 @@ async def research_symbol(args: Dict[str, Any], container: Optional[DependencyCo
     "execute_paper_trade",
     "Execute a paper trade with strategy tracking and discovery",
     {
+        "account_id": str,
         "symbol": str,
         "action": str,
         "quantity": int,
@@ -143,6 +202,7 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
                 "is_error": True
             }
 
+        account_id = args.get("account_id", "").strip()
         symbol = args.get("symbol", "").upper()
         action = args.get("action", "").upper()
         quantity = args.get("quantity", 0)
@@ -152,6 +212,12 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
         priority = args.get("priority", 9)
 
         # Validation
+        if not account_id:
+            return {
+                "content": [{"type": "text", "text": "Error: account_id is required"}],
+                "is_error": True
+            }
+
         if not symbol:
             return {
                 "content": [{"type": "text", "text": "Error: Symbol is required"}],
@@ -182,6 +248,15 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
                 "is_error": True
             }
 
+        capability_service = await container.get("trading_capability_service")
+        capability_snapshot = await capability_service.get_snapshot(account_id=account_id)
+        if not capability_snapshot.automation_allowed:
+            blocker = capability_snapshot.blockers[0] if capability_snapshot.blockers else "Trading readiness is blocked"
+            return {
+                "content": [{"type": "text", "text": f"Error: {blocker}"}],
+                "is_error": True
+            }
+
         # Get task service
         task_service = await container.get("task_service")
 
@@ -190,6 +265,7 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
             queue_name=QueueName.PAPER_TRADING_EXECUTION,
             task_type=TaskType.PAPER_TRADE_EXECUTION,
             payload={
+                "account_id": account_id,
                 "symbol": symbol,
                 "action": action,
                 "quantity": quantity,
@@ -198,7 +274,7 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
                 "entry_reason": entry_reason,
                 "discovery_context": {
                     "tool_name": "execute_paper_trade",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             },
             priority=priority
@@ -206,6 +282,7 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
 
         result_text = f"Paper trade execution task created\n"
         result_text += f"Task ID: {task.task_id}\n"
+        result_text += f"Account: {account_id}\n"
         result_text += f"Symbol: {symbol}\n"
         result_text += f"Action: {action} {quantity} shares\n"
         result_text += f"Strategy: {strategy_tag}\n"
@@ -237,6 +314,7 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
     "check_paper_trading_status",
     "Get current paper trading account status and positions",
     {
+        "account_id": str,
         "include_positions": bool,
         "include_open_trades": bool
     }
@@ -259,30 +337,61 @@ async def check_paper_trading_status(args: Dict[str, Any], container: Optional[D
                 "is_error": True
             }
 
+        account_id = args.get("account_id", "").strip()
         include_positions = args.get("include_positions", True)
         include_open_trades = args.get("include_open_trades", True)
 
-        # Get state manager
-        state_manager = await container.get("state_manager")
-        paper_trading_state = state_manager.paper_trading
+        account_manager = await container.get("paper_trading_account_manager")
+        store = await container.get("paper_trading_store")
+        all_accounts = await account_manager.get_all_accounts()
 
-        # Get account overview
-        account = await paper_trading_state.get_account("paper_swing_main")
+        if not all_accounts:
+            return {
+                "content": [{"type": "text", "text": "Error: No paper trading account exists"}],
+                "is_error": True
+            }
+
+        if not account_id:
+            result_text = "Paper Trading Account Status\n"
+            result_text += f"Accounts: {len(all_accounts)}\n\n"
+            for account in all_accounts[:5]:
+                balance = await account_manager.get_account_balance(account.account_id)
+                result_text += f"- {account.account_id}: ₹{balance['current_balance']:,.2f} balance, ₹{balance['buying_power']:,.2f} buying power\n"
+
+            result_text += "\nProvide account_id for detailed status on a specific trading account.\n"
+            return {
+                "content": [{"type": "text", "text": result_text}],
+                "discovery_suggestions": [
+                    {"tool": "execute_paper_trade", "reason": "Run trades against a specific account"},
+                    {"tool": "analyze_portfolio_data", "reason": "Review portfolio state"}
+                ]
+            }
+
+        account = await account_manager.get_account(account_id)
+        if account is None:
+            return {
+                "content": [{"type": "text", "text": f"Error: Paper trading account '{account_id}' was not found"}],
+                "is_error": True
+            }
+
+        balance = await account_manager.get_account_balance(account_id)
+        positions = await account_manager.get_open_positions(account_id) if include_positions else []
+        open_trades = await store.get_open_trades(account_id) if include_open_trades else []
 
         result_text = f"Paper Trading Account Status\n"
-        result_text += f"Account: {account['account_id']}\n"
-        result_text += f"Balance: ₹{account['balance']:,.2f}\n"
-        result_text += f"Equity: ₹{account['equity']:,.2f}\n"
-        result_text += f"P&L: ₹{account['total_pnl']:,.2f}\n"
+        result_text += f"Account: {account.account_id}\n"
+        result_text += f"Balance: ₹{balance['current_balance']:,.2f}\n"
+        result_text += f"Buying Power: ₹{balance['buying_power']:,.2f}\n"
+        result_text += f"Locked Capital: ₹{balance['locked_capital']:,.2f}\n"
 
         if include_positions:
-            result_text += f"\nPositions: {account['position_count']}\n"
+            result_text += f"\nPositions: {len(positions)}\n"
             result_text += "Top positions:\n"
-            for pos in account.get('positions', [])[:5]:
-                result_text += f"  {pos['symbol']}: {pos['quantity']} @ ₹{pos['avg_price']:,.2f}\n"
+            for pos in positions[:5]:
+                result_text += f"  {pos.symbol}: {pos.quantity} @ ₹{pos.entry_price:,.2f}\n"
 
         if include_open_trades:
-            result_text += f"\nOpen Trades: {account['open_trades_count']}\n"
+            result_text += f"\nOpen Trades: {len(open_trades)}\n"
 
         result_text += "\nSuggested next steps:\n"
         result_text += "- Use 'analyze_portfolio_data' for detailed analysis\n"
@@ -347,7 +456,7 @@ async def analyze_portfolio_data(args: Dict[str, Any], container: Optional[Depen
                 "symbols": symbols,
                 "discovery_context": {
                     "tool_name": "analyze_portfolio_data",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             },
             priority=priority
@@ -494,7 +603,7 @@ async def optimize_prompt_template(args: Dict[str, Any], container: Optional[Dep
                 "optimization_goal": optimization_goal,
                 "discovery_context": {
                     "tool_name": "optimize_prompt_template",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             },
             priority=priority
@@ -561,27 +670,32 @@ async def calculate_monthly_pnl(args: Dict[str, Any], container: Optional[Depend
         year = args.get("year", datetime.now().year)
         include_details = args.get("include_details", True)
 
-        if not month:
-            month = datetime.now().strftime("%B")
+        month_number = _parse_month_value(month)
+        month_label = datetime(year, month_number, 1).strftime("%B")
+        account_id = await _resolve_single_account_id(container)
 
-        # Get state manager
-        state_manager = await container.get("state_manager")
-        paper_trading_state = state_manager.paper_trading
+        store = await container.get("paper_trading_store")
+        monthly_data = await store.calculate_monthly_pnl(account_id, year, month_number)
 
-        # Calculate monthly P&L (mock implementation)
-        monthly_data = await paper_trading_state.calculate_monthly_pnl(year, month)
-
-        result_text = f"Monthly P&L Analysis - {month} {year}\n\n"
+        result_text = f"Monthly P&L Analysis - {month_label} {year}\n\n"
+        result_text += f"Account: {account_id}\n"
         result_text += f"Total P&L: ₹{monthly_data.get('total_pnl', 0):,.2f}\n"
-        result_text += f"Win Rate: {monthly_data.get('win_rate', 0):.1%}\n"
+        result_text += f"Win Rate: {monthly_data.get('win_rate', 0):.1f}%\n"
         result_text += f"Total Trades: {monthly_data.get('total_trades', 0)}\n"
         result_text += f"Best Trade: ₹{monthly_data.get('best_trade', 0):,.2f}\n"
         result_text += f"Worst Trade: ₹{monthly_data.get('worst_trade', 0):,.2f}\n\n"
 
         if include_details:
             result_text += "Top performing strategies:\n"
-            for strategy in monthly_data.get('top_strategies', [])[:3]:
-                result_text += f"  {strategy['name']}: ₹{strategy['pnl']:,.2f}\n"
+            top_strategies = monthly_data.get('top_strategies', [])
+            if not top_strategies:
+                result_text += "  No closed trades in the selected month.\n"
+            else:
+                for strategy in top_strategies[:3]:
+                    result_text += (
+                        f"  {strategy['name']}: ₹{strategy['pnl']:,.2f} "
+                        f"({strategy['win_rate']:.1f}% win rate, {strategy['trades']} trades)\n"
+                    )
 
         result_text += "\nSuggested next steps:\n"
         result_text += "- Use 'get_strategy_performance' for detailed strategy analysis\n"

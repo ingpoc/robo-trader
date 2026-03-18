@@ -31,23 +31,19 @@ class PaperTradeExecutor:
         # Slippage configuration (Phase 3)
         self.max_slippage_pct = 0.5  # 0.5% max slippage tolerance
 
-    async def get_current_price(self, symbol: str, fallback_price: Optional[float] = None) -> float:
+    async def get_current_price(self, symbol: str) -> float:
         """Fetch current market price from Zerodha.
 
         Args:
             symbol: Stock symbol
-            fallback_price: Price to use if market data unavailable
 
         Returns:
             Current market price (LTP)
 
         Raises:
-            ValueError: If price unavailable and no fallback provided
+            ValueError: If price unavailable
         """
         if not self.market_data_service:
-            if fallback_price is not None:
-                logger.warning(f"MarketDataService not available, using fallback price ₹{fallback_price} for {symbol}")
-                return fallback_price
             raise ValueError(f"Cannot fetch price for {symbol}: MarketDataService not configured")
 
         try:
@@ -58,17 +54,9 @@ class PaperTradeExecutor:
                 logger.info(f"Fetched real-time price for {symbol}: ₹{market_data.ltp}")
                 return market_data.ltp
 
-            # Market data not available, use fallback
-            if fallback_price is not None:
-                logger.warning(f"Market data unavailable for {symbol}, using fallback price ₹{fallback_price}")
-                return fallback_price
-
-            raise ValueError(f"No market data available for {symbol} and no fallback price provided")
+            raise ValueError(f"No market data available for {symbol}")
 
         except Exception as e:
-            if fallback_price is not None:
-                logger.error(f"Error fetching price for {symbol}: {e}. Using fallback price ₹{fallback_price}")
-                return fallback_price
             raise ValueError(f"Failed to fetch price for {symbol}: {e}")
 
     def validate_slippage(self, requested_price: float, actual_price: float, symbol: str) -> tuple[bool, Optional[str]]:
@@ -117,7 +105,7 @@ class PaperTradeExecutor:
             account_id: Account to execute trade for
             symbol: Stock symbol
             quantity: Number of shares
-            entry_price: Requested price (used for slippage validation or fallback)
+            entry_price: Requested price (used for slippage validation or explicit non-market execution)
             strategy_rationale: Trading strategy reasoning
             claude_session_id: Claude session ID
             stop_loss: Stop loss price (optional)
@@ -127,10 +115,17 @@ class PaperTradeExecutor:
         Returns:
             Trade execution result with success status
         """
+        if use_market_price and not self.market_data_service:
+            return {
+                "success": False,
+                "error": f"Cannot execute BUY for {symbol}: live market data is unavailable.",
+                "trade_id": None,
+            }
+
         # Phase 3: Fetch real-time market price from Zerodha
         if use_market_price:
             try:
-                actual_price = await self.get_current_price(symbol, fallback_price=entry_price)
+                actual_price = await self.get_current_price(symbol)
 
                 # Validate slippage tolerance
                 is_valid, slippage_error = self.validate_slippage(entry_price, actual_price, symbol)
@@ -147,10 +142,20 @@ class PaperTradeExecutor:
                 execution_price = actual_price
                 logger.info(f"Using real-time price for {symbol}: ₹{execution_price} (requested: ₹{entry_price})")
             except Exception as e:
-                logger.error(f"Failed to fetch market price for {symbol}: {e}. Using requested price ₹{entry_price}")
-                execution_price = entry_price
+                logger.error("Failed to fetch market price for %s: %s", symbol, e)
+                return {
+                    "success": False,
+                    "error": f"Cannot execute BUY for {symbol}: {e}",
+                    "trade_id": None,
+                }
         else:
-            # Use requested price directly (backward compatibility)
+            if entry_price <= 0:
+                return {
+                    "success": False,
+                    "error": f"Cannot execute BUY for {symbol}: explicit entry_price is required when live pricing is disabled.",
+                    "trade_id": None,
+                }
+            # Use requested price directly when the caller intentionally bypasses live pricing.
             execution_price = entry_price
 
         # Calculate trade value with actual execution price
@@ -208,7 +213,7 @@ class PaperTradeExecutor:
             "symbol": symbol,
             "action": "BUY",
             "quantity": quantity,
-            "entry_price": entry_price,
+            "entry_price": execution_price,
             "trade_value": trade_value,
             "timestamp": trade.entry_timestamp
         }
@@ -296,15 +301,29 @@ class PaperTradeExecutor:
         if trade.status != TradeStatus.OPEN:
             return {"success": False, "error": f"Trade is {trade.status.value}, cannot close"}
 
+        if use_market_price and not self.market_data_service:
+            return {
+                "success": False,
+                "error": f"Cannot close {trade.symbol}: live market data is unavailable.",
+            }
+
         # Phase 3: Fetch real-time market price for closing
         if use_market_price:
             try:
-                actual_exit_price = await self.get_current_price(trade.symbol, fallback_price=exit_price or trade.entry_price)
+                actual_exit_price = await self.get_current_price(trade.symbol)
                 logger.info(f"Using real-time exit price for {trade.symbol}: ₹{actual_exit_price}")
             except Exception as e:
-                logger.error(f"Failed to fetch market price for closing {trade.symbol}: {e}")
-                actual_exit_price = exit_price or trade.entry_price
+                logger.error("Failed to fetch market price for closing %s: %s", trade.symbol, e)
+                return {
+                    "success": False,
+                    "error": f"Cannot close {trade.symbol}: {e}",
+                }
         else:
+            if exit_price is None:
+                return {
+                    "success": False,
+                    "error": f"Cannot close {trade.symbol}: explicit exit_price is required when live pricing is disabled.",
+                }
             actual_exit_price = exit_price or trade.entry_price
 
         # Calculate P&L with real market price
@@ -360,7 +379,7 @@ class PaperTradeExecutor:
             "success": True,
             "trade_id": trade_id,
             "symbol": trade.symbol,
-            "exit_price": exit_price,
+            "exit_price": actual_exit_price,
             "realized_pnl": realized_pnl,
             "pnl_percentage": (realized_pnl / (trade.entry_price * trade.quantity)) * 100 if trade.entry_price > 0 else 0.0
         }

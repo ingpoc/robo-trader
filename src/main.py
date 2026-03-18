@@ -47,6 +47,8 @@ def main():
 
     # Set environment variable for web app (inherited by uvicorn subprocess)
     os.environ["LOG_LEVEL"] = log_level
+    os.environ["WEB_HOST"] = args.host
+    os.environ["WEB_PORT"] = str(args.port)
 
     # Load configuration
     config = load_config(args.config)

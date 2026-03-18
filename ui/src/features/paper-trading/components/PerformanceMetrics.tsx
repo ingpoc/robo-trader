@@ -18,6 +18,8 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
   metrics,
   isLoading = false
 }) => {
+  const getNumber = (value: number | undefined | null) => value ?? 0
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -50,56 +52,56 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
   const metricItems = [
     {
       label: 'Winning Trades',
-      value: metrics.winning_trades,
+      value: getNumber(metrics.winning_trades),
       icon: TrendingUp,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50'
     },
     {
       label: 'Losing Trades',
-      value: metrics.losing_trades,
+      value: getNumber(metrics.losing_trades),
       icon: TrendingDown,
       color: 'text-red-600',
       bg: 'bg-red-50'
     },
     {
       label: 'Win Rate',
-      value: `${metrics.win_rate.toFixed(1)}%`,
+      value: `${getNumber(metrics.win_rate).toFixed(1)}%`,
       icon: Target,
       color: 'text-blue-600',
       bg: 'bg-blue-50'
     },
     {
       label: 'Avg Win',
-      value: `₹${Math.abs(metrics.avg_win).toLocaleString('en-IN')}`,
+      value: `₹${Math.abs(getNumber(metrics.avg_win)).toLocaleString('en-IN')}`,
       icon: TrendingUp,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50'
     },
     {
       label: 'Avg Loss',
-      value: `₹${Math.abs(metrics.avg_loss).toLocaleString('en-IN')}`,
+      value: `₹${Math.abs(getNumber(metrics.avg_loss)).toLocaleString('en-IN')}`,
       icon: TrendingDown,
       color: 'text-red-600',
       bg: 'bg-red-50'
     },
     {
       label: 'Profit Factor',
-      value: metrics.profit_factor.toFixed(2),
+      value: getNumber(metrics.profit_factor).toFixed(2),
       icon: Zap,
       color: 'text-amber-600',
       bg: 'bg-amber-50'
     },
     {
       label: 'Best Trade',
-      value: `₹${metrics.best_trade.toLocaleString('en-IN')}`,
+      value: `₹${getNumber(metrics.best_trade).toLocaleString('en-IN')}`,
       icon: Trophy,
       color: 'text-yellow-600',
       bg: 'bg-yellow-50'
     },
     {
       label: 'Worst Trade',
-      value: `₹${metrics.worst_trade.toLocaleString('en-IN')}`,
+      value: `₹${getNumber(metrics.worst_trade).toLocaleString('en-IN')}`,
       icon: AlertTriangle,
       color: 'text-orange-600',
       bg: 'bg-orange-50'

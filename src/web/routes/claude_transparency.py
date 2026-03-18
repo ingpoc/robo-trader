@@ -26,6 +26,35 @@ limiter = Limiter(key_func=get_remote_address)
 transparency_limit = os.getenv("RATE_LIMIT_TRANSPARENCY", "20/minute")
 
 
+def _empty_execution_transparency(error: Optional[str] = None, status: str = "unavailable") -> Dict[str, Any]:
+    """Return a truthful empty execution payload."""
+    return {
+        "total_executions": 0,
+        "success_rate": 0.0,
+        "avg_slippage": 0.0,
+        "avg_cost": 0.0,
+        "risk_compliance": 0.0,
+        "recent_executions": [],
+        "status": status,
+        "error": error,
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _empty_daily_evaluation(error: Optional[str] = None, status: str = "unavailable") -> Dict[str, Any]:
+    """Return a truthful empty daily evaluation payload."""
+    return {
+        "evaluations": [],
+        "total_evaluations": 0,
+        "avg_confidence": 0.0,
+        "total_token_usage": 0,
+        "total_cost_usd": 0.0,
+        "status": status,
+        "error": error,
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/transparency/research")
 @limiter.limit(transparency_limit)
 async def get_research_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
@@ -150,59 +179,52 @@ async def get_analysis_transparency(request: Request, container: DependencyConta
 async def get_execution_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's trade execution transparency."""
     try:
-
         # Get strategy store for session data
         strategy_store = await container.get("claude_strategy_store")
 
-        # Default structure when no data available
-        execution_data = {
-            "total_executions": 0,
-            "success_rate": 0.0,
-            "avg_slippage": 0.0,
-            "avg_cost": 0.0,
-            "risk_compliance": 100.0,
-            "recent_executions": [],
-            "last_updated": datetime.now(timezone.utc).isoformat()
-        }
-
         if not strategy_store:
-            logger.warning("Strategy store not available, returning default execution data")
-            return {"execution": execution_data}
+            return {
+                "execution": _empty_execution_transparency(
+                    error="Strategy store is not available",
+                    status="blocked",
+                )
+            }
 
         try:
             # Get recent sessions
             recent_sessions = await strategy_store.get_recent_sessions("swing", limit=10) + \
                              await strategy_store.get_recent_sessions("options", limit=10)
 
-            if recent_sessions:
-                successful = sum(1 for s in recent_sessions if s.success)
-                total = len(recent_sessions)
-                total_trades = sum(len(s.decisions_made) for s in recent_sessions if s.decisions_made)
+            if not recent_sessions:
+                return {"execution": _empty_execution_transparency(status="available")}
 
-                execution_data = {
-                    "total_executions": total,
-                    "success_rate": successful / total if total > 0 else 0.0,
-                    "avg_slippage": 0.0,  # Would be calculated from actual trade data
-                    "avg_cost": 0.0,  # Would be calculated from actual trade data
-                    "risk_compliance": 100.0,  # Would be calculated from actual trade data
-                    "recent_executions": [
-                        {
-                            "session_id": session.session_id,
-                            "session_type": session.session_type.value if hasattr(session.session_type, 'value') else str(session.session_type),
-                            "account_type": session.account_type,
-                            "success": session.success,
-                            "trades_executed": len(session.decisions_made) if session.decisions_made else 0,
-                            "token_usage": session.token_input + session.token_output,
-                            "cost_usd": session.total_cost_usd,
-                            "timestamp": session.timestamp.isoformat() if hasattr(session.timestamp, 'isoformat') else str(session.timestamp)
-                        }
-                        for session in recent_sessions[-5:]  # Last 5 sessions
-                    ],
-                    "last_updated": datetime.now(timezone.utc).isoformat()
-                }
+            successful = sum(1 for s in recent_sessions if s.success)
+            total = len(recent_sessions)
+            execution_data = {
+                "total_executions": total,
+                "success_rate": successful / total if total > 0 else 0.0,
+                "avg_slippage": 0.0,
+                "avg_cost": 0.0,
+                "risk_compliance": 0.0,
+                "status": "available",
+                "recent_executions": [
+                    {
+                        "session_id": session.session_id,
+                        "session_type": session.session_type.value if hasattr(session.session_type, 'value') else str(session.session_type),
+                        "account_type": session.account_type,
+                        "success": session.success,
+                        "trades_executed": len(session.decisions_made) if session.decisions_made else 0,
+                        "token_usage": session.token_input + session.token_output,
+                        "cost_usd": session.total_cost_usd,
+                        "timestamp": session.timestamp.isoformat() if hasattr(session.timestamp, 'isoformat') else str(session.timestamp)
+                    }
+                    for session in recent_sessions[-5:]
+                ],
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            }
         except Exception as e:
-            logger.warning(f"Error getting sessions from strategy store: {e}, returning default execution data")
-            # Return default structure on error
+            logger.warning(f"Error getting sessions from strategy store: {e}")
+            return {"execution": _empty_execution_transparency(error=str(e), status="error")}
 
         return {"execution": execution_data}
 
@@ -210,17 +232,7 @@ async def get_execution_transparency(request: Request, container: DependencyCont
         return await handle_trading_error(e)
     except Exception as e:
         logger.error(f"Unexpected error in execution transparency endpoint: {e}")
-        # Return default structure instead of error to prevent UI from breaking
-        return {"execution": {
-            "total_executions": 0,
-            "success_rate": 0.0,
-            "avg_slippage": 0.0,
-            "avg_cost": 0.0,
-            "risk_compliance": 100.0,
-            "recent_executions": [],
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-            "error": str(e)
-        }}
+        return {"execution": _empty_execution_transparency(error=str(e), status="error")}
 
 
 @router.get("/transparency/daily-evaluation")
@@ -228,46 +240,55 @@ async def get_execution_transparency(request: Request, container: DependencyCont
 async def get_daily_evaluation_transparency(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
     """Get Claude's daily strategy evaluation transparency."""
     try:
-
         strategy_store = await container.get("claude_strategy_store")
 
         if not strategy_store:
-            return JSONResponse({"error": "Strategy store not available"}, status_code=500)
-
-        # Get daily evaluations (this would need to be implemented in the store)
-        # For now, return mock data
-        daily_evaluations = [
-            {
-                "date": "2025-10-24",
-                "account_type": "swing",
-                "strategies_evaluated": ["RSI Divergence", "Momentum Breakout", "Support Bounce"],
-                "best_performing": "RSI Divergence",
-                "worst_performing": "Support Bounce",
-                "confidence_score": 0.78,
-                "recommendations": [
-                    "Increase RSI strategy allocation by 20%",
-                    "Reduce support bounce position sizing",
-                    "Test new volume confirmation filter"
-                ],
-                "token_usage": 1250,
-                "cost_usd": 0.00625
-            },
-            {
-                "date": "2025-10-24",
-                "account_type": "options",
-                "strategies_evaluated": ["Call Spread", "Put Spread", "Iron Condor"],
-                "best_performing": "Iron Condor",
-                "worst_performing": "Put Spread",
-                "confidence_score": 0.65,
-                "recommendations": [
-                    "Continue Iron Condor strategy",
-                    "Reduce Put Spread allocation",
-                    "Test new volatility filter"
-                ],
-                "token_usage": 980,
-                "cost_usd": 0.0049
+            return {
+                "daily_evaluation": _empty_daily_evaluation(
+                    error="Strategy store is not available",
+                    status="blocked",
+                )
             }
-        ]
+
+        recent_sessions = await strategy_store.get_recent_sessions("swing", limit=20) + \
+                         await strategy_store.get_recent_sessions("options", limit=20)
+
+        if not recent_sessions:
+            return {"daily_evaluation": _empty_daily_evaluation(status="available")}
+
+        grouped: Dict[tuple[str, str], Dict[str, Any]] = {}
+        for session in recent_sessions:
+            timestamp = session.timestamp.isoformat() if hasattr(session.timestamp, "isoformat") else str(session.timestamp)
+            evaluation_date = timestamp[:10]
+            account_type = getattr(session, "account_type", "unknown")
+            key = (evaluation_date, account_type)
+
+            if key not in grouped:
+                grouped[key] = {
+                    "date": evaluation_date,
+                    "account_type": account_type,
+                    "strategies_evaluated": [],
+                    "best_performing": None,
+                    "worst_performing": None,
+                    "confidence_score": 0.0,
+                    "recommendations": [],
+                    "token_usage": 0,
+                    "cost_usd": 0.0,
+                    "_session_count": 0,
+                }
+
+            grouped[key]["confidence_score"] += float(getattr(session, "confidence_score", 0.0) or 0.0)
+            grouped[key]["token_usage"] += int(getattr(session, "token_input", 0) or 0) + int(getattr(session, "token_output", 0) or 0)
+            grouped[key]["cost_usd"] += float(getattr(session, "total_cost_usd", 0.0) or 0.0)
+            grouped[key]["_session_count"] += 1
+
+        daily_evaluations = []
+        for value in grouped.values():
+            session_count = value.pop("_session_count") or 1
+            value["confidence_score"] = value["confidence_score"] / session_count
+            daily_evaluations.append(value)
+
+        daily_evaluations.sort(key=lambda evaluation: (evaluation["date"], evaluation["account_type"]), reverse=True)
 
         evaluation_data = {
             "evaluations": daily_evaluations,
@@ -275,6 +296,7 @@ async def get_daily_evaluation_transparency(request: Request, container: Depende
             "avg_confidence": sum(e["confidence_score"] for e in daily_evaluations) / len(daily_evaluations),
             "total_token_usage": sum(e["token_usage"] for e in daily_evaluations),
             "total_cost_usd": sum(e["cost_usd"] for e in daily_evaluations),
+            "status": "available",
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 

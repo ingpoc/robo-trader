@@ -8,8 +8,14 @@ import { NewsFeed } from './components/NewsFeed'
 import { EarningsReports } from './components/EarningsReports'
 import { UpcomingEarnings } from './components/UpcomingEarnings'
 import { RecommendationsPanel } from './components/RecommendationsPanel'
+import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { PageHeader } from '@/components/common/PageHeader'
 
-const NewsEarningsFeature = memo(() => {
+interface NewsEarningsFeatureProps {
+  embedded?: boolean
+}
+
+const NewsEarningsFeature = memo(({ embedded = false }: NewsEarningsFeatureProps) => {
   const {
     selectedSymbol,
     portfolioSymbols,
@@ -30,7 +36,7 @@ const NewsEarningsFeature = memo(() => {
     { id: 'news', label: 'News Feed', active: activeTab === 'news' },
     { id: 'earnings', label: 'Earnings', active: activeTab === 'earnings' },
     { id: 'recommendations', label: 'AI Recommendations', active: activeTab === 'recommendations' },
-  ] as const
+  ]
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -78,17 +84,16 @@ const NewsEarningsFeature = memo(() => {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-br from-warmgray-50 to-warmgray-100 dark:from-warmgray-900 dark:to-warmgray-800">
-        <div className="max-w-7xl mx-auto p-6 space-y-8">
-          {/* Header */}
-          <div className="text-center space-y-4">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-warmgray-900 to-warmgray-600 dark:from-warmgray-100 dark:to-warmgray-400 bg-clip-text text-transparent">
-              Market Intelligence Hub
-            </h1>
-            <p className="text-lg text-warmgray-600 dark:text-warmgray-400 max-w-2xl mx-auto">
-              Real-time news, earnings analysis, and AI-powered recommendations for informed trading decisions
-            </p>
-          </div>
+      <div className={embedded ? 'space-y-6' : 'page-wrapper'}>
+        <div className="flex flex-col gap-6">
+          {!embedded ? <Breadcrumb /> : null}
+
+          {!embedded ? (
+            <PageHeader
+              title="News & Earnings"
+              description="Review catalysts, earnings surprises, and recommendation candidates that can feed the paper-trading decision loop."
+            />
+          ) : null}
 
           {/* Symbol Selector */}
           <SymbolSelector

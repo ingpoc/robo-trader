@@ -104,7 +104,7 @@ class RoboTraderOrchestrator:
             setting_sources=["user"],  # Load ~/.claude/settings.json for global CLI settings
         )
 
-        self.session_coordinator.options = self.options
+        self.session_coordinator.set_options(self.options)
 
         await self.ai_planner.initialize()
         await self.conversation_manager.initialize()

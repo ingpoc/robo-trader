@@ -9,48 +9,18 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
-from enum import Enum
-import json
 import aiosqlite
 from loguru import logger
 
 from src.config import Config
+from src.models.market_data import MarketData, MarketDataProvider, SubscriptionMode
 from ..core.event_bus import EventBus, Event, EventType, EventHandler
-from ..core.errors import TradingError, APIError
-# from ..mcp.broker import ZerodhaBroker  # Commented out - no live trading
-
-
-class MarketDataProvider(Enum):
-    """Market data provider types."""
-    ZERODHA_KITE = "zerodha_kite"
-    UPSTOX = "upstox"
-    YAHOO_FINANCE = "yahoo_finance"
-    ALPHA_VANTAGE = "alpha_vantage"
-
-
-class SubscriptionMode(Enum):
-    """Market data subscription modes."""
-    QUOTE = "quote"
-    FULL = "full"
-    LTP = "ltp"
-
-
-@dataclass
-class MarketData:
-    """Market data snapshot."""
-    symbol: str
-    ltp: float
-    open_price: Optional[float] = None
-    high_price: Optional[float] = None
-    low_price: Optional[float] = None
-    close_price: Optional[float] = None
-    volume: Optional[int] = None
-    timestamp: str = ""
-    provider: str = ""
-
-    def __post_init__(self):
-        if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat()
+from .quote_stream_adapter import (
+    NullQuoteStreamAdapter,
+    QuoteStreamAdapter,
+    QuoteStreamStatus,
+    QuoteSubscriptionRequest,
+)
 
 
 @dataclass
@@ -79,10 +49,23 @@ class MarketDataService(EventHandler):
     - Event-driven price updates
     """
 
-    def __init__(self, config: Config, event_bus: EventBus, broker=None):
+    def __init__(
+        self,
+        config: Config,
+        event_bus: EventBus,
+        broker=None,
+        quote_stream_adapter: Optional[QuoteStreamAdapter] = None,
+        default_provider: MarketDataProvider = MarketDataProvider.UPSTOX,
+    ):
         self.config = config
         self.event_bus = event_bus
         self.broker = broker  # Optional for paper trading only
+        self.quote_stream_adapter = quote_stream_adapter or NullQuoteStreamAdapter()
+        self.default_provider = default_provider
+        configured_mode = getattr(config.integration, "upstox_stream_mode", SubscriptionMode.LTP.value)
+        self.default_subscription_mode = (
+            SubscriptionMode.FULL if configured_mode == SubscriptionMode.FULL.value else SubscriptionMode.LTP
+        )
         self.db_path = config.state_dir / "market_data.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -93,11 +76,7 @@ class MarketDataService(EventHandler):
         # Market data state
         self._market_data: Dict[str, MarketData] = {}
         self._subscriptions: Dict[str, MarketSubscription] = {}
-        self._price_cache: Dict[str, Dict[str, Any]] = {}
-
-        # Update intervals
         self._update_interval = 5  # seconds
-        self._cache_ttl = 300  # 5 minutes
 
         # Background tasks
         self._update_task: Optional[asyncio.Task] = None
@@ -113,11 +92,14 @@ class MarketDataService(EventHandler):
             await self._create_tables()
             await self._load_subscriptions()
             await self._load_cached_data()
+            await self.quote_stream_adapter.initialize()
             logger.info("Market data service initialized")
 
             # Start background tasks
             self._update_task = asyncio.create_task(self._background_price_updates())
             self._cleanup_task = asyncio.create_task(self._cache_cleanup())
+
+        await self._sync_streaming_subscriptions()
 
     async def _create_tables(self) -> None:
         """Create market data database tables."""
@@ -205,9 +187,27 @@ class MarketDataService(EventHandler):
             )
             self._market_data[row[0]] = market_data
 
-    async def subscribe_market_data(self, symbol: str, mode: SubscriptionMode = SubscriptionMode.LTP,
-                                  provider: MarketDataProvider = MarketDataProvider.ZERODHA_KITE) -> bool:
+    async def _sync_streaming_subscriptions(self) -> None:
+        """Ensure streaming provider subscriptions are reattached after startup."""
+        if self.quote_stream_adapter.provider != MarketDataProvider.UPSTOX:
+            return
+
+        requests = [
+            QuoteSubscriptionRequest(symbol=sub.symbol, mode=sub.mode)
+            for sub in self._subscriptions.values()
+            if sub.active and sub.provider == MarketDataProvider.UPSTOX
+        ]
+        if requests:
+            await self.quote_stream_adapter.subscribe(requests)
+
+    async def subscribe_market_data(
+        self,
+        symbol: str,
+        mode: SubscriptionMode = SubscriptionMode.LTP,
+        provider: Optional[MarketDataProvider] = None,
+    ) -> bool:
         """Subscribe to market data for a symbol."""
+        provider = provider or self.default_provider
         async with self._lock:
             if symbol in self._subscriptions:
                 # Update existing subscription
@@ -238,17 +238,17 @@ class MarketDataService(EventHandler):
 
             await self._db_connection.commit()
 
-            # Try to get initial data
-            await self._fetch_symbol_data(symbol, provider)
-
-            logger.info(f"Subscribed to {mode.value} data for {symbol} via {provider.value}")
-            return True
+        await self._activate_subscription(symbol, mode, provider)
+        logger.info(f"Subscribed to {mode.value} data for {symbol} via {provider.value}")
+        return True
 
     async def unsubscribe_market_data(self, symbol: str) -> bool:
         """Unsubscribe from market data for a symbol."""
+        provider: Optional[MarketDataProvider] = None
         async with self._lock:
             if symbol in self._subscriptions:
                 subscription = self._subscriptions[symbol]
+                provider = subscription.provider
                 subscription.active = False
 
                 await self._db_connection.execute("""
@@ -260,11 +260,14 @@ class MarketDataService(EventHandler):
                 del self._subscriptions[symbol]
                 if symbol in self._market_data:
                     del self._market_data[symbol]
+            else:
+                return False
 
-                logger.info(f"Unsubscribed from market data for {symbol}")
-                return True
+        if provider is not None:
+            await self._deactivate_subscription(symbol, provider)
 
-            return False
+        logger.info(f"Unsubscribed from market data for {symbol}")
+        return True
 
     async def get_market_data(self, symbol: str) -> Optional[MarketData]:
         """Get current market data for a symbol."""
@@ -280,6 +283,86 @@ class MarketDataService(EventHandler):
                     result[symbol] = self._market_data[symbol]
             return result
 
+    async def get_quote_stream_status(self) -> QuoteStreamStatus:
+        """Return the current quote stream status."""
+        return await self.quote_stream_adapter.get_status()
+
+    async def apply_runtime_preferences(
+        self,
+        *,
+        provider: Optional[str] = None,
+        mode: Optional[str] = None,
+    ) -> None:
+        """Apply runtime quote-provider preferences to future and active subscriptions."""
+        if provider:
+            try:
+                self.default_provider = MarketDataProvider(provider)
+            except ValueError:
+                logger.warning("Ignoring unknown quote stream provider preference: %s", provider)
+
+        if mode:
+            try:
+                self.default_subscription_mode = SubscriptionMode(mode)
+            except ValueError:
+                logger.warning("Ignoring unknown quote stream mode preference: %s", mode)
+
+        async with self._lock:
+            active_subscriptions = [sub for sub in self._subscriptions.values() if sub.active]
+            for subscription in active_subscriptions:
+                subscription.provider = self.default_provider
+                subscription.mode = self.default_subscription_mode
+                subscription.last_update = datetime.now(timezone.utc).isoformat()
+                await self._db_connection.execute(
+                    """
+                    UPDATE market_subscriptions
+                    SET provider = ?, mode = ?, last_update = ?
+                    WHERE symbol = ?
+                    """,
+                    (
+                        subscription.provider.value,
+                        subscription.mode.value,
+                        subscription.last_update,
+                        subscription.symbol,
+                    ),
+                )
+            await self._db_connection.commit()
+
+        if active_subscriptions:
+            await self.refresh_active_subscriptions()
+
+    async def refresh_active_subscriptions(self) -> List[str]:
+        """Refresh active subscriptions using the configured provider for each symbol."""
+        async with self._lock:
+            active_subscriptions = [
+                subscription
+                for subscription in self._subscriptions.values()
+                if subscription.active
+            ]
+
+        refreshed_symbols: List[str] = []
+        for subscription in active_subscriptions:
+            await self._activate_subscription(subscription.symbol, subscription.mode, subscription.provider)
+            refreshed_symbols.append(subscription.symbol)
+
+        return refreshed_symbols
+
+    async def _activate_subscription(
+        self,
+        symbol: str,
+        mode: SubscriptionMode,
+        provider: MarketDataProvider,
+    ) -> None:
+        """Activate the runtime path for one subscription."""
+        if provider == self.quote_stream_adapter.provider:
+            await self.quote_stream_adapter.subscribe([QuoteSubscriptionRequest(symbol=symbol, mode=mode)])
+            return
+        await self._fetch_symbol_data(symbol, provider)
+
+    async def _deactivate_subscription(self, symbol: str, provider: MarketDataProvider) -> None:
+        """Deactivate the runtime path for one subscription."""
+        if provider == self.quote_stream_adapter.provider:
+            await self.quote_stream_adapter.unsubscribe([symbol])
+
     async def _fetch_symbol_data(self, symbol: str, provider: MarketDataProvider) -> None:
         """Fetch market data for a symbol from the specified provider."""
         try:
@@ -288,7 +371,6 @@ class MarketDataService(EventHandler):
             elif provider == MarketDataProvider.UPSTOX:
                 await self._fetch_from_upstox(symbol)
             else:
-                # Fallback to broker API
                 await self._fetch_from_broker_api(symbol)
 
         except Exception as e:
@@ -296,7 +378,11 @@ class MarketDataService(EventHandler):
 
     async def _fetch_from_zerodha(self, symbol: str) -> None:
         """Fetch data from Zerodha Kite."""
-        if not self.broker.is_authenticated():
+        if self.broker is None:
+            logger.warning("Zerodha broker is not configured on MarketDataService")
+            return
+
+        if not await self.broker.is_authenticated():
             logger.warning("Zerodha broker not authenticated, skipping data fetch")
             return
 
@@ -326,9 +412,10 @@ class MarketDataService(EventHandler):
             logger.error(f"Failed to fetch from Zerodha for {symbol}: {e}")
 
     async def _fetch_from_upstox(self, symbol: str) -> None:
-        """Fetch data from Upstox (placeholder for future implementation)."""
-        # This would integrate with Upstox API
-        logger.debug(f"Upstox integration not implemented yet for {symbol}")
+        """Ensure Upstox live quote subscriptions are active."""
+        await self.quote_stream_adapter.subscribe(
+            [QuoteSubscriptionRequest(symbol=symbol, mode=self.default_subscription_mode)]
+        )
 
     async def _fetch_from_broker_api(self, symbol: str) -> None:
         """Fallback to broker API."""
@@ -406,20 +493,36 @@ class MarketDataService(EventHandler):
             ))
 
     async def _background_price_updates(self) -> None:
-        """Background task for periodic price updates."""
+        """Background task for polling non-streaming providers and healing streaming subscriptions."""
         while True:
             try:
                 await asyncio.sleep(self._update_interval)
 
-                # Update all active subscriptions
-                symbols_to_update = [s.symbol for s in self._subscriptions.values() if s.active]
-                if symbols_to_update:
-                    # Batch update in smaller chunks
-                    chunk_size = 10
-                    for i in range(0, len(symbols_to_update), chunk_size):
-                        chunk = symbols_to_update[i:i + chunk_size]
-                        await asyncio.gather(*[self._fetch_symbol_data(s, MarketDataProvider.ZERODHA_KITE) for s in chunk])
-                        await asyncio.sleep(0.1)  # Small delay between chunks
+                active_subscriptions = [subscription for subscription in self._subscriptions.values() if subscription.active]
+                if not active_subscriptions:
+                    continue
+
+                streaming_subscriptions = [
+                    sub for sub in active_subscriptions if sub.provider == self.quote_stream_adapter.provider
+                ]
+                if streaming_subscriptions:
+                    await self.quote_stream_adapter.subscribe(
+                        [
+                            QuoteSubscriptionRequest(symbol=sub.symbol, mode=sub.mode)
+                            for sub in streaming_subscriptions
+                        ]
+                    )
+
+                polled_subscriptions = [
+                    sub for sub in active_subscriptions if sub.provider != self.quote_stream_adapter.provider
+                ]
+                if polled_subscriptions:
+                    await asyncio.gather(
+                        *[
+                            self._fetch_symbol_data(subscription.symbol, subscription.provider)
+                            for subscription in polled_subscriptions
+                        ]
+                    )
 
             except asyncio.CancelledError:
                 logger.info("Background price update task cancelled")
@@ -508,3 +611,5 @@ class MarketDataService(EventHandler):
         if self._db_connection:
             await self._db_connection.close()
             self._db_connection = None
+
+        await self.quote_stream_adapter.close()
