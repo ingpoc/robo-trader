@@ -287,7 +287,6 @@ class PaperTradingAccountManager:
 
     async def get_performance_metrics(self, account_id: str, period: str = "all-time") -> Dict[str, Any]:
         """Get performance metrics for account."""
-        from datetime import datetime, timedelta
 
         # Get account for initial balance
         account = await self.get_account(account_id)
@@ -340,7 +339,7 @@ class PaperTradingAccountManager:
 
     def _filter_trades_by_period(self, trades: List, period: str) -> List:
         """Filter trades based on period."""
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         now = datetime.now()
         if period == "today":

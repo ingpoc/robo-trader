@@ -3,7 +3,7 @@
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse

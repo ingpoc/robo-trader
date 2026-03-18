@@ -4,7 +4,6 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 from enum import Enum
-import json
 
 
 class SessionType(str, Enum):

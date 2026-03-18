@@ -42,7 +42,7 @@ export async function apiRequest<T>(
           }
         }
       } catch {
-        errorMessage = errorMessage
+        // Ignore body read failures and keep the fallback status text.
       }
 
       throw new APIError(response.status, response.statusText, errorMessage)

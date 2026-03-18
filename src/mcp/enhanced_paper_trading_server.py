@@ -8,7 +8,6 @@ and check application status through SDK-based architecture.
 Architecture: SDK @tools → Task Creation → Queue Processing → Workflow SDK → Database
 """
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
@@ -280,7 +279,7 @@ async def execute_paper_trade(args: Dict[str, Any], container: Optional[Dependen
             priority=priority
         )
 
-        result_text = f"Paper trade execution task created\n"
+        result_text = "Paper trade execution task created\n"
         result_text += f"Task ID: {task.task_id}\n"
         result_text += f"Account: {account_id}\n"
         result_text += f"Symbol: {symbol}\n"
@@ -378,7 +377,7 @@ async def check_paper_trading_status(args: Dict[str, Any], container: Optional[D
         positions = await account_manager.get_open_positions(account_id) if include_positions else []
         open_trades = await store.get_open_trades(account_id) if include_open_trades else []
 
-        result_text = f"Paper Trading Account Status\n"
+        result_text = "Paper Trading Account Status\n"
         result_text += f"Account: {account.account_id}\n"
         result_text += f"Balance: ₹{balance['current_balance']:,.2f}\n"
         result_text += f"Buying Power: ₹{balance['buying_power']:,.2f}\n"
@@ -462,7 +461,7 @@ async def analyze_portfolio_data(args: Dict[str, Any], container: Optional[Depen
             priority=priority
         )
 
-        result_text = f"Portfolio analysis task created\n"
+        result_text = "Portfolio analysis task created\n"
         result_text += f"Task ID: {task.task_id}\n"
         result_text += f"Analysis Type: {analysis_type}\n"
 
@@ -515,9 +514,6 @@ async def get_strategy_performance(args: Dict[str, Any], container: Optional[Dep
                 "content": [{"type": "text", "text": "Error: Container not available"}],
                 "is_error": True
             }
-
-        # Get strategy evolution engine
-        strategy_engine = await container.get("strategy_evolution_engine")
 
         # Get strategy context (mock implementation for now)
         strategies = {
@@ -609,7 +605,7 @@ async def optimize_prompt_template(args: Dict[str, Any], container: Optional[Dep
             priority=priority
         )
 
-        result_text = f"Prompt optimization task created\n"
+        result_text = "Prompt optimization task created\n"
         result_text += f"Task ID: {task.task_id}\n"
         result_text += f"Template Type: {template_type}\n"
         result_text += f"Optimization Goal: {optimization_goal}\n\n"

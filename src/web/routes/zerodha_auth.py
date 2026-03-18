@@ -7,8 +7,8 @@ authorization URL generation, callback handling, and token management.
 import logging
 import os
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, HTTPException, Query, Depends
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi import APIRouter, Request, Query, Depends
+from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

@@ -9,11 +9,9 @@ import asyncio
 import logging
 import json
 import os
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-import websockets
-import threading
 
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 from src.core.database_state.real_time_trading_state import (
@@ -391,7 +389,7 @@ class KiteConnectService:
             expiry = datetime.fromisoformat(session.expires_at.replace('Z', '+00:00'))
             # Consider session valid if expires in more than 5 minutes
             return expiry > datetime.now() + timedelta(minutes=5)
-        except:
+        except ValueError:
             return False
 
     async def _set_access_token(self, access_token: str) -> bool:

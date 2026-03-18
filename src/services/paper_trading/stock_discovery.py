@@ -8,16 +8,14 @@ Implements autonomous stock discovery for paper trading using:
 - Technical and fundamental analysis
 """
 
-import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from loguru import logger
 
-from ...core.event_bus import EventHandler, Event, EventType
+from ...core.event_bus import EventHandler, Event
 from ...core.background_scheduler.clients.perplexity_client import PerplexityClient
-from ...models.scheduler import TaskType, QueueName
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 
 

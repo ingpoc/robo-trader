@@ -2,8 +2,8 @@
 
 import logging
 import os
-from typing import Dict, Any, List
-from datetime import datetime, timezone, timedelta
+from typing import Dict, Any
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -13,7 +13,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from src.core.di import DependencyContainer
-from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest, CloseTradeRequest
+from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest
 from src.core.errors import TradingError
 from src.models.agent_artifacts import DiscoveryEnvelope, DecisionEnvelope, ResearchEnvelope, ReviewEnvelope
 from ..dependencies import get_container

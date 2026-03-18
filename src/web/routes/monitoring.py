@@ -5,7 +5,6 @@ import os
 from datetime import datetime, timezone
 from typing import Dict, Any
 from fastapi import APIRouter, Request, Depends
-from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -250,8 +249,6 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
     """Get comprehensive scheduler status including all configured schedulers."""
 
     try:
-        orchestrator = await container.get_orchestrator()
-
         # Get all configured schedulers
         schedulers = []
 
@@ -289,7 +286,6 @@ async def get_scheduler_status(request: Request, container: DependencyContainer 
         # 2. Queue-based Schedulers (Three Queue Architecture)
         task_service = await container.get("task_service")
         if task_service:
-            from ...models.scheduler import QueueName
 
             # Get statistics for all queues
             queue_stats = await task_service.get_all_queue_statistics()
@@ -379,7 +375,6 @@ async def emergency_stop(request: Request, container: DependencyContainer = Depe
     """Emergency stop all trading."""
 
     try:
-        orchestrator = await container.get_orchestrator()
         lifecycle_coordinator = await container.get("lifecycle_coordinator")
 
         if lifecycle_coordinator:
@@ -399,7 +394,6 @@ async def resume_operations(request: Request, container: DependencyContainer = D
     """Resume operations after emergency stop."""
 
     try:
-        orchestrator = await container.get_orchestrator()
         lifecycle_coordinator = await container.get("lifecycle_coordinator")
 
         if lifecycle_coordinator:

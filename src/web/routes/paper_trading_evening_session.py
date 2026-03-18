@@ -12,7 +12,6 @@ from pydantic import Field, BaseModel
 from src.core.di import DependencyContainer
 from src.web.dependencies import get_container
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
-from src.core.event_bus import EventType
 
 router = APIRouter(prefix="/api/paper-trading/evening-session", tags=["evening-session"])
 

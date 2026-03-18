@@ -13,8 +13,7 @@ Sandboxing (Anthropic's research):
 - ~150 tokens saved per auto-approved trade
 """
 
-import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime, timezone
 
 from claude_agent_sdk import HookMatcher
@@ -22,11 +21,10 @@ from loguru import logger
 
 from src.config import Config
 from ..core.database_state import DatabaseStateManager
-from ..core.state_models import Intent, RiskDecision
 
 # Import sandbox components
 try:
-    from .sandbox import check_paper_trade_sandbox, get_sandbox_context, initialize_sandbox
+    from .sandbox import check_paper_trade_sandbox
     SANDBOX_AVAILABLE = True
 except ImportError:
     SANDBOX_AVAILABLE = False
@@ -181,11 +179,9 @@ async def _validate_order_parameters(tool_input: Dict[str, Any], config: Config,
 
     # Get current position
     current_qty = 0
-    current_value = 0
     for holding in portfolio.holdings:
         if holding["symbol"] == symbol:
             current_qty = holding["qty"]
-            current_value = holding["exposure"]
             break
 
     # Calculate new position

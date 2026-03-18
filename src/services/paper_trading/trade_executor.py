@@ -1,11 +1,9 @@
 """Paper trade execution service with REAL MARKET PRICES."""
 
 import logging
-import uuid
-from datetime import datetime
 from typing import Optional, Dict, Any
 
-from ...models.paper_trading import PaperTrade, TradeType, TradeStatus
+from ...models.paper_trading import TradeType, TradeStatus
 from ...models.market_data import SubscriptionMode, MarketDataProvider
 from ...stores.paper_trading_store import PaperTradingStore
 from .account_manager import PaperTradingAccountManager
@@ -333,7 +331,7 @@ class PaperTradeExecutor:
             realized_pnl = (trade.entry_price - actual_exit_price) * trade.quantity
 
         # Close trade
-        closed_trade = await self.store.close_trade(
+        await self.store.close_trade(
             trade_id=trade_id,
             exit_price=actual_exit_price,  # Real-time market price!
             realized_pnl=realized_pnl,

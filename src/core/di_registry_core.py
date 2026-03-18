@@ -625,7 +625,7 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         execution_tracker = await container.get("execution_tracker")
         perplexity_client = PerplexityClient(configuration_state=configuration_state)
         state_manager = await container.get("state_manager")
-        fundamental_store = FundamentalStore(state_manager.db.connection)
+        FundamentalStore(state_manager.db.connection)
         event_bus = await container.get("event_bus")
 
         return FundamentalExecutor(

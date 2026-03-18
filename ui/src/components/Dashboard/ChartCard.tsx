@@ -145,7 +145,10 @@ export function ChartCard({
                   innerRadius={50}
                   outerRadius={80}
                   paddingAngle={3}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => {
+                    const numericPercent = typeof percent === 'number' ? percent : 0
+                    return `${name}: ${(numericPercent * 100).toFixed(0)}%`
+                  }}
                 >
                   {data.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} style={{ filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.08))' }} />

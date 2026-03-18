@@ -6,9 +6,8 @@ the TradingError hierarchy pattern from CLAUDE.md.
 """
 
 import logging
-from typing import Dict, Any
 from fastapi.responses import JSONResponse
-from src.core.errors import TradingError, ErrorSeverity, ErrorCategory
+from src.core.errors import TradingError, ErrorSeverity
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Dict, Any
 
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

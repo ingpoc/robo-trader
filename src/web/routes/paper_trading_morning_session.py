@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 from src.core.di import DependencyContainer as DIContainer
 from src.web.dependencies import get_container
-from src.core.coordinators.paper_trading.morning_session_coordinator import MorningSessionResult
 
 
 router = APIRouter(prefix="/api/paper-trading/morning-session", tags=["morning-session"])
