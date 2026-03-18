@@ -53,7 +53,7 @@ export function Navigation({ onClose }: NavigationProps) {
         ) : null}
       </div>
 
-      <div className="flex flex-1 flex-col gap-1 p-3" role="menubar">
+      <div className="flex flex-1 flex-col gap-1 p-3">
         {menuItems.map((item) => {
           const Icon = item.icon
           return (
@@ -61,8 +61,6 @@ export function Navigation({ onClose }: NavigationProps) {
               key={item.path}
               to={item.path}
               onClick={onClose}
-              role="menuitem"
-              tabIndex={0}
               className={({ isActive }) =>
                 cn(
                   'group relative flex items-center gap-4 rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
