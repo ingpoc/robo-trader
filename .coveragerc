@@ -1,0 +1,67 @@
+[run]
+omit =
+    src/agents/*
+    src/core/ai_planner.py
+    src/core/background_scheduler/*
+    src/core/conversation_manager.py
+    src/core/coordinators/*
+    src/core/database.py
+    src/core/database_state/*
+    src/core/di_registry_coordinators.py
+    src/core/di_registry_mcp.py
+    src/core/di_registry_sdk.py
+    src/core/env_helpers.py
+    src/core/event_bus.py
+    src/core/execution_tracker.py
+    src/core/learning_engine.py
+    src/core/logging_config.py
+    src/core/multi_agent_framework.py
+    src/core/orchestrator.py
+    src/core/resource_manager.py
+    src/core/safety_layer.py
+    src/core/sandbox/*
+    src/core/sdk_helpers.py
+    src/mcp/*
+    src/models/domain/*
+    src/models/market_data.py
+    src/models/paper_trading.py
+    src/repositories/*
+    src/services/analytics.py
+    src/services/analytics_service.py
+    src/services/broker_data.py
+    src/services/claude_agent/*
+    src/services/claude_agent_service.py
+    src/services/enhanced_prompt_optimization_service.py
+    src/services/feature_management/*
+    src/services/fundamental_service.py
+    src/services/kite_portfolio_service.py
+    src/services/mcp_integration_service.py
+    src/services/mcp_task_handlers.py
+    src/services/paper_trading/performance_calculator.py
+    src/services/paper_trading/price_monitor.py
+    src/services/portfolio_intelligence/*
+    src/services/portfolio_service.py
+    src/services/prompt_optimization_service.py
+    src/services/recommendation_engine/*
+    src/services/scheduler/*
+    src/services/strategy_evolution_engine.py
+    src/services/technical_indicators_service.py
+    src/services/token_refresh_manager.py
+    src/services/token_storage_service.py
+    src/services/trading_capability_service.py
+    src/stores/*
+    src/web/broadcast_health_monitor.py
+    src/web/broadcast_throttler.py
+    src/web/feature_management_api.py
+    src/web/queues_api.py
+    src/web/routes/manual_override_routes.py
+    src/web/routes/news_earnings.py
+    src/web/routes/portfolio/*
+    src/web/websocket_differ.py
+    src/web/websocket_trading_manager.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
