@@ -287,12 +287,12 @@ jobs:
 
       - name: Check bundle size
         run: |
-          if [ -d "dist" ]; then
-            BUNDLE_SIZE=$(du -sh dist | cut -f1)
+          if [ -d "build" ]; then
+            BUNDLE_SIZE=$(du -sh build | cut -f1)
             echo "📦 Bundle size: $BUNDLE_SIZE"
 
             # Get size in MB
-            SIZE_MB=$(du -sm dist | cut -f1)
+            SIZE_MB=$(du -sm build | cut -f1)
             if [ "$SIZE_MB" -gt 10 ]; then
               echo "::warning::Bundle size ($BUNDLE_SIZE) exceeds 10MB. Consider optimization."
             fi
@@ -301,8 +301,8 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: frontend-dist
-          path: ui/dist/
+          name: frontend-build
+          path: ui/build/
           retention-days: 7
 
   # ============================================================================
