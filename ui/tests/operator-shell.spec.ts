@@ -17,9 +17,7 @@ test.describe('Operator Shell', () => {
 
     await page.getByRole('link', { name: 'Paper Trading' }).click()
     await expect(page).toHaveURL(/\/paper-trading$/)
-    await expect(
-      page.getByText(/Paper Trading Account|No Paper Trading Account/)
-    ).toBeVisible()
+    await expect(page.getByText('Paper Trading Account', { exact: true })).toBeVisible()
 
     await page.getByRole('link', { name: 'System Health' }).click()
     await expect(page).toHaveURL(/\/system-health$/)
