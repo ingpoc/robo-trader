@@ -1,5 +1,7 @@
 # Robo Trader
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ingpoc/robo-trader)
+
 Robo Trader is a paper-trading-first swing-trading operator console. It uses Claude Code / Claude Agent SDK for research and decision support, and native backend services for execution truth, positions, P&L, and capability state.
 
 ## Mission
