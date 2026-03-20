@@ -7,6 +7,7 @@ Maintains core scheduler lifecycle (start, stop) and execution tracking.
 import asyncio
 import logging
 import traceback
+import uuid
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, time, timezone
 
@@ -527,7 +528,9 @@ class BackgroundScheduler:
     async def trigger_manual_execution(self, event_type: str, event_data: Dict[str, Any]) -> None:
         """Manually trigger event-based execution."""
         event = Event(
-            event_type=EventType(event_type),
+            id=str(uuid.uuid4()),
+            type=EventType(event_type),
+            timestamp=datetime.utcnow().isoformat(),
             data=event_data,
             source="manual_trigger"
         )

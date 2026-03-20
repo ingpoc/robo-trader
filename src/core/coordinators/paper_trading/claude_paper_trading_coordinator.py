@@ -18,7 +18,7 @@ from ...database_state import DatabaseStateManager
 from ...event_bus import EventBus, Event, EventType
 from ....services.paper_trading.account_manager import PaperTradingAccountManager
 from ....services.paper_trading.trade_executor import PaperTradeExecutor
-from ....services.kite_connect_service import KiteConnectService
+from ....services.kite_portfolio_service import KitePortfolioService
 from ....services.technical_indicators_service import TechnicalIndicatorsService
 from ....services.fundamental_service import FundamentalService
 from ....config import Config
@@ -42,11 +42,12 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         event_bus: EventBus,
         account_manager: PaperTradingAccountManager,
         trade_executor: PaperTradeExecutor,
-        kite_service: Optional[KiteConnectService] = None,
+        kite_service: Optional[KitePortfolioService] = None,
         indicators_service: Optional[TechnicalIndicatorsService] = None,
         fundamental_service: Optional[FundamentalService] = None
     ):
-        super().__init__(config, "claude_paper_trading_coordinator")
+        super().__init__(config, event_bus)
+        self.name = "claude_paper_trading_coordinator"
         self.state_manager = state_manager
         self.event_bus = event_bus
         self.account_manager = account_manager
@@ -55,8 +56,6 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         self.indicators_service = indicators_service
         self.fundamental_service = fundamental_service
 
-        # Default account ID for Claude's paper trading
-        self.default_account_id = "claude_paper_trading_account"
         self.initial_capital = 100000.0  # ₹1 lakh
 
     async def initialize(self) -> None:
@@ -65,10 +64,7 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         
         # Subscribe to events
         self.event_bus.subscribe(EventType.MARKET_PRICE_UPDATE, self)
-        
-        # Ensure default account exists
-        await self._ensure_default_account()
-        
+
         self._running = True
         logger.info("Claude Paper Trading Coordinator initialized")
 
@@ -77,21 +73,20 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         self.event_bus.unsubscribe(EventType.MARKET_PRICE_UPDATE, self)
         self._running = False
 
-    async def _ensure_default_account(self) -> None:
-        """Ensure default paper trading account exists."""
-        account = await self.account_manager.get_account(self.default_account_id)
-        if not account:
-            logger.info(f"Creating default paper trading account: {self.default_account_id}")
-            account = await self.account_manager.create_account(
-                account_name="Claude Paper Trading Account",
-                initial_balance=self.initial_capital,
-                account_id=self.default_account_id,
-                strategy_type="SWING",
-                risk_level="MODERATE",
-                max_position_size=5.0,
-                max_portfolio_risk=10.0
+    async def _resolve_autonomous_account_id(self) -> str:
+        """Resolve the single paper account that autonomous trading is allowed to use."""
+        accounts = await self.account_manager.get_all_accounts()
+        if not accounts:
+            raise ValueError(
+                "Claude paper-trading automation is blocked because no paper trading account exists"
             )
-            logger.info(f"Created account with initial balance: ₹{self.initial_capital}")
+        if len(accounts) > 1:
+            account_ids = ", ".join(account.account_id for account in accounts)
+            raise ValueError(
+                "Claude paper-trading automation requires an explicit account selection; "
+                f"available accounts: {account_ids}"
+            )
+        return accounts[0].account_id
 
     async def generate_daily_strategy(self) -> Dict[str, Any]:
         """
@@ -105,22 +100,23 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         """
         try:
             logger.info("Generating daily trading strategy using Claude")
+            account_id = await self._resolve_autonomous_account_id()
 
             # Get account details
-            account = await self.account_manager.get_account(self.default_account_id)
+            account = await self.account_manager.get_account(account_id)
             if not account:
-                raise ValueError("Default account not found")
+                raise ValueError(f"Paper trading account not found: {account_id}")
 
             # Get current portfolio
-            open_positions = await self.account_manager.get_open_positions(self.default_account_id)
-            balance_info = await self.account_manager.get_account_balance(self.default_account_id)
+            open_positions = await self.account_manager.get_open_positions(account_id)
+            balance_info = await self.account_manager.get_account_balance(account_id)
 
             # Analyze market conditions
             market_analysis = await self._analyze_market_conditions()
 
             # Generate strategy using Claude (this will use the strategy agent tools)
             strategy = await self._generate_strategy_with_claude(
-                account_id=self.default_account_id,
+                account_id=account_id,
                 available_capital=balance_info.get("buying_power", 0),
                 open_positions=open_positions,
                 market_analysis=market_analysis
@@ -134,7 +130,7 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
                 type=EventType.AI_RECOMMENDATION,
                 source=self.name,
                 data={
-                    "account_id": self.default_account_id,
+                    "account_id": account_id,
                     "strategy": strategy,
                     "generated_at": datetime.now(timezone.utc).isoformat()
                 }
@@ -155,6 +151,7 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         """
         try:
             logger.info("Executing trading strategy")
+            account_id = await self._resolve_autonomous_account_id()
 
             recommended_trades = strategy.get("recommended_trades", [])
             executed_trades = []
@@ -177,7 +174,7 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
                     # Execute paper trade with real Kite Connect price
                     if action == "BUY":
                         result = await self.trade_executor.execute_buy(
-                            account_id=self.default_account_id,
+                            account_id=account_id,
                             symbol=symbol,
                             quantity=quantity,
                             entry_price=entry_price or 0,  # Will use market price if 0
@@ -189,7 +186,7 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
                         )
                     else:  # SELL
                         result = await self.trade_executor.execute_sell(
-                            account_id=self.default_account_id,
+                            account_id=account_id,
                             symbol=symbol,
                             quantity=quantity,
                             exit_price=entry_price or 0,
@@ -238,11 +235,12 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         """
         try:
             logger.info("Evaluating daily performance")
+            account_id = await self._resolve_autonomous_account_id()
 
             # Get trade history for today
             today = datetime.now(timezone.utc).date()
             closed_trades = await self.account_manager.get_closed_trades(
-                self.default_account_id,
+                account_id,
                 month=today.month,
                 year=today.year
             )
@@ -254,11 +252,11 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
             ]
 
             # Get open positions
-            open_positions = await self.account_manager.get_open_positions(self.default_account_id)
+            open_positions = await self.account_manager.get_open_positions(account_id)
 
             # Get performance metrics
             performance = await self.account_manager.get_performance_metrics(
-                self.default_account_id,
+                account_id,
                 period="today"
             )
 
@@ -296,17 +294,77 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         market_analysis: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Generate strategy using Claude Agent SDK tools."""
-        # This will be called by Claude when using the strategy tools
-        # For now, return a basic strategy structure
-        return {
-            "account_id": account_id,
-            "available_capital": available_capital,
-            "recommended_trades": [],
-            "position_sizing": {},
-            "stop_loss_levels": {},
-            "target_prices": {},
-            "generated_at": datetime.now(timezone.utc).isoformat()
-        }
+        try:
+            # Get Claude Agent Service from container
+            from ....core.di import get_container
+            container = get_container()
+            claude_service = await container.get("claude_agent_service")
+
+            # Build context for Claude
+            context = {
+                "account_id": account_id,
+                "available_capital": available_capital,
+                "open_positions": [
+                    {
+                        "symbol": pos.get("symbol"),
+                        "quantity": pos.get("quantity"),
+                        "entry_price": pos.get("entry_price"),
+                        "current_price": pos.get("current_price"),
+                        "unrealized_pnl": pos.get("unrealized_pnl", 0)
+                    }
+                    for pos in open_positions
+                ],
+                "market_analysis": market_analysis,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+            # Run morning prep session to generate strategy
+            session_result = await claude_service.run_morning_prep_session(
+                account_type="paper",
+                context=context
+            )
+
+            # Parse decisions from session result
+            recommended_trades = []
+            if hasattr(session_result, 'decisions_made') and session_result.decisions_made:
+                for decision in session_result.decisions_made:
+                    # Extract trade recommendations from decisions
+                    if decision.get("action") in ["BUY", "SELL"]:
+                        recommended_trades.append({
+                            "symbol": decision.get("symbol"),
+                            "action": decision.get("action"),
+                            "quantity": decision.get("quantity", 1),
+                            "entry_price": decision.get("price", 0),
+                            "stop_loss": decision.get("stop_loss"),
+                            "target_price": decision.get("target"),
+                            "rationale": decision.get("reasoning", "")
+                        })
+
+            return {
+                "account_id": account_id,
+                "available_capital": available_capital,
+                "recommended_trades": recommended_trades,
+                "position_sizing": {},
+                "stop_loss_levels": {},
+                "target_prices": {},
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "session_id": getattr(session_result, 'session_id', None),
+                "market_context": market_analysis
+            }
+
+        except Exception as e:
+            logger.error(f"Claude SDK strategy generation failed: {e}")
+            # Return empty strategy on error but log the issue
+            return {
+                "account_id": account_id,
+                "available_capital": available_capital,
+                "recommended_trades": [],
+                "position_sizing": {},
+                "stop_loss_levels": {},
+                "target_prices": {},
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "error": str(e)
+            }
 
     async def _evaluate_with_claude(
         self,
@@ -338,4 +396,3 @@ class ClaudePaperTradingCoordinator(BaseCoordinator):
         if event.type == EventType.MARKET_PRICE_UPDATE:
             # Could trigger stop-loss checks, etc.
             pass
-

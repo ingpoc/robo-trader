@@ -74,6 +74,8 @@ class DatabaseConnection:
                     aiosqlite.connect(str(self.db_path)),
                     timeout=10.0
                 )
+                # Set row_factory to return Row objects instead of tuples
+                self._connection_pool.row_factory = aiosqlite.Row
                 logger.info("Database connection established")
 
                 await self._perform_operation_with_timeout(
@@ -416,7 +418,118 @@ class DatabaseConnection:
             UNIQUE(data_type, created_at)
         );
 
+        -- Daily Strategy Reports (for autonomous trading evaluation)
+        CREATE TABLE IF NOT EXISTS daily_strategy_reports (
+            id INTEGER PRIMARY KEY,
+            report_id TEXT NOT NULL UNIQUE,
+            evaluation_date TEXT NOT NULL,
+            account_type TEXT NOT NULL,
+            report_data TEXT NOT NULL,  -- JSON with full report
+            confidence_score REAL DEFAULT 0.0,
+            created_at TEXT NOT NULL
+        );
+
+        -- Claude Trading Decisions (for autonomous trading transparency)
+        CREATE TABLE IF NOT EXISTS claude_decisions (
+            id INTEGER PRIMARY KEY,
+            decision_id TEXT NOT NULL UNIQUE,
+            timestamp TEXT NOT NULL,
+            decision_type TEXT NOT NULL,  -- BUY, SELL, HOLD
+            symbol TEXT NOT NULL,
+            reasoning TEXT NOT NULL,
+            confidence_score REAL DEFAULT 0.0,
+            context_snapshot TEXT,  -- JSON with portfolio state, market data
+            execution_result TEXT,  -- JSON with fill price, quantity, errors
+            executed_at TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- Trading Safeguards State (for autonomous execution limits)
+        CREATE TABLE IF NOT EXISTS trading_safeguards (
+            id INTEGER PRIMARY KEY,
+            safeguard_date TEXT NOT NULL UNIQUE,
+            trades_today INTEGER DEFAULT 0,
+            daily_pnl REAL DEFAULT 0.0,
+            consecutive_losses INTEGER DEFAULT 0,
+            circuit_breaker_active INTEGER DEFAULT 0,
+            circuit_breaker_reason TEXT,
+            last_trade_timestamp TEXT,
+            max_trades_limit INTEGER DEFAULT 10,
+            max_daily_loss REAL DEFAULT -5000.0,
+            max_consecutive_losses INTEGER DEFAULT 3,
+            positions_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        -- Portfolio Analysis (for user's real portfolio monthly analysis)
+        CREATE TABLE IF NOT EXISTS portfolio_analysis (
+            id INTEGER PRIMARY KEY,
+            analysis_date TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            company_name TEXT,
+            sector TEXT,
+            industry TEXT,
+
+            -- Fundamentals fetched from Perplexity API
+            pe_ratio REAL,
+            pb_ratio REAL,
+            roe REAL,
+            debt_to_equity REAL,
+            current_ratio REAL,
+            profit_margins REAL,
+            revenue_growth REAL,
+            earnings_growth REAL,
+            dividend_yield REAL,
+            market_cap REAL,
+
+            -- Analysis data
+            recent_earnings TEXT,  -- JSON with earnings summary
+            news_sentiment TEXT,  -- JSON with sentiment analysis
+            industry_trends TEXT,  -- JSON with industry analysis
+
+            -- Claude's recommendation
+            recommendation TEXT NOT NULL CHECK (recommendation IN ('KEEP', 'SELL')),
+            reasoning TEXT NOT NULL,
+            confidence_score REAL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+
+            -- Metadata
+            analysis_sources TEXT,  -- JSON array of sources
+            price_at_analysis REAL,
+            next_review_date TEXT,
+
+            -- Timestamps
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(symbol, analysis_date)
+        );
+
+        -- Monthly Analysis Summary
+        CREATE TABLE IF NOT EXISTS monthly_analysis_summary (
+            id INTEGER PRIMARY KEY,
+            analysis_month TEXT NOT NULL UNIQUE,  -- YYYY-MM format
+            total_stocks_analyzed INTEGER DEFAULT 0,
+            keep_recommendations INTEGER DEFAULT 0,
+            sell_recommendations INTEGER DEFAULT 0,
+            portfolio_value_at_analysis REAL,
+            market_conditions TEXT,  -- JSON with market snapshot
+
+            -- Analysis metadata
+            analysis_duration_seconds REAL,
+            perplexity_api_calls INTEGER DEFAULT 0,
+            claude_analysis_tokens INTEGER DEFAULT 0,
+
+            -- Timestamps
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
         -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_claude_decisions_symbol ON claude_decisions(symbol);
+        CREATE INDEX IF NOT EXISTS idx_claude_decisions_timestamp ON claude_decisions(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_claude_decisions_type ON claude_decisions(decision_type);
+        CREATE INDEX IF NOT EXISTS idx_daily_strategy_reports_date ON daily_strategy_reports(evaluation_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_daily_strategy_reports_account ON daily_strategy_reports(account_type);
         CREATE INDEX IF NOT EXISTS idx_analysis_history_symbol ON analysis_history(symbol);
         CREATE INDEX IF NOT EXISTS idx_analysis_history_timestamp ON analysis_history(timestamp);
         CREATE INDEX IF NOT EXISTS idx_daily_plans_date ON daily_plans(date);
@@ -451,6 +564,15 @@ class DatabaseConnection:
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_data_type ON optimized_prompts(data_type);
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_created ON optimized_prompts(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_optimized_prompts_data_type_created ON optimized_prompts(data_type, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_trading_safeguards_date ON trading_safeguards(safeguard_date DESC);
+
+        -- Indexes for portfolio analysis tables
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_symbol ON portfolio_analysis(symbol);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_date ON portfolio_analysis(analysis_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_symbol_date ON portfolio_analysis(symbol, analysis_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_recommendation ON portfolio_analysis(recommendation);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_analysis_confidence ON portfolio_analysis(confidence_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_monthly_analysis_month ON monthly_analysis_summary(analysis_month DESC);
         """
 
         await self._connection_pool.executescript(schema)

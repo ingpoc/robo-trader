@@ -95,7 +95,7 @@ except Exception as e:
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -107,33 +107,23 @@ from src.config import load_config
 from src.core.di import initialize_container, cleanup_container, DependencyContainer
 from src.core.database_state.database_state import DatabaseStateManager
 from src.core.errors import TradingError, ErrorHandler
-from .chat_api import router as chat_router
-from .claude_agent_api import router as claude_agent_router
 from .queues_api import router as queues_router
 from .websocket_differ import WebSocketDiffer
 from .connection_manager import ConnectionManager
 from .broadcast_throttler import BroadcastThrottler, ThrottleConfig
 
-# Import route modules
-from .routes import (
-    dashboard_router,
-    execution_router,
-    monitoring_router,
-    agents_router,
-    analytics_router
-)
+from .routes.dashboard import router as dashboard_router
+from .routes.monitoring import router as monitoring_router
 from .routes.paper_trading import router as paper_trading_router
 from .routes.news_earnings import router as news_earnings_router
 from .routes.zerodha_auth import router as zerodha_auth_router
 from .routes.claude_transparency import router as claude_transparency_router
-from .routes.config import router as config_router
 from .routes.configuration import router as configuration_router
-from .routes.logs import router as logs_router
-from .routes.prompt_optimization import router as prompt_optimization_router
 from .routes.symbols import router as symbols_router
-from .routes.database_backups import router as database_backups_router
-from .routes.coordinators import router as coordinators_router
-from .routes.token_status import router as token_status_router
+from .routes.paper_trading_morning_session import router as morning_session_router
+from .routes.paper_trading_evening_session import router as evening_session_router
+from .routes.trading_capabilities import router as trading_capabilities_router
+# from .routes.manual_override_routes import router as manual_override_router
 
 # ============================================================================
 # Global Variables
@@ -165,27 +155,59 @@ async def bootstrap_state(orchestrator, config):
         logger.warning(f"Bootstrap failed: {exc}")
         # Don't fail initialization for bootstrap issues
 
-async def initialize_orchestrator(config, container, connection_manager):
+async def initialize_orchestrator(app: FastAPI, config, container, connection_manager):
     """Initialize orchestrator in background."""
     try:
         logger.info("Starting orchestrator initialization...")
 
         # Get orchestrator from container
         orchestrator = await container.get_orchestrator()
+        app.state.orchestrator = orchestrator
 
         await asyncio.wait_for(orchestrator.initialize(), timeout=60.0)
         logger.info("Orchestrator initialized")
 
+        logger.info("Starting queue execution...")
+        try:
+            queue_coordinator = orchestrator.queue_coordinator
+            if queue_coordinator:
+                await queue_coordinator.start_queues()
+                logger.info("Queue execution started - queues are now processing pending tasks")
+            else:
+                logger.warning("Queue coordinator not available - queues will not start")
+        except Exception as exc:
+            logger.warning(f"Failed to start queues: {exc} - continuing without queue execution")
+
+        logger.info("Wiring WebSocket broadcasting...")
+
+        async def safe_broadcast(data):
+            try:
+                await connection_manager.broadcast(data)
+            except Exception as exc:
+                logger.debug(f"Broadcast failed (likely no active connections): {exc}")
+
+        orchestrator.broadcast_coordinator.set_broadcast_callback(
+            lambda data: asyncio.create_task(safe_broadcast(data))
+        )
+
+        if orchestrator.status_coordinator:
+            orchestrator.status_coordinator.set_connection_manager(connection_manager)
+            orchestrator.status_coordinator.set_container(container)
+            logger.info("Connection manager set on status coordinator")
+
+        logger.info("WebSocket broadcasting wired")
+
         await orchestrator.start_session()
         logger.info("Orchestrator session started")
-
-        initialization_status["orchestrator_initialized"] = True
 
         # Run bootstrap state
         logger.info("Running bootstrap state...")
         await bootstrap_state(orchestrator, config)
         initialization_status["bootstrap_completed"] = True
         logger.info("Bootstrap state completed successfully")
+
+        initialization_status["orchestrator_initialized"] = True
+        logger.info("Background initialization completed")
     except asyncio.TimeoutError:
         error_msg = "Orchestrator initialization timed out"
         logger.error(error_msg)
@@ -266,67 +288,15 @@ async def lifespan(app: FastAPI):
     app.state.connection_manager = connection_manager
     logger.info("ConnectionManager created")
 
-    logger.info("Getting orchestrator from container...")
-    orchestrator = await container.get_orchestrator()
-    logger.info("Orchestrator retrieved")
+    initialization_status["orchestrator_initialized"] = False
+    initialization_status["bootstrap_completed"] = False
+    initialization_status["initialization_errors"] = []
+    initialization_status["last_error"] = None
 
-    # Initialize orchestrator (starts BackgroundScheduler and SequentialQueueManager)
-    logger.info("Initializing orchestrator (starting background scheduler and queue manager)...")
-    await orchestrator.initialize()
-    logger.info("Orchestrator initialization complete - BackgroundScheduler and SequentialQueueManager are now running")
-
-    # Start queue execution after orchestrator initialization
-    logger.info("Starting queue execution...")
-    try:
-        queue_coordinator = orchestrator.queue_coordinator
-        if queue_coordinator:
-            await queue_coordinator.start_queues()
-            logger.info("Queue execution started - queues are now processing pending tasks")
-        else:
-            logger.warning("Queue coordinator not available - queues will not start")
-    except Exception as e:
-        logger.warning(f"Failed to start queues: {e} - continuing without queue execution")
-
-    # Set orchestrator initialization status
-    initialization_status["orchestrator_initialized"] = True
-
-    logger.info("Wiring WebSocket broadcasting...")
-
-    # Create safe broadcast function with exception handling
-    async def safe_broadcast(data):
-        """Safely broadcast data with exception handling to prevent TaskGroup errors."""
-        try:
-            await connection_manager.broadcast(data)
-        except Exception as e:
-            logger.debug(f"Broadcast failed (likely no active connections): {e}")
-
-    orchestrator.broadcast_coordinator.set_broadcast_callback(
-        lambda data: asyncio.create_task(safe_broadcast(data))
+    app.state.orchestrator_init_task = asyncio.create_task(
+        initialize_orchestrator(app, config, container, connection_manager)
     )
-
-    # Set connection manager on status coordinator for real WebSocket client count
-    if orchestrator.status_coordinator:
-        orchestrator.status_coordinator.set_connection_manager(connection_manager)
-        orchestrator.status_coordinator.set_container(container)
-        logger.info("Connection manager set on status coordinator")
-
-    logger.info("WebSocket broadcasting wired")
-
-    # Trigger initial status broadcast now that callback is ready
-    logger.info("Broadcasting initial system status...")
-    await orchestrator.status_coordinator.get_system_status(force_broadcast=True)
-    logger.info("Initial status broadcast complete")
-
-    # Run bootstrap state
-    logger.info("Running bootstrap state...")
-    await bootstrap_state(orchestrator, config)
-    initialization_status["bootstrap_completed"] = True
-    logger.info("Bootstrap state completed successfully")
-
-    logger.info("Background tasks created...")
-    logger.info("Background tasks created")
-
-    logger.info("Background initialization completed")
+    logger.info("Background orchestrator initialization task created")
 
     yield
 
@@ -350,6 +320,12 @@ async def lifespan(app: FastAPI):
                 "message": "Server shutting down",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             })
+
+        orchestrator_task = getattr(app.state, "orchestrator_init_task", None)
+        if orchestrator_task and not orchestrator_task.done():
+            orchestrator_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await orchestrator_task
 
         await cleanup_container()
         logger.info("DI container cleanup completed")
@@ -488,27 +464,21 @@ async def log_requests(request: Request, call_next):
 # Include API Route Routers
 # ============================================================================
 
-app.include_router(claude_agent_router)
 app.include_router(queues_router, prefix="/api")
 
 # Include refactored route modules
 app.include_router(dashboard_router)
-app.include_router(execution_router)
 app.include_router(monitoring_router)
-app.include_router(agents_router)
-app.include_router(analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(news_earnings_router)
 app.include_router(zerodha_auth_router)
 app.include_router(claude_transparency_router)
 app.include_router(symbols_router)
-app.include_router(config_router)
 app.include_router(configuration_router)
-app.include_router(logs_router)
-app.include_router(prompt_optimization_router)
-app.include_router(database_backups_router)
-app.include_router(coordinators_router)
-app.include_router(token_status_router)
+app.include_router(morning_session_router)
+app.include_router(evening_session_router)
+app.include_router(trading_capabilities_router)
+# app.include_router(manual_override_router)
 
 # ============================================================================
 # Global State (removed - use app.state or dependency injection instead)
@@ -663,7 +633,7 @@ async def root():
     return {
         "name": "Robo Trader API",
         "version": "1.0.0",
-        "description": "Autonomous Trading System Backend",
+        "description": "Paper-trading operator backend",
         "frontend": "http://localhost:3000",
         "docs": "/docs",
         "websocket": "ws://localhost:8000/ws",
@@ -671,10 +641,9 @@ async def root():
         "initialization_status": initialization_status,
         "endpoints": {
             "dashboard": "/api/dashboard",
-            "trading": "/api/manual-trade",
-            "ai": "/api/ai/status",
-            "agents": "/api/agents/status",
+            "paper_trading": "/api/paper-trading/accounts",
             "monitoring": "/api/monitoring/status",
+            "configuration": "/api/configuration/status",
         }
     }
 
@@ -867,17 +836,20 @@ def run_web_server():
     """Run the web server."""
     # Get log level from environment variable (default: INFO)
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    host = os.getenv("WEB_HOST", "0.0.0.0")
+    port = int(os.getenv("WEB_PORT", "8000"))
+    reload_enabled = os.getenv("WEB_RELOAD", "false").lower() in {"1", "true", "yes", "on"}
 
     # Uvicorn expects lowercase log level
     uvicorn_log_level = log_level.lower()
 
     uvicorn.run(
         "src.web.app:app",  # Use import string for reload support
-        host="0.0.0.0",
-        port=8000,
+        host=host,
+        port=port,
         log_level=uvicorn_log_level,
         access_log=True,
-        reload=True,  # Enable auto-reload for development
+        reload=reload_enabled,
     )
 
 # ============================================================================

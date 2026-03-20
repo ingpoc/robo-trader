@@ -1,66 +1,49 @@
 # Core Infrastructure - src/core/
 
+**Context**: Agent SDK bot core infrastructure. Claude Code debugs coordinators/DI/events.
+
 ## Components
-| Component | Purpose | Max |
-|-----------|---------|-----|
-| orchestrator.py | Facade | 300 |
-| coordinators/*.py | Orchestrators | 150 |
+
+| Component | Purpose | Max Lines |
+|-----------|---------|-----------|
+| orchestrator.py | Facade pattern | 300 |
+| coordinators/*.py | Event orchestrators | 150 |
 | di.py | DI container | 500 |
-| event_bus.py | Events | 350 |
+| event_bus.py | Event system | 350 |
 | database_state/ | Async state + locking | 350 |
 
-## Database Locking (CRITICAL)
-```python
-class MyState:
-    def __init__(self):
-        self._lock = asyncio.Lock()
-    async def op(self):
-        async with self._lock:
-            cursor = await self.db.execute(...)
-```
-Prevents "database is locked" on concurrent async access
+## Critical Patterns
 
-## Coordinator Pattern
-```python
-class MyCoordinator(BaseCoordinator):
-    async def initialize(self):
-        self.event_bus.subscribe(EventType.EVENT, self)
-    async def handle_event(self, event):
-        await self._handle_event(event)
-```
-Max 150 lines, single responsibility, no business logic
+| Pattern | Implementation | Why |
+|---------|----------------|-----|
+| Database locking | `async with self._lock: await db.execute()` | Prevents "database is locked" |
+| Coordinators | Extend `BaseCoordinator`, max 150 lines | Single responsibility, event-driven |
+| Events | `Event(type=EventType.X, data={})` + `event_bus.publish()` | Loose coupling |
+| DI resolution | `await container.get("state_manager")` | Exact name from di_registry_*.py |
+| Event loop | `asyncio.get_running_loop()` | Never `get_event_loop()` → crashes |
 
-## Events
-`Event(type=EventType.X, source="Y", data={})` → `await event_bus.publish(event)`
+## DI Service Names
 
-## DI
-`register_singleton/factory` → `await container.get("key")`
+✅ **CORRECT**: `await container.get("state_manager")`
+❌ **WRONG**: `await container.get("database_state_manager")`
 
-## DI Container Service Names (CRITICAL)
-```python
-# ✅ CORRECT: Use exact service names
-state_manager = await container.get("state_manager")  # NOT database_state_manager
-event_bus = await container.get("event_bus")
-config = await container.get("config")
-
-# ❌ NEVER: Guess service names
-state_manager = await container.get("database_state_manager")  # WRONG - causes failure
-```
-
-## Event Loop Safety (CRITICAL)
-✅ `asyncio.get_running_loop()` in all async code
-❌ Never `asyncio.get_event_loop()` - causes "event loop is closed" system failure
+Common: `state_manager`, `event_bus`, `config`, `resource_manager`
+(Check di_registry_*.py for exact names)
 
 ## Common Issues
+
 | Problem | Fix |
 |---------|-----|
-| database is locked | Add asyncio.Lock() |
-| **Event loop closed** | **Use `asyncio.get_running_loop()`** |
-| **Service not found** | **Check exact service name in di_registry_*.py** |
-| Init failures | Track _initialization_complete |
-| Memory leaks | Call unsubscribe() in cleanup() |
+| database is locked | Use `asyncio.Lock()` in state classes |
+| Event loop closed | Use `asyncio.get_running_loop()` not `get_event_loop()` |
+| Service not found | Check exact name in di_registry_*.py files |
+| Init failures | Track `_initialization_complete` flag |
+| Memory leaks | Call `unsubscribe()` in cleanup methods |
+| SDK errors | See src/CLAUDE.md - SDK-only rule |
 
-## SDK (MANDATORY)
-✅ `ClaudeSDKClientManager.get_instance()` + `query_with_timeout()`
-❌ Never import anthropic directly
+## Read Before Changing
+
+- `src/CLAUDE.md` - Backend-wide patterns (SDK, event loop, DI)
+- `src/core/coordinators/CLAUDE.md` - Coordinator-specific patterns
+
 

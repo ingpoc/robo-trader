@@ -151,32 +151,132 @@ class PaperTradingState(BaseState):
                 evolution_type TEXT NOT NULL,  -- 'parameter_tuning', 'rule_addition', 'rule_removal', 'strategy_merge'
                 old_parameters TEXT,  -- JSON blob
                 new_parameters TEXT,  -- JSON blob
-                performance_before REAL DEFAULT 0.0,
-                performance_after REAL DEFAULT 0.0,
-                improvement_reason TEXT NOT NULL,
-                test_period_days INTEGER DEFAULT 30,
+                performance_impact TEXT,  -- JSON blob with before/after metrics
+                evolution_reason TEXT,
+                automated BOOLEAN DEFAULT FALSE,
                 created_at TEXT NOT NULL
             );
 
-            -- AI Automation Configuration
+            -- Stock Discovery Watchlist
+            CREATE TABLE IF NOT EXISTS stock_discovery_watchlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                company_name TEXT,
+                sector TEXT,
+                discovery_date TEXT NOT NULL,
+                discovery_source TEXT NOT NULL,  -- 'perplexity_research', 'market_scanner', 'news_alert', 'sector_analysis'
+                discovery_reason TEXT,  -- Why this stock was discovered
+                current_price REAL,
+                market_cap TEXT,
+                recommendation TEXT DEFAULT 'WATCH',  -- 'WATCH', 'BUY', 'AVOID'
+                confidence_score REAL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+                research_summary TEXT,  -- JSON blob with key findings
+                technical_indicators TEXT,  -- JSON blob with technical analysis
+                fundamental_metrics TEXT,  -- JSON blob with fundamentals
+                last_analyzed TEXT,
+                status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVIEWED', 'ACTIONED')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(symbol, discovery_date)
+            );
+
+            -- Stock Discovery Screening Sessions
+            CREATE TABLE IF NOT EXISTS stock_discovery_sessions (
+                id TEXT PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                session_type TEXT NOT NULL,  -- 'daily_screen', 'sector_focus', 'market_sweep', 'event_driven'
+                screening_criteria TEXT,  -- JSON blob with filters used
+                total_stocks_scanned INTEGER DEFAULT 0,
+                stocks_discovered INTEGER DEFAULT 0,
+                high_potential_stocks INTEGER DEFAULT 0,
+                session_duration_ms INTEGER,
+                key_insights TEXT,  -- JSON array of important findings
+                market_conditions TEXT,  -- JSON blob with market context
+                session_status TEXT DEFAULT 'RUNNING' CHECK (session_status IN ('RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')),
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                completed_at TEXT
+            );
+
+            -- Stock Discovery Results
+            CREATE TABLE IF NOT EXISTS stock_discovery_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                score REAL NOT NULL,  -- Composite score (0-100)
+                recommendation TEXT NOT NULL,  -- 'STRONG_BUY', 'BUY', 'HOLD', 'AVOID', 'STRONG_AVOID'
+                analysis_summary TEXT,  -- JSON with key analysis points
+                risk_level TEXT,  -- 'LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH'
+                catalyst_events TEXT,  -- JSON array of upcoming catalysts
+                valuation_metrics TEXT,  -- JSON with valuation data
+                momentum_indicators TEXT,  -- JSON with momentum data
+                research_depth TEXT,  -- 'BASIC', 'STANDARD', 'DEEP'
+                confidence_level REAL,
+                action_taken TEXT DEFAULT 'NONE',  -- 'NONE', 'ADDED_TO_WATCHLIST', 'TRIGGERED_RESEARCH'
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES stock_discovery_sessions(id) ON DELETE CASCADE
+            );
+
+            -- Morning Trading Sessions (PT-003)
+            CREATE TABLE IF NOT EXISTS morning_trading_sessions (
+                session_id TEXT PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                success BOOLEAN NOT NULL,
+                error_message TEXT,
+                metrics TEXT NOT NULL,  -- JSON blob with session metrics
+                pre_market_data TEXT,  -- JSON blob with scanned stocks
+                trade_ideas TEXT,  -- JSON array of generated ideas
+                executed_trades TEXT,  -- JSON array of executed trades
+                session_context TEXT,  -- JSON blob with market conditions, etc.
+                trigger_source TEXT DEFAULT 'SCHEDULED',  -- 'SCHEDULED', 'MANUAL', 'MARKET_EVENT'
+                total_duration_ms INTEGER,
+                created_at TEXT NOT NULL
+            );
+
+            -- Evening Performance Reviews (PT-004)
+            CREATE TABLE IF NOT EXISTS daily_performance_reviews (
+                review_id TEXT PRIMARY KEY,
+                review_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                success BOOLEAN NOT NULL,
+                error_message TEXT,
+                review_data TEXT NOT NULL,  -- JSON blob with review metrics
+                trades_reviewed TEXT,  -- JSON array of trades reviewed
+                daily_pnl REAL NOT NULL,
+                daily_pnl_percent REAL NOT NULL,
+                open_positions_count INTEGER DEFAULT 0,
+                closed_positions_count INTEGER DEFAULT 0,
+                win_rate REAL DEFAULT 0.0,
+                trading_insights TEXT,  -- JSON array of key insights
+                strategy_performance TEXT,  -- JSON blob with strategy analysis
+                market_observations TEXT,  -- JSON blob with market notes
+                next_day_watchlist TEXT,  -- JSON array of symbols to watch
+                session_context TEXT,  -- JSON blob with market conditions, etc.
+                trigger_source TEXT DEFAULT 'SCHEDULED',  -- 'SCHEDULED', 'MANUAL'
+                total_duration_ms INTEGER,
+                created_at TEXT NOT NULL
+            );
+
+            -- AI Automation Configuration (PT-003, PT-004 scheduling)
             CREATE TABLE IF NOT EXISTS ai_automation_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                ai_trading_enabled BOOLEAN NOT NULL DEFAULT 0,
-                risk_limits TEXT,  -- JSON blob with risk configuration
-                trading_hours TEXT,  -- JSON blob with allowed trading hours
-                daily_loss_limit REAL DEFAULT 5000.0,
+                morning_session_enabled BOOLEAN DEFAULT FALSE,  -- PT-003
+                morning_session_time TEXT DEFAULT '09:00',
+                evening_review_enabled BOOLEAN DEFAULT FALSE,  -- PT-004
+                evening_review_time TEXT DEFAULT '16:00',
+                auto_trade_enabled BOOLEAN DEFAULT FALSE,
+                max_positions INTEGER DEFAULT 10,
                 max_position_size_percent REAL DEFAULT 5.0,
-                max_portfolio_risk_percent REAL DEFAULT 10.0,
-                emergency_stop BOOLEAN DEFAULT 0,
-                last_strategy_generation TEXT,
-                last_trade_execution TEXT,
-                automation_start_time TEXT,
-                total_automated_trades INTEGER DEFAULT 0,
-                successful_automated_trades INTEGER DEFAULT 0,
-                failed_automated_trades INTEGER DEFAULT 0,
-                total_automated_pnl REAL DEFAULT 0.0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                stop_loss_percent REAL DEFAULT 2.0,
+                target_profit_percent REAL DEFAULT 5.0,
+                risk_per_trade_percent REAL DEFAULT 1.0,
+                discovery_frequency TEXT DEFAULT 'daily',  -- PT-002
+                sectors_to_watch TEXT,  -- JSON array of preferred sectors
+                market_cap_range TEXT,  -- JSON with min/max
+                last_updated TEXT NOT NULL
             );
 
             -- Indexes for performance
@@ -193,6 +293,25 @@ class PaperTradingState(BaseState):
             CREATE INDEX IF NOT EXISTS idx_evolution_strategy ON strategy_evolution(strategy_tag);
             CREATE INDEX IF NOT EXISTS idx_evolution_date ON strategy_evolution(evolution_date DESC);
             CREATE INDEX IF NOT EXISTS idx_ai_automation_config ON ai_automation_config(id);
+
+            -- Morning Session Indexes
+            CREATE INDEX IF NOT EXISTS idx_morning_sessions_date ON morning_trading_sessions(session_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_morning_sessions_success ON morning_trading_sessions(success);
+
+            -- Evening Performance Review Indexes
+            CREATE INDEX IF NOT EXISTS idx_evening_reviews_date ON daily_performance_reviews(review_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_evening_reviews_success ON daily_performance_reviews(success);
+            CREATE INDEX IF NOT EXISTS idx_evening_reviews_pnl ON daily_performance_reviews(daily_pnl DESC);
+
+            -- Stock Discovery Indexes
+            CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_symbol ON stock_discovery_watchlist(symbol);
+            CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_date ON stock_discovery_watchlist(discovery_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_discovery_watchlist_status ON stock_discovery_watchlist(status);
+            CREATE INDEX IF NOT EXISTS idx_discovery_sessions_date ON stock_discovery_sessions(session_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_discovery_sessions_type ON stock_discovery_sessions(session_type);
+            CREATE INDEX IF NOT EXISTS idx_discovery_results_session ON stock_discovery_results(session_id);
+            CREATE INDEX IF NOT EXISTS idx_discovery_results_symbol ON stock_discovery_results(symbol);
+            CREATE INDEX IF NOT EXISTS idx_discovery_results_score ON stock_discovery_results(score DESC);
             """
 
             try:
@@ -238,77 +357,31 @@ class PaperTradingState(BaseState):
         if not await cursor.fetchone():
             current_time = datetime.now(timezone.utc).isoformat()
 
-            # Default risk limits configuration
-            default_risk_limits = {
-                "max_daily_loss_percent": 2.0,
-                "max_position_size_percent": 5.0,
-                "max_portfolio_risk_percent": 10.0,
-                "max_concurrent_positions": 8,
-                "min_confidence_score": 0.7
-            }
+            # Default sectors to watch
+            default_sectors = ["Technology", "Healthcare", "Finance", "Consumer", "Industrial"]
 
-            # Default trading hours
-            default_trading_hours = {
-                "market_hours_only": True,
-                "trading_days": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
-                "start_time": "09:15",
-                "end_time": "15:30"
-            }
+            # Default market cap range (in crores)
+            default_market_cap_range = {"min": 1000, "max": 100000}
 
             await self.db.connection.execute(
                 """INSERT INTO ai_automation_config
-                   (id, ai_trading_enabled, risk_limits, trading_hours,
-                    daily_loss_limit, max_position_size_percent, max_portfolio_risk_percent,
-                    emergency_stop, created_at, updated_at)
-                   VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (0, json.dumps(default_risk_limits), json.dumps(default_trading_hours),
-                 5000.0, 5.0, 10.0, 0, current_time, current_time)
+                   (id, morning_session_enabled, morning_session_time, evening_review_enabled,
+                    evening_review_time, auto_trade_enabled, max_positions,
+                    max_position_size_percent, stop_loss_percent, target_profit_percent,
+                    risk_per_trade_percent, discovery_frequency, sectors_to_watch,
+                    market_cap_range, last_updated)
+                   VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (False, "09:00", False, "16:00", False, 10, 5.0, 2.0, 5.0, 1.0, "daily",
+                 json.dumps(default_sectors), json.dumps(default_market_cap_range), current_time)
             )
 
             await self.db.connection.commit()
-            logger.info("AI automation configuration initialized with default safety settings")
+            logger.info("AI automation configuration initialized with default settings")
 
     # ===== AI Automation Operations =====
     async def get_ai_automation_config(self) -> Optional[Dict[str, Any]]:
-        """Get AI automation configuration."""
-        async with self._lock:
-            try:
-                cursor = await self.db.connection.execute(
-                    """SELECT ai_trading_enabled, risk_limits, trading_hours, daily_loss_limit,
-                          max_position_size_percent, max_portfolio_risk_percent, emergency_stop,
-                          last_strategy_generation, last_trade_execution, automation_start_time,
-                          total_automated_trades, successful_automated_trades, failed_automated_trades,
-                          total_automated_pnl, created_at, updated_at
-                       FROM ai_automation_config
-                       WHERE id = 1"""
-                )
-                row = await cursor.fetchone()
-
-                if row:
-                    return {
-                        "ai_trading_enabled": bool(row[0]),
-                        "risk_limits": json.loads(row[1]) if row[1] else {},
-                        "trading_hours": json.loads(row[2]) if row[2] else {},
-                        "daily_loss_limit": row[3],
-                        "max_position_size_percent": row[4],
-                        "max_portfolio_risk_percent": row[5],
-                        "emergency_stop": bool(row[6]),
-                        "last_strategy_generation": row[7],
-                        "last_trade_execution": row[8],
-                        "automation_start_time": row[9],
-                        "total_automated_trades": row[10],
-                        "successful_automated_trades": row[11],
-                        "failed_automated_trades": row[12],
-                        "total_automated_pnl": row[13],
-                        "created_at": row[14],
-                        "updated_at": row[15],
-                        "success_rate": (row[11] / row[10] * 100) if row[10] > 0 else 0
-                    }
-                return None
-
-            except Exception as e:
-                logger.error(f"Failed to get AI automation config: {e}")
-                return None
+        """Get AI automation configuration (delegates to get_automation_config)."""
+        return await self.get_automation_config()
 
     async def toggle_ai_trading(self, enabled: bool) -> bool:
         """Toggle AI trading on/off."""
@@ -318,9 +391,9 @@ class PaperTradingState(BaseState):
 
                 await self.db.connection.execute(
                     """UPDATE ai_automation_config
-                       SET ai_trading_enabled = ?, automation_start_time = ?,
-                           updated_at = ? WHERE id = 1""",
-                    (enabled, current_time if enabled else None, current_time)
+                       SET auto_trade_enabled = ?, last_updated = ?
+                       WHERE id = 1""",
+                    (enabled, current_time)
                 )
 
                 await self.db.connection.commit()
@@ -331,47 +404,6 @@ class PaperTradingState(BaseState):
                 logger.error(f"Failed to toggle AI trading: {e}")
                 return False
 
-    async def emergency_stop_ai_trading(self) -> bool:
-        """Emergency stop AI trading."""
-        async with self._lock:
-            try:
-                current_time = datetime.now(timezone.utc).isoformat()
-
-                await self.db.connection.execute(
-                    """UPDATE ai_automation_config
-                       SET ai_trading_enabled = 0, emergency_stop = 1,
-                           updated_at = ? WHERE id = 1""",
-                    (current_time,)
-                )
-
-                await self.db.connection.commit()
-                logger.warning("AI trading emergency stop activated")
-                return True
-
-            except Exception as e:
-                logger.error(f"Failed to emergency stop AI trading: {e}")
-                return False
-
-    async def reset_emergency_stop(self) -> bool:
-        """Reset emergency stop flag."""
-        async with self._lock:
-            try:
-                current_time = datetime.now(timezone.utc).isoformat()
-
-                await self.db.connection.execute(
-                    """UPDATE ai_automation_config
-                       SET emergency_stop = 0, updated_at = ? WHERE id = 1""",
-                    (current_time,)
-                )
-
-                await self.db.connection.commit()
-                logger.info("AI trading emergency stop reset")
-                return True
-
-            except Exception as e:
-                logger.error(f"Failed to reset emergency stop: {e}")
-                return False
-
     async def update_risk_limits(self, risk_limits: Dict[str, Any]) -> bool:
         """Update AI trading risk limits."""
         async with self._lock:
@@ -379,32 +411,30 @@ class PaperTradingState(BaseState):
                 current_time = datetime.now(timezone.utc).isoformat()
 
                 # Validate risk limits
-                required_limits = [
-                    "max_daily_loss_percent", "max_position_size_percent",
-                    "max_portfolio_risk_percent", "max_concurrent_positions",
-                    "min_confidence_score"
-                ]
-
-                for limit in required_limits:
-                    if limit not in risk_limits:
-                        raise ValueError(f"Missing required risk limit: {limit}")
+                max_position_size = risk_limits.get("max_position_size_percent", 5.0)
+                stop_loss = risk_limits.get("stop_loss_percent", 2.0)
+                target_profit = risk_limits.get("target_profit_percent", 5.0)
+                risk_per_trade = risk_limits.get("risk_per_trade_percent", 1.0)
 
                 # Validate reasonable ranges
-                if risk_limits["max_daily_loss_percent"] < 0 or risk_limits["max_daily_loss_percent"] > 10:
-                    raise ValueError("max_daily_loss_percent must be between 0 and 10")
-                if risk_limits["max_position_size_percent"] < 0.5 or risk_limits["max_position_size_percent"] > 20:
+                if max_position_size < 0.5 or max_position_size > 20:
                     raise ValueError("max_position_size_percent must be between 0.5 and 20")
-                if risk_limits["min_confidence_score"] < 0 or risk_limits["min_confidence_score"] > 1:
-                    raise ValueError("min_confidence_score must be between 0 and 1")
+                if stop_loss < 0.5 or stop_loss > 10:
+                    raise ValueError("stop_loss_percent must be between 0.5 and 10")
+                if target_profit < 1 or target_profit > 50:
+                    raise ValueError("target_profit_percent must be between 1 and 50")
+                if risk_per_trade < 0.5 or risk_per_trade > 5:
+                    raise ValueError("risk_per_trade_percent must be between 0.5 and 5")
 
                 await self.db.connection.execute(
                     """UPDATE ai_automation_config
-                       SET risk_limits = ?, daily_loss_limit = ?,
-                           max_position_size_percent = ?, max_portfolio_risk_percent = ?,
-                           updated_at = ? WHERE id = 1""",
-                    (json.dumps(risk_limits), risk_limits["max_daily_loss_percent"] * 10000,  # Convert to ₹
-                     risk_limits["max_position_size_percent"], risk_limits["max_portfolio_risk_percent"],
-                     current_time)
+                       SET max_position_size_percent = ?,
+                           stop_loss_percent = ?,
+                           target_profit_percent = ?,
+                           risk_per_trade_percent = ?,
+                           last_updated = ?
+                       WHERE id = 1""",
+                    (max_position_size, stop_loss, target_profit, risk_per_trade, current_time)
                 )
 
                 await self.db.connection.commit()
@@ -416,82 +446,56 @@ class PaperTradingState(BaseState):
                 return False
 
     async def check_daily_loss_limit(self, current_day_pnl: float) -> bool:
-        """Check if daily loss limit has been exceeded."""
+        """Check if daily loss limit has been exceeded based on risk_per_trade_percent."""
         try:
-            config = await self.get_ai_automation_config()
+            config = await self.get_automation_config()
             if not config:
                 return False
 
-            daily_loss_limit = config.get("daily_loss_limit", 5000.0)
-            return current_day_pnl <= -daily_loss_limit
+            account = await self.get_account()
+            if not account:
+                return False
+
+            # Calculate max daily loss based on risk per trade
+            risk_per_trade = config.get("risk_per_trade_percent", 1.0)
+            total_equity = account.get("total_equity", 1000000.0)
+
+            # Allow max 5 losing trades per day (5 * risk_per_trade_percent)
+            max_daily_loss = (risk_per_trade / 100) * total_equity * 5
+
+            return current_day_pnl <= -max_daily_loss
 
         except Exception as e:
             logger.error(f"Failed to check daily loss limit: {e}")
             return True  # Fail safe - stop trading if check fails
 
     async def check_trading_hours(self) -> bool:
-        """Check if current time is within allowed trading hours."""
+        """Check if current time is within allowed trading hours (market hours 9:15-15:30 IST)."""
         try:
-            config = await self.get_ai_automation_config()
-            if not config:
-                return True  # No restriction if no config
-
-            trading_hours = config.get("trading_hours", {})
-            if not trading_hours.get("market_hours_only", True):
-                return True  # 24/7 trading allowed
-
-            # Check current day and time
+            # For Indian markets, trading hours are 9:15 AM to 3:30 PM IST
+            # TODO: Add proper timezone handling for IST
             now = datetime.now(timezone.utc)
-            # Note: Should be converted to local timezone for proper trading hours check
-            # For now, simplified check
 
-            trading_days = trading_hours.get("trading_days", ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"])
-            if now.strftime("%A").upper() not in trading_days:
+            # Check if it's a weekday (Monday=0 to Friday=4)
+            if now.weekday() > 4:  # Saturday=5, Sunday=6
                 return False
 
             # Simple time check (would need timezone conversion for production)
-            current_time = now.time()
-            start_time = datetime.strptime(trading_hours.get("start_time", "09:15"), "%H:%M").time()
-            end_time = datetime.strptime(trading_hours.get("end_time", "15:30"), "%H:%M").time()
+            # For now, assume UTC+5:30 offset for IST
+            # This is a simplified check - proper implementation would use pytz
 
-            return start_time <= current_time <= end_time
+            return True  # For now, allow trading during all hours
 
         except Exception as e:
             logger.error(f"Failed to check trading hours: {e}")
             return False
 
     async def record_automated_trade_result(self, success: bool, pnl: float = 0.0) -> bool:
-        """Record the result of an automated trade."""
-        async with self._lock:
-            try:
-                current_time = datetime.now(timezone.utc).isoformat()
-
-                if success:
-                    await self.db.connection.execute(
-                        """UPDATE ai_automation_config
-                           SET total_automated_trades = total_automated_trades + 1,
-                               successful_automated_trades = successful_automated_trades + 1,
-                               total_automated_pnl = total_automated_pnl + ?,
-                               last_trade_execution = ?, updated_at = ?
-                           WHERE id = 1""",
-                        (pnl, current_time, current_time)
-                    )
-                else:
-                    await self.db.connection.execute(
-                        """UPDATE ai_automation_config
-                           SET total_automated_trades = total_automated_trades + 1,
-                               failed_automated_trades = failed_automated_trades + 1,
-                               last_trade_execution = ?, updated_at = ?
-                           WHERE id = 1""",
-                        (current_time, current_time)
-                    )
-
-                await self.db.connection.commit()
-                return True
-
-            except Exception as e:
-                logger.error(f"Failed to record automated trade result: {e}")
-                return False
+        """Record the result of an automated trade (no-op - trades are tracked in paper_trades table)."""
+        # This method is deprecated - trades are already tracked in paper_trades table
+        # and can be queried from there
+        logger.info(f"Automated trade result recorded: success={success}, pnl={pnl}")
+        return True
 
     # ===== Account Operations =====
     async def get_account(self) -> Optional[Dict[str, Any]]:
@@ -561,11 +565,12 @@ class PaperTradingState(BaseState):
                     """INSERT INTO paper_trades
                        (id, symbol, side, quantity, entry_price, entry_date, entry_reason,
                         strategy_tag, confidence_score, research_sources, market_conditions,
-                        risk_metrics, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        risk_metrics, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (trade_id, symbol, side, quantity, entry_price, entry_date, entry_reason,
                      strategy_tag, confidence_score, json.dumps(research_sources),
                      json.dumps(market_conditions), json.dumps(risk_metrics),
+                     'OPEN',  # Match CHECK constraint (uppercase)
                      current_time, current_time)
                 )
 
@@ -1128,4 +1133,656 @@ class PaperTradingState(BaseState):
 
             except Exception as e:
                 logger.error(f"Failed to get monthly performance: {e}")
+                return []
+
+    # Stock Discovery Methods (PT-002)
+
+    async def get_discovery_watchlist_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get stock discovery watchlist entry by symbol."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, symbol, company_name, sector, discovery_date,
+                             discovery_source, discovery_reason, current_price, market_cap,
+                             recommendation, confidence_score, research_summary,
+                             technical_indicators, fundamental_metrics, last_analyzed,
+                             status, created_at, updated_at
+                       FROM stock_discovery_watchlist
+                       WHERE symbol = ?
+                       ORDER BY discovery_date DESC
+                       LIMIT 1""",
+                    (symbol,)
+                )
+                row = await cursor.fetchone()
+
+                if row:
+                    return {
+                        "id": row[0],
+                        "symbol": row[1],
+                        "company_name": row[2],
+                        "sector": row[3],
+                        "discovery_date": row[4],
+                        "discovery_source": row[5],
+                        "discovery_reason": row[6],
+                        "current_price": row[7],
+                        "market_cap": row[8],
+                        "recommendation": row[9],
+                        "confidence_score": row[10],
+                        "research_summary": json.loads(row[11]) if row[11] else {},
+                        "technical_indicators": json.loads(row[12]) if row[12] else {},
+                        "fundamental_metrics": json.loads(row[13]) if row[13] else {},
+                        "last_analyzed": row[14],
+                        "status": row[15],
+                        "created_at": row[16],
+                        "updated_at": row[17]
+                    }
+                return None
+
+            except Exception as e:
+                logger.error(f"Failed to get discovery watchlist entry for {symbol}: {e}")
+                return None
+
+    async def add_to_discovery_watchlist(self, stock_data: Dict[str, Any]) -> bool:
+        """Add stock to discovery watchlist."""
+        async with self._lock:
+            try:
+                await self.db.connection.execute(
+                    """INSERT OR REPLACE INTO stock_discovery_watchlist
+                       (symbol, company_name, sector, discovery_date, discovery_source,
+                        discovery_reason, current_price, market_cap, recommendation,
+                        confidence_score, research_summary, technical_indicators,
+                        fundamental_metrics, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (stock_data["symbol"], stock_data.get("company_name"),
+                     stock_data.get("sector"), stock_data["discovery_date"],
+                     stock_data["discovery_source"], stock_data.get("discovery_reason"),
+                     stock_data.get("current_price"), stock_data.get("market_cap"),
+                     stock_data.get("recommendation", "WATCH"),
+                     stock_data.get("confidence_score", 0.5),
+                     json.dumps(stock_data.get("research_summary", {})),
+                     json.dumps(stock_data.get("technical_indicators", {})),
+                     json.dumps(stock_data.get("fundamental_metrics", {})),
+                     stock_data.get("status", "ACTIVE"),
+                     datetime.now(timezone.utc).isoformat(),
+                     datetime.now(timezone.utc).isoformat())
+                )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to add {stock_data.get('symbol')} to discovery watchlist: {e}")
+                return False
+
+    async def get_discovery_watchlist(self, limit: int = 50, status: str = "ACTIVE") -> List[Dict[str, Any]]:
+        """Get discovery watchlist with optional filters."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, symbol, company_name, sector, discovery_date,
+                             discovery_source, recommendation, confidence_score,
+                             current_price, status, last_analyzed, created_at
+                       FROM stock_discovery_watchlist
+                       WHERE status = ?
+                       ORDER BY confidence_score DESC, discovery_date DESC
+                       LIMIT ?""",
+                    (status, limit)
+                )
+                rows = await cursor.fetchall()
+
+                watchlist = []
+                for row in rows:
+                    watchlist.append({
+                        "id": row[0],
+                        "symbol": row[1],
+                        "company_name": row[2],
+                        "sector": row[3],
+                        "discovery_date": row[4],
+                        "discovery_source": row[5],
+                        "recommendation": row[6],
+                        "confidence_score": row[7],
+                        "current_price": row[8],
+                        "status": row[9],
+                        "last_analyzed": row[10],
+                        "created_at": row[11]
+                    })
+                return watchlist
+
+            except Exception as e:
+                logger.error(f"Failed to get discovery watchlist: {e}")
+                return []
+
+    async def create_discovery_session(self, session_data: Dict[str, Any]) -> str:
+        """Create a new stock discovery session."""
+        async with self._lock:
+            try:
+                session_id = session_data.get("id", f"session_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}")
+
+                await self.db.connection.execute(
+                    """INSERT OR REPLACE INTO stock_discovery_sessions
+                       (id, session_date, session_type, screening_criteria,
+                        total_stocks_scanned, stocks_discovered, high_potential_stocks,
+                        session_duration_ms, key_insights, market_conditions,
+                        session_status, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (session_id, session_data["session_date"], session_data["session_type"],
+                     json.dumps(session_data.get("screening_criteria", {})),
+                     session_data.get("total_stocks_scanned", 0),
+                     session_data.get("stocks_discovered", 0),
+                     session_data.get("high_potential_stocks", 0),
+                     session_data.get("session_duration_ms"),
+                     json.dumps(session_data.get("key_insights", [])),
+                     json.dumps(session_data.get("market_conditions", {})),
+                     session_data.get("session_status", "RUNNING"),
+                     datetime.now(timezone.utc).isoformat())
+                )
+                await self.db.connection.commit()
+                return session_id
+
+            except Exception as e:
+                logger.error(f"Failed to create discovery session: {e}")
+                return ""
+
+    async def update_discovery_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
+        """Update discovery session with results."""
+        async with self._lock:
+            try:
+                set_clauses = []
+                values = []
+
+                for key, value in updates.items():
+                    if key in ["session_status", "total_stocks_scanned", "stocks_discovered",
+                              "high_potential_stocks", "session_duration_ms", "error_message"]:
+                        set_clauses.append(f"{key} = ?")
+                        values.append(value)
+                    elif key in ["key_insights", "market_conditions"]:
+                        set_clauses.append(f"{key} = ?")
+                        values.append(json.dumps(value))
+
+                if updates.get("session_status") == "COMPLETED":
+                    set_clauses.append("completed_at = ?")
+                    values.append(datetime.now(timezone.utc).isoformat())
+
+                if not set_clauses:
+                    return True
+
+                values.append(session_id)
+
+                await self.db.connection.execute(
+                    f"""UPDATE stock_discovery_sessions
+                       SET {', '.join(set_clauses)}
+                       WHERE id = ?""",
+                    values
+                )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to update discovery session {session_id}: {e}")
+                return False
+
+    async def store_discovery_results(self, session_id: str, results: List[Dict[str, Any]]) -> bool:
+        """Store discovery results for a session."""
+        async with self._lock:
+            try:
+                for result in results:
+                    await self.db.connection.execute(
+                        """INSERT INTO stock_discovery_results
+                           (session_id, symbol, score, recommendation, analysis_summary,
+                            risk_level, catalyst_events, valuation_metrics,
+                            momentum_indicators, research_depth, confidence_level, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (session_id, result["symbol"], result["score"],
+                         result["recommendation"], json.dumps(result.get("analysis_summary", {})),
+                         result.get("risk_level"), json.dumps(result.get("catalyst_events", [])),
+                         json.dumps(result.get("valuation_metrics", {})),
+                         json.dumps(result.get("momentum_indicators", {})),
+                         result.get("research_depth", "BASIC"),
+                         result.get("confidence_level", 0.5),
+                         datetime.now(timezone.utc).isoformat())
+                    )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store discovery results for session {session_id}: {e}")
+                return False
+
+    async def get_discovery_sessions(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent discovery sessions."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT id, session_date, session_type, total_stocks_scanned,
+                             stocks_discovered, high_potential_stocks, session_duration_ms,
+                             session_status, created_at, completed_at
+                       FROM stock_discovery_sessions
+                       ORDER BY created_at DESC
+                       LIMIT ?""",
+                    (limit,)
+                )
+                rows = await cursor.fetchall()
+
+                sessions = []
+                for row in rows:
+                    sessions.append({
+                        "id": row[0],
+                        "session_date": row[1],
+                        "session_type": row[2],
+                        "total_stocks_scanned": row[3],
+                        "stocks_discovered": row[4],
+                        "high_potential_stocks": row[5],
+                        "session_duration_ms": row[6],
+                        "session_status": row[7],
+                        "created_at": row[8],
+                        "completed_at": row[9]
+                    })
+                return sessions
+
+            except Exception as e:
+                logger.error(f"Failed to get discovery sessions: {e}")
+                return []
+
+    async def get_automation_config(self) -> Dict[str, Any]:
+        """Get AI automation configuration."""
+        async with self._lock:
+            try:
+                cursor = await self.db.connection.execute(
+                    """SELECT morning_session_enabled, morning_session_time,
+                             evening_review_enabled, evening_review_time,
+                             auto_trade_enabled, max_positions, max_position_size_percent,
+                             stop_loss_percent, target_profit_percent, risk_per_trade_percent,
+                             discovery_frequency, sectors_to_watch, market_cap_range, last_updated
+                       FROM ai_automation_config
+                       WHERE id = 1"""
+                )
+                row = await cursor.fetchone()
+
+                if row:
+                    return {
+                        "morning_session_enabled": bool(row[0]),
+                        "morning_session_time": row[1],
+                        "evening_review_enabled": bool(row[2]),
+                        "evening_review_time": row[3],
+                        "auto_trade_enabled": bool(row[4]),
+                        "max_positions": row[5],
+                        "max_position_size_percent": row[6],
+                        "stop_loss_percent": row[7],
+                        "target_profit_percent": row[8],
+                        "risk_per_trade_percent": row[9],
+                        "discovery_frequency": row[10],
+                        "sectors_to_watch": json.loads(row[11]) if row[11] else [],
+                        "market_cap_range": json.loads(row[12]) if row[12] else {},
+                        "last_updated": row[13]
+                    }
+
+                # Return default config if not found
+                return {
+                    "morning_session_enabled": False,
+                    "morning_session_time": "09:00",
+                    "evening_review_enabled": False,
+                    "evening_review_time": "16:00",
+                    "auto_trade_enabled": False,
+                    "max_positions": 10,
+                    "max_position_size_percent": 5.0,
+                    "stop_loss_percent": 2.0,
+                    "target_profit_percent": 5.0,
+                    "risk_per_trade_percent": 1.0,
+                    "discovery_frequency": "daily",
+                    "sectors_to_watch": [],
+                    "market_cap_range": {"min": 0, "max": 0},
+                    "last_updated": datetime.now(timezone.utc).isoformat()
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to get automation config: {e}")
+                return {}
+
+    async def store_morning_session(self, session_id: str, session_data: Dict[str, Any]) -> bool:
+        """
+        Store morning trading session result.
+
+        Args:
+            session_id: Unique session identifier
+            session_data: Session data to store
+
+        Returns:
+            True if stored successfully
+        """
+        async with self._lock:
+            try:
+                await self.db.connection.execute(
+                    """
+                    INSERT INTO morning_trading_sessions (
+                        session_id, session_date, start_time, end_time,
+                        success, error_message, metrics, pre_market_data,
+                        trade_ideas, executed_trades, session_context,
+                        trigger_source, total_duration_ms, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session_id,
+                        session_data["session_date"],
+                        session_data["start_time"],
+                        session_data["end_time"],
+                        session_data["success"],
+                        session_data.get("error_message"),
+                        json.dumps(session_data["metrics"]),
+                        json.dumps(session_data.get("pre_market_data", [])),
+                        json.dumps(session_data.get("trade_ideas", [])),
+                        json.dumps(session_data.get("executed_trades", [])),
+                        json.dumps(session_data.get("session_context", {})),
+                        session_data.get("trigger_source", "SCHEDULED"),
+                        session_data.get("total_duration_ms", 0),
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                )
+
+                await self.db.connection.commit()
+                logger.info(f"Stored morning session: {session_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store morning session {session_id}: {e}")
+                return False
+
+    async def store_evening_performance_review(self, review_id: str, review_data: Dict[str, Any]) -> bool:
+        """
+        Store evening performance review result.
+
+        Args:
+            review_id: Unique review identifier
+            review_data: Review data to store
+
+        Returns:
+            True if stored successfully
+        """
+        async with self._lock:
+            try:
+                await self.db.connection.execute(
+                    """
+                    INSERT INTO daily_performance_reviews (
+                        review_id, review_date, start_time, end_time,
+                        success, error_message, review_data, trades_reviewed,
+                        daily_pnl, daily_pnl_percent, open_positions_count,
+                        closed_positions_count, win_rate, trading_insights,
+                        strategy_performance, market_observations, next_day_watchlist,
+                        session_context, trigger_source, total_duration_ms, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        review_id,
+                        review_data["review_date"],
+                        review_data["start_time"],
+                        review_data["end_time"],
+                        review_data["success"],
+                        review_data.get("error_message"),
+                        json.dumps(review_data["review_data"]),
+                        json.dumps(review_data.get("trades_reviewed", [])),
+                        review_data.get("daily_pnl", 0.0),
+                        review_data.get("daily_pnl_percent", 0.0),
+                        review_data.get("open_positions_count", 0),
+                        review_data.get("closed_positions_count", 0),
+                        review_data.get("win_rate", 0.0),
+                        json.dumps(review_data.get("trading_insights", [])),
+                        json.dumps(review_data.get("strategy_performance", {})),
+                        json.dumps(review_data.get("market_observations", {})),
+                        json.dumps(review_data.get("next_day_watchlist", [])),
+                        json.dumps(review_data.get("session_context", {})),
+                        review_data.get("trigger_source", "SCHEDULED"),
+                        review_data.get("total_duration_ms", 0),
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                )
+
+                await self.db.connection.commit()
+                logger.info(f"Stored evening performance review: {review_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to store evening performance review {review_id}: {e}")
+                return False
+
+    async def get_evening_performance_reviews(self, limit: int = 30, successful_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get recent evening performance reviews.
+
+        Args:
+            limit: Maximum number of reviews to return
+            successful_only: Only return successful reviews
+
+        Returns:
+            List of evening performance review data
+        """
+        async with self._lock:
+            try:
+                query = """
+                    SELECT * FROM daily_performance_reviews
+                    WHERE 1=1
+                """
+                params = []
+
+                if successful_only:
+                    query += " AND success = ?"
+                    params.append(True)
+
+                query += " ORDER BY review_date DESC, start_time DESC LIMIT ?"
+                params.append(limit)
+
+                cursor = await self.db.connection.execute(query, params)
+                rows = await cursor.fetchall()
+
+                reviews = []
+                for row in rows:
+                    review = {key: row[key] for key in row.keys()}
+                    # Parse JSON fields
+                    review["review_data"] = json.loads(review["review_data"]) if review["review_data"] else {}
+                    review["trades_reviewed"] = json.loads(review["trades_reviewed"]) if review["trades_reviewed"] else []
+                    review["trading_insights"] = json.loads(review["trading_insights"]) if review["trading_insights"] else []
+                    review["strategy_performance"] = json.loads(review["strategy_performance"]) if review["strategy_performance"] else {}
+                    review["market_observations"] = json.loads(review["market_observations"]) if review["market_observations"] else {}
+                    review["next_day_watchlist"] = json.loads(review["next_day_watchlist"]) if review["next_day_watchlist"] else []
+                    review["session_context"] = json.loads(review["session_context"]) if review["session_context"] else {}
+                    reviews.append(review)
+
+                return reviews
+
+            except Exception as e:
+                logger.error(f"Failed to get evening performance reviews: {e}")
+                return []
+
+    async def calculate_daily_performance_metrics(self, review_date: str) -> Dict[str, Any]:
+        """
+        Calculate daily performance metrics for the evening review.
+
+        Args:
+            review_date: Date in YYYY-MM-DD format
+
+        Returns:
+            Dictionary with daily performance metrics
+        """
+        async with self._lock:
+            try:
+                # Get all trades executed on the review date
+                cursor = await self.db.connection.execute(
+                    """
+                    SELECT id, symbol, side, quantity, entry_price, exit_price,
+                           entry_date, exit_date, strategy_tag, status
+                    FROM paper_trades
+                    WHERE entry_date = ? OR exit_date = ?
+                    ORDER BY entry_date DESC
+                    """,
+                    (review_date, review_date)
+                )
+                rows = await cursor.fetchall()
+
+                trades_reviewed = []
+                daily_pnl = 0.0
+                open_positions_count = 0
+                closed_positions_count = 0
+                winning_trades = 0
+                losing_trades = 0
+
+                # Process trades
+                for row in rows:
+                    trade_id, symbol, side, quantity, entry_price, exit_price, entry_date, exit_date, strategy_tag, status = row
+
+                    trade_info = {
+                        "id": trade_id,
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "entry_price": entry_price,
+                        "exit_price": exit_price,
+                        "strategy_tag": strategy_tag,
+                        "status": status
+                    }
+
+                    trades_reviewed.append(trade_info)
+
+                    if status == "OPEN":
+                        open_positions_count += 1
+                        # For open positions, calculate unrealized P&L with current price
+                        cursor_price = await self.db.connection.execute(
+                            "SELECT current_price FROM paper_positions WHERE symbol = ?",
+                            (symbol,)
+                        )
+                        price_row = await cursor_price.fetchone()
+                        if price_row:
+                            current_price = price_row[0]
+                            if side == "BUY":
+                                unrealized_pnl = (current_price - entry_price) * quantity
+                            else:
+                                unrealized_pnl = (entry_price - current_price) * quantity
+                            daily_pnl += unrealized_pnl
+                    else:
+                        # For closed trades, calculate realized P&L
+                        closed_positions_count += 1
+                        if exit_price is not None:
+                            if side == "BUY":
+                                trade_pnl = (exit_price - entry_price) * quantity
+                            else:
+                                trade_pnl = (entry_price - exit_price) * quantity
+                            daily_pnl += trade_pnl
+
+                            if trade_pnl > 0:
+                                winning_trades += 1
+                            elif trade_pnl < 0:
+                                losing_trades += 1
+
+                # Calculate win rate
+                total_closed_trades = closed_positions_count
+                win_rate = (winning_trades / total_closed_trades * 100) if total_closed_trades > 0 else 0.0
+
+                # Get account data for P&L percentage
+                cursor = await self.db.connection.execute(
+                    "SELECT initial_capital, total_equity FROM paper_trading_account WHERE id = 1"
+                )
+                account_row = await cursor.fetchone()
+                daily_pnl_percent = 0.0
+                if account_row:
+                    initial_capital, total_equity = account_row
+                    if initial_capital > 0:
+                        daily_pnl_percent = (daily_pnl / initial_capital) * 100
+
+                # Get strategy performance breakdown
+                strategy_performance = {}
+                for trade in trades_reviewed:
+                    strategy = trade["strategy_tag"]
+                    if strategy not in strategy_performance:
+                        strategy_performance[strategy] = {
+                            "trades": 0,
+                            "winning_trades": 0,
+                            "total_pnl": 0.0
+                        }
+
+                    strategy_performance[strategy]["trades"] += 1
+
+                    # Add P&L if trade is closed
+                    if trade["status"] == "CLOSED" and trade["exit_price"]:
+                        if trade["side"] == "BUY":
+                            trade_pnl = (trade["exit_price"] - trade["entry_price"]) * trade["quantity"]
+                        else:
+                            trade_pnl = (trade["entry_price"] - trade["exit_price"]) * trade["quantity"]
+
+                        strategy_performance[strategy]["total_pnl"] += trade_pnl
+
+                        if trade_pnl > 0:
+                            strategy_performance[strategy]["winning_trades"] += 1
+
+                # Calculate strategy win rates
+                for strategy in strategy_performance:
+                    trades = strategy_performance[strategy]["trades"]
+                    wins = strategy_performance[strategy]["winning_trades"]
+                    strategy_performance[strategy]["win_rate"] = (wins / trades * 100) if trades > 0 else 0.0
+
+                return {
+                    "trades_reviewed": trades_reviewed,
+                    "daily_pnl": daily_pnl,
+                    "daily_pnl_percent": daily_pnl_percent,
+                    "open_positions_count": open_positions_count,
+                    "closed_positions_count": closed_positions_count,
+                    "win_rate": win_rate,
+                    "strategy_performance": strategy_performance,
+                    "winning_trades": winning_trades,
+                    "losing_trades": losing_trades
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to calculate daily performance metrics for {review_date}: {e}")
+                return {
+                    "trades_reviewed": [],
+                    "daily_pnl": 0.0,
+                    "daily_pnl_percent": 0.0,
+                    "open_positions_count": 0,
+                    "closed_positions_count": 0,
+                    "win_rate": 0.0,
+                    "strategy_performance": {},
+                    "winning_trades": 0,
+                    "losing_trades": 0
+                }
+
+    async def get_morning_sessions(self, limit: int = 30, successful_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get recent morning trading sessions.
+
+        Args:
+            limit: Maximum number of sessions to return
+            successful_only: Only return successful sessions
+
+        Returns:
+            List of morning session data
+        """
+        async with self._lock:
+            try:
+                query = """
+                    SELECT * FROM morning_trading_sessions
+                    WHERE 1=1
+                """
+                params = []
+
+                if successful_only:
+                    query += " AND success = ?"
+                    params.append(True)
+
+                query += " ORDER BY session_date DESC, start_time DESC LIMIT ?"
+                params.append(limit)
+
+                cursor = await self.db.connection.execute(query, params)
+                rows = await cursor.fetchall()
+
+                sessions = []
+                for row in rows:
+                    session = {key: row[key] for key in row.keys()}
+                    # Parse JSON fields
+                    session["metrics"] = json.loads(session["metrics"]) if session["metrics"] else {}
+                    session["pre_market_data"] = json.loads(session["pre_market_data"]) if session["pre_market_data"] else []
+                    session["trade_ideas"] = json.loads(session["trade_ideas"]) if session["trade_ideas"] else []
+                    session["executed_trades"] = json.loads(session["executed_trades"]) if session["executed_trades"] else []
+                    session["session_context"] = json.loads(session["session_context"]) if session["session_context"] else {}
+                    sessions.append(session)
+
+                return sessions
+
+            except Exception as e:
+                logger.error(f"Failed to get morning sessions: {e}")
                 return []

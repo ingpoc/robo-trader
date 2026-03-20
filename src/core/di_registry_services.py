@@ -8,19 +8,23 @@ Handles registration of business logic services:
 - Event routing and feature management
 """
 
-import logging
+from loguru import logger
 from src.services.portfolio_service import PortfolioService
 from src.services.risk_service import RiskService
 from src.services.execution_service import ExecutionService
 from src.services.analytics_service import AnalyticsService
 from src.services.learning_service import LearningService
 from src.services.strategy_evolution_engine import StrategyEvolutionEngine
+from src.models.market_data import MarketDataProvider
 from src.services.market_data_service import MarketDataService
+from src.services.quote_stream_adapter import NullQuoteStreamAdapter, UpstoxQuoteStreamAdapter
+from src.services.trading_capability_service import TradingCapabilityService
 from src.services.feature_management.service import FeatureManagementService
 from src.services.event_router_service import EventRouterService
 from src.services.token_refresh_manager import TokenRefreshManager
+# from src.services.manual_override_service import ManualOverrideService
 
-logger = logging.getLogger(__name__)
+# Using loguru logger imported at top
 
 
 async def register_domain_services(container: 'DependencyContainer') -> None:
@@ -62,14 +66,49 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("analytics_service", create_analytics_service)
 
+    async def create_quote_stream_adapter():
+        provider = (container.config.integration.quote_stream_provider or "upstox").strip().lower()
+        async def _discard_quote_update(_market_data):
+            return None
+
+        if provider == MarketDataProvider.UPSTOX.value:
+            return UpstoxQuoteStreamAdapter(container.config, on_quote_update=_discard_quote_update)
+        if provider in {"none", "", "disabled"}:
+            return NullQuoteStreamAdapter("QUOTE_STREAM_PROVIDER is disabled for this runtime.")
+        logger.warning("Unknown quote stream provider '%s'; paper-mode live marks will stay unavailable", provider)
+        return NullQuoteStreamAdapter(f"Unsupported quote stream provider '{provider}'.")
+
+    container._register_singleton("quote_stream_adapter", create_quote_stream_adapter)
+
     # Market Data Service (real-time price tracking)
     async def create_market_data_service():
         event_bus = await container.get("event_bus")
-        market_data_service = MarketDataService(container.config, event_bus, broker=None)
+        broker = await container.get("kite_connect_service")
+        provider_value = (container.config.integration.quote_stream_provider or "upstox").strip().lower()
+        try:
+            default_provider = MarketDataProvider(provider_value)
+        except ValueError:
+            default_provider = MarketDataProvider.UPSTOX
+
+        market_data_service = MarketDataService(
+            container.config,
+            event_bus,
+            broker=broker,
+            default_provider=default_provider,
+        )
+        quote_stream_adapter = await container.get("quote_stream_adapter")
+        quote_stream_adapter.set_quote_update_callback(market_data_service._update_market_data)
+        market_data_service.quote_stream_adapter = quote_stream_adapter
         await market_data_service.initialize()
         return market_data_service
 
     container._register_singleton("market_data_service", create_market_data_service)
+
+    # Trading Capability Service
+    async def create_trading_capability_service():
+        return TradingCapabilityService(container)
+
+    container._register_singleton("trading_capability_service", create_trading_capability_service)
 
     # Learning Service
     async def create_learning_service():
@@ -184,3 +223,104 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
         return claude_agent_service
 
     container._register_singleton("claude_agent_service", create_claude_agent_service)
+
+    # Manual Override Service
+    # async def create_manual_override_service():
+    #     event_bus = await container.get("event_bus")
+    #     config_state = await container.get("configuration_state")
+    #     manual_override_service = ManualOverrideService(config_state, event_bus)
+    #     return manual_override_service
+
+    # container._register_singleton("manual_override_service", create_manual_override_service)
+
+    # Perplexity Service (AI research for stock discovery and analysis)
+    async def create_perplexity_service():
+        """Create PerplexityClient with API keys from config.integration."""
+        try:
+            from src.core.perplexity_client import PerplexityClient
+
+            # Get API keys from config.integration (loaded from env vars)
+            api_keys = container.config.integration.perplexity_api_keys
+
+            if not api_keys:
+                logger.error("No Perplexity API keys - set PERPLEXITY_API_KEY_1 in env")
+                raise ValueError("PERPLEXITY_API_KEY_1 required for PT-003")
+
+            perplexity_service = PerplexityClient(api_keys=api_keys)
+            logger.info(f"PerplexityClient initialized with {len(api_keys)} API key(s)")
+            return perplexity_service
+
+        except Exception as e:
+            logger.error(f"PerplexityClient failed: {e}")
+            raise
+
+    container._register_singleton("perplexity_service", create_perplexity_service)
+
+    # Kite Connect Service (market data and trading)
+    async def create_kite_connect_service():
+        """Create KiteConnectService with credentials from config.integration."""
+        try:
+            from src.services.kite_connect_service import KiteConnectService, KiteCredentials
+
+            # Get credentials from config.integration (loaded from env vars)
+            api_key = container.config.integration.zerodha_api_key
+            api_secret = container.config.integration.zerodha_api_secret
+            access_token = container.config.integration.zerodha_access_token
+
+            # DEBUG: Log credential values (masked)
+            logger.info(f"[KiteConnect Factory] api_key: {api_key[:4] if api_key else 'None'}***")
+            logger.info(f"[KiteConnect Factory] api_secret: {api_secret[:4] if api_secret else 'None'}***")
+            logger.info(f"[KiteConnect Factory] access_token: {access_token[:10] if access_token else 'None'}***")
+
+            if not api_key or not api_secret:
+                logger.warning("No Zerodha credentials in environment - market data capability will remain unavailable")
+                return None
+
+            real_time_state = await container.get("real_time_trading_state")
+
+            credentials = KiteCredentials(
+                api_key=api_key,
+                api_secret=api_secret
+            )
+
+            kite_service = KiteConnectService(
+                config=container.config,
+                real_time_state=real_time_state
+            )
+            await kite_service.initialize(credentials)
+
+            # If access_token is available in env, use it directly (skip OAuth for paper trading)
+            if access_token:
+                logger.info(f"Using ZERODHA_ACCESS_TOKEN from environment for market data")
+                await kite_service._set_access_token(access_token)
+
+            logger.info(f"KiteConnectService initialized with API key: {api_key[:4]}***")
+            return kite_service
+
+        except Exception as e:
+            logger.warning(f"KiteConnectService failed to initialize: {e} - market data capability is unavailable")
+            return None
+
+    container._register_singleton("kite_connect_service", create_kite_connect_service)
+
+    # Autonomous Trading Safeguards (risk limits and circuit breakers)
+    async def create_autonomous_trading_safeguards():
+        """Create AutonomousTradingSafeguards for paper trading risk management."""
+        try:
+            from src.services.autonomous_trading_safeguards import AutonomousTradingSafeguards
+
+            config_state = await container.get("configuration_state")
+            event_bus = await container.get("event_bus")
+
+            safeguards = AutonomousTradingSafeguards(
+                config_state=config_state,
+                event_bus=event_bus
+            )
+            logger.info("AutonomousTradingSafeguards initialized")
+            return safeguards
+
+        except Exception as e:
+            logger.error(f"AutonomousTradingSafeguards failed: {e}")
+            raise
+
+    container._register_singleton("autonomous_trading_safeguards", create_autonomous_trading_safeguards)

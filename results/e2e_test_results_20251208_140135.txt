@@ -1,0 +1,11 @@
+====== ROBO TRADER COMPREHENSIVE END-TO-END TESTING ======
+Execution Date: Mon Dec  8 14:01:35 IST 2025
+Backend URL: http://localhost:8000
+Test Report: results/e2e_test_results_20251208_140135.txt
+
+
+================================================================================================
+PART 0: PRE-FLIGHT CHECKS
+================================================================================================
+
+Checking backend health...

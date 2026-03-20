@@ -1,5 +1,9 @@
 # Agents - src/agents/
 
+**Context**: Agent SDK bot agents that run autonomously for trading analysis.
+Claude Code reviews logs and fixes bugs in agent implementation.
+Claude Code does NOT invoke agents directly or implement trading logic.
+
 Specialized trading experts (multi-agent framework). Max 350 lines per agent file.
 
 ## Agent Pattern

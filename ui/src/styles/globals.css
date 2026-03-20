@@ -85,13 +85,29 @@
   }
 
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
+    color-scheme: light;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-size: 1rem;
     line-height: 1.5;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at top left, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 28rem),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(245, 243, 240, 0.92));
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  ::selection {
+    background: rgba(184, 115, 51, 0.18);
+    color: rgb(var(--foreground));
   }
 
   /* Elegant typography */
@@ -403,13 +419,13 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--background));
+  background: rgb(var(--background));
 }
 
 ::-webkit-scrollbar-thumb {
   background: rgb(184 172 160);
   border-radius: 3px;
-  box-shadow: 0 0 0 1px hsl(var(--background));
+  box-shadow: 0 0 0 1px rgb(var(--background));
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -429,19 +445,35 @@
    =================================================================== */
 
 .page-wrapper {
-  @apply flex flex-col gap-6 p-4 lg:p-6 overflow-auto min-h-screen bg-warmgray-50 dark:bg-warmgray-900;
+  @apply flex min-h-screen flex-col gap-6 overflow-auto bg-transparent p-4 lg:p-6;
 }
 
 .page-header {
-  @apply flex flex-col gap-4;
+  @apply flex flex-col gap-4 rounded-2xl border border-border/80 bg-card/85 p-6 shadow-sm backdrop-blur-sm;
 }
 
 .page-title {
-  @apply text-4xl lg:text-5xl font-bold text-warmgray-900 dark:text-warmgray-100 font-serif;
+  @apply font-serif text-4xl font-bold tracking-tight text-foreground lg:text-5xl;
 }
 
 .page-subtitle {
-  @apply text-lg text-warmgray-600 dark:text-warmgray-400 mt-2;
+  @apply mt-2 text-base text-muted-foreground lg:text-lg;
+}
+
+.page-grid {
+  @apply grid gap-4 md:grid-cols-2 xl:grid-cols-4;
+}
+
+.surface-panel {
+  @apply rounded-2xl border border-border/80 bg-card/90 shadow-sm backdrop-blur-sm;
+}
+
+.surface-panel-muted {
+  @apply rounded-2xl border border-border/70 bg-muted/35 shadow-sm;
+}
+
+.section-stack {
+  @apply flex flex-col gap-4;
 }
 
 /* ===================================================================

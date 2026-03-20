@@ -8,35 +8,37 @@ import { AIInsights } from '@/components/Dashboard/AIInsights'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { ArrowRight } from 'lucide-react'
+import type { AIStatus } from '@/types/api'
 
 export interface AIInsightsSummaryProps {
   onNavigate?: (path: string) => void
+  status?: AIStatus
 }
 
-export const AIInsightsSummary: React.FC<AIInsightsSummaryProps> = ({ onNavigate }) => {
+export const AIInsightsSummary: React.FC<AIInsightsSummaryProps> = ({ onNavigate, status }) => {
   return (
-    <div className="space-y-6 animate-slide-in-up-luxury">
-      <div style={{ animationDelay: '100ms' }} className="animate-slide-in-up-luxury">
-        <AIInsights status="operational" />
+    <div className="space-y-6">
+      <div>
+        <AIInsights status={status} />
       </div>
-      <div style={{ animationDelay: '200ms' }} className="animate-slide-in-up-luxury">
-        <Card className="border-l-4 border-l-copper-500/40 dark:border-l-copper-500/30 hover:shadow-md transition-all duration-300 backdrop-blur-sm">
+      <div>
+        <Card className="border-border bg-card shadow-sm">
           <CardContent className="pt-8 pb-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-warmgray-900 dark:text-warmgray-100 mb-2">
+                <h3 className="mb-2 text-lg font-semibold text-card-foreground">
                   AI Trading Intelligence
                 </h3>
-                <p className="text-sm text-warmgray-600 dark:text-warmgray-400">
-                  Explore detailed AI agent performance metrics and trading recommendations
+                <p className="text-sm text-muted-foreground">
+                  Inspect current agent activity, decision context, and execution blockers inside the paper-trading workflow.
                 </p>
               </div>
               <Button
-                variant="primary"
-                onClick={() => onNavigate?.('/ai-transparency')}
-                className="whitespace-nowrap font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-copper-500/20"
+                variant="outline"
+                onClick={() => onNavigate?.('/paper-trading')}
+                className="whitespace-nowrap font-semibold"
               >
-                View AI Details
+                Open Paper Trading Review
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </div>

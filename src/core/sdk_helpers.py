@@ -110,6 +110,31 @@ async def query_with_timeout(
             if hasattr(message, 'subtype') and message.subtype == 'init':
                 continue
 
+            # Check for ResultMessage with errors
+            if hasattr(message, 'subtype') and message.subtype == 'success' and hasattr(message, 'is_error') and message.is_error:
+                # Extract error details from ResultMessage
+                error_msg = "Claude SDK session ended with error"
+
+                # Log all attributes to understand error structure
+                msg_attrs = {attr: getattr(message, attr) for attr in dir(message) if not attr.startswith('_')}
+                logger.error(f"SDK ResultMessage error detected. Attributes: {msg_attrs}")
+
+                # Try different error attribute names
+                if hasattr(message, 'error_message'):
+                    error_msg = message.error_message
+                elif hasattr(message, 'error'):
+                    error_msg = str(message.error)
+                elif hasattr(message, 'stderr_lines') and message.stderr_lines:
+                    error_msg = "\n".join(message.stderr_lines)
+
+                logger.error(f"SDK error message: {error_msg}")
+                raise TradingError(
+                    f"Claude SDK error: {error_msg}",
+                    category=ErrorCategory.SYSTEM,
+                    severity=ErrorSeverity.HIGH,
+                    recoverable=True
+                )
+
             if hasattr(message, 'content'):
                 for content_block in message.content:
                     if hasattr(content_block, 'text'):
@@ -123,8 +148,8 @@ async def query_with_timeout(
                 else:
                     response_parts.append(str(message.data))
             else:
-                # Only add non-system messages
-                if not (hasattr(message, 'subtype') and message.subtype == 'init'):
+                # Skip result messages that don't have content
+                if not hasattr(message, 'subtype') or message.subtype != 'success':
                     response_parts.append(str(message))
 
         return "\n".join(response_parts) if response_parts else "No response content received"

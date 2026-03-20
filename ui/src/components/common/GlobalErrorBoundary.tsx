@@ -1,5 +1,4 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
-import { logsAPI } from '@/api/endpoints'
 
 interface Props {
   children: ReactNode
@@ -21,19 +20,6 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error to backend
-    logsAPI.logError({
-      level: 'error',
-      message: error.message,
-      context: {
-        componentStack: errorInfo.componentStack,
-        errorBoundary: 'GlobalErrorBoundary',
-      },
-      stack_trace: error.stack,
-    }).catch(logError => {
-      console.error('Failed to log error to backend:', logError)
-    })
-
     console.error('Global error caught:', error, errorInfo)
   }
 
@@ -50,7 +36,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
             </div>
 
             <p className="text-warmgray-600 mb-4">
-              An unexpected error occurred. The error has been logged and our team has been notified.
+              An unexpected error occurred in the operator console. Reload the page or return to the previous state.
             </p>
 
             <div className="text-sm text-warmgray-500 mb-4">

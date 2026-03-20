@@ -1,88 +1,40 @@
-# Robo Trader Documentation
+# Robo Trader Docs
 
-This directory contains all documentation for the Robo Trader project. AI agents should reference these documents to understand system architecture, development workflows, and implementation guidelines.
+This directory holds the repo-local operating contract for Robo Trader.
 
-## System Overview
+## Product Reality
 
-Robo Trader is a Claude AI-powered paper trading system that enables autonomous trade execution via the Claude Agent SDK. The system features a multi-agent architecture with risk management, strategy learning, and performance tracking.
+Robo Trader is a paper-trading-first swing-trading operator console. The current product is centered on:
 
-## Essential Documentation for AI Agents
+- paper-trading execution truth
+- operator-visible capabilities and blockers
+- Claude-assisted research, decision support, and review
+- system-health and configuration surfaces that serve the paper-trading loop
 
-### Core Documentation
+It is not a generic multi-agent platform and it does not make an active claim of production-ready live trading.
 
-- **[ROBOTRADER_USECASE.md](ROBOTRADER_USECASE.md)** - **Complete use case and functionality overview** ⭐ Start here
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture, components, and design patterns
-- **[ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md)** - Comprehensive architecture analysis and breakdown
-- **[CLAUDE_SDK_SETUP_GUIDE.md](CLAUDE_SDK_SETUP_GUIDE.md)** - Complete guide to Claude SDK setup and usage
-- **[CLAUDE_SDK_BEST_PRACTICES_REVIEW.md](CLAUDE_SDK_BEST_PRACTICES_REVIEW.md)** - Best practices review and optimization recommendations ⭐
-- **[CLAUDE_SDK_IMPLEMENTATION_SUMMARY.md](CLAUDE_SDK_IMPLEMENTATION_SUMMARY.md)** - Implementation summary of SDK optimizations ⭐
-- **[API.md](API.md)** - API reference documentation with all endpoints and examples
+## Start Here
 
-### Development Documentation
+- [Mission](reference/MISSION.md)
+- [Repo Scope](reference/REPO-SCOPE.md)
+- [Roadmap](../ROADMAP.md)
+- [Mission-Cut ADR](adrs/0001-mission-cut-paper-trading-core.md)
 
-- **[ASYNC_PATTERNS_CHEATSHEET.md](ASYNC_PATTERNS_CHEATSHEET.md)** - Quick reference for async/await patterns
-- **[UI-workflow.md](UI-workflow.md)** - Full-stack development workflow guidelines
+## Workflow Docs
 
-### Implementation Documentation
+- [Repo Governance](workflow/repo-governance.md)
+- [Research Validation Loop](workflow/research-validation-loop.md)
+- [Browser Testing Control Plane](workflow/browser-testing-control-plane.md)
+- [Git Governance Control Plane](workflow/git-governance-control-plane.md)
+- [Linear Issue Control Plane](workflow/linear-issue-control-plane.md)
+- [Notion Memory Control Plane](workflow/notion-memory-control-plane.md)
+- [MCP/Auth Bootstrap](workflow/mcp-auth-bootstrap.md)
 
-- **[QUICKSTART.md](QUICKSTART.md)** - Quick start guide for the UI
-- **[ZERODHA_OAUTH_SETUP.md](ZERODHA_OAUTH_SETUP.md)** - Zerodha OAuth integration setup guide
-- **[KITE_CONNECT_INTEGRATION_SUMMARY.md](KITE_CONNECT_INTEGRATION_SUMMARY.md)** - Kite Connect API integration implementation summary
-- **[security.md](security.md)** - Security guidelines and best practices
+## Supporting Docs
 
-### Historical Documentation
+- [Quickstart](QUICKSTART.md)
+- [Zerodha OAuth Setup](ZERODHA_OAUTH_SETUP.md)
+- [Claude SDK Setup Guide](CLAUDE_SDK_SETUP_GUIDE.md)
+- [Security](security.md)
 
-- **[CRITICAL_ISSUES_FIXES.md](CRITICAL_ISSUES_FIXES.md)** - Historical record of critical issues and fixes (Jan 2025)
-
-## System Components
-
-| Component | Purpose | Implementation |
-|-----------|---------|----------------|
-| **Core Layer** | Infrastructure, service coordination, event management | `src/core/` |
-| **Services** | Business logic for trading, analysis, risk management | `src/services/` |
-| **Agents** | Multi-agent coordination for trading operations | `src/agents/` |
-| **Web UI** | React-based frontend with real-time updates | `ui/` |
-
-## Key Architectural Patterns
-
-- **Coordinator Pattern**: Thin facade delegating to focused coordinators
-- **Event-Driven Architecture**: Internal event bus for loose coupling
-- **Dependency Injection**: Centralized service lifecycle management
-- **SDK-Only Architecture**: Claude Agent SDK for all AI functionality
-
-## Common Implementation Tasks for AI Agents
-
-### Adding New Features
-1. Review **[ARCHITECTURE.md](ARCHITECTURE.md)** for component responsibilities
-2. Follow **[UI-workflow.md](UI-workflow.md)** for development process
-3. Use **[ASYNC_PATTERNS_CHEATSHEET.md](ASYNC_PATTERNS_CHEATSHEET.md)** for async implementation
-
-### Claude SDK Integration
-1. Reference **[CLAUDE_SDK_SETUP_GUIDE.md](CLAUDE_SDK_SETUP_GUIDE.md)** for authentication
-2. Check **[API.md](API.md)** for existing tools and endpoints
-
-### Security Implementation
-1. Always review **[security.md](security.md)** before implementation
-2. Ensure API keys are only stored in environment variables
-3. Verify error handling doesn't expose sensitive information
-
-## Getting Started
-
-1. Review the system overview in **[ARCHITECTURE.md](ARCHITECTURE.md)**
-2. Follow **[CLAUDE_SDK_SETUP_GUIDE.md](CLAUDE_SDK_SETUP_GUIDE.md)** to set up authentication
-3. Check the **[QUICKSTART.md](QUICKSTART.md)** to get the UI running
-4. Read **[UI-workflow.md](UI-workflow.md)** for full-stack development guidelines
-
-## Additional Resources
-
-- **Project Memory**: `[ROOT]/CLAUDE.md` - Permanent development rules and patterns
-- **Main Documentation**: `[ROOT]/README.md` - Comprehensive project overview
-
-## Implementation Guidelines for AI Agents
-
-1. **Always follow security best practices** outlined in security.md
-2. **Use async patterns** as documented in ASYNC_PATTERNS_CHEATSHEET.md
-3. **Leverage Claude SDK** for all AI functionality as per CLAUDE_SDK_SETUP_GUIDE.md
-4. **Follow the coordinator pattern** for service orchestration as per ARCHITECTURE.md
-5. **Implement comprehensive testing** for all new features as per UI-workflow.md
-
+Use older architecture and historical notes only if they still match the active routed product. If a document describes removed product surfaces or legacy route families, treat it as historical until it is refreshed or superseded.

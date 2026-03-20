@@ -2,10 +2,9 @@
 
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends
-from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

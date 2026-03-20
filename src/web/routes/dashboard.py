@@ -2,8 +2,9 @@
 
 import logging
 import os
-from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict
+
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -11,6 +12,13 @@ from slowapi.util import get_remote_address
 
 from src.core.di import DependencyContainer
 from src.core.errors import TradingError
+from src.models.trading_capabilities import TradingCapabilitySnapshot
+from src.web.routes.analytics import (
+    _build_active_alerts,
+    _build_performance_payload,
+    _collect_closed_trades,
+    _collect_open_positions,
+)
 from ..dependencies import get_container
 from ..utils.error_handlers import (
     handle_trading_error,
@@ -115,72 +123,202 @@ def _calculate_strategy_metrics(
     }
 
 
+def _empty_dashboard_payload(capability_snapshot: TradingCapabilitySnapshot) -> Dict[str, Any]:
+    """Return an empty but truthful operator payload."""
+    snapshot = capability_snapshot.to_dict()
+    return {
+        "portfolio": {
+            "holdings": [],
+            "cash": {"free": 0.0, "used": 0.0, "total": 0.0},
+            "exposure_total": 0.0,
+            "summary": {
+                "accounts": 0,
+                "total_balance": 0.0,
+                "cash_available": 0.0,
+                "deployed_capital": 0.0,
+                "active_positions": 0,
+                "unrealized_pnl": 0.0,
+            },
+        },
+        "analytics": {
+            "portfolio": {
+                "concentration_risk": 0.0,
+                "dominant_sector": "Unavailable",
+                "active_accounts": 0,
+            },
+            "paper_trading": {
+                "pnl": 0.0,
+                "win_rate": 0.0,
+                "portfolio_value": 0.0,
+                "unrealized_pnl": 0.0,
+                "total_closed_trades": 0,
+                "capability_status": snapshot["overall_status"],
+                "blockers": snapshot["blockers"],
+            },
+            "chart_data": [],
+            "portfolio_value": 0.0,
+            "pnl_absolute": 0.0,
+            "pnl_percentage": 0.0,
+            "win_rate": 0.0,
+        },
+        "alerts": _build_active_alerts(snapshot, {}),
+        "ai_status": _build_ai_status(snapshot, config=None),
+        "intents": [],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _build_ai_status(
+    capability_snapshot: Dict[str, Any],
+    config: Any,
+) -> Dict[str, Any]:
+    """Build a truthful Claude/operator status for the dashboard."""
+    blockers = capability_snapshot.get("blockers", [])
+    claude_check = next(
+        (check for check in capability_snapshot.get("checks", []) if check.get("key") == "claude_runtime"),
+        None,
+    )
+
+    daily_limit = 0
+    claude_config = getattr(config, "claude_agent", None) if config else None
+    if claude_config:
+        daily_limit = getattr(claude_config, "daily_token_budget", 0) or 0
+
+    if claude_check and claude_check.get("status") == "ready":
+        current_task = "Claude runtime is authenticated and available for research and review workflows."
+    elif claude_check:
+        current_task = claude_check.get("detail") or claude_check.get("summary") or "Claude runtime is blocked."
+    else:
+        current_task = "Claude runtime status is unavailable."
+
+    if blockers:
+        portfolio_health = f"{len(blockers)} capability blocker(s) are preventing fully autonomous paper-trading workflows."
+        next_task = blockers[0]
+    else:
+        portfolio_health = "Paper-trading operator state is ready for monitored research and execution workflows."
+        next_task = "Continue candidate discovery and review active paper positions."
+
+    return {
+        "portfolio_health": portfolio_health,
+        "current_task": current_task,
+        "api_budget_used": 0,
+        "daily_api_limit": daily_limit,
+        "next_planned_task": next_task,
+    }
+
+
+def _build_dashboard_portfolio_payload(
+    accounts: list,
+    positions_by_account: Dict[str, list],
+) -> Dict[str, Any]:
+    """Build the active dashboard portfolio payload from paper-trading truth."""
+    holdings: list[Dict[str, Any]] = []
+    cash_free = 0.0
+    exposure_total = 0.0
+    unrealized_pnl = 0.0
+
+    for account in accounts:
+        cash_free += float(getattr(account, "buying_power", 0.0) or 0.0)
+        for position in positions_by_account.get(account.account_id, []):
+            exposure_total += float(position.current_value or 0.0)
+            unrealized_pnl += float(position.unrealized_pnl or 0.0)
+            holdings.append(
+                {
+                    "symbol": position.symbol,
+                    "qty": position.quantity,
+                    "last_price": position.current_price,
+                    "exposure": position.current_value,
+                    "pnl_abs": position.unrealized_pnl,
+                    "pnl_pct": position.unrealized_pnl_pct,
+                    "risk_tags": [],
+                }
+            )
+
+    holdings.sort(key=lambda item: abs(float(item["exposure"])), reverse=True)
+    total_balance = cash_free + exposure_total
+    concentration_risk = round(
+        (max((float(item["exposure"]) for item in holdings), default=0.0) / exposure_total) * 100,
+        2,
+    ) if exposure_total > 0 else 0.0
+
+    return {
+        "portfolio": {
+            "holdings": holdings,
+            "cash": {
+                "free": round(cash_free, 2),
+                "used": round(exposure_total, 2),
+                "total": round(total_balance, 2),
+            },
+            "exposure_total": round(exposure_total, 2),
+            "summary": {
+                "accounts": len(accounts),
+                "total_balance": round(total_balance, 2),
+                "cash_available": round(cash_free, 2),
+                "deployed_capital": round(exposure_total, 2),
+                "active_positions": len(holdings),
+                "unrealized_pnl": round(unrealized_pnl, 2),
+            },
+        },
+        "portfolio_analytics": {
+            "concentration_risk": concentration_risk,
+            "dominant_sector": "Unavailable",
+            "active_accounts": len(accounts),
+        },
+        "unrealized_pnl": round(unrealized_pnl, 2),
+    }
+
+
 @router.get("/dashboard")
 @router.get("/dashboard/")
 async def api_dashboard(
     request: Request,
     container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
-    """Get dashboard data."""
+    """Get dashboard data from the active paper-trading operator model."""
     try:
-        # Get required dependencies from container
-        orchestrator = await container.get_orchestrator()
+        account_manager = await container.get("paper_trading_account_manager")
+        capability_service = await container.get("trading_capability_service")
         config = await container.get("config")
+        capability_snapshot = await capability_service.get_snapshot()
+        accounts = await account_manager.get_all_accounts()
 
-        # Use module-level initialization_status from app
-        from ..app import initialization_status
+        if not accounts:
+            return _empty_dashboard_payload(capability_snapshot)
 
-        if not orchestrator or not orchestrator.state_manager:
-            return {
-                "error": "System not initialized",
-                "initialization_status": initialization_status
-            }
-
-        # Check if initialization is complete
-        if not initialization_status["orchestrator_initialized"]:
-            return {
-                "error": "System initialization in progress",
-                "initialization_status": initialization_status,
-                "message": "Please wait for system initialization to complete"
-            }
-
-        portfolio = await orchestrator.state_manager.get_portfolio()
-
-        if not portfolio and orchestrator and config and hasattr(config, 'agents') and config.agents.portfolio_scan.enabled:
-            try:
-                logger.info("Triggering bootstrap portfolio scan")
-                await orchestrator.run_portfolio_scan()
-                portfolio = await orchestrator.state_manager.get_portfolio()
-            except Exception as exc:
-                logger.warning(f"Bootstrap failed: {exc}")
-
-        intents = await orchestrator.state_manager.get_all_intents()
-
-        # Get screening and strategy results with fallback to None if not implemented
-        try:
-            screening = await orchestrator.state_manager.get_screening_results()
-        except (NotImplementedError, AttributeError):
-            screening = None
-
-        try:
-            strategy = await orchestrator.state_manager.get_strategy_results()
-        except (NotImplementedError, AttributeError):
-            strategy = None
-
-        portfolio_dict = portfolio.to_dict() if portfolio else None
-        analytics = portfolio_dict.get("risk_aggregates") if portfolio_dict else None
+        positions_by_account = await _collect_open_positions(account_manager, accounts)
+        closed_by_account = await _collect_closed_trades(account_manager, accounts)
+        portfolio_payload = _build_dashboard_portfolio_payload(accounts, positions_by_account)
+        performance_payload = _build_performance_payload(
+            accounts,
+            positions_by_account,
+            closed_by_account,
+            lookback_days=30,
+        )
+        snapshot_dict = capability_snapshot.to_dict()
+        closed_trade_count = sum(len(trades) for trades in closed_by_account.values())
 
         return {
-            "portfolio": portfolio_dict,
-            "analytics": analytics,
-            "screening": screening,
-            "strategy": strategy,
-            "intents": [intent.to_dict() for intent in intents],
-            "config": {
-                "environment": config.environment if config else "unknown",
-                "max_turns": getattr(config, 'max_turns', 50) if config else 50
+            "portfolio": portfolio_payload["portfolio"],
+            "analytics": {
+                "portfolio": portfolio_payload["portfolio_analytics"],
+                "paper_trading": {
+                    "pnl": round(performance_payload["pnl_absolute"], 2),
+                    "win_rate": round(performance_payload["win_rate"], 2),
+                    "portfolio_value": round(performance_payload["portfolio_value"], 2),
+                    "unrealized_pnl": portfolio_payload["unrealized_pnl"],
+                    "total_closed_trades": closed_trade_count,
+                    "capability_status": snapshot_dict["overall_status"],
+                    "blockers": snapshot_dict["blockers"],
+                },
+                "chart_data": performance_payload["chart_data"],
+                "portfolio_value": performance_payload["portfolio_value"],
+                "pnl_absolute": performance_payload["pnl_absolute"],
+                "pnl_percentage": performance_payload["pnl_percentage"],
+                "win_rate": performance_payload["win_rate"],
             },
-            "initialization_status": initialization_status,
+            "alerts": _build_active_alerts(snapshot_dict, positions_by_account),
+            "ai_status": _build_ai_status(snapshot_dict, config),
+            "intents": [],
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
@@ -196,7 +334,7 @@ async def get_portfolio(
     request: Request,
     container: DependencyContainer = Depends(get_container)
 ) -> Dict[str, Any]:
-    """Get portfolio data with lazy bootstrap."""
+    """Get portfolio data without synthetic bootstrap behavior."""
     try:
         logger.info("Portfolio data requested")
         orchestrator = await container.get_orchestrator()
@@ -209,32 +347,19 @@ async def get_portfolio(
         if portfolio:
             holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
             logger.info(f"Portfolio retrieved from database: {holdings_count} holdings")
-        else:
-            logger.info("No portfolio found in database, attempting bootstrap")
 
         if not portfolio:
-            try:
-                logger.info("Triggering portfolio bootstrap scan")
-                await orchestrator.run_portfolio_scan()
-                portfolio = await orchestrator.state_manager.get_portfolio()
-
-                if portfolio:
-                    holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
-                    logger.info(f"Portfolio bootstrap completed: {holdings_count} holdings loaded")
-                else:
-                    logger.warning("Portfolio bootstrap completed but still no data available")
-
-            except TradingError as e:
-                logger.warning(f"Bootstrap failed with trading error: {e}")
-                # Continue to check if portfolio is now available
-            except ValueError as e:
-                logger.warning(f"Bootstrap failed with validation error: {e}")
-            except Exception as e:
-                logger.warning(f"Bootstrap failed with unexpected error: {e}")
-
-        if not portfolio:
-            logger.warning("No portfolio data available after bootstrap")
-            return JSONResponse({"error": "No portfolio data available"}, status_code=404)
+            logger.warning("No portfolio data available in state")
+            return JSONResponse(
+                {
+                    "error": "No portfolio data available",
+                    "message": (
+                        "Portfolio state is empty. Trigger a portfolio scan explicitly "
+                        "instead of relying on lazy bootstrap."
+                    ),
+                },
+                status_code=404,
+            )
 
         holdings_count = len(portfolio.holdings) if portfolio.holdings else 0
         logger.info(f"Portfolio data returned successfully: {holdings_count} holdings")

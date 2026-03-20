@@ -26,7 +26,7 @@ from claude_agent_sdk import (
     CLIJSONDecodeError,
 )
 
-from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
+from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 
 logger = logging.getLogger(__name__)
 

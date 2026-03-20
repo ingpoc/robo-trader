@@ -26,6 +26,10 @@ from .coordinators.status.ai_status_coordinator import AIStatusCoordinator
 from .coordinators.status.agent_status_coordinator import AgentStatusCoordinator
 from .coordinators.status.portfolio_status_coordinator import PortfolioStatusCoordinator
 from .coordinators.portfolio.portfolio_analysis_coordinator import PortfolioAnalysisCoordinator
+from .coordinators.portfolio.monthly_analysis_coordinator import MonthlyPortfolioAnalysisCoordinator
+from .coordinators.paper_trading.stock_discovery_coordinator import StockDiscoveryCoordinator
+from .coordinators.paper_trading.morning_session_coordinator import MorningSessionCoordinator
+from .coordinators.paper_trading.evening_session_coordinator import EveningSessionCoordinator
 from .orchestrator import RoboTraderOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -210,6 +214,77 @@ async def register_coordinators(container: 'DependencyContainer') -> None:
 
     container._register_singleton("portfolio_analysis_coordinator", create_portfolio_analysis_coordinator)
 
+    async def create_monthly_portfolio_analysis_coordinator():
+        # Get portfolio monthly analysis state
+        portfolio_monthly_analysis_state = await container.get("portfolio_monthly_analysis_state")
+        config_state = await container.get("configuration_state")
+        task_service = await container.get("task_service")
+        event_bus = await container.get("event_bus")
+
+        # Get optional services
+        kite_portfolio_service = None
+        try:
+            kite_portfolio_service = await container.get("kite_portfolio_service")
+        except:
+            logger.debug("Kite portfolio service not available")
+
+        perplexity_client = None
+        try:
+            perplexity_client = await container.get("perplexity_client")
+        except:
+            logger.debug("Perplexity client not available")
+
+        claude_sdk_client = None
+        try:
+            claude_sdk_client = await container.get("claude_sdk_client")
+        except:
+            logger.debug("Claude SDK client not available")
+
+        coordinator = MonthlyPortfolioAnalysisCoordinator(
+            container.config,
+            portfolio_monthly_analysis_state,
+            config_state,
+            task_service,
+            kite_portfolio_service,
+            perplexity_client,
+            claude_sdk_client
+        )
+        coordinator.event_bus = event_bus
+        await coordinator.initialize()
+        return coordinator
+
+    container._register_singleton("monthly_portfolio_analysis_coordinator", create_monthly_portfolio_analysis_coordinator)
+
+    # Stock Discovery Coordinator (PT-002)
+    async def create_stock_discovery_coordinator():
+        event_bus = await container.get("event_bus")
+        task_service = await container.get("task_service")
+        coordinator = StockDiscoveryCoordinator(container.config, task_service)
+        coordinator.event_bus = event_bus
+        return coordinator
+
+    container._register_singleton("stock_discovery_coordinator", create_stock_discovery_coordinator)
+
+    # Morning Session Coordinator (PT-003)
+    async def create_morning_session_coordinator():
+        config = {"session": container.config}
+        event_bus = await container.get("event_bus")
+        coordinator = MorningSessionCoordinator(config, event_bus, container)
+        await coordinator.initialize()
+        return coordinator
+
+    container._register_singleton("morning_session_coordinator", create_morning_session_coordinator)
+
+    # Evening Session Coordinator (PT-004)
+    async def create_evening_session_coordinator():
+        config = {"session": container.config}
+        event_bus = await container.get("event_bus")
+        coordinator = EveningSessionCoordinator(config, event_bus, container)
+        await coordinator.initialize()
+        return coordinator
+
+    container._register_singleton("paper_trading_evening_coordinator", create_evening_session_coordinator)
+
 
 async def register_orchestrator(container: 'DependencyContainer') -> None:
     """Register orchestrator - created last due to dependencies."""
@@ -251,6 +326,9 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
         # Initialize all coordinators BEFORE initializing orchestrator
         logger.info("Initializing coordinators...")
         portfolio_analysis_coordinator = await container.get("portfolio_analysis_coordinator")
+        stock_discovery_coordinator = await container.get("stock_discovery_coordinator")
+        morning_session_coordinator = await container.get("morning_session_coordinator")
+        evening_session_coordinator = await container.get("paper_trading_evening_coordinator")
         await asyncio.gather(
             session_coordinator.initialize(),
             query_coordinator.initialize(),
@@ -259,6 +337,9 @@ async def register_orchestrator(container: 'DependencyContainer') -> None:
             lifecycle_coordinator.initialize(),
             broadcast_coordinator.initialize(),
             portfolio_analysis_coordinator.initialize(),
+            stock_discovery_coordinator.initialize(),
+            morning_session_coordinator.initialize(),
+            evening_session_coordinator.initialize(),
         )
 
         # Initialize queue coordinator

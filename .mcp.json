@@ -1,14 +1,12 @@
 {
   "mcpServers": {
-    "playwright": {
-      "command": "npx",
+    
+    "token-efficient": {
+      "command": "srt",
       "args": [
-        "@playwright/mcp@latest"
+        "node",
+        "/Users/gurusharan/Documents/remote-claude/token-efficient-mcp/dist/index.js"
       ]
-    },
-    "robo-trader-dev": {
-      "command": "/Users/gurusharan/Documents/remote-claude/robo-trader/shared/robotrader_mcp/start_mcp_server.sh",
-      "args": []
     }
   }
-}
+ }

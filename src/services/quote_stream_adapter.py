@@ -1,0 +1,440 @@
+"""Provider-neutral quote stream adapters for paper-trading live marks."""
+
+from __future__ import annotations
+
+import asyncio
+import gzip
+import importlib.util
+import json
+import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Awaitable, Callable, Dict, Iterable, Optional
+
+import httpx
+
+from src.config import Config
+from src.models.market_data import MarketData, MarketDataProvider, SubscriptionMode
+
+logger = logging.getLogger(__name__)
+
+QuoteUpdateCallback = Callable[[MarketData], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class QuoteSubscriptionRequest:
+    """Normalized quote subscription request."""
+
+    symbol: str
+    mode: SubscriptionMode
+
+
+@dataclass
+class QuoteStreamStatus:
+    """Current status for a quote streaming adapter."""
+
+    provider: str
+    configured: bool
+    connected: bool
+    status: str
+    summary: str
+    detail: Optional[str] = None
+    last_tick_at: Optional[str] = None
+    last_error: Optional[str] = None
+    active_symbols: int = 0
+    mode: str = "ltpc"
+    instrument_cache_ready: bool = False
+
+    def to_metadata(self) -> Dict[str, object]:
+        """Serialize status for capability checks and UI surfaces."""
+        return {
+            "provider": self.provider,
+            "configured": self.configured,
+            "connected": self.connected,
+            "status": self.status,
+            "summary": self.summary,
+            "detail": self.detail,
+            "last_tick_at": self.last_tick_at,
+            "last_error": self.last_error,
+            "active_symbols": self.active_symbols,
+            "mode": self.mode,
+            "instrument_cache_ready": self.instrument_cache_ready,
+        }
+
+
+class QuoteStreamAdapter(ABC):
+    """Abstract contract for provider-backed live quote streams."""
+
+    provider: MarketDataProvider
+    supports_streaming: bool = True
+
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Prepare the adapter for use."""
+
+    @abstractmethod
+    async def subscribe(self, requests: Iterable[QuoteSubscriptionRequest]) -> None:
+        """Ensure the requested symbols are actively subscribed."""
+
+    @abstractmethod
+    async def unsubscribe(self, symbols: Iterable[str]) -> None:
+        """Remove the requested symbols from the live stream."""
+
+    @abstractmethod
+    async def get_status(self) -> QuoteStreamStatus:
+        """Return the current stream status."""
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Release stream resources."""
+
+    def set_quote_update_callback(self, callback: QuoteUpdateCallback) -> None:
+        """Update the callback used for normalized quote delivery."""
+        return None
+
+
+class NullQuoteStreamAdapter(QuoteStreamAdapter):
+    """No-op adapter used when no quote provider is configured."""
+
+    provider = MarketDataProvider.ALPHA_VANTAGE
+
+    def __init__(self, reason: str = "No quote stream provider is configured.") -> None:
+        self._reason = reason
+
+    async def initialize(self) -> None:
+        return None
+
+    async def subscribe(self, requests: Iterable[QuoteSubscriptionRequest]) -> None:
+        return None
+
+    async def unsubscribe(self, symbols: Iterable[str]) -> None:
+        return None
+
+    async def get_status(self) -> QuoteStreamStatus:
+        return QuoteStreamStatus(
+            provider="none",
+            configured=False,
+            connected=False,
+            status="blocked",
+            summary="Quote stream is not configured.",
+            detail=self._reason,
+        )
+
+    async def close(self) -> None:
+        return None
+
+
+class UpstoxInstrumentResolver:
+    """Resolve NSE trading symbols to Upstox instrument keys using the official BOD JSON file."""
+
+    NSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
+
+    def __init__(self, state_dir: Path) -> None:
+        self._cache_path = state_dir / "upstox" / "nse_instruments.json.gz"
+        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self._symbol_map: Dict[str, str] = {}
+        self._loaded_at: Optional[datetime] = None
+        self._lock = asyncio.Lock()
+
+    @property
+    def cache_ready(self) -> bool:
+        return bool(self._symbol_map)
+
+    async def resolve_instrument_key(self, symbol: str) -> Optional[str]:
+        """Resolve one NSE trading symbol to its Upstox instrument key."""
+        await self._ensure_loaded()
+        return self._symbol_map.get(symbol.upper())
+
+    async def _ensure_loaded(self) -> None:
+        async with self._lock:
+            if self._symbol_map and self._loaded_at and datetime.now(timezone.utc) - self._loaded_at < timedelta(hours=12):
+                return
+
+            payload: Optional[bytes] = None
+            if self._cache_path.exists():
+                age = datetime.now(timezone.utc) - datetime.fromtimestamp(self._cache_path.stat().st_mtime, tz=timezone.utc)
+                if age < timedelta(hours=24):
+                    payload = self._cache_path.read_bytes()
+
+            if payload is None:
+                async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                    response = await client.get(self.NSE_INSTRUMENTS_URL)
+                    response.raise_for_status()
+                    payload = response.content
+                self._cache_path.write_bytes(payload)
+
+            records = json.loads(gzip.decompress(payload).decode("utf-8"))
+            self._symbol_map = {
+                str(item.get("trading_symbol", "")).upper(): item["instrument_key"]
+                for item in records
+                if item.get("segment") == "NSE_EQ"
+                and item.get("instrument_type") in {"EQ", "BE"}
+                and item.get("trading_symbol")
+                and item.get("instrument_key")
+            }
+            self._loaded_at = datetime.now(timezone.utc)
+
+
+class UpstoxQuoteStreamAdapter(QuoteStreamAdapter):
+    """Official Upstox Market Data Feed V3 adapter."""
+
+    provider = MarketDataProvider.UPSTOX
+
+    def __init__(
+        self,
+        config: Config,
+        on_quote_update: QuoteUpdateCallback,
+    ) -> None:
+        self._config = config
+        self._on_quote_update = on_quote_update
+        self._resolver = UpstoxInstrumentResolver(config.state_dir)
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._lock = asyncio.Lock()
+
+        self._sdk_available = importlib.util.find_spec("upstox_client") is not None
+        self._streamer = None
+        self._api_client = None
+        self._connected = False
+        self._status_summary = "Upstox quote stream has not been initialized."
+        self._status_detail: Optional[str] = None
+        self._last_error: Optional[str] = None
+        self._last_tick_at: Optional[str] = None
+        self._current_mode = self._normalize_mode(getattr(config.integration, "upstox_stream_mode", "ltpc") or "ltpc")
+        self._symbol_to_key: Dict[str, str] = {}
+        self._key_to_symbol: Dict[str, str] = {}
+
+    async def initialize(self) -> None:
+        self._loop = asyncio.get_running_loop()
+        if not self._sdk_available:
+            self._status_summary = "Upstox Python SDK is not installed."
+            self._status_detail = "Install upstox-python-sdk to enable live paper-trading quote streaming."
+            return
+
+        access_token = getattr(self._config.integration, "upstox_access_token", None)
+        if not access_token:
+            self._status_summary = "Upstox access token is not configured."
+            self._status_detail = "Set UPSTOX_ACCESS_TOKEN to enable Market Data Feed V3."
+            return
+
+        upstox_client = await asyncio.to_thread(__import__, "upstox_client")
+        configuration = upstox_client.Configuration()
+        configuration.access_token = access_token
+        self._api_client = upstox_client.ApiClient(configuration)
+        self._status_summary = "Upstox quote stream is configured and idle."
+        self._status_detail = "Quotes will start streaming once symbols are subscribed."
+
+    async def subscribe(self, requests: Iterable[QuoteSubscriptionRequest]) -> None:
+        async with self._lock:
+            if self._api_client is None:
+                await self.initialize()
+            if self._api_client is None:
+                return
+
+            normalized_requests = list(requests)
+            if not normalized_requests:
+                return
+
+            instrument_keys: list[str] = []
+            target_mode = self._current_mode
+            for request in normalized_requests:
+                instrument_key = await self._resolver.resolve_instrument_key(request.symbol)
+                if not instrument_key:
+                    logger.warning("Unable to resolve Upstox instrument key for %s", request.symbol)
+                    continue
+                symbol = request.symbol.upper()
+                self._symbol_to_key[symbol] = instrument_key
+                self._key_to_symbol[instrument_key] = symbol
+                instrument_keys.append(instrument_key)
+                target_mode = self._normalize_mode(request.mode.value)
+
+            if not instrument_keys:
+                self._status_summary = "Upstox quote stream could not resolve any instrument keys."
+                self._status_detail = "The NSE instruments catalog did not contain the requested symbols."
+                return
+
+            if self._streamer is None:
+                await self._create_streamer(instrument_keys, target_mode)
+                await asyncio.to_thread(self._streamer.connect)
+                return
+
+            if target_mode != self._current_mode:
+                await asyncio.to_thread(self._streamer.change_mode, instrument_keys, target_mode)
+                self._current_mode = target_mode
+
+            await asyncio.to_thread(self._streamer.subscribe, instrument_keys, target_mode)
+            self._status_summary = "Upstox quote stream subscriptions updated."
+            self._status_detail = f"Streaming {len(self._symbol_to_key)} active symbol(s)."
+
+    async def unsubscribe(self, symbols: Iterable[str]) -> None:
+        async with self._lock:
+            if self._streamer is None:
+                return
+
+            instrument_keys: list[str] = []
+            for raw_symbol in symbols:
+                symbol = raw_symbol.upper()
+                instrument_key = self._symbol_to_key.pop(symbol, None)
+                if instrument_key:
+                    self._key_to_symbol.pop(instrument_key, None)
+                    instrument_keys.append(instrument_key)
+
+            if instrument_keys:
+                await asyncio.to_thread(self._streamer.unsubscribe, instrument_keys)
+
+            if not self._symbol_to_key:
+                self._status_summary = "Upstox quote stream is connected but idle."
+                self._status_detail = "No active paper-trading symbols are subscribed."
+
+    async def get_status(self) -> QuoteStreamStatus:
+        configured = self._sdk_available and self._api_client is not None
+        if not self._sdk_available:
+            status = "blocked"
+        elif not configured:
+            status = "blocked"
+        elif self._connected and self._is_last_tick_fresh():
+            status = "ready"
+        elif self._connected:
+            status = "degraded"
+        else:
+            status = "degraded" if self._symbol_to_key else "blocked"
+
+        return QuoteStreamStatus(
+            provider=self.provider.value,
+            configured=configured,
+            connected=self._connected,
+            status=status,
+            summary=self._status_summary,
+            detail=self._status_detail,
+            last_tick_at=self._last_tick_at,
+            last_error=self._last_error,
+            active_symbols=len(self._symbol_to_key),
+            mode=self._current_mode,
+            instrument_cache_ready=self._resolver.cache_ready,
+        )
+
+    async def close(self) -> None:
+        async with self._lock:
+            if self._streamer is not None:
+                try:
+                    await asyncio.to_thread(self._streamer.disconnect)
+                except Exception as exc:  # pragma: no cover - defensive cleanup
+                    logger.warning("Failed to disconnect Upstox quote stream cleanly: %s", exc)
+            self._streamer = None
+            self._connected = False
+
+    def set_quote_update_callback(self, callback: QuoteUpdateCallback) -> None:
+        self._on_quote_update = callback
+
+    async def _create_streamer(self, instrument_keys: list[str], mode: str) -> None:
+        upstox_client = await asyncio.to_thread(__import__, "upstox_client")
+        streamer = upstox_client.MarketDataStreamerV3(
+            self._api_client,
+            instrumentKeys=instrument_keys,
+            mode=mode,
+        )
+        streamer.on("open", self._handle_open)
+        streamer.on("message", self._handle_message)
+        streamer.on("error", self._handle_error)
+        streamer.on("close", self._handle_close)
+        streamer.on("reconnecting", self._handle_reconnecting)
+        streamer.on("autoReconnectStopped", self._handle_reconnect_stopped)
+        if hasattr(streamer, "auto_reconnect"):
+            streamer.auto_reconnect(True, 5, 5)
+        self._streamer = streamer
+        self._current_mode = mode
+        self._status_summary = "Connecting to Upstox quote stream."
+        self._status_detail = f"Subscribing to {len(instrument_keys)} instrument key(s)."
+
+    def _normalize_mode(self, mode: str) -> str:
+        return "full" if mode == SubscriptionMode.FULL.value else "ltpc"
+
+    def _is_last_tick_fresh(self) -> bool:
+        if not self._last_tick_at:
+            return False
+        last_tick = datetime.fromisoformat(self._last_tick_at)
+        return datetime.now(timezone.utc) - last_tick <= timedelta(seconds=120)
+
+    def _handle_open(self, *args) -> None:
+        self._connected = True
+        self._status_summary = "Upstox quote stream is connected."
+        self._status_detail = f"Streaming {len(self._symbol_to_key)} active symbol(s) in {self._current_mode} mode."
+
+    def _handle_close(self, *args) -> None:
+        self._connected = False
+        self._status_summary = "Upstox quote stream connection is closed."
+        self._status_detail = "Reconnect or refresh subscriptions to resume live paper marks."
+
+    def _handle_error(self, error: object) -> None:
+        self._connected = False
+        self._last_error = str(error)
+        self._status_summary = "Upstox quote stream reported an error."
+        self._status_detail = self._last_error
+
+    def _handle_reconnecting(self, *args) -> None:
+        self._connected = False
+        self._status_summary = "Upstox quote stream is reconnecting."
+        self._status_detail = "Live paper marks are temporarily degraded while the stream reconnects."
+
+    def _handle_reconnect_stopped(self, *args) -> None:
+        self._connected = False
+        self._status_summary = "Upstox quote stream stopped reconnecting."
+        self._status_detail = "Manual intervention is required to resume live quote streaming."
+
+    def _handle_message(self, payload: Dict[str, object]) -> None:
+        now = datetime.now(timezone.utc)
+        self._last_tick_at = now.isoformat()
+        self._status_summary = "Upstox quote stream is serving live quotes."
+        self._status_detail = f"Last tick received at {self._last_tick_at}."
+
+        feeds = payload.get("feeds") if isinstance(payload, dict) else None
+        if not isinstance(feeds, dict):
+            return
+
+        for instrument_key, feed in feeds.items():
+            symbol = self._key_to_symbol.get(instrument_key)
+            if not symbol:
+                continue
+
+            normalized = self._normalize_feed(symbol, feed, payload.get("currentTs"))
+            if normalized is None:
+                continue
+            if self._loop is not None:
+                asyncio.run_coroutine_threadsafe(self._on_quote_update(normalized), self._loop)
+
+    def _normalize_feed(
+        self,
+        symbol: str,
+        feed: object,
+        current_ts: object,
+    ) -> Optional[MarketData]:
+        if not isinstance(feed, dict):
+            return None
+
+        ltpc = None
+        if isinstance(feed.get("ltpc"), dict):
+            ltpc = feed["ltpc"]
+        elif isinstance(feed.get("firstLevelWithGreeks"), dict):
+            ltpc = feed["firstLevelWithGreeks"].get("ltpc")
+        elif isinstance(feed.get("marketFF"), dict):
+            ltpc = feed["marketFF"].get("ltpc")
+
+        if not isinstance(ltpc, dict) or ltpc.get("ltp") is None:
+            return None
+
+        timestamp = datetime.now(timezone.utc)
+        if current_ts is not None:
+            try:
+                timestamp = datetime.fromtimestamp(int(current_ts) / 1000, tz=timezone.utc)
+            except Exception:
+                pass
+
+        close_price = ltpc.get("cp")
+        return MarketData(
+            symbol=symbol,
+            ltp=float(ltpc["ltp"]),
+            close_price=float(close_price) if close_price is not None else None,
+            timestamp=timestamp.isoformat(),
+            provider=self.provider.value,
+        )

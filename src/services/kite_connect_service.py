@@ -8,11 +8,10 @@ order placement, and WebSocket connections for real-time updates.
 import asyncio
 import logging
 import json
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-import websockets
-import threading
 
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 from src.core.database_state.real_time_trading_state import (
@@ -21,12 +20,16 @@ from src.core.database_state.real_time_trading_state import (
 
 try:
     from kiteconnect import KiteConnect, KiteTicker
-    from kiteconnect.exceptions import KiteException, KiteConnectException
+    from kiteconnect.exceptions import KiteException
+    try:
+        from kiteconnect.exceptions import KiteConnectException
+    except ImportError:
+        # kiteconnect 5.x no longer exposes KiteConnectException separately
+        KiteConnectException = KiteException
 except ImportError:
-    # For development without actual KiteConnect
     KiteConnect = None
     KiteTicker = None
-    logging.warning("KiteConnect not available - using mock implementation")
+    logging.warning("KiteConnect package is not installed; broker-backed market data is unavailable")
 
 
 @dataclass
@@ -322,13 +325,16 @@ class KiteConnectService:
         try:
             self._credentials = credentials
 
-            # Initialize Kite Connect client
-            if KiteConnect:
-                self.kite = KiteConnect(api_key=credentials.api_key)
-                self.logger.info("Kite Connect client initialized")
-            else:
-                self.kite = MockKiteConnect(api_key=credentials.api_key)
-                self.logger.info("Mock Kite Connect client initialized")
+            if KiteConnect is None:
+                raise TradingError(
+                    "kiteconnect package is not installed; broker-backed market data cannot start",
+                    category=ErrorCategory.SYSTEM,
+                    severity=ErrorSeverity.HIGH,
+                    recoverable=False,
+                )
+
+            self.kite = KiteConnect(api_key=credentials.api_key)
+            self.logger.info("Kite Connect client initialized")
 
             # Try to restore existing session
             await self._restore_session()
@@ -349,8 +355,10 @@ class KiteConnectService:
     async def _restore_session(self) -> bool:
         """Restore existing Kite session from database."""
         try:
-            # Assuming we have a default account for paper trading
-            account_id = "paper_swing_main"
+            account_id = self._resolve_account_context(allow_missing=True)
+            if not account_id:
+                self.logger.warning("Skipping Kite session restore because no broker account context is configured")
+                return False
             session = await self.real_time_state.get_active_kite_session(account_id)
 
             if session and session.access_token:
@@ -381,7 +389,57 @@ class KiteConnectService:
             expiry = datetime.fromisoformat(session.expires_at.replace('Z', '+00:00'))
             # Consider session valid if expires in more than 5 minutes
             return expiry > datetime.now() + timedelta(minutes=5)
-        except:
+        except ValueError:
+            return False
+
+    async def _set_access_token(self, access_token: str) -> bool:
+        """
+        Set access token directly from environment (for paper trading market data).
+        Skips OAuth flow when access token is already available.
+        """
+        try:
+            if not self.kite:
+                self.logger.warning("Kite client not initialized")
+                return False
+
+            # Set the access token
+            self.kite.set_access_token(access_token)
+
+            # Create a session object
+            now = datetime.now(timezone.utc)
+            # Access tokens typically last for 1 day, set expiry for 24 hours from now
+            expires_at = now + timedelta(hours=24)
+            account_id = self._resolve_account_context()
+
+            # Create session without storing to database (since it's from env)
+            from src.core.database_state.real_time_trading_state import KiteSession
+            self._active_session = KiteSession(
+                account_id=account_id,
+                user_id="env_token",
+                public_token=None,
+                access_token=access_token,
+                refresh_token=None,
+                enctoken=None,
+                user_type="user",
+                email=None,
+                user_name="Environment Token",
+                user_shortname="Env",
+                avatar_url=None,
+                broker="ZERODHA",
+                products="[]",
+                exchanges="[]",
+                order_types="[]",
+                expiry=expires_at.isoformat(),
+                active=True,
+                created_at=now.isoformat(),
+                updated_at=now.isoformat()
+            )
+
+            self.logger.info("Access token set from environment for market data (paper trading mode)")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to set access token from environment: {e}")
             return False
 
     async def authenticate(self, request_token: str) -> Dict[str, Any]:
@@ -401,7 +459,7 @@ class KiteConnectService:
             self.kite.set_access_token(session_data["access_token"])
 
             # Store session
-            account_id = "paper_swing_main"
+            account_id = self._resolve_account_context()
             session = KiteSession(
                 account_id=account_id,
                 user_id=session_data.get("user_id"),
@@ -447,9 +505,10 @@ class KiteConnectService:
 
         return self.kite.login_url()
 
-    async def place_order(self, order_request: OrderRequest, account_id: str = "paper_swing_main") -> Dict[str, Any]:
+    async def place_order(self, order_request: OrderRequest, account_id: Optional[str] = None) -> Dict[str, Any]:
         """Place order through Kite Connect."""
         try:
+            account_id = account_id or self._resolve_account_context()
             if not self.kite or not self._active_session:
                 raise TradingError(
                     "Kite Connect not authenticated",
@@ -540,9 +599,10 @@ class KiteConnectService:
                 recoverable=True
             )
 
-    async def cancel_order(self, order_id: str, account_id: str = "paper_swing_main") -> Dict[str, Any]:
+    async def cancel_order(self, order_id: str, account_id: Optional[str] = None) -> Dict[str, Any]:
         """Cancel order."""
         try:
+            account_id = account_id or self._resolve_account_context()
             if not self.kite or not self._active_session:
                 raise TradingError(
                     "Kite Connect not authenticated",
@@ -597,6 +657,26 @@ class KiteConnectService:
                 severity=ErrorSeverity.MEDIUM,
                 recoverable=True
             )
+
+    def _resolve_account_context(self, allow_missing: bool = False) -> Optional[str]:
+        """Resolve the account context used for broker session persistence."""
+        if self._active_session and getattr(self._active_session, "account_id", None):
+            return self._active_session.account_id
+
+        for env_key in ("PAPER_TRADING_ACCOUNT_ID", "ZERODHA_ACCOUNT_ID"):
+            value = os.getenv(env_key)
+            if value:
+                return value
+
+        if allow_missing:
+            return None
+
+        raise TradingError(
+            "Kite account context is not configured. Set PAPER_TRADING_ACCOUNT_ID or ZERODHA_ACCOUNT_ID, or establish an authenticated session first.",
+            category=ErrorCategory.AUTHENTICATION,
+            severity=ErrorSeverity.HIGH,
+            recoverable=False
+        )
 
     async def get_quotes(self, symbols: List[str]) -> Dict[str, QuoteData]:
         """Get real-time quotes for multiple symbols."""

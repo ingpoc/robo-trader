@@ -19,7 +19,8 @@ interface DataQuality {
 
 interface Analysis {
   symbol: string
-  timestamp: string
+  timestamp?: string
+  created_at?: string
   analysis_type?: string
   confidence_score?: number
   analysis_summary?: string
@@ -55,8 +56,10 @@ export const RecommendationAudit: React.FC = () => {
       const scoreA = getDataQualityScore(a.data_quality)
       const scoreB = getDataQualityScore(b.data_quality)
       if (scoreB !== scoreA) return scoreB - scoreA
-      // Secondary sort by timestamp (newest first)
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      // Secondary sort by timestamp (newest first) - handle invalid dates
+      const dateA = new Date(a.created_at || a.timestamp || 0).getTime()
+      const dateB = new Date(b.created_at || b.timestamp || 0).getTime()
+      return dateB - dateA
     })
   }, [tradeLogs])
 
@@ -93,7 +96,13 @@ export const RecommendationAudit: React.FC = () => {
                 <div>
                   <CardTitle className="text-lg">{analysis.symbol}</CardTitle>
                   <p className="text-sm text-warmgray-500 mt-1">
-                    {new Date(analysis.timestamp).toLocaleDateString()} {new Date(analysis.timestamp).toLocaleTimeString()}
+                    {(() => {
+                      const dateStr = analysis.created_at || analysis.timestamp
+                      if (!dateStr || dateStr === '') return 'No date available'
+                      const date = new Date(dateStr)
+                      if (isNaN(date.getTime())) return 'Invalid date'
+                      return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+                    })()}
                   </p>
                 </div>
                 <div className="flex gap-2">

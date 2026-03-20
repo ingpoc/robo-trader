@@ -37,7 +37,7 @@ export const AccountStatusCard: React.FC<AccountStatusCardProps> = ({
         {[...Array(4)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground bg-muted h-4 w-20 rounded" />
+              <div className="h-4 w-20 rounded bg-muted" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold bg-muted h-8 w-24 rounded" />

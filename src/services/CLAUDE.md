@@ -1,80 +1,66 @@
 # Services Layer - src/services/
 
-Max 400 lines per file. Inherit from EventHandler, event-driven comms via EventBus.
+**Context**: Agent SDK bot services. Claude Code debugs service implementations.
+
+Max 400 lines per service. Extend `EventHandler`, use event-driven communication.
 
 ## Service Pattern
 
-```python
-class MyService(EventHandler):
-    def __init__(self, dep1, event_bus):
-        self.dep1 = dep1
-        self.event_bus = event_bus
-        event_bus.subscribe(EventType.RELEVANT_EVENT, self)
-
-    async def handle_event(self, event: Event):
-        if event.type == EventType.RELEVANT_EVENT:
-            await self._handle(event)
-
-    async def cleanup(self):
-        self.event_bus.unsubscribe(EventType.RELEVANT_EVENT, self)
-```
+Extend `EventHandler` → subscribe to events → handle in `handle_event()` → cleanup via `cleanup()`
 
 ## Critical Rules
 
-| Rule | Why |
-|------|-----|
-| Use locked state methods | Prevents "database is locked" |
-| Never call services directly | Emit events instead |
-| Implement cleanup() | Prevents memory leaks |
-| Async/await throughout | Non-blocking I/O |
-| Queue AI analysis tasks | Prevents turn limit exhaustion |
-| Use error hierarchy | Structured error context |
+| Rule | Implementation | Why |
+|------|----------------|-----|
+| Locked state | `config_state.store_*()` methods | Prevents "database is locked" |
+| Event-driven | Emit events, never call services directly | Loose coupling |
+| Cleanup | `unsubscribe()` in `cleanup()` method | Prevents memory leaks |
+| Async I/O | `async with aiofiles.open()` | Non-blocking file operations |
+| Queue AI tasks | `QueueName.AI_ANALYSIS` with max 3 symbols | Prevents turn limit exhaustion |
+| Event loop | `asyncio.get_running_loop()` | Never `get_event_loop()` → crashes |
+| Errors | `TradingError(category=ErrorCategory.*)` | Structured error context |
 
 ## Database Access
 
-✅ `await config_state.store_analysis_history(symbol, ts, data)` (locked)
-❌ Never: `db.connection.execute()` (no lock!)
-
-## File I/O
-
-```python
-async with aiofiles.open(path, 'r') as f:
-    content = await f.read()
-# Atomic writes
-async with aiofiles.open(temp, 'w') as f:
-    await f.write(data)
-os.replace(temp, final)
-```
+✅ **CORRECT**: `await config_state.store_analysis_history(symbol, ts, data)`
+❌ **NEVER**: `db.connection.execute()` (no lock → database locked error)
 
 ## Queue AI Analysis (MANDATORY)
 
-```python
-await task_service.create_task(
-    queue_name=QueueName.AI_ANALYSIS,
-    task_type=TaskType.STOCK_ANALYSIS,  # Updated task type
-    payload={"agent_name": "scan", "symbols": ["AAPL", "GOOGL", "MSFT"]}  # Max 3 stocks
-)
-```
+✅ **CORRECT**: `await task_service.create_task(queue_name=QueueName.AI_ANALYSIS, task_type=TaskType.STOCK_ANALYSIS, payload={"agent_name": "scan", "symbols": ["AAPL", "GOOGL", "MSFT"]})`
+❌ **NEVER**: Direct analyzer calls (exhausts turn limits on large portfolios)
 
-❌ Never direct analyzer calls—turn limits exhaust on large portfolios.
+Max 3 stocks per task to prevent timeouts.
+
+## File I/O
+
+Use `aiofiles` for async: `async with aiofiles.open(path) as f: data = await f.read()`
+Atomic writes: write to temp → `os.replace(temp, final)`
 
 ## Common Mistakes
+
 | Mistake | Fix |
 |---------|-----|
-| Direct service calls | Emit events |
-| No cleanup() | Unsubscribe in cleanup |
-| Sync I/O | Use `aiofiles` |
-| No error handling | TradingError with context |
-| Hardcoded config | Load from DI container |
-| **Event loop closure** | **ALWAYS use `asyncio.get_running_loop()` not `get_event_loop()`** |
+| Direct service calls | Emit events via EventBus |
+| No cleanup() | Unsubscribe in cleanup() method |
+| Sync I/O (open/read/write) | Use aiofiles for async operations |
+| No error handling | Use TradingError with error category |
+| Hardcoded config | Load from DI container: `await container.get("config")` |
+| Event loop closure | Use `asyncio.get_running_loop()` not `get_event_loop()` |
 
-## Event Loop Safety (CRITICAL)
-```python
-# ✅ SAFE: Get current running loop
-self._loop = asyncio.get_running_loop()
-if not self._loop.is_running():
-    raise RuntimeError("Event loop is not running")
+## Implementation Status
 
-# ❌ DANGEROUS: Can return closed loops
-self._loop = asyncio.get_event_loop()  # CAUSES SYSTEM FAILURE
-```
+Track mock vs real implementations to prevent silent failures:
+
+| Service | Method | Status | Missing |
+|---------|--------|--------|---------|
+| `paper_trading_execution_service` | `execute_buy_trade` | ✅ REAL | - |
+| `paper_trading_execution_service` | `execute_sell_trade` | ✅ REAL | - |
+| `kite_connect_service` | `get_ltp` | ✅ REAL | - |
+
+**Updated 2026-03-17**: `paper_trading_execution_service` now persists through the store-backed `paper_trade_executor` / `paper_trading_store` path instead of `paper_trading_state.create_trade()`. Treat the store-backed path as the execution authority for account/trade writes.
+
+## Read Before Changing
+
+- `src/CLAUDE.md` - Backend patterns (SDK, event loop, DI, locked state)
+- `src/core/CLAUDE.md` - Core infrastructure (events, coordinators)

@@ -41,9 +41,27 @@ class InfrastructureStatusCoordinator(BaseCoordinator):
     async def get_database_status(self) -> Dict[str, Any]:
         """Get database connection status."""
         try:
+            connection = getattr(getattr(self.state_manager, "db", None), "_connection_pool", None)
+            if connection is None:
+                return {
+                    "status": "error",
+                    "connection_state": "disconnected",
+                    "connections": 0,
+                    "portfolioLoaded": False,
+                    "lastCheck": datetime.now(timezone.utc).isoformat(),
+                    "error": "Database connection pool is not initialized",
+                }
+
+            cursor = await connection.execute("SELECT 1")
+            try:
+                await cursor.fetchone()
+            finally:
+                await cursor.close()
+
             portfolio = await self.state_manager.get_portfolio()
             return {
-                "status": "connected",
+                "status": "healthy",
+                "connection_state": "connected",
                 "connections": 1,
                 "lastCheck": datetime.now(timezone.utc).isoformat(),
                 "portfolioLoaded": portfolio is not None
@@ -51,7 +69,9 @@ class InfrastructureStatusCoordinator(BaseCoordinator):
         except Exception as e:
             return {
                 "status": "error",
+                "connection_state": "disconnected",
                 "connections": 0,
+                "portfolioLoaded": False,
                 "lastCheck": datetime.now(timezone.utc).isoformat(),
                 "error": str(e)
             }
@@ -59,17 +79,21 @@ class InfrastructureStatusCoordinator(BaseCoordinator):
     async def get_websocket_status(self) -> Dict[str, Any]:
         """Get WebSocket connection status."""
         websocket_clients = 0
-        websocket_status = "disconnected"
+        websocket_status = "idle"
+        connection_state = "idle"
         if self._connection_manager:
             try:
                 websocket_clients = await self._connection_manager.get_connection_count()
-                websocket_status = "connected" if websocket_clients > 0 else "idle"
+                websocket_status = "healthy" if websocket_clients > 0 else "idle"
+                connection_state = "connected" if websocket_clients > 0 else "idle"
             except Exception as e:
                 self._log_warning(f"Failed to get WebSocket connection count: {e}")
                 websocket_status = "error"
+                connection_state = "error"
 
         return {
             "status": websocket_status,
+            "connection_state": connection_state,
             "clients": websocket_clients,
             "lastCheck": datetime.now(timezone.utc).isoformat()
         }
@@ -79,6 +103,7 @@ class InfrastructureStatusCoordinator(BaseCoordinator):
         try:
             import psutil
             return {
+                "status": "healthy",
                 "cpu": psutil.cpu_percent(interval=0.1),
                 "memory": psutil.virtual_memory().percent,
                 "disk": psutil.disk_usage('/').percent,
@@ -86,18 +111,20 @@ class InfrastructureStatusCoordinator(BaseCoordinator):
             }
         except ImportError:
             return {
-                "cpu": 15.5,
-                "memory": 45.2,
-                "disk": 62.8,
+                "status": "error",
+                "cpu": None,
+                "memory": None,
+                "disk": None,
                 "lastCheck": datetime.now(timezone.utc).isoformat(),
-                "note": "psutil not available - mock data"
+                "error": "System resource metrics unavailable: psutil is not installed"
             }
         except Exception as e:
             self._log_warning(f"Failed to get system resources: {e}")
             return {
-                "cpu": 0,
-                "memory": 0,
-                "disk": 0,
+                "status": "error",
+                "cpu": None,
+                "memory": None,
+                "disk": None,
                 "lastCheck": datetime.now(timezone.utc).isoformat(),
                 "error": str(e)
             }
@@ -110,4 +137,3 @@ class InfrastructureStatusCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         """Cleanup infrastructure status coordinator resources."""
         self._log_info("InfrastructureStatusCoordinator cleanup complete")
-

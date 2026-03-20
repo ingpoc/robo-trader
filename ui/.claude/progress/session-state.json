@@ -1,0 +1,18 @@
+{
+  "status": "unhealthy",
+  "last_action": "session_verification",
+  "last_action_at": "2025-12-24T16:45:12.774846Z",
+  "agent_type": "verifier",
+  "heartbeat": {
+    "last_heartbeat": "2025-12-24T16:45:12.774866Z"
+  },
+  "current_activity": {
+    "feature_id": "VERIFICATION",
+    "status": "completed",
+    "verification_results": {
+      "servers": "failed",
+      "logs": "0 errors",
+      "tests": "failed"
+    }
+  }
+}

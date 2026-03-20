@@ -1,180 +1,114 @@
 /**
  * Dashboard Feature
- * Main trading dashboard with portfolio overview, metrics, and performance analytics
+ * Thin operator summary aligned to the paper-trading workflow.
  */
 
 import React from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/Button'
+import { useNavigate } from 'react-router-dom'
+
 import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { PageHeader } from '@/components/common/PageHeader'
 import { SkeletonCard, SkeletonLoader } from '@/components/common/SkeletonLoader'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { TrendingUp, PieChart } from 'lucide-react'
-import { useDashboardData } from './hooks/useDashboardData'
-import { MetricsGrid } from './components/MetricsGrid'
-import { PerformanceCharts } from './components/PerformanceCharts'
-import { PortfolioOverview } from './components/PortfolioOverview'
-import { AIInsightsSummary } from './components/AIInsightsSummary'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { useAccount } from '@/contexts/AccountContext'
+
 import { AlertsSummary } from './components/AlertsSummary'
+import { ArtifactSummaryGrid } from './components/ArtifactSummaryGrid'
+import { MetricsGrid } from './components/MetricsGrid'
+import { PortfolioOverview } from './components/PortfolioOverview'
+import { useDashboardData } from './hooks/useDashboardData'
+import { useOverviewArtifacts } from './hooks/useOverviewArtifacts'
 
 export interface DashboardFeatureProps {
   onNavigate?: (path: string) => void
 }
 
 export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }) => {
-  const { portfolio, analytics, isLoading, portfolioScan, marketScreening, isScanning } = useDashboardData()
+  const navigate = useNavigate()
+  const { selectedAccount } = useAccount()
+  const { portfolio, analytics, isLoading } = useDashboardData()
+  const {
+    discovery,
+    research,
+    decisions,
+    review,
+    isLoading: artifactsLoading,
+    error: artifactsError,
+  } = useOverviewArtifacts(selectedAccount?.account_id ?? null)
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-6 lg:gap-8 p-4 lg:p-6 animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <SkeletonLoader className="h-8 w-48" />
-          <div className="flex gap-2">
-            <SkeletonLoader className="h-8 w-16" />
-            <SkeletonLoader className="h-8 w-20" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <SkeletonCard key={i} className="h-28" style={{ animationDelay: `${i * 50}ms` }} />
+      <div className="flex flex-col gap-6 p-4 lg:p-6">
+        <SkeletonLoader className="h-8 w-48" />
+        <SkeletonCard className="h-32" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <SkeletonCard key={index} className="h-28" />
           ))}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <SkeletonCard className="h-72" />
-          <SkeletonCard className="h-72" />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-4 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonCard key={index} className="h-44" />
+          ))}
         </div>
-        <SkeletonCard className="h-48" />
+        <SkeletonCard className="h-72" />
       </div>
     )
   }
 
   return (
     <div className="page-wrapper">
-      {/* Header Section with Staggered Animation */}
-      <div className="flex flex-col gap-6 animate-fade-in-luxury" style={{ animationDelay: '0ms' }}>
+      <div className="flex flex-col gap-6">
         <Breadcrumb />
 
-        {/* Title with Luxury Styling */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-          <div className="flex-1 space-y-3">
-            <h1 className="text-5xl lg:text-6xl font-bold text-warmgray-900 dark:text-warmgray-50 font-serif tracking-tight"
-                style={{ letterSpacing: '-0.02em' }}>
-              Trading Dashboard
-            </h1>
-            <p className="text-lg text-warmgray-600 dark:text-warmgray-300 font-normal max-w-xl">
-              Professional portfolio management powered by AI insights and real-time market data
-            </p>
-          </div>
-
-          {/* Action Buttons with Luxury Effects */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-4 lg:pt-0">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => portfolioScan()}
-                  disabled={isScanning}
-                  className="font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-copper-500/20 active:scale-95"
-                  aria-label="Scan portfolio for updates"
-                >
-                  <TrendingUp className={`w-5 h-5 mr-2 ${isScanning ? 'animate-spin' : ''}`} />
-                  {isScanning ? 'Scanning...' : 'Scan Portfolio'}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Refresh portfolio data and update current positions</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => marketScreening()}
-                  disabled={isScanning}
-                  className="font-semibold transition-all duration-300 hover:shadow-md"
-                  aria-label="Perform market screening"
-                >
-                  <PieChart className={`w-5 h-5 mr-2 ${isScanning ? 'animate-spin' : ''}`} />
-                  Market Screen
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Analyze market data and find opportunities</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
+        <PageHeader
+          title="Overview"
+          description="A thin operator summary for paper-trading capital, active blockers, and the latest agent artifacts."
+        />
       </div>
 
-      {/* Divider with Copper Accent */}
-      <div className="h-px bg-gradient-to-r from-transparent via-copper-500/20 to-transparent" />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Selected Paper Account</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Account</p>
+            <p className="text-sm font-medium text-foreground">
+              {selectedAccount?.account_name || 'No account selected'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Strategy</p>
+            <p className="text-sm font-medium text-foreground">
+              {selectedAccount?.strategy_type || 'Unassigned'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Account ID</p>
+            <p className="text-sm font-medium text-foreground">
+              {selectedAccount?.account_id || 'Select an account in Paper Trading'}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Tabs with Refined Styling */}
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-8 p-1.5 bg-warmgray-100 dark:bg-warmgray-800/50 rounded-xl border border-warmgray-200 dark:border-warmgray-700/50 shadow-sm backdrop-blur-sm">
-          <TabsTrigger
-            value="overview"
-            className="text-sm font-semibold rounded-lg transition-all duration-300 data-[state=active]:bg-white dark:data-[state=active]:bg-warmgray-700 data-[state=active]:shadow-sm data-[state=active]:text-copper-600"
-          >
-            Overview
-          </TabsTrigger>
-          <TabsTrigger
-            value="holdings"
-            className="text-sm font-semibold rounded-lg transition-all duration-300 data-[state=active]:bg-white dark:data-[state=active]:bg-warmgray-700 data-[state=active]:shadow-sm data-[state=active]:text-copper-600"
-          >
-            Holdings
-          </TabsTrigger>
-          <TabsTrigger
-            value="analytics"
-            className="text-sm font-semibold rounded-lg transition-all duration-300 data-[state=active]:bg-white dark:data-[state=active]:bg-warmgray-700 data-[state=active]:shadow-sm data-[state=active]:text-copper-600"
-          >
-            Analytics
-          </TabsTrigger>
-          <TabsTrigger
-            value="insights"
-            className="text-sm font-semibold rounded-lg transition-all duration-300 data-[state=active]:bg-white dark:data-[state=active]:bg-warmgray-700 data-[state=active]:shadow-sm data-[state=active]:text-copper-600"
-          >
-            AI Insights
-          </TabsTrigger>
-        </TabsList>
+      <MetricsGrid portfolio={portfolio} analytics={analytics} />
 
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-8 animate-slide-in-up-luxury">
-          <div style={{ animationDelay: '100ms' }}>
-            <MetricsGrid portfolio={portfolio} analytics={analytics} />
-          </div>
-          <div style={{ animationDelay: '200ms' }}>
-            <PerformanceCharts analytics={analytics} portfolio={portfolio} />
-          </div>
-          <div style={{ animationDelay: '300ms' }}>
-            <AlertsSummary />
-          </div>
-        </TabsContent>
+      <ArtifactSummaryGrid
+        accountLabel={selectedAccount?.account_name}
+        discovery={discovery}
+        research={research}
+        decisions={decisions}
+        review={review}
+        isLoading={artifactsLoading}
+        error={artifactsError}
+        onOpenPaperTrading={() => (onNavigate || navigate)('/paper-trading')}
+      />
 
-        {/* Holdings Tab */}
-        <TabsContent value="holdings" className="space-y-8 animate-slide-in-up-luxury">
-          <div style={{ animationDelay: '100ms' }}>
-            <PortfolioOverview portfolio={portfolio} detailed />
-          </div>
-        </TabsContent>
+      <AlertsSummary />
 
-        {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-8 animate-slide-in-up-luxury">
-          <div style={{ animationDelay: '100ms' }}>
-            <PerformanceCharts analytics={analytics} portfolio={portfolio} detailed />
-          </div>
-        </TabsContent>
-
-        {/* Insights Tab */}
-        <TabsContent value="insights" className="space-y-8 animate-slide-in-up-luxury">
-          <div style={{ animationDelay: '100ms' }}>
-            <AIInsightsSummary onNavigate={onNavigate} />
-          </div>
-        </TabsContent>
-      </Tabs>
+      <PortfolioOverview portfolio={portfolio} />
     </div>
   )
 }

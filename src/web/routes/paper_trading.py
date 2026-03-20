@@ -2,8 +2,8 @@
 
 import logging
 import os
-from typing import Dict, Any, List
-from datetime import datetime, timezone, timedelta
+from typing import Dict, Any
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -13,8 +13,9 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from src.core.di import DependencyContainer
-from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest, CloseTradeRequest
+from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest
 from src.core.errors import TradingError
+from src.models.agent_artifacts import DiscoveryEnvelope, DecisionEnvelope, ResearchEnvelope, ReviewEnvelope
 from ..dependencies import get_container
 
 
@@ -29,6 +30,13 @@ class ModifyTradeRequest(BaseModel):
     stop_loss: Optional[float] = None
     target_price: Optional[float] = None
 
+
+class ResearchRunRequest(BaseModel):
+    """Request body for focused single-candidate research runs."""
+
+    candidate_id: Optional[str] = Field(default=None)
+    symbol: Optional[str] = Field(default=None)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["paper-trading"])
@@ -36,6 +44,34 @@ router = APIRouter(prefix="/api", tags=["paper-trading"])
 limiter = Limiter(key_func=get_remote_address)
 
 paper_trading_limit = os.getenv("RATE_LIMIT_PAPER_TRADING", "20/minute")
+
+
+async def _get_required_account(account_manager, account_id: str):
+    """Return the account or a fail-loud 404 response when it does not exist."""
+    account = await account_manager.get_account(account_id)
+    if account is None:
+        return None, JSONResponse(
+            status_code=404,
+            content={
+                "success": False,
+                "error": (
+                    f"Paper trading account '{account_id}' was not found. "
+                    "Create the account first via POST /api/paper-trading/accounts/create."
+                ),
+            },
+        )
+
+    return account, None
+
+
+async def _require_account_or_error(
+    container: DependencyContainer,
+    account_id: str,
+):
+    """Resolve an account or return the fail-loud response object."""
+    account_manager = await container.get("paper_trading_account_manager")
+    _, error_response = await _get_required_account(account_manager, account_id)
+    return error_response
 
 
 # ============================================================================
@@ -156,16 +192,6 @@ async def get_paper_trading_accounts(
         # Get all accounts from database
         all_accounts = await account_manager.get_all_accounts()
 
-        # If no accounts exist, create default account
-        if not all_accounts:
-            default_account = await account_manager.create_account(
-                account_name="Paper Trading - Swing Trading",
-                initial_balance=100000.0,
-                account_id="paper_swing_main"
-            )
-            all_accounts = [default_account]
-            logger.info("Created default paper trading account")
-
         # Format accounts for frontend
         accounts = []
         for acc in all_accounts:
@@ -175,6 +201,7 @@ async def get_paper_trading_accounts(
 
             accounts.append({
                 "accountId": acc.account_id,
+                "accountName": getattr(acc, "account_name", acc.account_id),
                 "accountType": acc.strategy_type.value if hasattr(acc.strategy_type, 'value') else str(acc.strategy_type),
                 "currency": "INR",
                 "createdDate": acc.created_at if isinstance(acc.created_at, str) else (acc.created_at.isoformat() if hasattr(acc, 'created_at') and acc.created_at else datetime.now(timezone.utc).isoformat()),
@@ -204,17 +231,9 @@ async def get_paper_trading_account_overview(
     try:
         account_manager = await container.get("paper_trading_account_manager")
 
-        # Fetch account from database
-        account = await account_manager.get_account(account_id)
-
-        if not account:
-            # If account doesn't exist, create it
-            account = await account_manager.create_account(
-                account_name=f"Paper Trading Account {account_id}",
-                initial_balance=100000.0,
-                account_id=account_id
-            )
-            logger.info(f"Created new paper trading account: {account_id}")
+        account, error_response = await _get_required_account(account_manager, account_id)
+        if error_response is not None:
+            return error_response
 
         # Get performance metrics
         metrics = await account_manager.get_performance_metrics(account_id, period="all-time")
@@ -230,7 +249,10 @@ async def get_paper_trading_account_overview(
         store = await container.get("paper_trading_store")
         today = datetime.now(timezone.utc).date()
         all_closed = await store.get_closed_trades(account_id)
-        closed_today = [t for t in all_closed if t.exit_timestamp and t.exit_timestamp.date() == today]
+        closed_today = [
+            t for t in all_closed
+            if t.exit_timestamp and datetime.fromisoformat(t.exit_timestamp).date() == today
+        ]
 
         # Build overview response
         overview = {
@@ -271,6 +293,9 @@ async def get_paper_trading_positions(
     """Get positions for paper trading account with REAL-TIME prices and P&L."""
     try:
         account_manager = await container.get("paper_trading_account_manager")
+        _, error_response = await _get_required_account(account_manager, account_id)
+        if error_response is not None:
+            return error_response
 
         # Fetch open positions with real-time prices from Zerodha
         positions_data = await account_manager.get_open_positions(account_id)
@@ -292,7 +317,9 @@ async def get_paper_trading_positions(
                 "stopLoss": pos.stop_loss,
                 "strategy": pos.strategy_rationale,
                 "currentValue": pos.current_value,
-                "tradeType": pos.trade_type
+                "tradeType": pos.trade_type,
+                "markStatus": pos.market_price_status,
+                "markDetail": pos.market_price_detail,
             })
 
         logger.info(f"Retrieved {len(positions)} open positions for account {account_id} with real-time Zerodha prices")
@@ -315,6 +342,9 @@ async def get_paper_trading_trades(
     """Get REAL closed trades for paper trading account from database."""
     try:
         account_manager = await container.get("paper_trading_account_manager")
+        _, error_response = await _get_required_account(account_manager, account_id)
+        if error_response is not None:
+            return error_response
 
         # Fetch real closed trades from database
         closed_trades = await account_manager.get_closed_trades(
@@ -372,6 +402,9 @@ async def get_paper_trading_performance(
         account_manager = await container.get("paper_trading_account_manager")
         performance_calculator = await container.get("performance_calculator")
         store = await container.get("paper_trading_store")
+        _, error_response = await _get_required_account(account_manager, account_id)
+        if error_response is not None:
+            return error_response
 
         # Get real performance metrics
         metrics = await account_manager.get_performance_metrics(account_id, period=period)
@@ -419,6 +452,230 @@ async def get_paper_trading_performance(
         return await handle_trading_error(e)
     except Exception as e:
         return await handle_unexpected_error(e, "get_paper_trading_performance")
+
+
+@router.get("/paper-trading/accounts/{account_id}/discovery")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_discovery(
+    request: Request,
+    account_id: str,
+    limit: int = 10,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Get compact discovery candidates for the paper-trading operator."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: DiscoveryEnvelope = await artifact_service.get_discovery_view(account_id, limit=limit)
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_discovery")
+
+
+@router.get("/paper-trading/accounts/{account_id}/decisions")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_decisions(
+    request: Request,
+    account_id: str,
+    limit: int = 3,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Get compact decision packets for open paper-trading positions."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: DecisionEnvelope = await artifact_service.get_decision_view(account_id, limit=limit)
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_decisions")
+
+
+@router.get("/paper-trading/accounts/{account_id}/research")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_research(
+    request: Request,
+    account_id: str,
+    candidate_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Get a focused research packet for the selected or top-ranked candidate."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: ResearchEnvelope = await artifact_service.get_research_view(
+            account_id,
+            candidate_id=candidate_id,
+            symbol=symbol,
+        )
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_research")
+
+
+@router.get("/paper-trading/accounts/{account_id}/review")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_review(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Generate a compact paper-trading review report."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: ReviewEnvelope = await artifact_service.get_review_view(account_id)
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_review")
+
+
+@router.post("/paper-trading/accounts/{account_id}/runs/discovery")
+@limiter.limit("10/minute")
+async def run_paper_trading_discovery(
+    request: Request,
+    account_id: str,
+    limit: int = 10,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Run a fresh discovery pass for the selected paper-trading account."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: DiscoveryEnvelope = await artifact_service.get_discovery_view(account_id, limit=limit)
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "run_paper_trading_discovery")
+
+
+@router.post("/paper-trading/accounts/{account_id}/runs/research")
+@limiter.limit("10/minute")
+async def run_paper_trading_research(
+    request: Request,
+    account_id: str,
+    research_request: ResearchRunRequest,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Run a focused research pass for one candidate or explicit symbol."""
+    try:
+        if not research_request.candidate_id and not research_request.symbol:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": "Provide candidate_id or symbol before running research.",
+                },
+            )
+
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: ResearchEnvelope = await artifact_service.get_research_view(
+            account_id,
+            candidate_id=research_request.candidate_id,
+            symbol=research_request.symbol,
+            refresh=True,
+        )
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "run_paper_trading_research")
+
+
+@router.post("/paper-trading/accounts/{account_id}/runs/decision-review")
+@limiter.limit("10/minute")
+async def run_paper_trading_decision_review(
+    request: Request,
+    account_id: str,
+    limit: int = 3,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Run a fresh decision review for current paper-trading positions."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: DecisionEnvelope = await artifact_service.get_decision_view(account_id, limit=limit, refresh=True)
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "run_paper_trading_decision_review")
+
+
+@router.post("/paper-trading/accounts/{account_id}/runs/daily-review")
+@limiter.limit("10/minute")
+async def run_paper_trading_daily_review(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Run a fresh daily review for the selected paper-trading account."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: ReviewEnvelope = await artifact_service.get_review_view(account_id, refresh=True)
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "run_paper_trading_daily_review")
+
+
+@router.post("/paper-trading/accounts/{account_id}/runs/exit-check")
+@limiter.limit("10/minute")
+async def run_paper_trading_exit_check(
+    request: Request,
+    account_id: str,
+    limit: int = 3,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Run an exit-check pass using the bounded decision packet flow."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        artifact_service = await container.get("agent_artifact_service")
+        envelope: DecisionEnvelope = await artifact_service.get_decision_view(account_id, limit=limit, refresh=True)
+        return envelope.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "run_paper_trading_exit_check")
 
 
 # ============================================================================
@@ -552,15 +809,18 @@ async def modify_trade(
                 }
             )
 
-        # Get state manager and paper trading state
-        state_manager = await container.get_state_manager()
-        paper_trading_state = state_manager.paper_trading
+        store = await container.get("paper_trading_store")
+        account_manager = await container.get("paper_trading_account_manager")
 
-        # Modify the trade
-        result = await paper_trading_state.modify_trade(
+        account, error_response = await _get_required_account(account_manager, account_id)
+        if error_response is not None:
+            return error_response
+
+        result = await store.update_trade_risk_levels(
+            account_id=account.account_id,
             trade_id=trade_id,
             stop_loss=body.stop_loss,
-            target_price=body.target_price
+            target_price=body.target_price,
         )
 
         if result is None:
@@ -568,7 +828,7 @@ async def modify_trade(
                 status_code=404,
                 content={
                     "success": False,
-                    "error": f"Trade {trade_id} not found or is not open"
+                    "error": f"Trade {trade_id} not found in account {account_id} or is not open"
                 }
             )
 
@@ -577,7 +837,7 @@ async def modify_trade(
 
         return {
             "success": True,
-            "trade": result,
+            "trade": result.to_dict() if hasattr(result, "to_dict") else result,
             "message": f"Trade {trade_id} modified successfully"
         }
 
@@ -585,242 +845,3 @@ async def modify_trade(
         return await handle_trading_error(e)
     except Exception as e:
         return await handle_unexpected_error(e, "modify_trade")
-
-
-# ============================================================================
-# AI PAPER TRADING AUTOMATION ENDPOINTS - Phase 1 Implementation
-# ============================================================================
-
-class ToggleAITradingRequest(BaseModel):
-    """Request model for toggling AI trading."""
-    enabled: bool
-
-class RiskLimitsRequest(BaseModel):
-    """Request model for updating risk limits."""
-    max_daily_loss_percent: float = Field(..., ge=0, le=10, description="Maximum daily loss percentage (0-10)")
-    max_position_size_percent: float = Field(..., ge=0.5, le=20, description="Maximum position size percentage (0.5-20)")
-    max_portfolio_risk_percent: float = Field(..., ge=1, le=50, description="Maximum portfolio risk percentage (1-50)")
-    max_concurrent_positions: int = Field(..., ge=1, le=20, description="Maximum concurrent positions (1-20)")
-    min_confidence_score: float = Field(..., ge=0, le=1, description="Minimum confidence score for trades (0-1)")
-
-
-@router.get("/paper-trading/automation/status")
-@limiter.limit(paper_trading_limit)
-async def get_ai_automation_status(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
-) -> Dict[str, Any]:
-    """Get AI automation status and configuration."""
-    try:
-        state_manager = await container.get("state_manager")
-        config = await state_manager.paper_trading.get_ai_automation_config()
-
-        return {
-            "success": True,
-            "automation": config or {
-                "ai_trading_enabled": False,
-                "emergency_stop": False,
-                "total_automated_trades": 0,
-                "success_rate": 0,
-                "message": "AI automation configuration not found"
-            }
-        }
-
-    except Exception as e:
-        return await handle_unexpected_error(e, "get_ai_automation_status")
-
-
-@router.post("/paper-trading/automation/toggle")
-@limiter.limit(paper_trading_limit)
-async def toggle_ai_trading(
-    request: Request,
-    toggle_request: ToggleAITradingRequest,
-    container: DependencyContainer = Depends(get_container)
-) -> Dict[str, Any]:
-    """Toggle AI trading on/off."""
-    try:
-        state_manager = await container.get("state_manager")
-
-        # Get current config to check for emergency stop
-        current_config = await state_manager.paper_trading.get_ai_automation_config()
-        if current_config and current_config.get("emergency_stop", False):
-            return {
-                "success": False,
-                "error": "Cannot enable AI trading - emergency stop is active. Reset emergency stop first."
-            }
-
-        # Check trading hours if enabling
-        if toggle_request.enabled:
-            can_trade = await state_manager.paper_trading.check_trading_hours()
-            if not can_trade:
-                return {
-                    "success": False,
-                    "error": "Cannot enable AI trading - outside of allowed trading hours."
-                }
-
-        success = await state_manager.paper_trading.toggle_ai_trading(toggle_request.enabled)
-
-        if success:
-            return {
-                "success": True,
-                "message": f"AI trading {'enabled' if toggle_request.enabled else 'disabled'} successfully",
-                "enabled": toggle_request.enabled
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Failed to toggle AI trading"
-            }
-
-    except Exception as e:
-        return await handle_unexpected_error(e, "toggle_ai_trading")
-
-
-@router.post("/paper-trading/automation/emergency-stop")
-@limiter.limit(paper_trading_limit)
-async def emergency_stop_ai_trading(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
-) -> Dict[str, Any]:
-    """Emergency stop AI trading."""
-    try:
-        state_manager = await container.get("state_manager")
-
-        success = await state_manager.paper_trading.emergency_stop_ai_trading()
-
-        if success:
-            return {
-                "success": True,
-                "message": "AI trading emergency stop activated successfully",
-                "emergency_stop": True
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Failed to activate emergency stop"
-            }
-
-    except Exception as e:
-        return await handle_unexpected_error(e, "emergency_stop_ai_trading")
-
-
-@router.post("/paper-trading/automation/reset-emergency-stop")
-@limiter.limit(paper_trading_limit)
-async def reset_emergency_stop(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
-) -> Dict[str, Any]:
-    """Reset emergency stop flag."""
-    try:
-        state_manager = await container.get("state_manager")
-
-        success = await state_manager.paper_trading.reset_emergency_stop()
-
-        if success:
-            return {
-                "success": True,
-                "message": "Emergency stop reset successfully",
-                "emergency_stop": False
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Failed to reset emergency stop"
-            }
-
-    except Exception as e:
-        return await handle_unexpected_error(e, "reset_emergency_stop")
-
-
-@router.post("/paper-trading/automation/risk-limits")
-@limiter.limit(paper_trading_limit)
-async def update_risk_limits(
-    request: Request,
-    risk_request: RiskLimitsRequest,
-    container: DependencyContainer = Depends(get_container)
-) -> Dict[str, Any]:
-    """Update AI trading risk limits."""
-    try:
-        state_manager = await container.get("state_manager")
-
-        risk_limits = {
-            "max_daily_loss_percent": risk_request.max_daily_loss_percent,
-            "max_position_size_percent": risk_request.max_position_size_percent,
-            "max_portfolio_risk_percent": risk_request.max_portfolio_risk_percent,
-            "max_concurrent_positions": risk_request.max_concurrent_positions,
-            "min_confidence_score": risk_request.min_confidence_score
-        }
-
-        success = await state_manager.paper_trading.update_risk_limits(risk_limits)
-
-        if success:
-            return {
-                "success": True,
-                "message": "Risk limits updated successfully",
-                "risk_limits": risk_limits
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Failed to update risk limits"
-            }
-
-    except Exception as e:
-        return await handle_unexpected_error(e, "update_risk_limits")
-
-
-@router.get("/paper-trading/automation/monitor")
-@limiter.limit(paper_trading_limit)
-async def get_automation_monitor(
-    request: Request,
-    container: DependencyContainer = Depends(get_container)
-) -> Dict[str, Any]:
-    """Get AI automation monitoring data."""
-    try:
-        state_manager = await container.get("state_manager")
-
-        # Get automation config
-        automation_config = await state_manager.paper_trading.get_ai_automation_config()
-
-        # Get paper trading account
-        account = await state_manager.paper_trading.get_account()
-
-        # Get today's trades using database state - use account data for stats
-        trade_stats = {"total_trades": 0, "closed_trades": 0, "open_trades": 0}
-        if account:
-            # Extract trade statistics from account data
-            trade_stats["total_trades"] = account.get("total_trades", 0)
-            trade_stats["closed_trades"] = account.get("closed_trades", 0)
-            trade_stats["open_trades"] = account.get("open_positions", 0)
-
-        # Check trading hours
-        can_trade_now = await state_manager.paper_trading.check_trading_hours()
-
-        # Check daily loss limit
-        daily_pnl = account.get("day_pnl", 0) if account else 0
-        loss_limit_exceeded = await state_manager.paper_trading.check_daily_loss_limit(daily_pnl)
-
-        return {
-            "success": True,
-            "monitor": {
-                "automation_enabled": automation_config.get("ai_trading_enabled", False) if automation_config else False,
-                "emergency_stop": automation_config.get("emergency_stop", False) if automation_config else False,
-                "can_trade_now": can_trade_now,
-                "loss_limit_exceeded": loss_limit_exceeded,
-                "account": account or {},
-                "today_stats": trade_stats,
-                "automation_stats": {
-                    "total_automated_trades": automation_config.get("total_automated_trades", 0) if automation_config else 0,
-                    "successful_automated_trades": automation_config.get("successful_automated_trades", 0) if automation_config else 0,
-                    "failed_automated_trades": automation_config.get("failed_automated_trades", 0) if automation_config else 0,
-                    "success_rate": automation_config.get("success_rate", 0) if automation_config else 0,
-                    "total_automated_pnl": automation_config.get("total_automated_pnl", 0) if automation_config else 0,
-                    "last_trade_execution": automation_config.get("last_trade_execution") if automation_config else None,
-                    "last_strategy_generation": automation_config.get("last_strategy_generation") if automation_config else None
-                },
-                "risk_limits": automation_config.get("risk_limits", {}) if automation_config else {}
-            }
-        }
-
-    except Exception as e:
-        return await handle_unexpected_error(e, "get_automation_monitor")

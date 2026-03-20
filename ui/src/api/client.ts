@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 export class APIError extends Error {
   constructor(
@@ -32,10 +32,17 @@ export async function apiRequest<T>(
       let errorMessage = `Request failed: ${response.statusText}`
 
       try {
-        const errorData = await response.json()
-        errorMessage = errorData.error || errorData.detail || errorMessage
+        const rawBody = await response.text()
+        if (rawBody) {
+          try {
+            const errorData = JSON.parse(rawBody)
+            errorMessage = errorData.error || errorData.detail || rawBody || errorMessage
+          } catch {
+            errorMessage = rawBody || errorMessage
+          }
+        }
       } catch {
-        errorMessage = await response.text() || errorMessage
+        // Ignore body read failures and keep the fallback status text.
       }
 
       throw new APIError(response.status, response.statusText, errorMessage)

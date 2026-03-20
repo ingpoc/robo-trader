@@ -93,6 +93,16 @@ class EventType(Enum):
     MCP_TASK_FAILED = "mcp.task_failed"
     MCP_SERVER_STARTED = "mcp.server_started"
     MCP_SERVER_STOPPED = "mcp.server_stopped"
+    # Morning/Evening Session events
+    MORNING_SESSION_STARTED = "morning_session.started"
+    MORNING_SESSION_COMPLETE = "morning_session.complete"
+    MORNING_SESSION_ERROR = "morning_session.error"
+    EVENING_REVIEW_STARTED = "evening_review.started"
+    EVENING_REVIEW_COMPLETE = "evening_review.complete"
+    EVENING_REVIEW_ERROR = "evening_review.error"
+    # Safeguard events
+    SAFEGUARD_UPDATE = "safeguard.update"
+    CIRCUIT_BREAKER_ACTIVATED = "circuit_breaker.activated"
 
 
 @dataclass

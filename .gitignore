@@ -65,3 +65,10 @@ shared/robotrader_mcp/dist/
 shared/robotrader_mcp/.env
 shared/robotrader_mcp/*.log
 config/backups/
+.env
+
+# Repo-local tool state
+.claude/settings.local.json
+ui/.claude/settings.local.json
+.claude/tsc-cache/
+.serena/

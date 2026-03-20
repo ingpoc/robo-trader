@@ -54,14 +54,44 @@ class PerplexityClient:
 
     @staticmethod
     def _load_api_keys_from_env() -> List[str]:
-        """Load Perplexity API keys from environment variables.
+        """Load Perplexity API keys from .env file first, then environment variables.
 
-        Supports both individual keys (PERPLEXITY_API_KEY_1, etc.)
-        and comma-separated keys (PERPLEXITY_API_KEYS).
+        Priority: .env file → PERPLEXITY_API_KEYS → Individual key variables
 
         Returns:
             List of non-empty API keys
         """
+        # First try to load from .env file
+        env_keys = []
+        try:
+            import os
+            project_root = os.getenv('ROBO_TRADER_PROJECT_ROOT', os.getcwd())
+            env_file = os.path.join(project_root, '.env')
+
+            if os.path.exists(env_file):
+                from dotenv import load_dotenv
+                env_vars = load_dotenv(env_file)
+                logger.info(f"Loaded {len(env_vars)} variables from .env file")
+
+                # Load from loaded environment variables
+                env_keys = [
+                    os.getenv('PERPLEXITY_API_KEY_1'),
+                    os.getenv('PERPLEXITY_API_KEY_2'),
+                    os.getenv('PERPLEXITY_API_KEY_3')
+                ]
+                logger.info(f"Found {len([k for k in env_keys if k])} Perplexity keys from .env")
+        except ImportError:
+            logger.warning("python-dotenv not available, skipping .env file loading")
+        except Exception as e:
+            logger.warning(f"Error loading .env file: {e}")
+
+        # Filter out None/empty keys
+        filtered_env_keys = [key for key in env_keys if key]
+
+        if filtered_env_keys:
+            return filtered_env_keys
+
+        # Fall back to environment variables directly
         keys_str = os.getenv('PERPLEXITY_API_KEYS', '')
         logger.info(f"Checking PERPLEXITY_API_KEYS: {repr(keys_str)}")
         if keys_str:
@@ -70,14 +100,14 @@ class PerplexityClient:
             if keys:
                 return keys
 
-        # Fall back to individual key variables
+        # Final fallback to individual key variables
         keys = [
             os.getenv('PERPLEXITY_API_KEY_1'),
             os.getenv('PERPLEXITY_API_KEY_2'),
             os.getenv('PERPLEXITY_API_KEY_3')
         ]
         filtered_keys = [key for key in keys if key]
-        logger.info(f"Found {len(filtered_keys)} keys from individual variables")
+        logger.info(f"Found {len(filtered_keys)} keys from individual environment variables")
         return filtered_keys
 
     async def _call_perplexity_api(

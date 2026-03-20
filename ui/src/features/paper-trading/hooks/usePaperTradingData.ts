@@ -28,7 +28,7 @@ interface PaperTradingDataState {
 
 export const usePaperTradingData = (options: UsePaperTradingDataOptions = {}) => {
   const {
-    accountId = 'paper_swing_main',
+    accountId,
     autoRefresh = true,
     refreshInterval = 30000
   } = options
@@ -43,6 +43,9 @@ export const usePaperTradingData = (options: UsePaperTradingDataOptions = {}) =>
   })
 
   const fetchAccountOverview = useCallback(async () => {
+    if (!accountId) {
+      return null
+    }
     try {
       const response = await fetch(`/api/paper-trading/accounts/${accountId}/overview`)
       if (!response.ok) throw new Error('Failed to fetch account overview')
@@ -55,6 +58,9 @@ export const usePaperTradingData = (options: UsePaperTradingDataOptions = {}) =>
   }, [accountId])
 
   const fetchOpenPositions = useCallback(async () => {
+    if (!accountId) {
+      return []
+    }
     try {
       const response = await fetch(`/api/paper-trading/accounts/${accountId}/positions`)
       if (!response.ok) throw new Error('Failed to fetch positions')
@@ -67,6 +73,9 @@ export const usePaperTradingData = (options: UsePaperTradingDataOptions = {}) =>
   }, [accountId])
 
   const fetchClosedTrades = useCallback(async () => {
+    if (!accountId) {
+      return []
+    }
     try {
       const response = await fetch(`/api/paper-trading/accounts/${accountId}/trades`)
       if (!response.ok) throw new Error('Failed to fetch trades')
@@ -79,17 +88,32 @@ export const usePaperTradingData = (options: UsePaperTradingDataOptions = {}) =>
   }, [accountId])
 
   const fetchPerformanceMetrics = useCallback(async () => {
+    if (!accountId) {
+      return null
+    }
     try {
-      const response = await fetch(`/api/paper-trading/accounts/${accountId}/metrics`)
+      const response = await fetch(`/api/paper-trading/accounts/${accountId}/performance`)
       if (!response.ok) return null
       const data = await response.json()
-      return data.success ? data.metrics : null
+      return data.success ? data.performance : data.metrics
     } catch {
       return null
     }
   }, [accountId])
 
   const refresh = useCallback(async () => {
+    if (!accountId) {
+      setState({
+        accountOverview: null,
+        openPositions: [],
+        closedTrades: [],
+        performanceMetrics: null,
+        isLoading: false,
+        error: null
+      })
+      return
+    }
+
     setState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
@@ -115,7 +139,7 @@ export const usePaperTradingData = (options: UsePaperTradingDataOptions = {}) =>
         error: error instanceof Error ? error.message : 'Failed to fetch data'
       }))
     }
-  }, [fetchAccountOverview, fetchOpenPositions, fetchClosedTrades, fetchPerformanceMetrics])
+  }, [accountId, fetchAccountOverview, fetchOpenPositions, fetchClosedTrades, fetchPerformanceMetrics])
 
   // Initial fetch
   useEffect(() => {

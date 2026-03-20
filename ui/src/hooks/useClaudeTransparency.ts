@@ -80,7 +80,13 @@ export function useClaudeTransparency() {
   const fetchResearchActivity = async () => {
     try {
       const response = await apiClient.get('/api/claude/transparency/research')
-      setResearchActivity(response.data)
+      const data = response.data as any
+      // API returns {"research": {...}} structure
+      if (data && data.research) {
+        setResearchActivity(data.research)
+      } else {
+        setResearchActivity(null)
+      }
     } catch (err) {
       console.error('Failed to fetch research activity:', err)
       setResearchActivity(null)
@@ -90,14 +96,28 @@ export function useClaudeTransparency() {
   const fetchAnalysisActivity = async () => {
     try {
       const response = await apiClient.get('/api/claude/transparency/analysis')
-      setAnalysisActivity(response.data)  // FIX: API returns data directly, not nested
-      // Also populate tradeLogs from analysis data for Recommendations tab
-      if (response.data && response.data.recent_decisions) {
-        setTradeLogs(response.data.recent_decisions)  // FIX: Correct path to recent_decisions
-      }
+      const data = response.data as any
+      // API returns {"analysis": {...}} structure
+      const analysisData = data.analysis || data
+      setAnalysisActivity(analysisData)
     } catch (err) {
       console.error('Failed to fetch analysis activity:', err)
       setAnalysisActivity(null)
+    }
+  }
+
+  const fetchTradeDecisions = async () => {
+    try {
+      const response = await apiClient.get('/api/claude/transparency/trade-decisions')
+      const data = response.data as any
+      // API returns {"decisions": [...], "stats": {...}, "last_updated": "..."} structure
+      if (data && data.decisions) {
+        setTradeLogs(data.decisions)
+      } else {
+        setTradeLogs([])
+      }
+    } catch (err) {
+      console.error('Failed to fetch trade decisions:', err)
       setTradeLogs([])
     }
   }
@@ -105,27 +125,71 @@ export function useClaudeTransparency() {
   const fetchExecutionActivity = async () => {
     try {
       const response = await apiClient.get('/api/claude/transparency/execution')
-      setExecutionActivity(response.data)
+      const data = response.data as any
+      // API returns {"execution": {...}} structure
+      const executionData = data.execution || data
+      setExecutionActivity(executionData)
+      // Map execution data to session format expected by SessionTranscripts component
+      if (executionData && executionData.recent_executions) {
+        const mappedSessions = executionData.recent_executions.map((session: any) => ({
+          type: session.session_type || 'unknown',
+          timestamp: session.timestamp,
+          duration: 0, // Not available in current API
+          tokenInput: session.token_usage ? Math.floor(session.token_usage * 0.6) : 0,
+          tokenOutput: session.token_usage ? Math.floor(session.token_usage * 0.4) : 0,
+          decisionsCount: session.trades_executed || 0,
+          tradesExecuted: session.trades_executed || 0,
+          summary: `${session.account_type} trading session - ${session.success ? 'Successful' : 'Failed'}`
+        }))
+        setSessionData(mappedSessions)
+      } else {
+        setSessionData([])
+      }
     } catch (err) {
       console.error('Failed to fetch execution activity:', err)
       setExecutionActivity(null)
+      setSessionData([])
     }
   }
 
   const fetchDailyEvaluation = async () => {
     try {
       const response = await apiClient.get('/api/claude/transparency/daily-evaluation')
-      setDailyEvaluation(response.data)
+      const data = response.data as any
+      // API returns {"daily_evaluation": {...}} structure
+      const evaluationData = data.daily_evaluation || data
+      setDailyEvaluation(evaluationData)
+
+      // Transform evaluation data to reflections format
+      if (evaluationData && evaluationData.evaluations && evaluationData.evaluations.length > 0) {
+        const reflections = evaluationData.evaluations.map((evaluation: any) => ({
+          date: evaluation.date,
+          account_type: evaluation.account_type,
+          what_worked: evaluation.best_performing ? `${evaluation.best_performing} strategy performed well` : '',
+          what_didnt_work: evaluation.worst_performing ? `${evaluation.worst_performing} strategy underperformed` : '',
+          tomorrow_focus: evaluation.recommendations && evaluation.recommendations.length > 0 ? evaluation.recommendations.join('. ') : '',
+          win_rate: 0, // Not available in current data
+          trades_executed: 0, // Not available in current data
+          confidence_score: evaluation.confidence_score
+        }))
+        setStrategyReflections(reflections)
+      } else {
+        setStrategyReflections([])
+      }
     } catch (err) {
       console.error('Failed to fetch daily evaluation:', err)
       setDailyEvaluation(null)
+      setStrategyReflections([])
     }
   }
 
   const fetchDailySummary = async () => {
     try {
       const response = await apiClient.get('/api/claude/transparency/daily-summary')
-      setDailySummary(response.data)
+      const data = response.data as any
+      // API returns {"daily_summary": {...}} structure
+      const summaryData = data.daily_summary || data.dailySummary || data
+      setDailySummary(summaryData)
     } catch (err) {
       console.error('Failed to fetch daily summary:', err)
       setDailySummary(null)
@@ -135,7 +199,8 @@ export function useClaudeTransparency() {
   const fetchStrategyEvolution = async (strategyName: string) => {
     try {
       const response = await apiClient.get(`/api/claude/transparency/strategy-evolution/${strategyName}`)
-      setStrategyEvolution(response.data)
+      const data = response.data as any
+      setStrategyEvolution(data.strategy_evolution)
     } catch (err) {
       console.error('Failed to fetch strategy evolution:', err)
       setStrategyEvolution(null)
@@ -152,7 +217,8 @@ export function useClaudeTransparency() {
         fetchAnalysisActivity(),
         fetchExecutionActivity(),
         fetchDailyEvaluation(),
-        fetchDailySummary()
+        fetchDailySummary(),
+        fetchTradeDecisions()
       ])
     } catch (err) {
       setError('Failed to refresh transparency data')

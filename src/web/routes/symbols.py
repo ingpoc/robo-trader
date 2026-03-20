@@ -2,9 +2,8 @@
 
 import logging
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

@@ -13,8 +13,7 @@ Sandboxing (Anthropic's research):
 - ~150 tokens saved per auto-approved trade
 """
 
-import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime, timezone
 
 from claude_agent_sdk import HookMatcher
@@ -22,11 +21,10 @@ from loguru import logger
 
 from src.config import Config
 from ..core.database_state import DatabaseStateManager
-from ..core.state_models import Intent, RiskDecision
 
 # Import sandbox components
 try:
-    from .sandbox import check_paper_trade_sandbox, get_sandbox_context, initialize_sandbox
+    from .sandbox import check_paper_trade_sandbox
     SANDBOX_AVAILABLE = True
 except ImportError:
     SANDBOX_AVAILABLE = False
@@ -181,11 +179,9 @@ async def _validate_order_parameters(tool_input: Dict[str, Any], config: Config,
 
     # Get current position
     current_qty = 0
-    current_value = 0
     for holding in portfolio.holdings:
         if holding["symbol"] == symbol:
             current_qty = holding["qty"]
-            current_value = holding["exposure"]
             break
 
     # Calculate new position
@@ -287,14 +283,32 @@ async def session_start_hook(session_id: str, context: Dict[str, Any]) -> Dict[s
         pos_count = 0
 
         try:
-            paper_trading_state = getattr(state_manager, 'paper_trading_state', None)
-            if paper_trading_state:
-                account = await paper_trading_state.get_account()
-                if account:
-                    bal = account.get("current_cash", 0)
+            db = getattr(getattr(state_manager, "db", None), "connection", None)
+            if db:
+                cursor = await db.execute(
+                    """
+                    SELECT COALESCE(SUM(current_balance), 0)
+                    FROM paper_trading_accounts
+                    WHERE is_active = 1
+                    """
+                )
+                balance_row = await cursor.fetchone()
+                await cursor.close()
+                if balance_row:
+                    bal = balance_row[0] or 0
 
-                open_trades = await paper_trading_state.get_open_trades()
-                pos_count = len(open_trades) if open_trades else 0
+                cursor = await db.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM paper_trades
+                    WHERE status = ?
+                    """,
+                    ("open",),
+                )
+                positions_row = await cursor.fetchone()
+                await cursor.close()
+                if positions_row:
+                    pos_count = positions_row[0] or 0
         except Exception as e:
             logger.warning(f"SessionStart: Failed to get portfolio: {e}")
 

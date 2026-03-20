@@ -33,6 +33,7 @@ interface QueueInfo {
   failed_count: number
   total_tasks: number
   last_activity: string
+  last_completed_at?: string
   average_duration_ms: number
   current_task?: any | null
 }
@@ -40,9 +41,11 @@ interface QueueInfo {
 export interface QueueHealthMonitorProps {
   health: {
     healthy: boolean
+    status?: string
     totalTasks: number
     runningQueues: number
     totalQueues: number
+    failedTasks?: number
     queues?: QueueInfo[]
   } | null
   isLoading: boolean
@@ -76,6 +79,7 @@ const useRealQueueData = () => {
             total_tasks: queue.total_tasks || 0,
             last_activity: queue.last_activity || '',
             average_duration_ms: Math.round((queue.average_duration_ms || 0)),
+            last_completed_at: queue.last_completed_at || queue.last_activity || '',
             current_task: queue.current_task || null
           }))
         } else {
@@ -90,6 +94,7 @@ const useRealQueueData = () => {
               failed_count: queue.failed_count || 0,
               total_tasks: queue.total_tasks || 0,
               last_activity: queue.last_activity || 0,
+              last_completed_at: queue.last_completed_at || queue.last_activity || '',
               average_duration_ms: Math.round((queue.average_duration_ms || 0)),
               current_task: queue.current_task || null
             })

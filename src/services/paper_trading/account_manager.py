@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 from ...models.paper_trading import PaperTradingAccount, AccountType, RiskLevel
+from ...models.paper_trading_responses import OpenPositionResponse, ClosedTradeResponse
 from ...stores.paper_trading_store import PaperTradingStore
-from ...web.paper_trading_api import OpenPositionResponse, ClosedTradeResponse
 from .performance_calculator import PerformanceCalculator
 from ...services.market_data_service import SubscriptionMode, MarketDataProvider
 
@@ -173,12 +173,12 @@ class PaperTradingAccountManager:
 
         # Fetch current prices from MarketDataService (Zerodha Kite integration)
         current_prices = {}
+        market_price_detail = None
         if self.market_data_service:
             try:
+                subscriptions = await self.market_data_service.get_active_subscriptions()
                 # Subscribe to market data for all symbols if not already subscribed
                 for symbol in symbols:
-                    # Check if already subscribed, if not subscribe
-                    subscriptions = await self.market_data_service.get_active_subscriptions()
                     if symbol not in subscriptions:
                         await self.market_data_service.subscribe_market_data(
                             symbol=symbol,
@@ -194,15 +194,29 @@ class PaperTradingAccountManager:
                         current_prices[symbol] = market_data.ltp
                         logger.debug(f"Got real-time price for {symbol}: ₹{market_data.ltp}")
             except Exception as e:
-                logger.warning(f"Failed to fetch market data from Zerodha: {e}. Using entry prices as fallback.")
+                market_price_detail = f"Live market data unavailable: {e}"
+                logger.warning("Failed to fetch market data from Zerodha: %s", e)
+        else:
+            market_price_detail = "MarketDataService is not configured."
 
         # Convert to response format
         positions = []
         for trade in open_trades:
-            # Get current price from market data, fallback to entry price if unavailable
+            has_live_price = trade.symbol in current_prices
             current_price = current_prices.get(trade.symbol, trade.entry_price)
-            if current_price == trade.entry_price:
-                logger.warning(f"Market data unavailable for {trade.symbol}, using entry price ₹{trade.entry_price}")
+            if has_live_price:
+                price_status = "live"
+                price_detail = None
+            else:
+                price_status = "stale_entry"
+                price_detail = market_price_detail or (
+                    f"No live market price is available for {trade.symbol}; using the entry price as a stale mark."
+                )
+                logger.warning(
+                    "Market data unavailable for %s; exposing stale entry mark ₹%s",
+                    trade.symbol,
+                    trade.entry_price,
+                )
 
             # Calculate unrealized P&L with current market price
             unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
@@ -226,7 +240,9 @@ class PaperTradingAccountManager:
                 entry_date=trade.entry_timestamp,
                 days_held=days_held,
                 strategy_rationale=trade.strategy_rationale,
-                ai_suggested=False  # TODO: Add this field to trade model
+                ai_suggested=False,  # TODO: Add this field to trade model
+                market_price_status=price_status,
+                market_price_detail=price_detail,
             ))
 
         logger.info(f"Retrieved {len(positions)} open positions with real-time prices from Zerodha")
@@ -271,7 +287,6 @@ class PaperTradingAccountManager:
 
     async def get_performance_metrics(self, account_id: str, period: str = "all-time") -> Dict[str, Any]:
         """Get performance metrics for account."""
-        from datetime import datetime, timedelta
 
         # Get account for initial balance
         account = await self.get_account(account_id)
@@ -299,9 +314,14 @@ class PaperTradingAccountManager:
 
         # Get current prices for open positions
         current_prices = {}
-        if open_trades:
+        if open_trades and self.market_data_service:
             symbols = list(set(trade.symbol for trade in open_trades))
-            current_prices = await self.market_data_client.get_quotes(symbols)
+            market_data_map = await self.market_data_service.get_multiple_market_data(symbols)
+            current_prices = {
+                symbol: market_data.ltp
+                for symbol, market_data in market_data_map.items()
+                if market_data and market_data.ltp is not None
+            }
 
         # Use PerformanceCalculator to calculate metrics
         metrics = PerformanceCalculator.calculate_account_performance(
@@ -319,7 +339,7 @@ class PaperTradingAccountManager:
 
     def _filter_trades_by_period(self, trades: List, period: str) -> List:
         """Filter trades based on period."""
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         now = datetime.now()
         if period == "today":

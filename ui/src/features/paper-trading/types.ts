@@ -51,6 +51,12 @@ export interface OpenPositionResponse {
   unrealized_pnl: number
   unrealized_pnl_pct: number
   entry_time: string
+  strategy?: string
+  tradeType?: string
+  currentValue?: number
+  daysHeld?: number
+  markStatus?: 'live' | 'stale_entry'
+  markDetail?: string | null
 }
 
 export interface ClosedTradeResponse {
@@ -83,6 +89,124 @@ export interface PerformanceMetricsResponse {
   max_drawdown_pct: number
   sharpe_ratio: number
   return_on_equity: number
+}
+
+export type CapabilityStatus = 'ready' | 'degraded' | 'blocked'
+
+export type ArtifactStatus = 'ready' | 'blocked' | 'empty'
+
+export interface TradingCapabilityCheck {
+  key: string
+  label: string
+  status: CapabilityStatus
+  blocking?: boolean
+  summary: string
+  detail?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface TradingCapabilitySnapshot {
+  mode: string
+  overall_status: CapabilityStatus
+  automation_allowed: boolean
+  generated_at: string
+  account_id?: string | null
+  blockers: string[]
+  checks: TradingCapabilityCheck[]
+}
+
+export interface AgentCandidate {
+  candidate_id: string
+  symbol: string
+  company_name?: string | null
+  sector?: string | null
+  source: string
+  priority: 'high' | 'medium' | 'low'
+  confidence: number
+  rationale: string
+  next_step: string
+  generated_at: string
+}
+
+export interface DiscoveryEnvelope {
+  status: ArtifactStatus
+  generated_at: string
+  blockers: string[]
+  context_mode: string
+  artifact_count: number
+  candidates: AgentCandidate[]
+}
+
+export interface ResearchPacket {
+  research_id: string
+  candidate_id: string
+  account_id: string
+  symbol: string
+  thesis: string
+  evidence: string[]
+  risks: string[]
+  invalidation: string
+  confidence: number
+  next_step: string
+  generated_at: string
+}
+
+export interface ResearchEnvelope {
+  status: ArtifactStatus
+  generated_at: string
+  blockers: string[]
+  context_mode: string
+  artifact_count: number
+  research: ResearchPacket | null
+}
+
+export interface DecisionPacket {
+  decision_id: string
+  symbol: string
+  action: 'hold' | 'review_exit' | 'tighten_stop' | 'take_profit'
+  confidence: number
+  thesis: string
+  invalidation: string
+  next_step: string
+  risk_note: string
+  generated_at: string
+}
+
+export interface DecisionEnvelope {
+  status: ArtifactStatus
+  generated_at: string
+  blockers: string[]
+  context_mode: string
+  artifact_count: number
+  decisions: DecisionPacket[]
+}
+
+export interface StrategyProposal {
+  proposal_id: string
+  title: string
+  recommendation: string
+  rationale: string
+  guardrail: string
+}
+
+export interface ReviewReport {
+  review_id: string
+  summary: string
+  strengths: string[]
+  weaknesses: string[]
+  risk_flags: string[]
+  top_lessons: string[]
+  strategy_proposals: StrategyProposal[]
+  generated_at: string
+}
+
+export interface ReviewEnvelope {
+  status: ArtifactStatus
+  generated_at: string
+  blockers: string[]
+  context_mode: string
+  artifact_count: number
+  review: ReviewReport | null
 }
 
 export interface ExecuteBuyRequest {

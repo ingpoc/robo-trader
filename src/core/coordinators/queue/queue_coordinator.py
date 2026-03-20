@@ -118,12 +118,23 @@ class QueueCoordinator(BaseCoordinator):
             self._log_error(f"Error during QueueCoordinator cleanup: {e}")
 
     async def start_queues(self) -> None:
-        """Start all queues."""
+        """Start all queues and begin processing tasks."""
+        # Start queues (sets the running flag)
         await self.lifecycle_coordinator.start_queues()
         
         # Sync state to other coordinators
         self.execution_coordinator.set_queues_running(True)
         self.monitoring_coordinator.set_queues_running(True)
+
+        # CRITICAL: Actually start the queue execution loop
+        # This starts the ThreadSafeQueueExecutor workers that process tasks
+        self._log_info("Starting queue execution loop...")
+        try:
+            await self.execute_queues_sequential()
+            self._log_info("Queue execution loop started successfully")
+        except Exception as e:
+            self._log_error(f"Failed to start queue execution: {e}")
+            # Don't re-raise - queues are flagged as running even if execution fails
 
         # Broadcast queue status update
         await self.get_queue_status()

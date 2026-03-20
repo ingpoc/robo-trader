@@ -1,5 +1,9 @@
 # Claude Agent Services - src/services/claude_agent/
 
+**Context**: Services supporting Agent SDK bot's Claude interactions.
+Claude Code debugs issues and verifies correct SDK usage.
+Claude Code does NOT implement or modify agent decision-making logic.
+
 ## Services
 | Module | Purpose | Max Size |
 |--------|---------|----------|

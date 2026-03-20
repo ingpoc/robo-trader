@@ -8,10 +8,9 @@ including live quotes, position updates, order status changes, and P&L tracking.
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass, asdict
-import websockets
 from websockets.server import WebSocketServerProtocol
 
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity

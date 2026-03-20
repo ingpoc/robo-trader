@@ -1,10 +1,8 @@
 import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Moon, Sun, Search } from 'lucide-react'
-import { useTheme } from '@/hooks/useTheme'
+import { Search } from 'lucide-react'
 import { useState } from 'react'
 
 interface BreadcrumbItem {
@@ -19,26 +17,21 @@ interface BreadcrumbProps {
 
 const routeLabels: Record<string, string> = {
   '/': 'Dashboard',
-  '/agents': 'Agents',
-  '/trading': 'Trading',
-  '/config': 'Configuration',
-  '/agent-config': 'Agent Configuration',
-  '/logs': 'System Logs',
-  '/claude-transparency': 'AI Transparency',
+  '/configuration': 'Configuration',
+  '/paper-trading': 'Paper Trading',
+  '/system-health': 'System Health',
 }
 
 export function Breadcrumb({ items, className }: BreadcrumbProps) {
   const location = useLocation()
-  const { theme, toggleTheme } = useTheme()
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Auto-generate breadcrumbs from current path if not provided
-  const breadcrumbItems = items || React.useMemo(() => {
+  const generatedBreadcrumbs = React.useMemo(() => {
     const pathSegments = location.pathname.split('/').filter(Boolean)
     const breadcrumbs: BreadcrumbItem[] = [{ label: 'Dashboard', path: '/' }]
 
     let currentPath = ''
-    pathSegments.forEach((segment, index) => {
+    pathSegments.forEach((segment) => {
       currentPath += `/${segment}`
       const label = routeLabels[currentPath] || segment.charAt(0).toUpperCase() + segment.slice(1)
       breadcrumbs.push({ label, path: currentPath })
@@ -46,6 +39,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
 
     return breadcrumbs
   }, [location.pathname])
+  const breadcrumbItems = items ?? generatedBreadcrumbs
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -106,10 +100,11 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
         })}
       </nav>
 
-      {/* Global search and theme toggle */}
       <div className="flex items-center gap-2">
         <form onSubmit={handleSearch} className="relative hidden md:block">
           <Input
+            id="global-search"
+            name="global-search"
             type="text"
             placeholder="Search..."
             value={searchQuery}
@@ -118,20 +113,6 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
           />
           <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-warmgray-400" />
         </form>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleTheme}
-          className="p-2 hover:bg-warmgray-100 rounded-md transition-colors"
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-        >
-          {theme === 'light' ? (
-            <Moon className="w-4 h-4 text-warmgray-600" />
-          ) : (
-            <Sun className="w-4 h-4 text-warmgray-600" />
-          )}
-        </Button>
       </div>
     </div>
   )
@@ -141,7 +122,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
 export function BreadcrumbCompact({ items, className }: BreadcrumbProps) {
   const location = useLocation()
 
-  const breadcrumbItems = items || React.useMemo(() => {
+  const generatedBreadcrumbs = React.useMemo(() => {
     const pathSegments = location.pathname.split('/').filter(Boolean)
     const breadcrumbs: BreadcrumbItem[] = [{ label: 'Dashboard', path: '/' }]
 
@@ -154,6 +135,7 @@ export function BreadcrumbCompact({ items, className }: BreadcrumbProps) {
 
     return breadcrumbs
   }, [location.pathname])
+  const breadcrumbItems = items ?? generatedBreadcrumbs
 
   if (breadcrumbItems.length <= 1) return null
 

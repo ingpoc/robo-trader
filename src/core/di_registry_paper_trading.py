@@ -68,11 +68,25 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
     # Paper Trading Execution Service
     async def create_paper_trading_execution_service():
         from src.services.paper_trading_execution_service import PaperTradingExecutionService
-        execution_service = PaperTradingExecutionService()
+        trade_executor = await container.get("paper_trade_executor")
+        account_manager = await container.get("paper_trading_account_manager")
+        store = await container.get("paper_trading_store")
+        execution_service = PaperTradingExecutionService(
+            trade_executor=trade_executor,
+            account_manager=account_manager,
+            store=store,
+        )
         await execution_service.initialize()
         return execution_service
 
     container._register_singleton("paper_trading_execution_service", create_paper_trading_execution_service)
+
+    async def create_agent_artifact_service():
+        from src.services.claude_agent.agent_artifact_service import AgentArtifactService
+
+        return AgentArtifactService(container)
+
+    container._register_singleton("agent_artifact_service", create_agent_artifact_service)
 
     # Performance Calculator (paper trading metrics)
     async def create_performance_calculator():
@@ -95,8 +109,8 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
     # Real-Time Trading State
     async def create_real_time_trading_state():
         from src.core.database_state.real_time_trading_state import RealTimeTradingState
-        db_path = container.config.state_dir / "robo_trader.db"
-        state = RealTimeTradingState(str(db_path))
+        state_manager = await container.get("state_manager")
+        state = RealTimeTradingState(state_manager.db)
         await state.initialize()
         logger.info("RealTimeTradingState initialized with enhanced schema")
         return state
@@ -113,16 +127,21 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
 
     container._register_singleton("token_storage_service", create_token_storage_service)
 
-    # Kite Connect Service
-    async def create_kite_connect_service():
-        from src.services.kite_connect_service import KiteConnectService
-        real_time_state = await container.get("real_time_trading_state")
+    # Kite Portfolio Service
+    async def create_kite_portfolio_service():
+        from src.services.kite_portfolio_service import KitePortfolioService
         kite_config = container.config.kite_connect or {}
-        kite_service = KiteConnectService(kite_config, real_time_state)
-        logger.info("KiteConnectService initialized with real-time capabilities")
+
+        if not kite_config.get("api_key"):
+            logger.warning("Kite Connect API key not configured. Portfolio import will be disabled.")
+            return None
+
+        kite_service = KitePortfolioService(kite_config)
+        await kite_service.initialize()
+        logger.info("KitePortfolioService initialized for portfolio import")
         return kite_service
 
-    container._register_singleton("kite_connect_service", create_kite_connect_service)
+    container._register_singleton("kite_portfolio_service", create_kite_portfolio_service)
 
     # WebSocket Trading Manager
     async def create_websocket_trading_manager():
@@ -133,3 +152,30 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
         return manager
 
     container._register_singleton("websocket_trading_manager", create_websocket_trading_manager)
+
+    # Stock Discovery Service (PT-002: Autonomous Stock Discovery)
+    async def create_stock_discovery_service():
+        from src.services.paper_trading.stock_discovery import StockDiscoveryService
+        from src.core.background_scheduler.clients.perplexity_client import PerplexityClient
+
+        # Get dependencies
+        state_manager = await container.get("state_manager")
+        event_bus = await container.get("event_bus")
+        config = container.config
+
+        # Create Perplexity client
+        perplexity_client = PerplexityClient(config)
+
+        # Create and initialize service
+        discovery_service = StockDiscoveryService(
+            state_manager=state_manager,
+            perplexity_client=perplexity_client,
+            event_bus=event_bus,
+            config=config
+        )
+        await discovery_service.initialize()
+
+        logger.info("StockDiscoveryService initialized for autonomous stock discovery")
+        return discovery_service
+
+    container._register_singleton("stock_discovery_service", create_stock_discovery_service)

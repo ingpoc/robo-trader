@@ -88,7 +88,7 @@ export function MetricCard({
   const getTrendColor = () => {
     if (trend === 'up') return 'text-emerald-600'
     if (trend === 'down') return 'text-rose-600'
-    return 'text-warmgray-500'
+    return 'text-muted-foreground'
   }
 
   const Icon = getIcon()
@@ -97,8 +97,8 @@ export function MetricCard({
   const cardContent = (
     <div
       className={cn(
-        "group relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow duration-300 rounded-lg animate-fade-in",
-        variant === 'hero' && "bg-warmgray-50 shadow-sm",
+        "group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow duration-200 hover:shadow-md animate-fade-in",
+        variant === 'hero' && "bg-card",
         variant === 'compact' && "p-4 rounded-lg"
       )}
       role="region"
@@ -109,16 +109,16 @@ export function MetricCard({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className={cn(
-              "p-2 rounded-lg",
+              "p-2 rounded-lg border border-border bg-muted text-muted-foreground",
               variant === 'hero'
-                ? "bg-copper-100 text-copper-600"
-                : "bg-warmgray-100 text-warmgray-700"
+                ? "bg-muted text-foreground"
+                : "bg-muted text-muted-foreground"
             )}>
               <Icon className="w-4 h-4" />
             </div>
             <div
               id={`metric-${label.replace(/\s+/g, '-').toLowerCase()}`}
-              className="text-sm font-semibold text-warmgray-700 leading-none"
+              className="text-sm font-semibold text-muted-foreground leading-none"
             >
               {label}
             </div>
@@ -126,7 +126,7 @@ export function MetricCard({
           {trend && (
             <div className={cn("flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded", getTrendColor(),
               trend === 'up' ? 'bg-emerald-50' :
-              trend === 'down' ? 'bg-rose-50' : 'bg-warmgray-50'
+              trend === 'down' ? 'bg-rose-50' : 'bg-muted'
             )}>
               <TrendIcon className="w-3 h-3" />
               <span className="sr-only">{trend} trend</span>
@@ -136,7 +136,7 @@ export function MetricCard({
 
         <div
           className={cn(
-            "font-bold text-warmgray-900 tabular-nums leading-none mb-2",
+            "font-bold text-foreground tabular-nums leading-none mb-2",
             variant === 'hero' ? "text-4xl" : "text-3xl",
             variant === 'compact' && "text-2xl"
           )}

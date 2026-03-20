@@ -2,11 +2,10 @@
 Claude Agent SDK Authentication Handler
 
 Handles SDK-specific authentication requirements and validation.
-Provides proper SDK authentication patterns instead of direct API usage.
+Provides proper SDK authentication patterns via Claude Code CLI.
 """
 
 import logging
-import os
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -22,7 +21,6 @@ class ClaudeSDKAuth:
 
     Manages SDK authentication requirements:
     - Claude Code CLI authentication
-    - OAuth token validation
     - SDK session management
     - Authentication state tracking
     """
@@ -53,22 +51,15 @@ class ClaudeSDKAuth:
             # Check Claude Code CLI authentication
             cli_status = await self._check_claude_cli_auth()
 
-            # Check OAuth token if CLI not available
-            oauth_status = await self._check_oauth_token() if not cli_status["authenticated"] else None
-
             # Determine overall auth status
             if cli_status["authenticated"]:
                 auth_method = "claude_code_cli"
                 auth_details = cli_status
-            elif oauth_status and oauth_status["valid"]:
-                auth_method = "oauth_token"
-                auth_details = oauth_status
             else:
                 auth_method = None
                 auth_details = {
-                    "error": "No valid authentication method found",
+                    "error": "Claude Code CLI is not authenticated. Run `claude auth login` and use ~/.claude/settings.json for model selection.",
                     "cli_status": cli_status,
-                    "oauth_status": oauth_status
                 }
 
             # Build SDK auth status
@@ -80,7 +71,6 @@ class ClaudeSDKAuth:
                 "checked_at": datetime.now(timezone.utc).isoformat(),
                 "sdk_requirements": {
                     "claude_code_cli": cli_status["installed"],
-                    "oauth_token": oauth_status["valid"] if oauth_status else False,
                     "recommended_method": "claude_code_cli"
                 }
             }
@@ -133,12 +123,7 @@ class ClaudeSDKAuth:
             config["cli_config"] = {
                 "command": "claude",
                 "timeout": 30,
-                "working_directory": os.getcwd()
-            }
-        elif auth_status["auth_method"] == "oauth_token":
-            config["oauth_config"] = {
-                "token_validation": True,
-                "auto_refresh": False  # SDK handles this
+                "working_directory": self.container.config.project_dir
             }
 
         return config
@@ -228,46 +213,13 @@ class ClaudeSDKAuth:
                 "error": str(e)
             }
 
-    async def _check_oauth_token(self) -> Dict[str, Any]:
-        """Check OAuth token validity."""
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
-
-        if not api_key:
-            return {
-                "valid": False,
-                "error": "No ANTHROPIC_API_KEY environment variable"
-            }
-
-        # Check if it's an OAuth token (starts with sk-ant-oat)
-        if not api_key.startswith("sk-ant-oat"):
-            return {
-                "valid": False,
-                "error": "Not an OAuth token format"
-            }
-
-        # Basic format validation (OAuth tokens are longer)
-        if len(api_key) < 100:
-            return {
-                "valid": False,
-                "error": "Token appears too short for OAuth format"
-            }
-
-        # For SDK usage, we trust the token format
-        # The SDK will handle actual validation during API calls
-        return {
-            "valid": True,
-            "token_type": "oauth",
-            "masked_token": f"{api_key[:10]}...{api_key[-4:]}"
-        }
-
     async def _validate_auth_setup(self) -> None:
         """Validate that authentication is properly configured."""
-        # Check environment variables
         api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key and not api_key.startswith("sk-ant-oat") and api_key != "your_anthropic_api_key_here":
+        if api_key and api_key != "your_anthropic_api_key_here":
             self._log_warning(
-                "ANTHROPIC_API_KEY found but not in OAuth format. "
-                "SDK prefers Claude Code CLI authentication."
+                "ANTHROPIC_API_KEY is set, but Claude Agent SDK auth should come from `claude auth login`. "
+                "The environment token is ignored for subscription-based CLI auth."
             )
 
         # Initial auth check
