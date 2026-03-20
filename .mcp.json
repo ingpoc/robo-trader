@@ -1,6 +1,9 @@
 {
   "mcpServers": {
-    
+    "deepwiki": {
+      "type": "http",
+      "url": "https://mcp.deepwiki.com/mcp"
+    },
     "token-efficient": {
       "command": "srt",
       "args": [
