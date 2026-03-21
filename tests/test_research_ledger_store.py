@@ -6,8 +6,8 @@ Verifies CRUD operations, concurrent access, and data integrity.
 
 import asyncio
 import pytest
-import aiosqlite
 
+aiosqlite = pytest.importorskip("aiosqlite")
 from src.stores.research_ledger_store import ResearchLedgerStore
 
 

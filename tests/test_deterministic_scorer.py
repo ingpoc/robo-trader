@@ -5,6 +5,8 @@ Verifies that known feature inputs produce expected scores and actions.
 """
 
 import pytest
+
+pytest.importorskip("pydantic")
 from src.models.research_ledger import (
     ResearchLedgerEntry,
     ManagementFeatures,

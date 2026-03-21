@@ -8,6 +8,7 @@ import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+pytest.importorskip("loguru")
 from src.services.stale_data_guard import StaleDataGuard, MAX_PRICE_AGE_SECONDS
 
 
