@@ -17,23 +17,24 @@ class RiskConfig(BaseModel):
     max_position_size_percent: float = Field(default=5.0, description="Max position size as % of portfolio")
     max_portfolio_risk_percent: float = Field(default=10.0, description="Max portfolio risk %")
     max_single_symbol_exposure_percent: float = Field(default=15.0, description="Max exposure to single symbol %")
-    stop_loss_percent: float = Field(default=2.0, description="Default stop loss %")
-    take_profit_percent: float = Field(default=5.0, description="Default take profit %")
+    stop_loss_percent: float = Field(default=8.0, description="Default stop loss % (swing trading needs wider stops)")
+    take_profit_percent: float = Field(default=15.0, description="Default take profit % (swing trading targets larger moves)")
     max_daily_trades: int = Field(default=10, description="Maximum trades per day")
     max_daily_loss_percent: float = Field(default=3.0, description="Max daily loss %")
+    max_holding_period_days: int = Field(default=60, description="Max holding period for swing trades")
 
 
 class TechnicalConfig(BaseModel):
     """Technical analysis configuration."""
     indicators: List[str] = Field(default=["rsi", "macd", "bollinger", "ema"], description="Enabled indicators")
-    timeframes: List[str] = Field(default=["5m", "15m", "1h"], description="Analysis timeframes")
+    timeframes: List[str] = Field(default=["1d", "1w"], description="Analysis timeframes (swing trading: daily/weekly)")
     rsi_period: int = Field(default=14, description="RSI period")
     macd_fast: int = Field(default=12, description="MACD fast period")
     macd_slow: int = Field(default=26, description="MACD slow period")
     macd_signal: int = Field(default=9, description="MACD signal period")
     bollinger_period: int = Field(default=20, description="Bollinger Bands period")
     bollinger_std: float = Field(default=2.0, description="Bollinger Bands standard deviation")
-    ema_periods: List[int] = Field(default=[9, 21, 50], description="EMA periods")
+    ema_periods: List[int] = Field(default=[21, 50, 200], description="EMA periods (swing trading: longer-term)")
 
 
 class ScreeningConfig(BaseModel):

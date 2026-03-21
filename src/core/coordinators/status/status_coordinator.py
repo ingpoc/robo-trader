@@ -93,7 +93,7 @@ class StatusCoordinator(BaseCoordinator):
             )
         except Exception as e:
             self._log_error(f"Error aggregating system components: {e}")
-            components = {}
+            components = {"status": "error", "error": str(e)}
 
         status_data = {
             "ai_status": ai_status if not isinstance(ai_status, Exception) else {},
@@ -182,7 +182,7 @@ class StatusCoordinator(BaseCoordinator):
 
         except Exception as e:
             self._log_error(f"Failed to get and broadcast Claude status: {e}")
-            return {}
+            return {"status": "error", "error": str(e)}
 
     async def cleanup(self) -> None:
         """Cleanup status coordinator resources."""

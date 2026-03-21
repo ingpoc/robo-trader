@@ -989,7 +989,7 @@ class KiteConnectService:
 
             # Get historical data
             # Note: Kite Connect historical_data is synchronous, so we run it in executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             historical_data = await loop.run_in_executor(
                 None,
                 lambda: self.kite.historical_data(

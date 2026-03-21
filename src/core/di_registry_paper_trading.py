@@ -153,6 +153,35 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
 
     container._register_singleton("websocket_trading_manager", create_websocket_trading_manager)
 
+    # Research Ledger Store (structured feature extraction persistence)
+    async def create_research_ledger_store():
+        from src.stores.research_ledger_store import ResearchLedgerStore
+        db_path = container.config.state_dir / "robo_trader.db"
+        connection = await aiosqlite.connect(str(db_path))
+        store = ResearchLedgerStore(connection)
+        await store.initialize()
+        logger.info("ResearchLedgerStore initialized")
+        return store
+
+    container._register_singleton("research_ledger_store", create_research_ledger_store)
+
+    # Feature Extractor (LLM-powered structured feature extraction)
+    async def create_feature_extractor():
+        from src.services.recommendation_engine.feature_extractor import FeatureExtractor
+        extractor = FeatureExtractor()
+        await extractor.initialize()
+        logger.info("FeatureExtractor initialized with Claude SDK")
+        return extractor
+
+    container._register_singleton("feature_extractor", create_feature_extractor)
+
+    # Deterministic Scorer (auditable scoring from extracted features)
+    async def create_deterministic_scorer():
+        from src.services.recommendation_engine.deterministic_scorer import DeterministicScorer
+        return DeterministicScorer()
+
+    container._register_singleton("deterministic_scorer", create_deterministic_scorer)
+
     # Stock Discovery Service (PT-002: Autonomous Stock Discovery)
     async def create_stock_discovery_service():
         from src.services.paper_trading.stock_discovery import StockDiscoveryService

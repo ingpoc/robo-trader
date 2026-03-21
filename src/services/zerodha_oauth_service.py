@@ -266,7 +266,7 @@ class ZerodhaOAuthService:
                 )
             
             # Run synchronous KiteConnect operations in executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             
             def exchange_token():
                 """Synchronous token exchange using KiteConnect."""

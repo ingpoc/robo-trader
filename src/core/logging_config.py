@@ -142,9 +142,16 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
         if 'exception' in context:
             logger.error(f"Exception details: {context['exception']}", exc_info=context['exception'])
 
-    # Store original exception handler and replace it
-    original_handler = asyncio.get_event_loop_policy().get_event_loop().get_exception_handler()
-    asyncio.get_event_loop().set_exception_handler(handle_asyncio_exception)
+    # Defer asyncio exception handler installation to when the event loop is running.
+    # Calling get_event_loop() at module-level crashes in Python 3.12+.
+    # Call install_asyncio_exception_handler() from the main startup coroutine instead.
+    _asyncio_exception_handler = handle_asyncio_exception
+
+
+def install_asyncio_exception_handler():
+    """Install the asyncio exception handler. Must be called from within a running event loop."""
+    loop = asyncio.get_running_loop()
+    loop.set_exception_handler(_asyncio_exception_handler)
 
 
 def ensure_logging_setup(logs_dir: Path = None, log_level: str = "INFO", clear_logs: bool = True):

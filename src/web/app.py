@@ -123,6 +123,7 @@ from .routes.symbols import router as symbols_router
 from .routes.paper_trading_morning_session import router as morning_session_router
 from .routes.paper_trading_evening_session import router as evening_session_router
 from .routes.trading_capabilities import router as trading_capabilities_router
+from .routes.evaluation import router as evaluation_router
 # from .routes.manual_override_routes import router as manual_override_router
 
 # ============================================================================
@@ -232,15 +233,18 @@ async def lifespan(app: FastAPI):
     # Startup - Enhance logging (already set up early, but add console handler and error handlers)
     try:
         # Enhance logging setup with console handler and error handlers
-        from src.core.logging_config import setup_logging
+        from src.core.logging_config import setup_logging, install_asyncio_exception_handler
         logs_dir = Path.cwd() / "logs"
         logs_dir.mkdir(exist_ok=True)
-        
+
         # Enhance existing logging (early logging already set up, just add handlers)
         # Use LOG_LEVEL environment variable set by command-line argument for consistency
         # Priority: 1) --log-level CLI flag, 2) .env file, 3) default INFO
         log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         setup_logging(logs_dir, log_level, clear_logs=False)  # Don't clear again, already cleared
+
+        # Install asyncio exception handler now that the event loop is running
+        install_asyncio_exception_handler()
         
         # Configure uvicorn access logger to use our logger
         import logging as std_logging
@@ -478,6 +482,7 @@ app.include_router(configuration_router)
 app.include_router(morning_session_router)
 app.include_router(evening_session_router)
 app.include_router(trading_capabilities_router)
+app.include_router(evaluation_router)
 # app.include_router(manual_override_router)
 
 # ============================================================================
