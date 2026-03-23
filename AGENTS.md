@@ -1,6 +1,15 @@
 # Robo Trader Repo Instructions
 
-Repo-local instructions only. Global Codex policy stays in `~/.codex/*`; do not copy it here.
+Repo-local instructions only. Global doctrine stays in the published
+Organization baseline; do not copy it here.
+
+## Inheritance Contract
+
+- Global baseline: `Organization` published baseline from `/Users/gurusharan/Documents/Organization/reports/publish/publish-manifest.json`
+- Workspace parent: `none`
+- Organization routing: `inherits_by_default`
+- Local policy authority: `AGENTS.md`
+- Local CLAUDE policy: `defer_to_agents`
 
 ## Scope
 
@@ -19,7 +28,7 @@ Repo-local instructions only. Global Codex policy stays in `~/.codex/*`; do not 
 - Fail loud on missing auth, MCP access, credentials, or tooling when they are required by the chosen workflow.
 - Do not route around broken primary paths with fallback behavior and call the work complete. If the real path is failing, fix it or surface it as a blocker explicitly.
 - Ground recommendations in inspected code, repo docs, and primary documentation; use MCP tools to reduce uncertainty rather than to justify guesses.
-- Keep repo-local instructions specific to Robo Trader; do not import workspace-wide policy into this file.
+- Keep repo-local instructions specific to Robo Trader; do not import unrelated workspace-wide policy into this file.
 
 ## Trigger Lines
 
