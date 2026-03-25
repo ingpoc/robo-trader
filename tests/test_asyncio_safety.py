@@ -62,5 +62,5 @@ def test_no_get_event_loop_in_core():
         violations.append(line)
 
     assert not violations, (
-        f"Found get_event_loop() in core/:\n" + "\n".join(violations)
+        "Found get_event_loop() in core/:\n" + "\n".join(violations)
     )

@@ -11,6 +11,7 @@ Implements autonomous stock discovery for paper trading using:
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 from loguru import logger
 
