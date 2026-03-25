@@ -2,7 +2,7 @@
 MCP Tools for Claude's Real-Time Prompt Optimization
 
 These tools allow Claude to:
-1. Analyze data quality from Perplexity responses
+1. Analyze data quality from external research responses
 2. Improve prompts based on quality analysis
 3. Save optimized prompts for future use
 4. Track prompt performance over time
@@ -25,7 +25,7 @@ class PromptOptimizationTools:
         return [
             {
                 "name": "analyze_data_quality",
-                "description": "Analyze the quality of data received from Perplexity for trading decisions",
+                "description": "Analyze the quality of data received from external research for trading decisions",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -36,7 +36,7 @@ class PromptOptimizationTools:
                         },
                         "data": {
                             "type": "string",
-                            "description": "The actual data received from Perplexity"
+                            "description": "The actual data received from the research pipeline"
                         },
                         "prompt_used": {
                             "type": "string",
@@ -48,7 +48,7 @@ class PromptOptimizationTools:
             },
             {
                 "name": "improve_prompt",
-                "description": "Improve a Perplexity prompt based on data quality analysis",
+                "description": "Improve an external research brief based on data quality analysis",
                 "parameters": {
                     "type": "object",
                     "properties": {

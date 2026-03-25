@@ -63,8 +63,7 @@ class WorkflowSDKClientManager:
 
         # Portfolio Analysis Workflow Configuration
         portfolio_options = ClaudeAgentOptions(
-            name="Portfolio Analysis Agent",
-            instructions="""You are a specialized portfolio analysis agent focused on:
+            system_prompt="""You are a specialized portfolio analysis agent focused on:
 1. Analyzing existing portfolio holdings
 2. Optimizing data quality through prompt improvements
 3. Generating investment recommendations based on comprehensive analysis
@@ -73,15 +72,13 @@ class WorkflowSDKClientManager:
 Your primary goal is to enhance portfolio analysis quality through iterative
 prompt optimization and thorough data evaluation.""",
             model="claude-3-5-sonnet-20241022",
-            max_tokens=4000,
-            timeout=60.0
+            max_turns=8,
         )
 
         # Paper Trading Workflow Configuration
         paper_trading_options = ClaudeAgentOptions(
-            name="Paper Trading Agent",
-            instructions="""You are an independent paper trading agent focused on:
-1. Market research using Perplexity API and other sources
+            system_prompt="""You are an independent paper trading agent focused on:
+1. Market research using Claude-native tooling and internal market context
 2. Making trading decisions based on real market data
 3. Managing a paper trading portfolio with risk management
 4. Evaluating strategy performance and evolving trading approaches
@@ -89,8 +86,7 @@ prompt optimization and thorough data evaluation.""",
 Your primary goal is to generate profitable trading decisions through
 thorough market research and disciplined risk management.""",
             model="claude-3-5-sonnet-20241022",
-            max_tokens=4000,
-            timeout=60.0
+            max_turns=8,
         )
 
         self._workflow_options = {

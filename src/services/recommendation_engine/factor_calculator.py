@@ -13,9 +13,9 @@ import logging
 from typing import Optional, Dict, Any
 
 from loguru import logger
-from ..core.state_models import FundamentalAnalysis
-from ..services.fundamental_service import FundamentalService
-from ..services.risk_service import RiskService
+from src.core.state_models import FundamentalAnalysis
+from src.services.fundamental_service import FundamentalService
+from src.services.risk_service import RiskService
 from .models import RecommendationFactors
 
 logger = logging.getLogger(__name__)

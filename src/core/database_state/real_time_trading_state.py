@@ -233,10 +233,19 @@ class RealTimeTradingState(BaseState):
 
                 CREATE TABLE IF NOT EXISTS kite_sessions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL UNIQUE,
-                    user_id TEXT NOT NULL,
+                    account_id TEXT NOT NULL UNIQUE,
+                    user_id TEXT,
+                    public_token TEXT,
                     access_token TEXT,
                     refresh_token TEXT,
+                    enctoken TEXT,
+                    user_type TEXT,
+                    email TEXT,
+                    user_name TEXT,
+                    user_shortname TEXT,
+                    avatar_url TEXT,
+                    broker TEXT DEFAULT 'ZERODHA',
+                    products TEXT,
                     exchanges TEXT DEFAULT 'NSE,BSE',
                     active INTEGER DEFAULT 1,
                     expires_at TEXT,
@@ -251,6 +260,7 @@ class RealTimeTradingState(BaseState):
                 for statement in schema.strip().split(';'):
                     if statement.strip():
                         await self.db.connection.execute(statement)
+                await self._ensure_kite_sessions_schema()
                 await self.db.connection.commit()
                 self.logger.info("Real-time trading state initialized successfully")
 
@@ -262,6 +272,97 @@ class RealTimeTradingState(BaseState):
                     severity=ErrorSeverity.HIGH,
                     recoverable=False
                 )
+
+    async def _ensure_kite_sessions_schema(self) -> None:
+        """Migrate legacy kite session storage to the current schema."""
+        cursor = await self.db.connection.execute("PRAGMA table_info(kite_sessions)")
+        rows = await cursor.fetchall()
+        columns = {row["name"] for row in rows}
+
+        expected_columns = {
+            "account_id",
+            "user_id",
+            "public_token",
+            "access_token",
+            "refresh_token",
+            "enctoken",
+            "user_type",
+            "email",
+            "user_name",
+            "user_shortname",
+            "avatar_url",
+            "broker",
+            "products",
+            "exchanges",
+            "active",
+            "expires_at",
+            "created_at",
+            "updated_at",
+            "last_used_at",
+        }
+        if expected_columns.issubset(columns) and "session_id" not in columns:
+            return
+
+        await self.db.connection.execute("ALTER TABLE kite_sessions RENAME TO kite_sessions_legacy")
+        await self.db.connection.execute(
+            """
+            CREATE TABLE kite_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id TEXT NOT NULL UNIQUE,
+                user_id TEXT,
+                public_token TEXT,
+                access_token TEXT,
+                refresh_token TEXT,
+                enctoken TEXT,
+                user_type TEXT,
+                email TEXT,
+                user_name TEXT,
+                user_shortname TEXT,
+                avatar_url TEXT,
+                broker TEXT DEFAULT 'ZERODHA',
+                products TEXT,
+                exchanges TEXT DEFAULT 'NSE,BSE',
+                active INTEGER DEFAULT 1,
+                expires_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_used_at TEXT
+            )
+            """
+        )
+        await self.db.connection.execute(
+            """
+            INSERT INTO kite_sessions (
+                account_id,
+                user_id,
+                access_token,
+                refresh_token,
+                exchanges,
+                active,
+                expires_at,
+                created_at,
+                updated_at,
+                last_used_at
+            )
+            SELECT
+                user_id,
+                user_id,
+                access_token,
+                refresh_token,
+                exchanges,
+                active,
+                expires_at,
+                created_at,
+                updated_at,
+                last_used_at
+            FROM kite_sessions_legacy
+            WHERE user_id IS NOT NULL
+            """
+        )
+        await self.db.connection.execute("DROP TABLE kite_sessions_legacy")
+        await self.db.connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_active ON kite_sessions(active)"
+        )
 
     # Market Data Operations
     async def store_real_time_quote(self, quote: RealTimeQuote) -> bool:
@@ -281,7 +382,7 @@ class RealTimeTradingState(BaseState):
                     quote.timestamp or datetime.utcnow().isoformat(),
                     quote.source
                 ))
-                await self.db.commit()
+                await self.db.connection.commit()
                 return True
 
             except Exception as e:

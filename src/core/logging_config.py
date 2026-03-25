@@ -2,11 +2,15 @@
 Logging configuration for Robo Trader
 """
 
+import asyncio
 import sys
 import os
 from pathlib import Path
 from loguru import logger
 from io import StringIO
+
+# Module-level asyncio exception handler (set during setup_logging)
+_asyncio_exception_handler = None
 
 
 def clear_log_files(logs_dir: Path):
@@ -135,16 +139,14 @@ def setup_logging(logs_dir: Path, log_level: str = "INFO", clear_logs: bool = Tr
     sys.excepthook = handle_uncaught_exception
 
     # Handle asyncio exceptions
-    import asyncio
     def handle_asyncio_exception(loop, context):
         """Handle asyncio exceptions."""
         logger.error(f"Asyncio exception: {context}")
         if 'exception' in context:
             logger.error(f"Exception details: {context['exception']}", exc_info=context['exception'])
 
-    # Defer asyncio exception handler installation to when the event loop is running.
-    # Calling get_event_loop() at module-level crashes in Python 3.12+.
-    # Call install_asyncio_exception_handler() from the main startup coroutine instead.
+    # Store asyncio exception handler at module level for install_asyncio_exception_handler()
+    global _asyncio_exception_handler
     _asyncio_exception_handler = handle_asyncio_exception
 
 

@@ -6,6 +6,8 @@ for live trading operations.
 """
 
 import asyncio
+import inspect
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
@@ -21,6 +23,10 @@ from .quote_stream_adapter import (
     QuoteStreamStatus,
     QuoteSubscriptionRequest,
 )
+
+LEGACY_SYMBOL_ALIASES = {
+    "HDFC": "HDFCBANK",
+}
 
 
 @dataclass
@@ -63,9 +69,7 @@ class MarketDataService(EventHandler):
         self.quote_stream_adapter = quote_stream_adapter or NullQuoteStreamAdapter()
         self.default_provider = default_provider
         configured_mode = getattr(config.integration, "upstox_stream_mode", SubscriptionMode.LTP.value)
-        self.default_subscription_mode = (
-            SubscriptionMode.FULL if configured_mode == SubscriptionMode.FULL.value else SubscriptionMode.LTP
-        )
+        self.default_subscription_mode = self._coerce_subscription_mode(configured_mode)
         self.db_path = config.state_dir / "market_data.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -84,6 +88,24 @@ class MarketDataService(EventHandler):
 
         # Subscribe to relevant events
         self.event_bus.subscribe(EventType.MARKET_PRICE_UPDATE, self)
+
+    @staticmethod
+    def _coerce_subscription_mode(mode: Optional[str]) -> SubscriptionMode:
+        """Normalize UI and adapter mode strings to the internal enum."""
+        normalized_mode = (mode or "").strip().lower()
+        if normalized_mode == SubscriptionMode.FULL.value:
+            return SubscriptionMode.FULL
+        if normalized_mode in {"ltpc", SubscriptionMode.LTP.value}:
+            return SubscriptionMode.LTP
+        if normalized_mode == SubscriptionMode.QUOTE.value:
+            return SubscriptionMode.QUOTE
+        raise ValueError(mode)
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        """Map legacy or stale symbols to the active exchange symbol."""
+        normalized_symbol = symbol.strip().upper()
+        return LEGACY_SYMBOL_ALIASES.get(normalized_symbol, normalized_symbol)
 
     async def initialize(self) -> None:
         """Initialize the market data service."""
@@ -150,20 +172,35 @@ class MarketDataService(EventHandler):
     async def _load_subscriptions(self) -> None:
         """Load subscriptions from database."""
         cursor = await self._db_connection.execute("""
-            SELECT symbol, mode, provider, active, last_update
+            SELECT symbol, mode, provider, active, last_update, created_at
             FROM market_subscriptions
             WHERE active = 1
         """)
 
         async for row in cursor:
+            symbol = self._normalize_symbol(row[0])
+            if symbol != row[0]:
+                await self._db_connection.execute(
+                    """
+                    INSERT OR REPLACE INTO market_subscriptions
+                    (symbol, mode, provider, active, last_update, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (symbol, row[1], row[2], row[3], row[4], row[5]),
+                )
+                await self._db_connection.execute(
+                    "DELETE FROM market_subscriptions WHERE symbol = ?",
+                    (row[0],),
+                )
             subscription = MarketSubscription(
-                symbol=row[0],
+                symbol=symbol,
                 mode=SubscriptionMode(row[1]),
                 provider=MarketDataProvider(row[2]),
                 active=bool(row[3]),
                 last_update=row[4]
             )
-            self._subscriptions[row[0]] = subscription
+            self._subscriptions[symbol] = subscription
+        await self._db_connection.commit()
 
     async def _load_cached_data(self) -> None:
         """Load cached market data from database."""
@@ -189,16 +226,19 @@ class MarketDataService(EventHandler):
 
     async def _sync_streaming_subscriptions(self) -> None:
         """Ensure streaming provider subscriptions are reattached after startup."""
-        if self.quote_stream_adapter.provider != MarketDataProvider.UPSTOX:
-            return
+        # Sync subscriptions for the streaming provider (UPSTOX or ZERODHA_KITE)
+        streaming_provider = self.quote_stream_adapter.provider
 
         requests = [
             QuoteSubscriptionRequest(symbol=sub.symbol, mode=sub.mode)
             for sub in self._subscriptions.values()
-            if sub.active and sub.provider == MarketDataProvider.UPSTOX
+            if sub.active and sub.provider == streaming_provider
         ]
         if requests:
             await self.quote_stream_adapter.subscribe(requests)
+            if streaming_provider == MarketDataProvider.ZERODHA_KITE:
+                for request in requests:
+                    await self._fetch_from_zerodha(request.symbol)
 
     async def subscribe_market_data(
         self,
@@ -207,6 +247,7 @@ class MarketDataService(EventHandler):
         provider: Optional[MarketDataProvider] = None,
     ) -> bool:
         """Subscribe to market data for a symbol."""
+        symbol = self._normalize_symbol(symbol)
         provider = provider or self.default_provider
         async with self._lock:
             if symbol in self._subscriptions:
@@ -244,6 +285,7 @@ class MarketDataService(EventHandler):
 
     async def unsubscribe_market_data(self, symbol: str) -> bool:
         """Unsubscribe from market data for a symbol."""
+        symbol = self._normalize_symbol(symbol)
         provider: Optional[MarketDataProvider] = None
         async with self._lock:
             if symbol in self._subscriptions:
@@ -302,7 +344,7 @@ class MarketDataService(EventHandler):
 
         if mode:
             try:
-                self.default_subscription_mode = SubscriptionMode(mode)
+                self.default_subscription_mode = self._coerce_subscription_mode(mode)
             except ValueError:
                 logger.warning("Ignoring unknown quote stream mode preference: %s", mode)
 
@@ -355,6 +397,8 @@ class MarketDataService(EventHandler):
         """Activate the runtime path for one subscription."""
         if provider == self.quote_stream_adapter.provider:
             await self.quote_stream_adapter.subscribe([QuoteSubscriptionRequest(symbol=symbol, mode=mode)])
+            if provider == MarketDataProvider.ZERODHA_KITE:
+                await self._fetch_from_zerodha(symbol)
             return
         await self._fetch_symbol_data(symbol, provider)
 
@@ -387,26 +431,50 @@ class MarketDataService(EventHandler):
             return
 
         try:
-            # Convert symbol to Zerodha format if needed
             kite_symbol = self._convert_to_kite_symbol(symbol)
 
-            # Get quote
-            quotes = await self.broker.quote(kite_symbol)
-            if kite_symbol in quotes:
-                quote = quotes[kite_symbol]
+            quote = None
+            if hasattr(self.broker, "get_quotes"):
+                quotes = await self.broker.get_quotes([symbol])
+                quote = quotes.get(symbol) or quotes.get(kite_symbol)
+            elif hasattr(self.broker, "quote"):
+                quote_result = self.broker.quote([kite_symbol])
+                if inspect.isawaitable(quote_result):
+                    quote_result = await quote_result
+                if isinstance(quote_result, dict):
+                    quote = quote_result.get(kite_symbol) or quote_result.get(symbol)
 
-                market_data = MarketData(
-                    symbol=symbol,
-                    ltp=quote.get("last_price", 0),
-                    open_price=quote.get("ohlc", {}).get("open"),
-                    high_price=quote.get("ohlc", {}).get("high"),
-                    low_price=quote.get("ohlc", {}).get("low"),
-                    close_price=quote.get("ohlc", {}).get("close"),
-                    volume=quote.get("volume"),
-                    provider="zerodha_kite"
-                )
+            if quote is None:
+                logger.warning("No Zerodha quote data available for %s", symbol)
+                return
 
-                await self._update_market_data(market_data)
+            ohlc = getattr(quote, "ohlc", None)
+            if ohlc is None and isinstance(quote, dict):
+                ohlc = quote.get("ohlc", {})
+            ohlc = ohlc or {}
+
+            if isinstance(quote, dict):
+                last_price = quote.get("last_price", 0)
+                volume = quote.get("volume")
+                timestamp = quote.get("timestamp")
+            else:
+                last_price = getattr(quote, "last_price", 0)
+                volume = getattr(quote, "volume", None)
+                timestamp = getattr(quote, "timestamp", None)
+
+            market_data = MarketData(
+                symbol=symbol,
+                ltp=last_price,
+                open_price=ohlc.get("open"),
+                high_price=ohlc.get("high"),
+                low_price=ohlc.get("low"),
+                close_price=ohlc.get("close"),
+                volume=volume,
+                timestamp=timestamp or datetime.now(timezone.utc).isoformat(),
+                provider="zerodha_kite"
+            )
+
+            await self._update_market_data(market_data)
 
         except Exception as e:
             logger.error(f"Failed to fetch from Zerodha for {symbol}: {e}")
@@ -480,7 +548,7 @@ class MarketDataService(EventHandler):
 
             # Emit price update event
             await self.event_bus.publish(Event(
-                id=f"price_update_{market_data.symbol}_{int(datetime.now(timezone.utc).timestamp())}",
+                id=f"price_update_{market_data.symbol}_{uuid.uuid4().hex}",
                 type=EventType.MARKET_PRICE_UPDATE,
                 timestamp=market_data.timestamp,
                 source="market_data_service",

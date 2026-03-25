@@ -10,7 +10,7 @@ from src.core.coordinators.base_coordinator import BaseCoordinator
 from src.core.event_bus import Event, EventType
 from src.core.database_state.database_state import DatabaseStateManager
 from src.core.database_state.configuration_state import ConfigurationState
-from src.models.scheduler import QueueName
+from src.models.scheduler import QueueName, TaskType
 
 logger = logging.getLogger(__name__)
 

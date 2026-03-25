@@ -30,7 +30,7 @@ def _sample_entry(symbol="RELIANCE", score=45.0, action="BUY"):
         "score": score,
         "action": action,
         "feature_confidence": 0.65,
-        "sources": ["perplexity_news"],
+        "sources": ["claude_web_news"],
         "extraction_model": "claude-sonnet-4-20250514",
         "extraction_duration_ms": 1500,
     }

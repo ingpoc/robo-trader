@@ -2,21 +2,19 @@
 Paper Trading Stock Discovery Service
 
 Implements autonomous stock discovery for paper trading using:
-- Perplexity API for market research
-- Claude Agent SDK for analysis
+- Claude Agent SDK web research for fresh market evidence
+- Claude Agent SDK feature extraction
 - Sector and market cap screening
-- Technical and fundamental analysis
+- Deterministic technical and fundamental scoring
 """
 
 import json
 import uuid
-from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from loguru import logger
 
 from ...core.event_bus import EventHandler, Event
-from ...core.background_scheduler.clients.perplexity_client import PerplexityClient
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 
 
@@ -35,14 +33,18 @@ class StockDiscoveryService(EventHandler):
     def __init__(
         self,
         state_manager,
-        perplexity_client: PerplexityClient,
+        market_research_service,
         event_bus,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        feature_extractor,
+        deterministic_scorer,
     ):
         self.state_manager = state_manager
-        self.perplexity = perplexity_client
+        self.market_research_service = market_research_service
         self.event_bus = event_bus
         self.config = config
+        self.feature_extractor = feature_extractor
+        self.deterministic_scorer = deterministic_scorer
 
         # Default discovery criteria
         self.default_criteria = {
@@ -194,7 +196,7 @@ class StockDiscoveryService(EventHandler):
         criteria: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        Analyze candidate stocks using Perplexity API and Claude.
+        Analyze candidate stocks using Claude web research and feature extraction.
         """
         logger.info(f"Analyzing {len(stocks)} candidate stocks")
 
@@ -207,15 +209,14 @@ class StockDiscoveryService(EventHandler):
 
             for stock in batch:
                 try:
-                    # Research with Perplexity
-                    perplexity_research = await self._research_stock_perplexity(stock)
+                    external_research = await self._research_stock_external(stock)
 
                     # Claude analysis
-                    claude_analysis = await self._analyze_stock_claude(stock, perplexity_research)
+                    claude_analysis = await self._analyze_stock_claude(stock, external_research)
 
                     analyzed_stock = {
                         **stock,
-                        "perplexity_research": perplexity_research,
+                        "external_research": external_research,
                         "claude_analysis": claude_analysis,
                         "research_timestamp": datetime.now(timezone.utc).isoformat()
                     }
@@ -233,48 +234,36 @@ class StockDiscoveryService(EventHandler):
 
         return analyzed_stocks
 
-    async def _research_stock_perplexity(self, stock: Dict[str, Any]) -> Dict[str, Any]:
+    async def _research_stock_external(self, stock: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Research a stock using Perplexity API.
+        Research a stock using Claude's built-in web tools.
         """
         try:
             symbol = stock["symbol"]
-            queries = [
-                f"Latest news and developments for {symbol} stock",
-                f"{symbol} stock financial performance and quarterly results",
-                f"Technical analysis and price targets for {symbol}",
-                f"Analyst recommendations and ratings for {symbol} stock"
-            ]
-
-            research_results = []
-            sources = []
-
-            for query in queries:
-                try:
-                    response = await self.perplexity.query(query)
-                    research_results.append({
-                        "query": query,
-                        "response": response.get("response", ""),
-                        "sources": response.get("sources", [])
-                    })
-                    sources.extend(response.get("sources", []))
-                except Exception as e:
-                    logger.warning(f"Perplexity query failed for {symbol}: {e}")
-                    research_results.append({
-                        "query": query,
-                        "error": str(e)
-                    })
-
+            response = await self.market_research_service.collect_symbol_research(
+                symbol,
+                company_name=stock.get("name"),
+            )
             return {
                 "symbol": symbol,
-                "research_queries": queries,
-                "research_results": research_results,
-                "sources": list(set(sources)),
-                "research_timestamp": datetime.now(timezone.utc).isoformat()
+                "research_timestamp": response.get("research_timestamp")
+                or datetime.now(timezone.utc).isoformat(),
+                "research_summary": response.get("research_summary", ""),
+                "summary": response.get("summary", ""),
+                "news": response.get("news", ""),
+                "financial_data": response.get("financial_data", ""),
+                "filings": response.get("filings", ""),
+                "market_context": response.get("market_context", ""),
+                "sources": response.get("sources", []),
+                "source_summary": response.get("source_summary", []),
+                "evidence_citations": response.get("evidence_citations", []),
+                "evidence": response.get("evidence", []),
+                "risks": response.get("risks", []),
+                "errors": response.get("errors", []),
             }
 
         except Exception as e:
-            logger.error(f"Perplexity research failed for {stock.get('symbol')}: {e}")
+            logger.error(f"Claude web research failed for {stock.get('symbol')}: {e}")
             return {
                 "symbol": stock.get("symbol"),
                 "error": str(e),
@@ -284,7 +273,7 @@ class StockDiscoveryService(EventHandler):
     async def _analyze_stock_claude(
         self,
         stock: Dict[str, Any],
-        perplexity_research: Dict[str, Any]
+        external_research: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Analyze stock using structured feature extraction via FeatureExtractor.
@@ -293,25 +282,19 @@ class StockDiscoveryService(EventHandler):
         and scores them deterministically. The LLM is a feature extractor, not a trader.
         """
         try:
-            from src.services.recommendation_engine.feature_extractor import FeatureExtractor
-            from src.services.recommendation_engine.deterministic_scorer import DeterministicScorer
-
-            # Build research data dict from perplexity research
+            # Build research data dict from Claude web research
             research_data = {
-                "news": perplexity_research.get("research_summary", ""),
-                "financials": perplexity_research.get("financial_data", ""),
-                "filings": perplexity_research.get("filings", ""),
-                "market_data": perplexity_research.get("market_context", ""),
+                "news": external_research.get("research_summary", "") or external_research.get("news", ""),
+                "financials": external_research.get("financial_data", ""),
+                "filings": external_research.get("filings", ""),
+                "market_data": external_research.get("market_context", ""),
             }
 
             # Extract structured features via Claude (factual questions, not opinions)
-            extractor = FeatureExtractor()
-            await extractor.initialize()
-            entry = await extractor.extract_features(stock["symbol"], research_data)
+            entry = await self.feature_extractor.extract_features(stock["symbol"], research_data)
 
             # Score deterministically from features
-            scorer = DeterministicScorer()
-            entry = scorer.score(entry)
+            entry = self.deterministic_scorer.score(entry)
 
             return {
                 "symbol": stock["symbol"],
@@ -419,7 +402,8 @@ class StockDiscoveryService(EventHandler):
                             "recommendation": stock.get("recommendation", "WATCH"),
                             "confidence_score": stock.get("score", 0) / 100,
                             "research_summary": json.dumps({
-                                "perplexity": stock.get("perplexity_research"),
+                                "external_research": stock.get("external_research"),
+                                "claude_web_research": stock.get("external_research"),
                                 "claude": stock.get("claude_analysis")
                             }),
                             "last_analyzed": datetime.now(timezone.utc).isoformat(),
@@ -440,7 +424,8 @@ class StockDiscoveryService(EventHandler):
                         "recommendation": stock.get("recommendation", "WATCH"),
                         "confidence_score": stock.get("score", 0) / 100,
                         "research_summary": json.dumps({
-                            "perplexity": stock.get("perplexity_research"),
+                            "external_research": stock.get("external_research"),
+                            "claude_web_research": stock.get("external_research"),
                             "claude": stock.get("claude_analysis")
                         }),
                         "status": "ACTIVE",

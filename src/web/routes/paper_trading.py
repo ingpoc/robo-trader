@@ -550,6 +550,50 @@ async def get_paper_trading_review(
         return await handle_unexpected_error(e, "get_paper_trading_review")
 
 
+@router.get("/paper-trading/accounts/{account_id}/learning-summary")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_learning_summary(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Return the current stateful learning summary for a paper-trading account."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        learning_service = await container.get("paper_trading_learning_service")
+        summary = await learning_service.get_learning_summary(account_id, refresh=True)
+        return summary.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_learning_summary")
+
+
+@router.get("/paper-trading/accounts/{account_id}/improvement-report")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_improvement_report(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Return benchmarked strategy-improvement proposals for a paper-trading account."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        improvement_service = await container.get("paper_trading_improvement_service")
+        report = await improvement_service.get_improvement_report(account_id, refresh=True)
+        return report.model_dump(mode="json")
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_improvement_report")
+
+
 @router.post("/paper-trading/accounts/{account_id}/runs/discovery")
 @limiter.limit("10/minute")
 async def run_paper_trading_discovery(

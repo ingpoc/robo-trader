@@ -12,6 +12,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
 
 from src.core.errors import TradingError, ErrorCategory, ErrorSeverity
 from src.core.database_state.real_time_trading_state import (
@@ -300,6 +301,8 @@ class MockKiteConnect:
 class KiteConnectService:
     """Kite Connect integration service."""
 
+    _market_timezone = ZoneInfo("Asia/Kolkata")
+
     def __init__(self, config: Dict[str, Any], real_time_state: RealTimeTradingState):
         self.config = config
         self.real_time_state = real_time_state
@@ -387,8 +390,10 @@ class KiteConnectService:
 
         try:
             expiry = datetime.fromisoformat(session.expires_at.replace('Z', '+00:00'))
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
             # Consider session valid if expires in more than 5 minutes
-            return expiry > datetime.now() + timedelta(minutes=5)
+            return expiry > datetime.now(timezone.utc) + timedelta(minutes=5)
         except ValueError:
             return False
 
@@ -415,7 +420,7 @@ class KiteConnectService:
             from src.core.database_state.real_time_trading_state import KiteSession
             self._active_session = KiteSession(
                 account_id=account_id,
-                user_id="env_token",
+                user_id=account_id,
                 public_token=None,
                 access_token=access_token,
                 refresh_token=None,
@@ -428,8 +433,7 @@ class KiteConnectService:
                 broker="ZERODHA",
                 products="[]",
                 exchanges="[]",
-                order_types="[]",
-                expiry=expires_at.isoformat(),
+                expires_at=expires_at.isoformat(),
                 active=True,
                 created_at=now.isoformat(),
                 updated_at=now.isoformat()
@@ -663,7 +667,7 @@ class KiteConnectService:
         if self._active_session and getattr(self._active_session, "account_id", None):
             return self._active_session.account_id
 
-        for env_key in ("PAPER_TRADING_ACCOUNT_ID", "ZERODHA_ACCOUNT_ID"):
+        for env_key in ("PAPER_TRADING_ACCOUNT_ID", "ZERODHA_ACCOUNT_ID", "ZERODHA_USER_ID"):
             value = os.getenv(env_key)
             if value:
                 return value
@@ -672,7 +676,7 @@ class KiteConnectService:
             return None
 
         raise TradingError(
-            "Kite account context is not configured. Set PAPER_TRADING_ACCOUNT_ID or ZERODHA_ACCOUNT_ID, or establish an authenticated session first.",
+            "Kite account context is not configured. Set PAPER_TRADING_ACCOUNT_ID, ZERODHA_ACCOUNT_ID, or ZERODHA_USER_ID, or establish an authenticated session first.",
             category=ErrorCategory.AUTHENTICATION,
             severity=ErrorSeverity.HIGH,
             recoverable=False
@@ -701,20 +705,39 @@ class KiteConnectService:
             result = {}
             for instrument, quote in quotes_data.items():
                 symbol = instrument.split(":")[-1] if ":" in instrument else instrument
+                ohlc = quote.get("ohlc", {}) or {}
+                change = quote.get("change")
+                if change is None:
+                    change = quote.get("net_change", 0.0)
+
+                close_price = ohlc.get("close")
+                if close_price in (None, 0):
+                    previous_price = quote["last_price"] - change if quote.get("last_price") is not None else 0
+                else:
+                    previous_price = close_price
+
+                change_percent = quote.get("change_percent")
+                if change_percent is None:
+                    change_percent = (change / previous_price * 100) if previous_price else 0.0
+
+                raw_timestamp = quote.get("timestamp", datetime.now(timezone.utc))
+                timestamp = self._normalize_quote_timestamp(raw_timestamp)
+                raw_last_trade_time = quote.get("last_trade_time", "")
+                last_trade_time = self._normalize_quote_timestamp(raw_last_trade_time) if raw_last_trade_time else ""
 
                 quote_data = QuoteData(
                     instrument_token=quote["instrument_token"],
-                    timestamp=quote.get("timestamp", datetime.now().isoformat()),
+                    timestamp=timestamp,
                     last_price=quote["last_price"],
                     last_quantity=quote.get("last_quantity", 0),
-                    last_trade_time=quote.get("last_trade_time", ""),
+                    last_trade_time=last_trade_time,
                     average_price=quote["average_price"],
                     volume=quote["volume"],
                     buy_quantity=quote["buy_quantity"],
                     sell_quantity=quote["sell_quantity"],
-                    ohlc=quote["ohlc"],
-                    change=quote["change"],
-                    change_percent=quote["change_percent"]
+                    ohlc=ohlc,
+                    change=change,
+                    change_percent=change_percent,
                 )
 
                 result[symbol] = quote_data
@@ -723,10 +746,10 @@ class KiteConnectService:
                 real_time_quote = RealTimeQuote(
                     symbol=symbol,
                     last_price=quote["last_price"],
-                    change_price=quote["change"],
-                    change_percent=quote["change_percent"],
+                    change_price=change,
+                    change_percent=change_percent,
                     volume=quote["volume"],
-                    timestamp=quote.get("timestamp", datetime.now().isoformat())
+                    timestamp=timestamp,
                 )
                 await self.real_time_state.store_real_time_quote(real_time_quote)
 
@@ -740,6 +763,18 @@ class KiteConnectService:
                 severity=ErrorSeverity.MEDIUM,
                 recoverable=True
             )
+
+    def _normalize_quote_timestamp(self, raw_value: Any) -> str:
+        """Normalize Zerodha timestamps into UTC ISO-8601 strings."""
+        if isinstance(raw_value, datetime):
+            parsed = raw_value
+        else:
+            parsed = datetime.fromisoformat(str(raw_value))
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=self._market_timezone)
+
+        return parsed.astimezone(timezone.utc).isoformat()
 
     async def get_positions(self) -> Dict[str, List[Dict[str, Any]]]:
         """Get current positions."""

@@ -21,7 +21,6 @@ async def container():
     store = AsyncMock()
     account_manager = AsyncMock()
     market_data_service = AsyncMock()
-    perplexity_service = AsyncMock()
     safeguards = AsyncMock()
     event_bus = AsyncMock()
 
@@ -29,7 +28,6 @@ async def container():
         "state_manager": state_manager,
         "paper_trading_store": store,
         "paper_trading_account_manager": account_manager,
-        "perplexity_service": perplexity_service,
         "kite_connect_service": AsyncMock(),
         "market_data_service": market_data_service,
         "autonomous_trading_safeguards": safeguards,
@@ -66,7 +64,6 @@ async def test_evening_review_uses_store_backed_metrics(coordinator, container):
     store = await container.get("paper_trading_store")
     account_manager = await container.get("paper_trading_account_manager")
     market_data_service = await container.get("market_data_service")
-    perplexity = await container.get("perplexity_service")
 
     account_manager.get_all_accounts.return_value = [SimpleNamespace(account_id="paper_main")]
     account_manager.get_open_positions.return_value = [SimpleNamespace(symbol="TCS")]
@@ -104,9 +101,6 @@ async def test_evening_review_uses_store_backed_metrics(coordinator, container):
     state_manager.paper_trading.get_discovery_watchlist.return_value = []
     state_manager.paper_trading.store_evening_performance_review.return_value = True
     state_manager.news_earnings_state.get_recent_news.return_value = None
-    perplexity.query_perplexity.return_value = {
-        "content": "1. Good follow-through\n2. Risk stayed contained\n3. Keep momentum names on watch"
-    }
 
     result = await coordinator.run_evening_review(trigger_source="MANUAL", review_date=review_date)
 

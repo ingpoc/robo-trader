@@ -13,6 +13,8 @@ import logging
 import time
 from typing import Dict, Any, Optional, List
 
+from claude_agent_sdk import ClaudeAgentOptions
+
 from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
 from src.core.sdk_helpers import query_with_timeout
 from src.models.research_ledger import (
@@ -39,6 +41,17 @@ class FeatureExtractor:
 
     def __init__(self):
         self.client_manager: Optional[ClaudeSDKClientManager] = None
+        self.client_type = "feature_extractor"
+        self.client_options = ClaudeAgentOptions(
+            allowed_tools=[],
+            max_turns=1,
+            model="haiku",
+            system_prompt=(
+                "You are a financial data extraction assistant. "
+                "Extract factual information and return only valid JSON. "
+                "Use null for unknown values. Never provide opinions or recommendations."
+            ),
+        )
 
     async def initialize(self) -> None:
         """Initialize Claude SDK client."""
@@ -72,7 +85,7 @@ class FeatureExtractor:
 
         # Track sources
         if research_data.get("news"):
-            entry.sources.append("perplexity_news")
+            entry.sources.append("claude_web_news")
         if research_data.get("financials"):
             entry.sources.append("financial_statements")
         if research_data.get("filings"):
@@ -195,11 +208,14 @@ Answer ONLY with this JSON (no other text):
             return None
 
         try:
+            client = await self.client_manager.get_client(
+                self.client_type,
+                self.client_options,
+            )
             response = await query_with_timeout(
-                self.client_manager,
+                client,
                 prompt,
                 timeout=EXTRACTION_TIMEOUT,
-                system_prompt="You are a financial data extraction assistant. Extract factual information and return ONLY valid JSON. Use null for unknown values. Never provide opinions or recommendations."
             )
             return response
         except Exception as e:

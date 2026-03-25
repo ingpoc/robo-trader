@@ -121,15 +121,35 @@ async def zerodha_oauth_callback(
                     "Zerodha OAuth token was stored, but the live KiteConnectService is unavailable."
                 )
 
-            runtime_session = await kite_service.authenticate(request_token)
-            logger.info(
-                "Live KiteConnectService session updated successfully for user: %s",
-                runtime_session.get("user_name") or runtime_session.get("user_id"),
-            )
+            access_token = result.get("access_token")
+            if not access_token:
+                raise RuntimeError("OAuth completed but no Zerodha access token was returned.")
+
+            user_id = result.get("user_id")
+            expires_at = result.get("expires_at")
+            os.environ["ZERODHA_ACCESS_TOKEN"] = access_token
+            if user_id:
+                os.environ["ZERODHA_USER_ID"] = user_id
+            if expires_at:
+                os.environ["ZERODHA_TOKEN_EXPIRES_AT"] = expires_at
+
+            container.config.integration.zerodha_access_token = access_token
+
+            runtime_bound = await kite_service._set_access_token(access_token)
+            if not runtime_bound:
+                raise RuntimeError("OAuth token was stored, but the live KiteConnectService could not bind it.")
+
+            logger.info("Live KiteConnectService token updated successfully for user: %s", user_id)
 
             market_data_service = await container.get("market_data_service")
             refreshed_symbols = []
             if market_data_service is not None:
+                quote_stream_adapter = getattr(market_data_service, "quote_stream_adapter", None)
+                if quote_stream_adapter is not None and hasattr(quote_stream_adapter, "update_credentials"):
+                    await quote_stream_adapter.update_credentials(
+                        api_key=container.config.integration.zerodha_api_key,
+                        access_token=access_token,
+                    )
                 refreshed_symbols = await market_data_service.refresh_active_subscriptions()
                 logger.info(
                     "Refreshed %d market-data subscription(s) after Zerodha auth",

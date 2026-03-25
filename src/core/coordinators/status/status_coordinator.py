@@ -170,7 +170,8 @@ class StatusCoordinator(BaseCoordinator):
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "data": {
                         "tasks_completed": claude_status_data.get("tasksCompleted", 0),
-                        "last_activity": claude_status_data.get("lastActivity")
+                        "last_activity": claude_status_data.get("lastActivity"),
+                        "rate_limit_info": claude_status_data.get("rate_limit_info", {}),
                     }
                 }
 

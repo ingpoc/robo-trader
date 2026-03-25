@@ -1,103 +1,108 @@
-"""Morning Research Coordinator
+"""Morning Research Coordinator.
 
-Executes batch stock research using the Perplexity API.
+Executes batch stock research using Claude Agent SDK web research.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 
 from src.config import Config
 from src.core.coordinators.base_coordinator import BaseCoordinator
 from src.core.event_bus import EventBus
-from src.core.perplexity_client import PerplexityClient
 
 if TYPE_CHECKING:
     from src.core.di import DependencyContainer
+    from src.services.claude_agent.claude_market_research_service import ClaudeMarketResearchService
 
 
 class MorningResearchCoordinator(BaseCoordinator):
-    """Researches stocks using Perplexity API batch queries. Max 150 lines."""
+    """Researches stocks using Claude web research in batched concurrent runs."""
 
-    def __init__(self, config: Config, event_bus: EventBus, container: 'DependencyContainer'):
+    def __init__(self, config: Config, event_bus: EventBus, container: "DependencyContainer"):
         super().__init__(config, event_bus)
         self.container = container
-        self.perplexity_service: Optional[PerplexityClient] = None
+        self.market_research_service: Optional["ClaudeMarketResearchService"] = None
 
     async def initialize(self) -> None:
-        """Initialize with Perplexity service from DI container."""
+        """Initialize with the Claude market research service from DI."""
         try:
-            self.perplexity_service = await self.container.get("perplexity_service")
+            self.market_research_service = await self.container.get("claude_market_research_service")
         except ValueError:
-            self._log_warning("perplexity_service not registered - research disabled")
-            self.perplexity_service = None
-
+            self._log_warning("claude_market_research_service not registered - research disabled")
+            self.market_research_service = None
         self._initialized = True
 
     async def research_stocks(self, stocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Research selected stocks using Perplexity API.
+        """Research selected stocks with Claude web tools."""
+        if not stocks:
+            return []
 
-        Args:
-            stocks: List of stock dicts with at least 'symbol' key.
-
-        Returns:
-            List of research result dicts with symbol, market_data, research, timestamp.
-        """
-        research_results = []
-
-        if not self.perplexity_service:
-            self._log_warning("Perplexity service not available - skipping research")
-            for stock in stocks:
-                research_results.append({
+        if not self.market_research_service:
+            self._log_warning("Claude market research service not available - skipping research")
+            return [
+                {
                     "symbol": stock["symbol"],
                     "market_data": stock,
                     "research": {"note": "Research service not available"},
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-            return research_results
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+                for stock in stocks
+            ]
+
+        symbols = [stock["symbol"] for stock in stocks]
+        company_names = {
+            stock["symbol"]: stock.get("company_name") or stock.get("name") or stock["symbol"]
+            for stock in stocks
+        }
 
         try:
-            from src.core.perplexity_client import QueryType
-            symbols = [stock["symbol"] for stock in stocks]
-            batch_result = await self.perplexity_service.fetch_batch_data(
-                symbols=symbols,
-                query_type=QueryType.COMPREHENSIVE,
-                batch_size=5,
-                max_concurrent=2
+            batch_result = await self.market_research_service.collect_batch_symbol_research(
+                symbols,
+                company_names=company_names,
+                research_brief=(
+                    "Prepare factual pre-market research for swing-trading idea generation. "
+                    "Focus on fresh company news, current fundamentals, filings, and market context."
+                ),
+                max_concurrent=3,
             )
-
-            fundamentals_map = {f.symbol: f for f in batch_result.fundamentals}
-            news_map = {n.symbol: n for n in batch_result.news}
-
-            for stock in stocks:
-                symbol = stock["symbol"]
-                research_data = {
-                    "fundamentals": (
-                        fundamentals_map[symbol].model_dump()
-                        if symbol in fundamentals_map else None
-                    ),
-                    "news": (
-                        news_map[symbol].model_dump()
-                        if symbol in news_map else None
-                    ),
-                    "note": "Research completed successfully"
-                }
-                research_results.append({
-                    "symbol": symbol,
-                    "market_data": stock,
-                    "research": research_data,
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-
-        except Exception as e:
-            self._log_warning(f"Batch research failed: {e}")
-            for stock in stocks:
-                research_results.append({
+        except Exception as exc:
+            self._log_warning(f"Batch research failed: {exc}")
+            return [
+                {
                     "symbol": stock["symbol"],
                     "market_data": stock,
-                    "research": {"error": str(e)},
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                    "research": {"error": str(exc)},
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+                for stock in stocks
+            ]
+
+        research_results: List[Dict[str, Any]] = []
+        for stock in stocks:
+            symbol = stock["symbol"]
+            research = batch_result.get(symbol, {})
+            research_results.append(
+                {
+                    "symbol": symbol,
+                    "market_data": stock,
+                    "research": {
+                        "summary": research.get("summary"),
+                        "fundamentals": research.get("financial_data"),
+                        "news": research.get("news"),
+                        "filings": research.get("filings"),
+                        "market_context": research.get("market_context"),
+                        "evidence": research.get("evidence", []),
+                        "risks": research.get("risks", []),
+                        "source_summary": research.get("source_summary", []),
+                        "note": "Claude web research completed successfully",
+                        "errors": research.get("errors", []),
+                    },
+                    "timestamp": research.get(
+                        "research_timestamp",
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                }
+            )
 
         return research_results
 

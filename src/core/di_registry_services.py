@@ -17,7 +17,7 @@ from src.services.learning_service import LearningService
 from src.services.strategy_evolution_engine import StrategyEvolutionEngine
 from src.models.market_data import MarketDataProvider
 from src.services.market_data_service import MarketDataService
-from src.services.quote_stream_adapter import NullQuoteStreamAdapter, UpstoxQuoteStreamAdapter
+from src.services.quote_stream_adapter import NullQuoteStreamAdapter, UpstoxQuoteStreamAdapter, KiteTickerQuoteStreamAdapter
 from src.services.trading_capability_service import TradingCapabilityService
 from src.services.feature_management.service import FeatureManagementService
 from src.services.event_router_service import EventRouterService
@@ -73,6 +73,8 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
 
         if provider == MarketDataProvider.UPSTOX.value:
             return UpstoxQuoteStreamAdapter(container.config, on_quote_update=_discard_quote_update)
+        if provider == MarketDataProvider.ZERODHA_KITE.value:
+            return KiteTickerQuoteStreamAdapter(container.config, on_quote_update=_discard_quote_update)
         if provider in {"none", "", "disabled"}:
             return NullQuoteStreamAdapter("QUOTE_STREAM_PROVIDER is disabled for this runtime.")
         logger.warning("Unknown quote stream provider '%s'; paper-mode live marks will stay unavailable", provider)
@@ -233,26 +235,13 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
 
     # container._register_singleton("manual_override_service", create_manual_override_service)
 
-    # Perplexity Service (AI research for stock discovery and analysis)
+    # Compatibility alias for legacy research callers.
     async def create_perplexity_service():
-        """Create PerplexityClient with API keys from config.integration."""
-        try:
-            from src.core.perplexity_client import PerplexityClient
-
-            # Get API keys from config.integration (loaded from env vars)
-            api_keys = container.config.integration.perplexity_api_keys
-
-            if not api_keys:
-                logger.error("No Perplexity API keys - set PERPLEXITY_API_KEY_1 in env")
-                raise ValueError("PERPLEXITY_API_KEY_1 required for PT-003")
-
-            perplexity_service = PerplexityClient(api_keys=api_keys)
-            logger.info(f"PerplexityClient initialized with {len(api_keys)} API key(s)")
-            return perplexity_service
-
-        except Exception as e:
-            logger.error(f"PerplexityClient failed: {e}")
-            raise
+        """Return the Claude web research service for legacy callers."""
+        logger.warning(
+            "perplexity_service is deprecated; returning claude_market_research_service compatibility alias"
+        )
+        return await container.get("claude_market_research_service")
 
     container._register_singleton("perplexity_service", create_perplexity_service)
 

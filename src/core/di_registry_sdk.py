@@ -127,18 +127,15 @@ async def register_sdk_services(container: 'DependencyContainer') -> None:
 
     # Prompt Optimization Service
     async def create_prompt_optimization_service():
-        from src.core.background_scheduler.clients.perplexity_client import PerplexityClient
         from src.services.prompt_optimization_service import PromptOptimizationService
         event_bus = await container.get("event_bus")
-        configuration_state = await container.get("configuration_state")
-
-        perplexity_client = PerplexityClient(configuration_state=configuration_state)
+        market_research_service = await container.get("claude_market_research_service")
 
         prompt_service = PromptOptimizationService(
             config=getattr(container.config, 'prompt_optimization', {}),
             event_bus=event_bus,
             container=container,
-            perplexity_client=perplexity_client
+            market_research_service=market_research_service,
         )
         await prompt_service.initialize()
         return prompt_service

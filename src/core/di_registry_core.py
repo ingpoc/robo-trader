@@ -656,7 +656,13 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     # Prompt Optimization Service
     async def create_prompt_optimization_service():
         from ..services.prompt_optimization_service import PromptOptimizationService
-        database = await container.get("database")
-        return PromptOptimizationService(database, container)
+        event_bus = await container.get("event_bus")
+        market_research_service = await container.get("claude_market_research_service")
+        return PromptOptimizationService(
+            config=getattr(container.config, "prompt_optimization", {}),
+            event_bus=event_bus,
+            container=container,
+            market_research_service=market_research_service,
+        )
 
     container._register_singleton("prompt_optimization_service", create_prompt_optimization_service)

@@ -68,6 +68,8 @@ class IntegrationConfig(BaseModel):
     upstox_api_secret: Optional[str] = Field(default=None, description="Upstox API secret")
     upstox_redirect_uri: Optional[str] = Field(default=None, description="Upstox OAuth redirect URI")
     upstox_access_token: Optional[str] = Field(default=None, description="Upstox access token")
+    upstox_sandbox: bool = Field(default=False, description="Enable Upstox sandbox mode for order APIs")
+    upstox_sandbox_access_token: Optional[str] = Field(default=None, description="Upstox sandbox access token (30-day validity)")
     quote_stream_provider: str = Field(default="upstox", description="Default paper-mode quote stream provider")
     upstox_stream_mode: str = Field(default="ltpc", description="Default Upstox stream mode")
     anthropic_api_key: Optional[str] = Field(default=None, description="Anthropic API key")
@@ -307,6 +309,10 @@ class Config(BaseModel):
         self.integration.upstox_api_secret = os.getenv('UPSTOX_API_SECRET', self.integration.upstox_api_secret)
         self.integration.upstox_redirect_uri = os.getenv('UPSTOX_REDIRECT_URI', self.integration.upstox_redirect_uri)
         self.integration.upstox_access_token = os.getenv('UPSTOX_ACCESS_TOKEN', self.integration.upstox_access_token)
+        sandbox_env = os.getenv('UPSTOX_SANDBOX', '')
+        if sandbox_env.lower() in ('true', '1', 'yes'):
+            self.integration.upstox_sandbox = True
+        self.integration.upstox_sandbox_access_token = os.getenv('UPSTOX_SANDBOX_ACCESS_TOKEN', self.integration.upstox_sandbox_access_token)
         self.integration.quote_stream_provider = os.getenv('QUOTE_STREAM_PROVIDER', self.integration.quote_stream_provider)
         self.integration.upstox_stream_mode = os.getenv('UPSTOX_STREAM_MODE', self.integration.upstox_stream_mode)
         self.integration.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY', self.integration.anthropic_api_key)

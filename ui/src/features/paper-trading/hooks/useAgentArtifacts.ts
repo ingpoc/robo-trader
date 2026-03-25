@@ -68,6 +68,29 @@ function buildResearchQuery(selection?: CandidateSelection) {
   return query ? `?${query}` : ''
 }
 
+async function readErrorMessage(response: Response, fallback: string) {
+  const contentType = response.headers.get('content-type') ?? ''
+
+  try {
+    if (contentType.includes('application/json')) {
+      const payload = await response.json()
+      if (typeof payload?.error === 'string' && payload.error.trim()) return payload.error
+      if (typeof payload?.detail === 'string' && payload.detail.trim()) return payload.detail
+      if (Array.isArray(payload?.blockers) && payload.blockers.length > 0) {
+        const firstBlocker = payload.blockers.find((value: unknown) => typeof value === 'string' && value.trim())
+        if (typeof firstBlocker === 'string') return firstBlocker
+      }
+    } else {
+      const body = await response.text()
+      if (body.trim()) return body
+    }
+  } catch {
+    // Fall back to the generic message when the error payload cannot be parsed.
+  }
+
+  return fallback
+}
+
 export function useAgentArtifacts(
   accountId?: string,
   activeTab?: ArtifactTab,
@@ -160,7 +183,12 @@ export function useAgentArtifacts(
 
       const response = await fetch(endpoint, init)
       if (!response.ok) {
-        throw new Error(`Failed to ${method === 'POST' ? 'run' : 'fetch'} ${tab}`)
+        throw new Error(
+          await readErrorMessage(
+            response,
+            `Failed to ${method === 'POST' ? 'run' : 'fetch'} ${tab}`,
+          ),
+        )
       }
       const payload = await response.json()
 

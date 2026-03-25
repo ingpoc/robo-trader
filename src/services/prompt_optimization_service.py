@@ -1,28 +1,31 @@
 """
-Claude's Real-Time Prompt Optimization Service
+Claude's Real-Time Prompt Optimization Service.
 
-Claude self-optimizes Perplexity prompts by:
+Claude self-optimizes external research briefs by:
 1. Analyzing data quality immediately after receiving it
-2. Identifying missing/unnecessary elements
-3. Rewriting prompts to address gaps
-4. Testing improved prompts in real-time
+2. Identifying missing or unnecessary elements
+3. Rewriting the research brief to address gaps
+4. Testing improved briefs in real time
 5. Saving optimized versions for future use
 """
 
 import asyncio
 import json
+import re
 import uuid
-import aiofiles
-import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Any, TYPE_CHECKING
 
+from claude_agent_sdk import ClaudeAgentOptions
+
+from ..core.claude_sdk_client_manager import ClaudeSDKClientManager
 from ..core.event_bus import EventHandler, Event, EventType, EventBus
 from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ..core.background_scheduler.clients.perplexity_client import PerplexityClient
+from ..core.sdk_helpers import query_with_timeout
 
 if TYPE_CHECKING:
     from ..core.di import DependencyContainer
+    from ..services.claude_agent.claude_market_research_service import ClaudeMarketResearchService
 from loguru import logger
 
 
@@ -30,26 +33,28 @@ class PromptOptimizationService(EventHandler):
     """
     Claude's real-time prompt optimization service.
 
-    Claude self-optimizes Perplexity prompts by:
+    Claude self-optimizes external research briefs by:
     1. Analyzing data quality immediately after receiving it
-    2. Identifying missing/unnecessary elements
+    2. Identifying missing or unnecessary elements
     3. Rewriting prompts to address gaps
     4. Testing improved prompts in real-time
     5. Saving optimized versions for future use
     """
+
+    _JSON_RE = re.compile(r"\{.*\}", flags=re.DOTALL)
 
     def __init__(
         self,
         config: Dict[str, Any],
         event_bus: EventBus,
         container: Any,  # Will be DependencyContainer at runtime
-        perplexity_client: PerplexityClient
+        market_research_service: "ClaudeMarketResearchService",
     ):
         """Initialize service."""
         self.config = config
         self.event_bus = event_bus
         self.container = container
-        self.perplexity_client = perplexity_client
+        self.market_research_service = market_research_service
         self._initialized = False
 
         # Claude's optimization settings
@@ -198,34 +203,22 @@ class PromptOptimizationService(EventHandler):
         return data, quality_score, current_prompt, optimization_metadata
 
     async def _fetch_data_with_prompt(self, prompt: str, data_type: str, symbols: List[str]) -> Optional[str]:
-        """Fetch data from Perplexity using specified prompt."""
+        """Fetch data from Claude web research using the specified brief."""
         try:
-            if data_type == "earnings":
-                return await self.perplexity_client.fetch_earnings_fundamentals(symbols, max_tokens=4000)
-            elif data_type == "news":
-                return await self.perplexity_client.fetch_market_news(symbols, max_tokens=3000)
-            elif data_type == "fundamentals":
-                return await self.perplexity_client.fetch_deep_fundamentals(symbols, max_tokens=5000)
-            elif data_type == "metrics":
-                # For metrics, use a custom implementation or extend PerplexityClient
-                return await self._fetch_technical_metrics(symbols, prompt)
-            else:
+            if data_type not in {"earnings", "news", "fundamentals", "metrics"}:
                 logger.error(f"Unknown data type: {data_type}")
                 return None
+            results = await self.market_research_service.collect_batch_symbol_research(
+                symbols,
+                research_brief=prompt,
+                max_concurrent=2,
+            )
+            rendered = self._render_research_slice(data_type, results)
+            return rendered or None
 
         except Exception as e:
             logger.error(f"Failed to fetch {data_type} data: {e}")
             return None
-
-    async def _fetch_technical_metrics(self, symbols: List[str], prompt: str) -> Optional[str]:
-        """Fetch technical metrics data - placeholder implementation."""
-        # This would need to be implemented based on available data sources
-        # For now, return a structured response
-        return json.dumps({
-            "symbols": symbols,
-            "technical_data": "Technical metrics would be fetched here",
-            "prompt_used": prompt
-        })
 
     async def _analyze_data_quality_with_claude(
         self,
@@ -235,12 +228,8 @@ class PromptOptimizationService(EventHandler):
         attempt_number: int
     ) -> Dict[str, Any]:
         """Have Claude analyze the quality of received data."""
-
-        # Get Claude's analysis tool via MCP
-        claude_coordinator = await self.container.get("claude_agent_coordinator")
-
         analysis_prompt = f"""
-        Analyze the quality of this {data_type} data received from Perplexity. Rate it 1-10 and identify what's missing or redundant.
+        Analyze the quality of this {data_type} research payload for trading decisions. Rate it 1-10 and identify what's missing or redundant.
 
         DATA TYPE: {data_type}
         ATTEMPT: {attempt_number}
@@ -278,30 +267,28 @@ class PromptOptimizationService(EventHandler):
         """
 
         try:
-            # This would call Claude via the MCP server
-            # For now, simulate a basic analysis
-            quality_score = 6.0 + (attempt_number * 0.5)  # Simulate improvement
-            if quality_score > 9.0:
-                quality_score = 9.0
+            response = await self._run_claude_json(
+                client_type=f"prompt_quality_analysis_{data_type}",
+                prompt=analysis_prompt,
+                system_prompt=(
+                    "You are Robo Trader's research-quality evaluator. "
+                    "Judge the usefulness of supplied research for trading decisions and return JSON only."
+                ),
+                timeout=45.0,
+            )
 
+            quality_score = float(response.get("quality_score", 0))
             return {
-                "quality_score": quality_score,
-                "missing_elements": [
-                    {
-                        "element": "enhanced_analysis",
-                        "description": "More detailed trading signals",
-                        "importance": "Critical for decision making"
-                    }
-                ],
-                "redundant_elements": [],
-                "feedback": f"Simulated analysis for {data_type} - attempt {attempt_number}",
-                "strengths": ["Structured format", "Relevant data points"],
-                "improvements_needed": ["Add more specific metrics"]
+                "quality_score": max(0.0, min(10.0, quality_score)),
+                "missing_elements": response.get("missing_elements", []),
+                "redundant_elements": response.get("redundant_elements", []),
+                "feedback": response.get("feedback", ""),
+                "strengths": response.get("strengths", []),
+                "improvements_needed": response.get("improvements_needed", []),
             }
 
         except Exception as e:
             logger.error(f"Failed to get Claude's data quality analysis: {e}")
-            # Return default analysis
             return {
                 "quality_score": 5.0,
                 "missing_elements": [{"element": "analysis_failed", "description": "Claude analysis unavailable"}],
@@ -321,70 +308,125 @@ class PromptOptimizationService(EventHandler):
         attempt_number: int
     ) -> Dict[str, Any]:
         """Have Claude improve the prompt based on quality analysis."""
+        prompt = f"""
+Rewrite this research brief to improve the quality of {data_type} research for trading decisions.
 
-        improvement_templates = {
-            "earnings": """
-ENHANCEMENTS FOR BETTER TRADING ANALYSIS:
-- Focus on getting ACTUAL NUMBERS vs ESTIMATES, not just general statements
-- Ask for specific percentages, growth rates, and exact figures
-- Include management commentary tone and sentiment
-- Request insider trading activity around earnings
-            """,
-            "news": """
-ENHANCEMENTS FOR BETTER TRADING ANALYSIS:
-- Emphasize sentiment analysis with IMPACT LEVELS (high/medium/low)
-- Request categorization by news type (earnings, M&A, product, etc)
-- Ask for source credibility and publication timing
-- Include market reaction and analyst commentary
-            """,
-            "fundamentals": """
-ENHANCEMENTS FOR BETTER TRADING ANALYSIS:
-- Stress INDUSTRY COMPARISON numbers, not just company metrics
-- Request competitive position and market share data
-- Ask for sustainability analysis of current growth rates
-- Include management quality and corporate governance factors
-            """,
-            "metrics": """
-ENHANCEMENTS FOR BETTER TRADING ANALYSIS:
-- Focus on TECHNICAL SIGNALS with specific trigger levels
-- Request volume confirmation of price movements
-- Ask for volatility measures and risk assessment
-- Include correlation with market indices and sector performance
-            """
-        }
-
-        template = improvement_templates.get(data_type, "")
-
-        # Construct improved prompt
-        improvements_needed = [elem["element"] for elem in missing_elements]
-
-        improved_prompt = f"""
+CURRENT BRIEF:
 {current_prompt}
 
-ENHANCEMENTS FOR BETTER TRADING ANALYSIS:
-{template}
+MISSING ELEMENTS:
+{json.dumps(missing_elements, indent=2)}
 
-SPECIFIC FOCUS AREAS (based on current data quality):
-{chr(10).join([f"- Add {elem['element']}: {elem['description']}" for elem in missing_elements])}
+REDUNDANT ELEMENTS:
+{json.dumps(redundant_elements, indent=2)}
 
-REMOVE OR MINIMIZE:
-{chr(10).join([f"- Reduce/remove: {redundant}" for redundant in redundant_elements])}
+QUALITY FEEDBACK:
+{quality_feedback}
 
-QUALITY FEEDBACK TO ADDRESS: {quality_feedback}
+ATTEMPT NUMBER:
+{attempt_number}
 
-Ensure the prompt requests structured, actionable data that directly supports trading decisions.
-Focus on specific numbers, percentages, and clear metrics rather than general descriptions.
-Make sure the prompt asks for exactly the type of {data_type} data needed for analysis.
-        """.strip()
-
+Return JSON only:
+{{
+  "improved_prompt": "rewritten brief",
+  "improvements_made": ["..."],
+  "removed_redundancy": ["..."],
+  "data_type": "{data_type}",
+  "focus_areas": ["..."],
+  "expected_improvement": "..."
+}}
+"""
+        response = await self._run_claude_json(
+            client_type=f"prompt_improvement_{data_type}",
+            prompt=prompt,
+            system_prompt=(
+                "You are Robo Trader's research-brief optimizer. "
+                "Rewrite the brief to request more actionable, factual, and structured evidence. Return JSON only."
+            ),
+            timeout=45.0,
+        )
         return {
-            "improved_prompt": improved_prompt,
-            "improvements_made": improvements_needed,
-            "removed_redundancy": redundant_elements,
+            "improved_prompt": response.get("improved_prompt", current_prompt),
+            "improvements_made": response.get("improvements_made", []),
+            "removed_redundancy": response.get("removed_redundancy", redundant_elements),
             "data_type": data_type,
-            "focus_areas": [elem["element"] for elem in missing_elements],
-            "expected_improvement": f"Should improve {data_type} data quality from current feedback"
+            "focus_areas": response.get("focus_areas", [elem["element"] for elem in missing_elements]),
+            "expected_improvement": response.get(
+                "expected_improvement",
+                f"Should improve {data_type} data quality from current feedback",
+            ),
         }
+
+    def _render_research_slice(
+        self,
+        data_type: str,
+        results: Dict[str, Dict[str, Any]],
+    ) -> str:
+        """Render provider-neutral Claude web research into the legacy string payload shape."""
+        lines: List[str] = []
+        for symbol, result in results.items():
+            if result.get("errors"):
+                lines.append(f"{symbol}: errors={'; '.join(result.get('errors', []))}")
+                continue
+
+            if data_type == "news":
+                primary = result.get("news") or result.get("summary")
+                evidence = result.get("evidence", [])[:2]
+                lines.append(f"{symbol}: {primary}")
+                if evidence:
+                    lines.append(f"Evidence: {' | '.join(evidence)}")
+            elif data_type == "earnings":
+                sections = [result.get("financial_data"), result.get("filings")]
+                rendered = " ".join(part for part in sections if part)
+                lines.append(f"{symbol}: {rendered}".strip())
+            elif data_type == "fundamentals":
+                lines.append(f"{symbol}: {result.get('financial_data') or result.get('summary')}")
+            elif data_type == "metrics":
+                lines.append(f"{symbol}: {result.get('market_context') or result.get('summary')}")
+
+            sources = result.get("sources", [])[:2]
+            if sources:
+                lines.append(f"Sources: {' | '.join(sources)}")
+
+        return "\n".join(line for line in lines if line)
+
+    async def _run_claude_json(
+        self,
+        *,
+        client_type: str,
+        prompt: str,
+        system_prompt: str,
+        timeout: float,
+    ) -> Dict[str, Any]:
+        """Run a tool-free Claude JSON task and parse the response."""
+        manager = await ClaudeSDKClientManager.get_instance()
+        options = ClaudeAgentOptions(
+            allowed_tools=[],
+            max_turns=1,
+            model="haiku",
+            system_prompt=system_prompt,
+        )
+        client = await manager.get_client(client_type, options, force_recreate=True)
+        try:
+            response = await query_with_timeout(client, prompt, timeout=timeout)
+            json_text = self._extract_json_object(response)
+            return json.loads(json_text)
+        finally:
+            await manager.cleanup_client(client_type)
+
+    @classmethod
+    def _extract_json_object(cls, response: str) -> str:
+        """Extract the first JSON object from a Claude response."""
+        text = (response or "").strip()
+        if text.startswith("```json"):
+            text = text[len("```json"):].strip()
+        elif text.startswith("```"):
+            text = text[len("```"):].strip()
+        if text.endswith("```"):
+            text = text[:-3].strip()
+
+        match = cls._JSON_RE.search(text)
+        return match.group(0) if match else text
 
     async def _get_active_prompt(self, data_type: str) -> Optional[str]:
         """Get the current active optimized prompt for data type."""

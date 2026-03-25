@@ -5,6 +5,7 @@ Ensures the system has valid Claude Agent SDK access and displays status.
 SDK uses Claude Code CLI for authentication, no direct API keys needed.
 """
 
+import asyncio
 import json
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
@@ -42,6 +43,96 @@ class ClaudeAuthStatus:
             "status": "connected" if self.is_valid else "disconnected",
             "rate_limit_info": self.rate_limit_info
         }
+
+
+def _extract_usage_limited_info(
+    raw_text: Optional[str],
+    *,
+    error_code: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Normalize temporary Claude quota failures into one structure."""
+    message = (raw_text or "").strip()
+    lowered = message.lower()
+    if not (
+        error_code == "rate_limit"
+        or "out of extra usage" in lowered
+        or "rate limit" in lowered
+        or "spending cap reached" in lowered
+        or "spending cap" in lowered
+    ):
+        return {}
+
+    return {
+        "status": "exhausted",
+        "code": error_code or ("spending_cap" if "spending cap" in lowered else "rate_limit"),
+        "message": message or "Claude usage is temporarily exhausted.",
+    }
+
+
+async def _probe_claude_sdk_runtime() -> Dict[str, Any]:
+    """Probe the Claude SDK with a minimal request to detect usage exhaustion."""
+    from claude_agent_sdk import ClaudeAgentOptions
+    from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
+
+    manager = await ClaudeSDKClientManager.get_instance()
+    options = ClaudeAgentOptions(
+        allowed_tools=[],
+        max_turns=1,
+        system_prompt="Reply with OK.",
+    )
+    client_type = "auth_probe"
+    client = None
+    assistant_error_message = None
+
+    try:
+        client = await manager.get_client(client_type, options, force_recreate=True)
+        await asyncio.wait_for(client.query("Reply with OK."), timeout=15.0)
+
+        async for message in client.receive_response():
+            if hasattr(message, "subtype") and message.subtype == "init":
+                continue
+
+            error_code = getattr(message, "error", None)
+            text_fragments = []
+
+            if hasattr(message, "content"):
+                for content_block in message.content:
+                    block_text = getattr(content_block, "text", None)
+                    if block_text:
+                        text_fragments.append(block_text)
+            elif getattr(message, "result", None):
+                text_fragments.append(str(message.result))
+            elif hasattr(message, "text") and getattr(message, "text", None):
+                text_fragments.append(message.text)
+
+            error_text = "\n".join(fragment.strip() for fragment in text_fragments if fragment).strip()
+            usage_limited_info = _extract_usage_limited_info(error_text, error_code=error_code)
+            if usage_limited_info:
+                return {
+                    "sdk_authenticated": True,
+                    "rate_limit_info": usage_limited_info,
+                }
+
+            if hasattr(message, "subtype") and message.subtype == "success" and getattr(message, "is_error", False):
+                assistant_error_message = assistant_error_message or error_text or "Claude SDK session ended with error"
+                usage_limited_info = _extract_usage_limited_info(assistant_error_message, error_code=error_code)
+                if usage_limited_info:
+                    return {
+                        "sdk_authenticated": True,
+                        "rate_limit_info": usage_limited_info,
+                    }
+                raise RuntimeError(assistant_error_message)
+
+        return {
+            "sdk_authenticated": True,
+            "rate_limit_info": {},
+        }
+    finally:
+        if client is not None:
+            try:
+                await manager.cleanup_client(client_type)
+            except Exception as exc:
+                logger.debug(f"Claude SDK auth probe cleanup failed: {exc}")
 
 
 async def validate_claude_sdk_auth() -> ClaudeAuthStatus:
@@ -105,10 +196,6 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
             "auth_method": str | None
         }
     """
-    import asyncio
-    from claude_agent_sdk import ClaudeAgentOptions
-    from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
-
     version = None
     auth_status = {}
 
@@ -162,37 +249,35 @@ async def check_claude_code_cli_auth() -> Dict[str, Any]:
     except Exception as exc:
         logger.debug(f"Claude auth status probe failed: {exc}")
 
-    # Primary signal: can the real SDK client path initialize?
+    logged_in = bool(auth_status.get("loggedIn"))
+
+    # Primary signal: can the real SDK client path execute a minimal request?
     try:
-        manager = await ClaudeSDKClientManager.get_instance()
-        options = ClaudeAgentOptions(
-            allowed_tools=[],
-            max_turns=1,
-            system_prompt="Return OK.",
-        )
-        await manager.get_client("auth_probe", options, force_recreate=True)
-        sdk_authenticated = True
+        sdk_probe = await _probe_claude_sdk_runtime()
+        sdk_authenticated = bool(sdk_probe.get("sdk_authenticated"))
+        rate_limit_info = sdk_probe.get("rate_limit_info", {}) or {}
     except Exception as exc:
         logger.debug(f"Claude SDK auth probe failed: {exc}")
         sdk_authenticated = False
+        rate_limit_info = {}
 
-    if sdk_authenticated:
+    if sdk_authenticated or (logged_in and rate_limit_info.get("status") == "exhausted"):
         return {
             "authenticated": True,
             "cli_installed": True,
             "version": version,
             "user": auth_status.get("user"),
             "auth_method": auth_status.get("authMethod") or "sdk_available",
-            "rate_limit_info": auth_status.get("rate_limit_info", {}),
+            "rate_limit_info": rate_limit_info or auth_status.get("rate_limit_info", {}),
         }
 
     return {
-        "authenticated": bool(auth_status.get("loggedIn")),
+        "authenticated": logged_in,
         "cli_installed": True,
         "version": version,
         "user": auth_status.get("user"),
         "auth_method": auth_status.get("authMethod"),
-        "rate_limit_info": auth_status.get("rate_limit_info", {}),
+        "rate_limit_info": rate_limit_info or auth_status.get("rate_limit_info", {}),
     }
 
 
@@ -266,3 +351,24 @@ def invalidate_status_cache():
     global _cached_status
     _cached_status = None
     logger.debug("Claude status cache invalidated")
+
+
+def record_claude_runtime_limit(message: str, *, code: Optional[str] = None) -> None:
+    """Update cached Claude status immediately when a live request hits a usage cap."""
+    global _cached_status
+
+    usage_limited_info = _extract_usage_limited_info(message, error_code=code)
+    if not usage_limited_info:
+        return
+
+    account_info = _cached_status.account_info.copy() if _cached_status is not None else {}
+    if "auth_method" not in account_info:
+        account_info["auth_method"] = "claude_code_cli_sdk_available"
+
+    _cached_status = ClaudeAuthStatus(
+        is_valid=True,
+        api_key_present=False,
+        account_info=account_info,
+        checked_at=datetime.now(timezone.utc).isoformat(),
+        rate_limit_info=usage_limited_info,
+    )

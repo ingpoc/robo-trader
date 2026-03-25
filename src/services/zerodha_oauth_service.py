@@ -28,7 +28,7 @@ class ZerodhaOAuthService:
         self.config = config
         self.event_bus = event_bus
         self._redirect_urls = {
-            "development": "http://localhost:8000/api/auth/zerodha/callback",
+            "development": "http://localhost:8010/api/auth/zerodha/callback",
             "docker": "http://robo-trader-app:8000/api/auth/zerodha/callback",
             "production": "https://your-domain.com/api/auth/zerodha/callback"
         }

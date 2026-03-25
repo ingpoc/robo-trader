@@ -94,7 +94,7 @@ export const AITransparencyFeature: React.FC<AITransparencyFeatureProps> = ({ em
                 </CardTitle>
                 <CardDescription>
                   Watch Claude self-optimize its data fetching prompts in real-time. Claude analyzes data quality
-                  from Perplexity API, identifies missing or redundant elements, and iteratively improves prompts
+                  from its external research pipeline, identifies missing or redundant elements, and iteratively improves briefs
                   to get better trading insights.
                 </CardDescription>
               </CardHeader>
