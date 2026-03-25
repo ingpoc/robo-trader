@@ -6,7 +6,6 @@ Detects drift between stored positions/P&L and what trades imply.
 Emits RECONCILIATION_DRIFT events when discrepancies are found.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -126,6 +125,7 @@ class ReconciliationService(EventHandler):
                     type=EventType.RECONCILIATION_DRIFT,
                     data=report,
                     timestamp=timestamp,
+                    source="reconciliation_service",
                 ))
             else:
                 logger.info(f"Reconciliation clean: {report['positions_checked']} positions checked")

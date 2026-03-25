@@ -17,7 +17,7 @@ import httpx
 
 # KiteTicker import for Zerodha streaming
 try:
-    from kiteconnect import KiteConnect, KiteTicker
+    from kiteconnect import KiteTicker
 except ImportError:
     KiteTicker = None
 

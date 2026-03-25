@@ -6,7 +6,7 @@ and trade-derived positions.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 pytest.importorskip("loguru")
 from src.services.reconciliation_service import ReconciliationService

@@ -6,7 +6,7 @@ Verifies that stale prices block execution and fresh prices allow it.
 
 import time
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 pytest.importorskip("loguru")
 from src.services.stale_data_guard import StaleDataGuard, MAX_PRICE_AGE_SECONDS

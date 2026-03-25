@@ -10,7 +10,6 @@ Outputs trade-by-trade P&L, max drawdown, Sharpe ratio, win rate, profit factor.
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from src.services.recommendation_engine.deterministic_scorer import DeterministicScorer, BUY_THRESHOLD

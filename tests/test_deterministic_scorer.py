@@ -18,6 +18,7 @@ from src.services.recommendation_engine.deterministic_scorer import (
     DeterministicScorer,
     BUY_THRESHOLD,
     AVOID_THRESHOLD,
+    MIN_CONFIDENCE_FOR_BUY,
 )
 
 
@@ -50,14 +51,30 @@ class TestDeterministicScorer:
         """Multiple positive signals should produce BUY."""
         entry = _make_entry(
             management={"guidance_raised": True, "insider_buying_net_90d": 10.0},
-            financial={"revenue_growth_yoy_pct": 25.0, "eps_growth_yoy_pct": 20.0, "free_cash_flow_positive": True},
-            catalyst={"order_book_win": True},
-            market={"relative_strength_vs_nifty_90d": 5.0, "base_breakout_setup": True},
+            financial={
+                "revenue_growth_yoy_pct": 25.0,
+                "eps_growth_yoy_pct": 20.0,
+                "operating_margin_trend": "expanding",
+                "free_cash_flow_positive": True,
+                "debt_equity_ratio": 0.3,
+            },
+            catalyst={
+                "results_date_in_window": True,
+                "order_book_win": True,
+                "sector_tailwind": True,
+            },
+            market={
+                "relative_strength_vs_nifty_90d": 5.0,
+                "sector_momentum": "expanding",
+                "institutional_holding_change_pct": 1.0,
+                "delivery_pct_avg_20d": 55.0,
+                "base_breakout_setup": True,
+            },
         )
         result = scorer.score(entry)
         assert result.score > BUY_THRESHOLD
         assert result.action == "BUY"
-        assert result.feature_confidence > 0.3  # At least some features extracted
+        assert result.feature_confidence >= MIN_CONFIDENCE_FOR_BUY
 
     def test_strong_avoid_signal(self, scorer):
         """Multiple red flags should produce AVOID."""
@@ -98,7 +115,7 @@ class TestDeterministicScorer:
         extracted, total = result.count_extracted_features()
         assert extracted == 7
         assert total > 7  # Other groups have fields too
-        assert result.feature_confidence == extracted / total
+        assert result.feature_confidence == pytest.approx(extracted / total, abs=1e-4)
 
     def test_low_confidence_blocks_buy(self, scorer):
         """Even high score shouldn't BUY if confidence is too low."""

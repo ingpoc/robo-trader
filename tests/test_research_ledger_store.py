@@ -4,10 +4,9 @@ Tests for the ResearchLedgerStore.
 Verifies CRUD operations, concurrent access, and data integrity.
 """
 
-import asyncio
+import aiosqlite
 import pytest
 
-aiosqlite = pytest.importorskip("aiosqlite")
 from src.stores.research_ledger_store import ResearchLedgerStore
 
 

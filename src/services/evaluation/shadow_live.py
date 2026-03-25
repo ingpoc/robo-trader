@@ -8,10 +8,9 @@ This is the proving ground before enabling autonomous execution.
 """
 
 import asyncio
-import json
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 

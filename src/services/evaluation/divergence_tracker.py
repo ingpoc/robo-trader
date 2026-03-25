@@ -6,8 +6,8 @@ Flags divergences and aggregates statistics for calibration.
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 

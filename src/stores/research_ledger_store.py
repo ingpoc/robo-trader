@@ -11,8 +11,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
-import aiosqlite
-
 logger = logging.getLogger(__name__)
 
 

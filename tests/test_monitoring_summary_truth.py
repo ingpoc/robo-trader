@@ -197,15 +197,17 @@ async def test_monitoring_summary_treats_disabled_event_driven_scheduler_as_idle
 async def test_zerodha_callback_binds_live_runtime_services():
     oauth_service = AsyncMock()
     oauth_service.handle_callback.return_value = {
+        "access_token": "access-token",
         "user_id": "Z123",
         "login_time": "2026-03-18T09:00:00+00:00",
         "expires_at": "2026-03-18T15:00:00+00:00",
     }
 
     kite_service = AsyncMock()
-    kite_service.authenticate.return_value = {"user_id": "Z123", "user_name": "Guru"}
+    kite_service._set_access_token.return_value = True
 
     market_data_service = AsyncMock()
+    market_data_service.quote_stream_adapter = None
     market_data_service.refresh_active_subscriptions.return_value = ["INFY", "TCS"]
 
     async def get_service(name):
@@ -219,6 +221,12 @@ async def test_zerodha_callback_binds_live_runtime_services():
     container = MagicMock()
     container.get = AsyncMock(side_effect=get_service)
     container.get_orchestrator = AsyncMock()
+    container.config = SimpleNamespace(
+        integration=SimpleNamespace(
+            zerodha_access_token=None,
+            zerodha_api_key="kite-api-key",
+        )
+    )
 
     response = await zerodha_oauth_callback.__wrapped__(
         request=MagicMock(),
@@ -235,6 +243,6 @@ async def test_zerodha_callback_binds_live_runtime_services():
     assert payload["broker_session_bound"] is True
     assert payload["market_data_refreshed"] == 2
     oauth_service.handle_callback.assert_awaited_once_with("request-token", "oauth-state")
-    kite_service.authenticate.assert_awaited_once_with("request-token")
+    kite_service._set_access_token.assert_awaited_once_with("access-token")
     market_data_service.refresh_active_subscriptions.assert_awaited_once()
     container.get_orchestrator.assert_not_called()
