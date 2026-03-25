@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from src.auth.claude_auth import get_claude_status_cached
+from src.auth.claude_auth import get_claude_status
 from src.models.trading_capabilities import (
     CapabilityCheck,
     CapabilityStatus,
@@ -39,8 +39,23 @@ class TradingCapabilityService:
 
     async def _check_claude_runtime(self) -> CapabilityCheck:
         """Verify Claude Agent SDK runtime/auth state."""
-        status = await get_claude_status_cached()
+        status = await get_claude_status()
+        rate_limit_info = getattr(status, "rate_limit_info", {}) or {}
         if status.is_valid:
+            if rate_limit_info.get("status") == "exhausted":
+                return CapabilityCheck(
+                    key="claude_runtime",
+                    label="Claude Runtime",
+                    status=CapabilityStatus.DEGRADED,
+                    summary="Claude Agent SDK is authenticated but currently usage-limited.",
+                    detail=rate_limit_info.get("message")
+                    or "Claude research runs are temporarily unavailable until usage resets.",
+                    metadata={
+                        "checked_at": status.checked_at,
+                        "auth_method": status.account_info.get("auth_method"),
+                        "rate_limit_info": rate_limit_info,
+                    },
+                )
             return CapabilityCheck(
                 key="claude_runtime",
                 label="Claude Runtime",
@@ -49,6 +64,7 @@ class TradingCapabilityService:
                 metadata={
                     "checked_at": status.checked_at,
                     "auth_method": status.account_info.get("auth_method"),
+                    "rate_limit_info": rate_limit_info,
                 },
             )
 
@@ -58,7 +74,10 @@ class TradingCapabilityService:
             status=CapabilityStatus.BLOCKED,
             summary="Claude Agent SDK authentication is invalid.",
             detail=status.error or "Claude runtime must authenticate before autonomous workflows can run.",
-            metadata={"checked_at": status.checked_at},
+            metadata={
+                "checked_at": status.checked_at,
+                "rate_limit_info": rate_limit_info,
+            },
         )
 
     async def _check_quote_stream(self) -> CapabilityCheck:
@@ -147,8 +166,16 @@ class TradingCapabilityService:
         freshest_age_seconds: Optional[float] = None
         for snapshot in market_data.values():
             try:
+                snapshot_timestamp = snapshot.timestamp
+                if hasattr(snapshot_timestamp, "isoformat"):
+                    snapshot_timestamp = snapshot_timestamp.isoformat()
+                elif not isinstance(snapshot_timestamp, str):
+                    snapshot_timestamp = str(snapshot_timestamp)
+                parsed_timestamp = datetime.fromisoformat(snapshot_timestamp)
+                if parsed_timestamp.tzinfo is None:
+                    parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
                 age_seconds = (
-                    datetime.now(timezone.utc) - datetime.fromisoformat(snapshot.timestamp)
+                    datetime.now(timezone.utc) - parsed_timestamp
                 ).total_seconds()
             except ValueError:
                 continue

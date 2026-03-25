@@ -12,6 +12,11 @@ const STATUS_META = {
     tone: 'text-amber-700',
     dot: 'bg-amber-500',
   },
+  degraded: {
+    label: 'Claude limited',
+    tone: 'text-amber-700',
+    dot: 'bg-amber-500',
+  },
   idle: {
     label: 'Claude ready',
     tone: 'text-emerald-700',

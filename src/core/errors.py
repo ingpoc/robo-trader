@@ -18,6 +18,7 @@ class ErrorCategory(Enum):
     MARKET_DATA = "market_data"
     API = "api"
     VALIDATION = "validation"
+    AUTHENTICATION = "authentication"
     RESOURCE = "resource"
     CONFIGURATION = "configuration"
     SYSTEM = "system"

@@ -28,7 +28,7 @@ class ZerodhaOAuthService:
         self.config = config
         self.event_bus = event_bus
         self._redirect_urls = {
-            "development": "http://localhost:8000/api/auth/zerodha/callback",
+            "development": "http://localhost:8010/api/auth/zerodha/callback",
             "docker": "http://robo-trader-app:8000/api/auth/zerodha/callback",
             "production": "https://your-domain.com/api/auth/zerodha/callback"
         }
@@ -266,7 +266,7 @@ class ZerodhaOAuthService:
                 )
             
             # Run synchronous KiteConnect operations in executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             
             def exchange_token():
                 """Synchronous token exchange using KiteConnect."""

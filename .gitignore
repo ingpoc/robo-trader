@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.venv/
 env/
 venv/
 ENV/
@@ -14,12 +15,14 @@ build/
 # Logs
 logs/*.log
 *.log
+.coverage
 
 # Environment
 .env
 .env.local
 
 # Frontend
+node_modules/
 ui/node_modules/
 ui/dist/
 ui/.env
@@ -42,6 +45,7 @@ Thumbs.db
 .docs/
 .kilocode/
 .kilocodemodes
+.playwright-cli/
 .playwright-mcp/
 
 # NEW: Test and Demo Files

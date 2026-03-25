@@ -153,25 +153,92 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
 
     container._register_singleton("websocket_trading_manager", create_websocket_trading_manager)
 
+    # Research Ledger Store (structured feature extraction persistence)
+    async def create_research_ledger_store():
+        from src.stores.research_ledger_store import ResearchLedgerStore
+        db_path = container.config.state_dir / "robo_trader.db"
+        connection = await aiosqlite.connect(str(db_path))
+        store = ResearchLedgerStore(connection)
+        await store.initialize()
+        logger.info("ResearchLedgerStore initialized")
+        return store
+
+    container._register_singleton("research_ledger_store", create_research_ledger_store)
+
+    async def create_paper_trading_learning_store():
+        from src.stores.paper_trading_learning_store import PaperTradingLearningStore
+
+        paper_store = await container.get("paper_trading_store")
+        store = PaperTradingLearningStore(paper_store.db_connection)
+        await store.initialize()
+        logger.info("PaperTradingLearningStore initialized")
+        return store
+
+    container._register_singleton("paper_trading_learning_store", create_paper_trading_learning_store)
+
+    async def create_paper_trading_learning_service():
+        from src.services.paper_trading_learning_service import PaperTradingLearningService
+
+        learning_store = await container.get("paper_trading_learning_store")
+        paper_store = await container.get("paper_trading_store")
+        return PaperTradingLearningService(learning_store, paper_store)
+
+    container._register_singleton("paper_trading_learning_service", create_paper_trading_learning_service)
+
+    async def create_paper_trading_improvement_service():
+        from src.services.paper_trading_improvement_service import PaperTradingImprovementService
+
+        learning_service = await container.get("paper_trading_learning_service")
+        learning_store = await container.get("paper_trading_learning_store")
+        paper_store = await container.get("paper_trading_store")
+        return PaperTradingImprovementService(learning_service, learning_store, paper_store)
+
+    container._register_singleton("paper_trading_improvement_service", create_paper_trading_improvement_service)
+
+    async def create_claude_market_research_service():
+        from src.services.claude_agent.claude_market_research_service import ClaudeMarketResearchService
+
+        return ClaudeMarketResearchService()
+
+    container._register_singleton("claude_market_research_service", create_claude_market_research_service)
+
+    # Feature Extractor (LLM-powered structured feature extraction)
+    async def create_feature_extractor():
+        from src.services.recommendation_engine.feature_extractor import FeatureExtractor
+        extractor = FeatureExtractor()
+        await extractor.initialize()
+        logger.info("FeatureExtractor initialized with Claude SDK")
+        return extractor
+
+    container._register_singleton("feature_extractor", create_feature_extractor)
+
+    # Deterministic Scorer (auditable scoring from extracted features)
+    async def create_deterministic_scorer():
+        from src.services.recommendation_engine.deterministic_scorer import DeterministicScorer
+        return DeterministicScorer()
+
+    container._register_singleton("deterministic_scorer", create_deterministic_scorer)
+
     # Stock Discovery Service (PT-002: Autonomous Stock Discovery)
     async def create_stock_discovery_service():
         from src.services.paper_trading.stock_discovery import StockDiscoveryService
-        from src.core.background_scheduler.clients.perplexity_client import PerplexityClient
 
         # Get dependencies
         state_manager = await container.get("state_manager")
         event_bus = await container.get("event_bus")
         config = container.config
-
-        # Create Perplexity client
-        perplexity_client = PerplexityClient(config)
+        market_research_service = await container.get("claude_market_research_service")
+        feature_extractor = await container.get("feature_extractor")
+        deterministic_scorer = await container.get("deterministic_scorer")
 
         # Create and initialize service
         discovery_service = StockDiscoveryService(
             state_manager=state_manager,
-            perplexity_client=perplexity_client,
+            market_research_service=market_research_service,
             event_bus=event_bus,
-            config=config
+            config=config,
+            feature_extractor=feature_extractor,
+            deterministic_scorer=deterministic_scorer,
         )
         await discovery_service.initialize()
 

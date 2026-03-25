@@ -47,11 +47,12 @@ This repo depends on local tooling and credentials that must be explicit.
 
 - Source: `.env`
 - Required for real broker integration and OAuth callback flow
+- Account context must resolve from `PAPER_TRADING_ACCOUNT_ID`, `ZERODHA_ACCOUNT_ID`, or `ZERODHA_USER_ID`
 
-### Perplexity
+### External research providers
 
-- Source: `.env`
-- Required for research and analysis paths that depend on those services
+- Active source for paper-trading research and discovery: Claude CLI auth session via Claude Agent SDK
+- Legacy `PERPLEXITY_API_KEYS` env vars may still exist for older modules, but they are no longer required for the primary paper-trading research path
 
 ## Verification Rules
 
@@ -64,6 +65,7 @@ This repo depends on local tooling and credentials that must be explicit.
 - Missing Claude auth: AI features may degrade or fail; do not assume local auth exists on another machine.
 - Missing Notion or Linear OAuth in Codex: governance workflows are blocked; fix the MCP auth path before claiming project management is ready.
 - Missing Zerodha credentials: broker-backed flows remain unavailable; paper trading should remain the default path.
+- Missing Zerodha account context: env tokens may load but session restore and broker-bound market-data flows can still fail.
 - Missing MCP server setup: local developer automation may not behave like CI or another engineer's machine.
 
 ## Change Rule

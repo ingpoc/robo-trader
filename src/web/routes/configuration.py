@@ -1,5 +1,6 @@
 """Configuration management routes."""
 
+import asyncio
 import logging
 import os
 from typing import Dict, Any
@@ -20,6 +21,25 @@ router = APIRouter(prefix="/api", tags=["configuration"])
 limiter = Limiter(key_func=get_remote_address)
 
 config_limit = os.getenv("RATE_LIMIT_CONFIG", "30/minute")
+
+
+async def _apply_runtime_quote_stream_preferences(
+    market_data_service,
+    settings_data: Dict[str, Any],
+) -> None:
+    """Best-effort runtime refresh for quote-stream preferences."""
+    try:
+        await market_data_service.apply_runtime_preferences(
+            provider=settings_data.get("quoteStreamProvider"),
+            mode=settings_data.get("quoteStreamMode"),
+        )
+    except Exception as runtime_error:
+        logger.warning(
+            "Global settings were saved, but runtime quote-stream preferences could not be "
+            "applied immediately: %s",
+            runtime_error,
+            exc_info=True,
+        )
 
 
 @router.get("/configuration/ai-agents")
@@ -53,19 +73,7 @@ async def update_ai_agent_config(
     try:
         # Get configuration state and update database
         config_state = await container.get("configuration_state")
-        await config_state.update_ai_agent_config(
-            agent_name=agent_name,
-            enabled=config_data.get("enabled", False),
-            use_claude=config_data.get("useClaude", True),
-            tools=config_data.get("tools", []),
-            response_frequency=config_data.get("responseFrequency", 30),
-            response_frequency_unit=config_data.get("responseFrequencyUnit", "minutes"),
-            scope=config_data.get("scope", "portfolio"),
-            max_tokens_per_request=config_data.get("maxTokensPerRequest", 2000)
-        )
-
-        # Backup to JSON after database update
-        await config_state.backup_to_json()
+        await config_state.update_ai_agent_config(agent_name, config_data)
 
         logger.info(f"Updated AI agent configuration for {agent_name} in database")
         return {"status": "Configuration updated", "agent": agent_name}
@@ -109,15 +117,22 @@ async def update_global_settings(
         config_state = await container.get("configuration_state")
         await config_state.update_global_settings_config(settings_data)
 
-        # Backup to JSON after database update
-        await config_state.backup_to_json()
-
         if any(key in settings_data for key in {"quoteStreamProvider", "quoteStreamMode"}):
-            market_data_service = await container.get("market_data_service")
-            if market_data_service is not None:
-                await market_data_service.apply_runtime_preferences(
-                    provider=settings_data.get("quoteStreamProvider"),
-                    mode=settings_data.get("quoteStreamMode"),
+            try:
+                market_data_service = await container.get("market_data_service")
+                if market_data_service is not None:
+                    asyncio.create_task(
+                        _apply_runtime_quote_stream_preferences(
+                            market_data_service,
+                            settings_data.copy(),
+                        )
+                    )
+            except Exception as runtime_error:
+                logger.warning(
+                    "Global settings were saved, but runtime quote-stream preferences could not be "
+                    "applied immediately: %s",
+                    runtime_error,
+                    exc_info=True,
                 )
 
         logger.info("Updated global configuration settings in database")

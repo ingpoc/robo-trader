@@ -26,6 +26,10 @@ class PaperTradingState(BaseState):
     - Trading strategy evolution
     """
 
+    # Singleton row ID for paper trading account and AI automation config.
+    # These tables use CHECK (id = 1) constraint — single-row design.
+    DEFAULT_ACCOUNT_ID = 1
+
     def __init__(self, db_connection):
         super().__init__(db_connection)
         self._lock = asyncio.Lock()
@@ -333,7 +337,8 @@ class PaperTradingState(BaseState):
         """Initialize paper trading account with default capital."""
         # Check if account already exists
         cursor = await self.db.connection.execute(
-            "SELECT id FROM paper_trading_account WHERE id = 1"
+            "SELECT id FROM paper_trading_account WHERE id = ?",
+            (self.DEFAULT_ACCOUNT_ID,)
         )
         if not await cursor.fetchone():
             current_time = datetime.now(timezone.utc).isoformat()
@@ -341,8 +346,8 @@ class PaperTradingState(BaseState):
             await self.db.connection.execute(
                 """INSERT INTO paper_trading_account
                    (id, initial_capital, current_cash, total_equity, last_updated, created_at)
-                   VALUES (1, ?, ?, ?, ?, ?)""",
-                (1000000.0, 1000000.0, 1000000.0, current_time, current_time)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (self.DEFAULT_ACCOUNT_ID, 1000000.0, 1000000.0, 1000000.0, current_time, current_time)
             )
 
             await self.db.connection.commit()
@@ -352,7 +357,8 @@ class PaperTradingState(BaseState):
         """Initialize AI automation configuration with default settings."""
         # Check if config already exists
         cursor = await self.db.connection.execute(
-            "SELECT id FROM ai_automation_config WHERE id = 1"
+            "SELECT id FROM ai_automation_config WHERE id = ?",
+            (self.DEFAULT_ACCOUNT_ID,)
         )
         if not await cursor.fetchone():
             current_time = datetime.now(timezone.utc).isoformat()
@@ -370,8 +376,8 @@ class PaperTradingState(BaseState):
                     max_position_size_percent, stop_loss_percent, target_profit_percent,
                     risk_per_trade_percent, discovery_frequency, sectors_to_watch,
                     market_cap_range, last_updated)
-                   VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (False, "09:00", False, "16:00", False, 10, 5.0, 2.0, 5.0, 1.0, "daily",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (self.DEFAULT_ACCOUNT_ID, False, "09:00", False, "16:00", False, 10, 5.0, 2.0, 5.0, 1.0, "daily",
                  json.dumps(default_sectors), json.dumps(default_market_cap_range), current_time)
             )
 
@@ -392,8 +398,8 @@ class PaperTradingState(BaseState):
                 await self.db.connection.execute(
                     """UPDATE ai_automation_config
                        SET auto_trade_enabled = ?, last_updated = ?
-                       WHERE id = 1""",
-                    (enabled, current_time)
+                       WHERE id = ?""",
+                    (enabled, current_time, self.DEFAULT_ACCOUNT_ID)
                 )
 
                 await self.db.connection.commit()
@@ -433,8 +439,8 @@ class PaperTradingState(BaseState):
                            target_profit_percent = ?,
                            risk_per_trade_percent = ?,
                            last_updated = ?
-                       WHERE id = 1""",
-                    (max_position_size, stop_loss, target_profit, risk_per_trade, current_time)
+                       WHERE id = ?""",
+                    (max_position_size, stop_loss, target_profit, risk_per_trade, current_time, self.DEFAULT_ACCOUNT_ID)
                 )
 
                 await self.db.connection.commit()
@@ -506,7 +512,8 @@ class PaperTradingState(BaseState):
                     """SELECT initial_capital, current_cash, total_equity, margin_used,
                           day_pnl, total_pnl, last_updated, created_at
                        FROM paper_trading_account
-                       WHERE id = 1"""
+                       WHERE id = ?""",
+                    (self.DEFAULT_ACCOUNT_ID,)
                 )
                 row = await cursor.fetchone()
 
@@ -539,8 +546,8 @@ class PaperTradingState(BaseState):
                        SET current_cash = current_cash + ?,
                            total_equity = total_equity + ?,
                            last_updated = ?
-                       WHERE id = 1""",
-                    (cash_change, equity_change, current_time)
+                       WHERE id = ?""",
+                    (cash_change, equity_change, current_time, self.DEFAULT_ACCOUNT_ID)
                 )
 
                 await self.db.connection.commit()
@@ -1393,7 +1400,8 @@ class PaperTradingState(BaseState):
                              stop_loss_percent, target_profit_percent, risk_per_trade_percent,
                              discovery_frequency, sectors_to_watch, market_cap_range, last_updated
                        FROM ai_automation_config
-                       WHERE id = 1"""
+                       WHERE id = ?""",
+                    (self.DEFAULT_ACCOUNT_ID,)
                 )
                 row = await cursor.fetchone()
 
@@ -1675,7 +1683,8 @@ class PaperTradingState(BaseState):
 
                 # Get account data for P&L percentage
                 cursor = await self.db.connection.execute(
-                    "SELECT initial_capital, total_equity FROM paper_trading_account WHERE id = 1"
+                    "SELECT initial_capital, total_equity FROM paper_trading_account WHERE id = ?",
+                    (self.DEFAULT_ACCOUNT_ID,)
                 )
                 account_row = await cursor.fetchone()
                 daily_pnl_percent = 0.0

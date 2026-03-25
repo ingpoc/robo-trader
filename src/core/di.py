@@ -54,6 +54,7 @@ class DependencyContainer:
         self._instances: Dict[str, Any] = {}
         self._factories: Dict[str, callable] = {}
         self._singletons: Dict[str, Any] = {}
+        self._pending_singletons: Dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
 
     async def initialize(self, config: Config) -> None:
@@ -94,17 +95,28 @@ class DependencyContainer:
             if name in self._singletons:
                 return self._singletons[name]
 
-        if name in self._factories:
-            instance = await self._factories[name]()
+            if name not in self._factories:
+                raise ValueError(f"Service '{name}' not registered")
 
+            pending = self._pending_singletons.get(name)
+            if pending is None:
+                pending = asyncio.create_task(self._factories[name]())
+                self._pending_singletons[name] = pending
+
+        try:
+            instance = await pending
+        except Exception:
             async with self._lock:
-                if name not in self._singletons:
-                    self._singletons[name] = instance
-                    return instance
-                else:
-                    return self._singletons[name]
+                if self._pending_singletons.get(name) is pending:
+                    self._pending_singletons.pop(name, None)
+            raise
 
-        raise ValueError(f"Service '{name}' not registered")
+        async with self._lock:
+            if name not in self._singletons:
+                self._singletons[name] = instance
+            if self._pending_singletons.get(name) is pending:
+                self._pending_singletons.pop(name, None)
+            return self._singletons[name]
 
     async def get_orchestrator(self) -> RoboTraderOrchestrator:
         """Get the orchestrator instance."""

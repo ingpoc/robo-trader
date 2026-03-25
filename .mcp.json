@@ -1,12 +1,15 @@
+
 {
   "mcpServers": {
-    
+    "deepwiki": {
+      "type": "http",
+      "url": "https://mcp.deepwiki.com/mcp"
+    },
     "token-efficient": {
-      "command": "srt",
+      "command": "node",
       "args": [
-        "node",
-        "/Users/gurusharan/Documents/remote-claude/token-efficient-mcp/dist/index.js"
+        "/Users/gurusharan/Documents/remote-claude/active/mcp-servers/token-efficient-mcp/dist/index.js"
       ]
     }
   }
- }
+}

@@ -2,20 +2,20 @@
 Paper Trading Stock Discovery Service
 
 Implements autonomous stock discovery for paper trading using:
-- Perplexity API for market research
-- Claude Agent SDK for analysis
+- Claude Agent SDK web research for fresh market evidence
+- Claude Agent SDK feature extraction
 - Sector and market cap screening
-- Technical and fundamental analysis
+- Deterministic technical and fundamental scoring
 """
 
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 from loguru import logger
 
 from ...core.event_bus import EventHandler, Event
-from ...core.background_scheduler.clients.perplexity_client import PerplexityClient
 from ...core.errors import TradingError, ErrorCategory, ErrorSeverity
 
 
@@ -34,14 +34,18 @@ class StockDiscoveryService(EventHandler):
     def __init__(
         self,
         state_manager,
-        perplexity_client: PerplexityClient,
+        market_research_service,
         event_bus,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        feature_extractor,
+        deterministic_scorer,
     ):
         self.state_manager = state_manager
-        self.perplexity = perplexity_client
+        self.market_research_service = market_research_service
         self.event_bus = event_bus
         self.config = config
+        self.feature_extractor = feature_extractor
+        self.deterministic_scorer = deterministic_scorer
 
         # Default discovery criteria
         self.default_criteria = {
@@ -145,101 +149,42 @@ class StockDiscoveryService(EventHandler):
 
     async def _screen_market(self, criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Screen the market for potential stocks.
+        Screen the market for potential stocks using the Nifty 500 universe.
 
-        This is a simplified implementation - in production, this would
-        integrate with market data providers for comprehensive screening.
+        Loads from data/nse_universe.json (updateable periodically).
+        Applies sector and market cap filters from criteria.
         """
-        logger.info("Screening market for stocks")
+        logger.info("Screening market for stocks from NSE universe")
 
-        # For now, use a predefined list of NSE stocks
-        # In production, this would fetch from market data API
-        market_stocks = [
-            {"symbol": "RELIANCE", "name": "Reliance Industries", "sector": "Energy"},
-            {"symbol": "TCS", "name": "Tata Consultancy Services", "sector": "Technology"},
-            {"symbol": "HDFC", "name": "HDFC Bank", "sector": "Banking"},
-            {"symbol": "INFY", "name": "Infosys", "sector": "Technology"},
-            {"symbol": "ICICIBANK", "name": "ICICI Bank", "sector": "Banking"},
-            {"symbol": "HINDUNILVR", "name": "Hindustan Unilever", "sector": "FMCG"},
-            {"symbol": "SBIN", "name": "State Bank of India", "sector": "Banking"},
-            {"symbol": "BHARTIARTL", "name": "Bharti Airtel", "sector": "Telecom"},
-            {"symbol": "KOTAKBANK", "name": "Kotak Mahindra Bank", "sector": "Banking"},
-            {"symbol": "WIPRO", "name": "Wipro", "sector": "Technology"},
-            {"symbol": "AXISBANK", "name": "Axis Bank", "sector": "Banking"},
-            {"symbol": "MARUTI", "name": "Maruti Suzuki", "sector": "Automobile"},
-            {"symbol": "BAJFINANCE", "name": "Bajaj Finance", "sector": "Financial Services"},
-            {"symbol": "ASIANPAINT", "name": "Asian Paints", "sector": "Paints"},
-            {"symbol": "POWERGRID", "name": "Power Grid Corporation", "sector": "Energy"},
-            {"symbol": "TITAN", "name": "Titan Company", "sector": "Luxury"},
-            {"symbol": "SUNPHARMA", "name": "Sun Pharmaceutical", "sector": "Pharma"},
-            {"symbol": "ULTRACEMCO", "name": "UltraTech Cement", "sector": "Cement"},
-            {"symbol": "DRREDDY", "name": "Dr. Reddy's Laboratories", "sector": "Pharma"},
-            {"symbol": "ADANIPORTS", "name": "Adani Ports", "sector": "Logistics"},
-            {"symbol": "TATAMOTORS", "name": "Tata Motors", "sector": "Automobile"},
-            {"symbol": "GRASIM", "name": "Grasim Industries", "sector": "Textiles"},
-            {"symbol": "HCLTECH", "name": "HCL Technologies", "sector": "Technology"},
-            {"symbol": "TECHM", "name": "Tech Mahindra", "sector": "Technology"},
-            {"symbol": "NTPC", "name": "NTPC", "sector": "Energy"},
-            {"symbol": "IOC", "name": "Indian Oil Corporation", "sector": "Energy"},
-            {"symbol": "COALINDIA", "name": "Coal India", "sector": "Energy"},
-            {"symbol": "BPCL", "name": "Bharat Petroleum", "sector": "Energy"},
-            {"symbol": "ONGC", "name": "Oil and Natural Gas Corporation", "sector": "Energy"},
-            {"symbol": "JSWSTEEL", "name": "JSW Steel", "sector": "Steel"},
-            {"symbol": "HINDALCO", "name": "Hindalco Industries", "sector": "Aluminium"},
-            {"symbol": "ITC", "name": "ITC", "sector": "FMCG"},
-            {"symbol": "DIVISLAB", "name": "Dr. Reddy's Laboratories", "sector": "Pharma"},
-            {"symbol": "HEROMOTOCO", "name": "Hero MotoCorp", "sector": "Automobile"},
-            {"symbol": "M&M", "name": "Mahindra & Mahindra", "sector": "Automobile"},
-            {"symbol": "BAJAJ-AUTO", "name": "Bajaj Auto", "sector": "Automobile"},
-            {"symbol": "DABUR", "name": "Dabur", "sector": "FMCG"},
-            {"symbol": "EICHERMOT", "name": "Eicher Motors", "sector": "Automobile"},
-            {"symbol": "ZEEENT", "name": "Zee Entertainment", "sector": "Media"},
-            {"symbol": "UBL", "name": "United Breweries", "sector": "Beverages"},
-            {"symbol": "PIDILITIND", "name": "Pidilite Industries", "sector": "Chemicals"},
-            {"symbol": "COFORGE", "name": "Coal India", "sector": "Energy"},
-            {"symbol": "INDUSINDBK", "name": "IndusInd Bank", "sector": "Banking"},
-            {"symbol": "GAIL", "name": "Gas Authority of India", "sector": "Energy"},
-            {"symbol": "VODAFONE", "name": "Vodafone Idea", "sector": "Telecom"},
-            {"symbol": "PFC", "name": "Power Finance Corporation", "sector": "Financial Services"},
-            {"symbol": "RELIANCEPWR", "name": "Reliance Power", "sector": "Energy"},
-            {"symbol": "JIOFINANCIAL", "name": "Jio Financial Services", "sector": "Financial Services"},
-            {"symbol": "SIEMENS", "name": "Siemens", "sector": "Industrial"},
-            {"symbol": "HAVELLS", "name": "Havells India", "sector": "Electrical Equipment"},
-            {"symbol": "BERGEPAINT", "name": "Berger Paints", "sector": "Paints"},
-            {"symbol": "MARUTI-SUZUKI", "name": "Maruti Suzuki", "sector": "Automobile"},
-            {"symbol": "TATAMOTORS-DVR", "name": "Tata Motors DVR", "sector": "Automobile"},
-            {"symbol": "MUTHOOTFIN", "name": "Muthoot Finance", "sector": "Financial Services"},
-            {"symbol": "GODREJCP", "name": "Godrej Consumer Products", "sector": "FMCG"},
-            {"symbol": "ABBOTINDIA", "name": "Abbott India", "sector": "Pharma"},
-            {"symbol": "GLENMARK", "name": "Glenmark Pharmaceuticals", "sector": "Pharma"},
-            {"symbol": "LUPIN", "name": "Lupin", "sector": "Pharma"},
-            {"symbol": "AUROPHARMA", "name": "Aurobindo Pharma", "sector": "Pharma"},
-            {"symbol": "CIPLA", "name": "Cipla", "sector": "Pharma"},
-            {"symbol": "DIVISLAB", "name": "Dr. Reddy's Laboratories", "sector": "Pharma"},
-            {"symbol": "TORNTPOWER", "name": "Torrent Power", "sector": "Energy"},
-            {"symbol": "NHPC", "name": "NHPC", "sector": "Energy"},
-            {"symbol": "ADANIGREEN", "name": "Adani Green Energy", "sector": "Energy"},
-            {"symbol": "TATASTEEL", "name": "Tata Steel", "sector": "Steel"},
-            {"symbol": "JSWENERGY", "name": "JSW Energy", "sector": "Energy"},
-            {"symbol": "JINDALSTEL", "name": "Jindal Steel & Power", "sector": "Steel"},
-            {"symbol": "NMDC", "name": "NMDC", "sector": "Mining"},
-            {"symbol": "COAL INDIA", "name": "Coal India", "sector": "Energy"},
-        ]
+        # Load universe from JSON file
+        universe_path = Path(__file__).parents[3] / "data" / "nse_universe.json"
+        try:
+            with open(universe_path) as f:
+                universe_data = json.load(f)
+            market_stocks = universe_data.get("universe", [])
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to load NSE universe from {universe_path}: {e}")
+            market_stocks = []
 
         # Apply filters
         filtered_stocks = []
-        for stock in market_stocks:
-            # Skip if sector is excluded
-            if criteria.get("sectors") and stock["sector"] not in criteria["sectors"]:
-                continue
+        allowed_sectors = criteria.get("sectors", [])
+        allowed_caps = criteria.get("market_cap_tiers", [])  # e.g., ["large", "mid"]
 
-            # TODO: Add price and market cap filtering when market data is available
+        for stock in market_stocks:
+            # Skip if sector filter is set and stock doesn't match
+            if allowed_sectors and stock.get("sector") not in allowed_sectors:
+                continue
+            # Skip if cap tier filter is set and stock doesn't match
+            if allowed_caps and stock.get("cap") not in allowed_caps:
+                continue
 
             filtered_stocks.append({
                 "symbol": stock["symbol"],
-                "name": stock["name"],
-                "sector": stock["sector"],
-                "discovery_source": "market_screen",
+                "name": stock.get("name", stock["symbol"]),
+                "sector": stock.get("sector", "Unknown"),
+                "cap": stock.get("cap", "unknown"),
+                "discovery_source": "nse_universe",
                 "screening_criteria": criteria
             })
 
@@ -252,7 +197,7 @@ class StockDiscoveryService(EventHandler):
         criteria: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        Analyze candidate stocks using Perplexity API and Claude.
+        Analyze candidate stocks using Claude web research and feature extraction.
         """
         logger.info(f"Analyzing {len(stocks)} candidate stocks")
 
@@ -265,15 +210,14 @@ class StockDiscoveryService(EventHandler):
 
             for stock in batch:
                 try:
-                    # Research with Perplexity
-                    perplexity_research = await self._research_stock_perplexity(stock)
+                    external_research = await self._research_stock_external(stock)
 
                     # Claude analysis
-                    claude_analysis = await self._analyze_stock_claude(stock, perplexity_research)
+                    claude_analysis = await self._analyze_stock_claude(stock, external_research)
 
                     analyzed_stock = {
                         **stock,
-                        "perplexity_research": perplexity_research,
+                        "external_research": external_research,
                         "claude_analysis": claude_analysis,
                         "research_timestamp": datetime.now(timezone.utc).isoformat()
                     }
@@ -291,48 +235,36 @@ class StockDiscoveryService(EventHandler):
 
         return analyzed_stocks
 
-    async def _research_stock_perplexity(self, stock: Dict[str, Any]) -> Dict[str, Any]:
+    async def _research_stock_external(self, stock: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Research a stock using Perplexity API.
+        Research a stock using Claude's built-in web tools.
         """
         try:
             symbol = stock["symbol"]
-            queries = [
-                f"Latest news and developments for {symbol} stock",
-                f"{symbol} stock financial performance and quarterly results",
-                f"Technical analysis and price targets for {symbol}",
-                f"Analyst recommendations and ratings for {symbol} stock"
-            ]
-
-            research_results = []
-            sources = []
-
-            for query in queries:
-                try:
-                    response = await self.perplexity.query(query)
-                    research_results.append({
-                        "query": query,
-                        "response": response.get("response", ""),
-                        "sources": response.get("sources", [])
-                    })
-                    sources.extend(response.get("sources", []))
-                except Exception as e:
-                    logger.warning(f"Perplexity query failed for {symbol}: {e}")
-                    research_results.append({
-                        "query": query,
-                        "error": str(e)
-                    })
-
+            response = await self.market_research_service.collect_symbol_research(
+                symbol,
+                company_name=stock.get("name"),
+            )
             return {
                 "symbol": symbol,
-                "research_queries": queries,
-                "research_results": research_results,
-                "sources": list(set(sources)),
-                "research_timestamp": datetime.now(timezone.utc).isoformat()
+                "research_timestamp": response.get("research_timestamp")
+                or datetime.now(timezone.utc).isoformat(),
+                "research_summary": response.get("research_summary", ""),
+                "summary": response.get("summary", ""),
+                "news": response.get("news", ""),
+                "financial_data": response.get("financial_data", ""),
+                "filings": response.get("filings", ""),
+                "market_context": response.get("market_context", ""),
+                "sources": response.get("sources", []),
+                "source_summary": response.get("source_summary", []),
+                "evidence_citations": response.get("evidence_citations", []),
+                "evidence": response.get("evidence", []),
+                "risks": response.get("risks", []),
+                "errors": response.get("errors", []),
             }
 
         except Exception as e:
-            logger.error(f"Perplexity research failed for {stock.get('symbol')}: {e}")
+            logger.error(f"Claude web research failed for {stock.get('symbol')}: {e}")
             return {
                 "symbol": stock.get("symbol"),
                 "error": str(e),
@@ -342,59 +274,73 @@ class StockDiscoveryService(EventHandler):
     async def _analyze_stock_claude(
         self,
         stock: Dict[str, Any],
-        perplexity_research: Dict[str, Any]
+        external_research: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Analyze stock using Claude Agent SDK.
+        Analyze stock using structured feature extraction via FeatureExtractor.
 
-        This would integrate with the existing Claude Agent SDK
-        for comprehensive analysis.
+        Instead of asking Claude "should I buy?", extracts specific factual features
+        and scores them deterministically. The LLM is a feature extractor, not a trader.
         """
-        # This is a placeholder - in production, this would use Claude Agent SDK
-        # For now, return a basic analysis based on available data
+        try:
+            # Build research data dict from Claude web research
+            research_data = {
+                "news": external_research.get("research_summary", "") or external_research.get("news", ""),
+                "financials": external_research.get("financial_data", ""),
+                "filings": external_research.get("filings", ""),
+                "market_data": external_research.get("market_context", ""),
+            }
 
-        return {
-            "symbol": stock["symbol"],
-            "analysis_type": "basic",
-            "recommendation": "HOLD",  # Would be determined by Claude
-            "confidence": 0.5,
-            "key_factors": [
-                "Market position",
-                "Sector trends",
-                "Recent performance"
-            ],
-            "risks": [
-                "Market volatility",
-                "Sector risks"
-            ],
-            "opportunities": [
-                "Growth potential",
-                "Market leadership"
-            ]
-        }
+            # Extract structured features via Claude (factual questions, not opinions)
+            entry = await self.feature_extractor.extract_features(stock["symbol"], research_data)
+
+            # Score deterministically from features
+            entry = self.deterministic_scorer.score(entry)
+
+            return {
+                "symbol": stock["symbol"],
+                "analysis_type": "feature_extraction",
+                "recommendation": entry.action or "HOLD",
+                "confidence": entry.feature_confidence or 0.0,
+                "score": entry.score or 0.0,
+                "features": entry.to_flat_features(),
+                "research_ledger_id": entry.id,
+                "key_factors": [k for k, v in entry.to_flat_features().items() if v is not None],
+                "risks": [],
+                "opportunities": [],
+            }
+        except Exception as e:
+            logger.warning(f"Feature extraction failed for {stock['symbol']}, using minimal analysis: {e}")
+            return {
+                "symbol": stock["symbol"],
+                "analysis_type": "fallback",
+                "recommendation": "HOLD",
+                "confidence": 0.0,
+                "score": 0.0,
+                "features": {},
+                "key_factors": [],
+                "risks": [f"Feature extraction failed: {e}"],
+                "opportunities": [],
+            }
 
     async def _score_stocks(self, stocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Score and rank stocks based on analysis.
+        Score and rank stocks based on deterministic feature extraction scores.
+
+        Scores come from the DeterministicScorer applied during _analyze_stock_claude().
+        This method just extracts the pre-computed scores and sorts.
         """
         scored_stocks = []
 
         for stock in stocks:
-            score = 0
+            score = 0.0
             recommendation = "HOLD"
 
-            # Simple scoring algorithm - in production, this would be more sophisticated
             if "claude_analysis" in stock:
-                claude = stock["claude_analysis"]
-
-                # Recommendation scoring
-                rec_scores = {"STRONG_BUY": 90, "BUY": 75, "HOLD": 50, "AVOID": 25, "STRONG_AVOID": 10}
-                score = rec_scores.get(claude.get("recommendation", "HOLD"), 50)
-                recommendation = claude.get("recommendation", "HOLD")
-
-                # Confidence adjustment
-                confidence = claude.get("confidence", 0.5)
-                score *= confidence
+                analysis = stock["claude_analysis"]
+                # Use the deterministic score computed by DeterministicScorer
+                score = analysis.get("score", 0.0)
+                recommendation = analysis.get("recommendation", "HOLD")
 
             scored_stocks.append({
                 **stock,
@@ -457,7 +403,8 @@ class StockDiscoveryService(EventHandler):
                             "recommendation": stock.get("recommendation", "WATCH"),
                             "confidence_score": stock.get("score", 0) / 100,
                             "research_summary": json.dumps({
-                                "perplexity": stock.get("perplexity_research"),
+                                "external_research": stock.get("external_research"),
+                                "claude_web_research": stock.get("external_research"),
                                 "claude": stock.get("claude_analysis")
                             }),
                             "last_analyzed": datetime.now(timezone.utc).isoformat(),
@@ -478,7 +425,8 @@ class StockDiscoveryService(EventHandler):
                         "recommendation": stock.get("recommendation", "WATCH"),
                         "confidence_score": stock.get("score", 0) / 100,
                         "research_summary": json.dumps({
-                            "perplexity": stock.get("perplexity_research"),
+                            "external_research": stock.get("external_research"),
+                            "claude_web_research": stock.get("external_research"),
                             "claude": stock.get("claude_analysis")
                         }),
                         "status": "ACTIVE",

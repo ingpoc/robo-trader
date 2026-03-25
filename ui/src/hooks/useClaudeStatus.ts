@@ -2,7 +2,7 @@ import { useClaudeStatus as useSystemClaudeStatus } from '@/stores/systemStatusS
 import { useEffect, useState, useCallback } from 'react'
 import { wsClient } from '@/api/websocket'
 
-export type ClaudeStatus = 'unavailable' | 'idle' | 'analyzing' | 'authenticated' | 'connected/idle'
+export type ClaudeStatus = 'unavailable' | 'idle' | 'analyzing' | 'authenticated' | 'connected/idle' | 'degraded'
 
 export interface ClaudeStatusInfo {
   status: ClaudeStatus
@@ -36,6 +36,10 @@ interface ActiveAnalysis {
 export function useClaudeStatus(): ClaudeStatusInfo {
   const systemClaudeStatus = useSystemClaudeStatus()
   const { status, authMethod, sdkConnected, cliProcessRunning } = systemClaudeStatus
+  const rateLimitInfo =
+    systemClaudeStatus.data?.rate_limit_info ||
+    systemClaudeStatus.data?.data?.rate_limit_info
+  const isUsageLimited = rateLimitInfo?.status === 'exhausted'
 
   // Track active analyses from WebSocket events
   const [activeAnalyses, setActiveAnalyses] = useState<Map<string, ActiveAnalysis>>(new Map())
@@ -94,6 +98,10 @@ export function useClaudeStatus(): ClaudeStatusInfo {
 
   // Convert system status to the expected format with event-driven enhancements
   const getStatus = (): ClaudeStatus => {
+    if (isUsageLimited) {
+      return 'degraded'
+    }
+
     // If we have active analyses from events, prioritize that status
     if (activeAnalyses.size > 0) {
       return 'analyzing'
@@ -102,6 +110,8 @@ export function useClaudeStatus(): ClaudeStatusInfo {
     switch (status) {
       case 'analyzing':
         return 'analyzing'
+      case 'degraded':
+        return 'degraded'
       case 'connected/idle':
         return 'connected/idle'
       case 'active':
@@ -116,6 +126,10 @@ export function useClaudeStatus(): ClaudeStatusInfo {
   }
 
   const getStatusMessage = (): string => {
+    if (isUsageLimited) {
+      return rateLimitInfo?.message || 'Claude runtime is authenticated but currently usage-limited'
+    }
+
     // If we have active analyses, show enhanced message
     if (activeAnalyses.size > 0) {
       const analysisList = Array.from(activeAnalyses.values())
@@ -132,6 +146,8 @@ export function useClaudeStatus(): ClaudeStatusInfo {
     switch (status) {
       case 'analyzing':
         return 'Claude is analyzing market data and executing strategies'
+      case 'degraded':
+        return rateLimitInfo?.message || 'Claude runtime is authenticated but currently usage-limited'
       case 'connected/idle':
         return 'Claude SDK is actively connected to CLI process'
       case 'active':

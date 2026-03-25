@@ -93,7 +93,7 @@ class StatusCoordinator(BaseCoordinator):
             )
         except Exception as e:
             self._log_error(f"Error aggregating system components: {e}")
-            components = {}
+            components = {"status": "error", "error": str(e)}
 
         status_data = {
             "ai_status": ai_status if not isinstance(ai_status, Exception) else {},
@@ -170,7 +170,8 @@ class StatusCoordinator(BaseCoordinator):
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "data": {
                         "tasks_completed": claude_status_data.get("tasksCompleted", 0),
-                        "last_activity": claude_status_data.get("lastActivity")
+                        "last_activity": claude_status_data.get("lastActivity"),
+                        "rate_limit_info": claude_status_data.get("rate_limit_info", {}),
                     }
                 }
 
@@ -182,7 +183,7 @@ class StatusCoordinator(BaseCoordinator):
 
         except Exception as e:
             self._log_error(f"Failed to get and broadcast Claude status: {e}")
-            return {}
+            return {"status": "error", "error": str(e)}
 
     async def cleanup(self) -> None:
         """Cleanup status coordinator resources."""

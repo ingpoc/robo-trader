@@ -104,6 +104,11 @@ class EventType(Enum):
     SAFEGUARD_UPDATE = "safeguard.update"
     CIRCUIT_BREAKER_ACTIVATED = "circuit_breaker.activated"
 
+    # Reconciliation & evaluation events
+    RECONCILIATION_DRIFT = "reconciliation.drift"
+    STALE_DATA_BLOCK = "stale_data.block"
+    TRADE_LIFECYCLE_UPDATE = "trade_lifecycle.update"
+
 
 @dataclass
 class Event:

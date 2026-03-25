@@ -147,6 +147,34 @@ export interface ResearchPacket {
   risks: string[]
   invalidation: string
   confidence: number
+  screening_confidence: number
+  thesis_confidence: number
+  analysis_mode: 'fresh_evidence' | 'stale_evidence' | 'insufficient_evidence'
+  actionability: 'actionable' | 'watch_only' | 'blocked'
+  why_now: string
+  source_summary: Array<{
+    source_type: string
+    label: string
+    timestamp: string
+    freshness: string
+    detail: string
+  }>
+  evidence_citations: Array<{
+    source_type: string
+    label: string
+    reference: string
+    freshness: string
+    timestamp: string
+  }>
+  market_data_freshness: {
+    status: string
+    summary: string
+    timestamp: string
+    age_seconds?: number | null
+    provider: string
+    has_intraday_quote: boolean
+    has_historical_data: boolean
+  }
   next_step: string
   generated_at: string
 }

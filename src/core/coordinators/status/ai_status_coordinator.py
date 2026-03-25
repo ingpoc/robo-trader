@@ -69,6 +69,18 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
         claude_status = await self.session_coordinator.get_claude_status()
         
         if claude_status and claude_status.is_valid:
+            rate_limit_info = claude_status.rate_limit_info or {}
+            if rate_limit_info.get("status") == "exhausted":
+                return {
+                    "status": "degraded",
+                    "authMethod": claude_status.account_info.get("auth_method", "unknown"),
+                    "tasksCompleted": claude_status.account_info.get("tasks_completed", 0),
+                    "lastActivity": claude_status.account_info.get("last_activity", datetime.now(timezone.utc).isoformat()),
+                    "rate_limit_info": rate_limit_info,
+                    "sdk_connected": claude_status.account_info.get("sdk_connected", False),
+                    "cli_process_running": claude_status.account_info.get("cli_process_running", False),
+                }
+
             sdk_connected = claude_status.account_info.get("sdk_connected", False)
             cli_process_running = claude_status.account_info.get("cli_process_running", False)
             if sdk_connected and cli_process_running:
@@ -271,20 +283,34 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
         if not self._broadcast_coordinator:
             return
 
-        # Skip duplicate broadcasts
-        if self._last_broadcast_status == status and len(self._active_analyses) > 0:
-            return
-
         try:
+            auth_status = await self.session_coordinator.validate_authentication()
+            auth_method = "claude_code"
+            rate_limit_info: Dict[str, Any] = {}
+            if auth_status and auth_status.is_valid:
+                auth_method = auth_status.account_info.get("auth_method", "claude_code")
+                rate_limit_info = auth_status.rate_limit_info or {}
+
+            effective_status = (
+                "degraded"
+                if rate_limit_info.get("status") == "exhausted"
+                else status
+            )
+
+            # Skip duplicate broadcasts
+            if self._last_broadcast_status == effective_status and len(self._active_analyses) > 0:
+                return
+
             claude_status_data = {
-                "status": status,
-                "auth_method": "claude_code",
+                "status": effective_status,
+                "auth_method": auth_method,
                 "sdk_connected": True,
                 "cli_process_running": True,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "data": {
                     "analysis_in_progress": status == "analyzing",
                     "active_analyses": len(self._active_analyses),
+                    "rate_limit_info": rate_limit_info,
                     "latest_analysis": {
                         "analysis_id": event_data.get("analysis_id"),
                         "agent_name": event_data.get("agent_name"),
@@ -295,9 +321,8 @@ class AIStatusCoordinator(BaseCoordinator, EventHandler):
             }
 
             await self._broadcast_coordinator.broadcast_claude_status_update(claude_status_data)
-            self._last_broadcast_status = status
-            self._log_debug(f"Broadcast Claude status: {status}")
+            self._last_broadcast_status = effective_status
+            self._log_debug(f"Broadcast Claude status: {effective_status}")
 
         except Exception as e:
             self._log_warning(f"Failed to broadcast Claude status: {e}")
-

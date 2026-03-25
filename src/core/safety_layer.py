@@ -11,6 +11,7 @@ Provides multi-layer safety for the trading system including:
 """
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
@@ -99,7 +100,7 @@ class CircuitBreaker:
     def record_failure(self):
         """Record a failed operation."""
         self.failure_count += 1
-        self.last_failure_time = asyncio.get_event_loop().time()
+        self.last_failure_time = time.monotonic()
 
         if self.failure_count >= self.failure_threshold:
             self.state = "open"
@@ -112,7 +113,7 @@ class CircuitBreaker:
         elif self.state == "open":
             # Check if recovery timeout has passed
             if self.last_failure_time and \
-               (asyncio.get_event_loop().time() - self.last_failure_time) > self.recovery_timeout:
+               (time.monotonic() - self.last_failure_time) > self.recovery_timeout:
                 self.state = "half-open"
                 return True
             return False

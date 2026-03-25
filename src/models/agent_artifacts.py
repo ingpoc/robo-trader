@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 ArtifactStatus = Literal["ready", "blocked", "empty"]
 CandidatePriority = Literal["high", "medium", "low"]
 DecisionAction = Literal["hold", "review_exit", "tighten_stop", "take_profit"]
+ResearchAnalysisMode = Literal["fresh_evidence", "stale_evidence", "insufficient_evidence"]
+ResearchActionability = Literal["actionable", "watch_only", "blocked"]
 
 
 def _utc_now() -> str:
@@ -40,6 +42,32 @@ class Candidate(BaseModel):
     generated_at: str = Field(default_factory=_utc_now)
 
 
+class ResearchSourceSummary(BaseModel):
+    source_type: str
+    label: str
+    timestamp: str = ""
+    freshness: str = "unknown"
+    detail: str = ""
+
+
+class ResearchEvidenceCitation(BaseModel):
+    source_type: str
+    label: str
+    reference: str
+    freshness: str = "unknown"
+    timestamp: str = ""
+
+
+class MarketDataFreshness(BaseModel):
+    status: str = "unknown"
+    summary: str = ""
+    timestamp: str = ""
+    age_seconds: Optional[float] = None
+    provider: str = ""
+    has_intraday_quote: bool = False
+    has_historical_data: bool = False
+
+
 class ResearchPacket(BaseModel):
     research_id: str
     candidate_id: str = ""
@@ -50,6 +78,14 @@ class ResearchPacket(BaseModel):
     risks: List[str] = Field(default_factory=list)
     invalidation: str
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    screening_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    thesis_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    analysis_mode: ResearchAnalysisMode = "insufficient_evidence"
+    actionability: ResearchActionability = "watch_only"
+    why_now: str = ""
+    source_summary: List[ResearchSourceSummary] = Field(default_factory=list)
+    evidence_citations: List[ResearchEvidenceCitation] = Field(default_factory=list)
+    market_data_freshness: MarketDataFreshness = Field(default_factory=MarketDataFreshness)
     next_step: str = ""
     generated_at: str = Field(default_factory=_utc_now)
 
@@ -109,3 +145,5 @@ class AgentPromptContext(BaseModel):
     positions: List[Dict[str, Any]] = Field(default_factory=list)
     recent_trades: List[Dict[str, Any]] = Field(default_factory=list)
     capability_summary: Dict[str, Any] = Field(default_factory=dict)
+    learning_summary: Dict[str, Any] = Field(default_factory=dict)
+    improvement_report: Dict[str, Any] = Field(default_factory=dict)

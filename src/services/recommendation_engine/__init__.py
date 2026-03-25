@@ -1,13 +1,32 @@
-"""
-Recommendation Engine Module
+"""Recommendation engine package with lazy exports to avoid import-time side effects."""
 
-AI-powered trading recommendation system that combines multiple analysis factors
-with Claude Agent SDK for intelligent reasoning and actionable BUY/SELL/HOLD recommendations.
+from __future__ import annotations
 
-All components are modularized for maintainability.
-"""
+from typing import TYPE_CHECKING
 
-from .engine import RecommendationEngine
-from .models import RecommendationFactors, RecommendationResult, RecommendationConfig
+if TYPE_CHECKING:
+    from .engine import RecommendationEngine
+    from .models import RecommendationConfig, RecommendationFactors, RecommendationResult
 
-__all__ = ["RecommendationEngine", "RecommendationFactors", "RecommendationResult", "RecommendationConfig"]
+__all__ = [
+    "RecommendationEngine",
+    "RecommendationFactors",
+    "RecommendationResult",
+    "RecommendationConfig",
+]
+
+
+def __getattr__(name: str):
+    if name == "RecommendationEngine":
+        from .engine import RecommendationEngine
+
+        return RecommendationEngine
+    if name in {"RecommendationFactors", "RecommendationResult", "RecommendationConfig"}:
+        from .models import RecommendationConfig, RecommendationFactors, RecommendationResult
+
+        return {
+            "RecommendationFactors": RecommendationFactors,
+            "RecommendationResult": RecommendationResult,
+            "RecommendationConfig": RecommendationConfig,
+        }[name]
+    raise AttributeError(name)

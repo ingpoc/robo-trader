@@ -34,8 +34,8 @@ export function TradingCapabilityCard({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Trading Readiness</CardTitle>
-          <CardDescription>Checking mission-critical capabilities.</CardDescription>
+          <CardTitle>Automation Readiness</CardTitle>
+          <CardDescription>Checking automation and position-monitoring prerequisites.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2">
@@ -60,10 +60,11 @@ export function TradingCapabilityCard({
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <CardTitle>Trading Readiness</CardTitle>
+            <CardTitle>Automation Readiness</CardTitle>
             <CardDescription>
-              Paper-mode automation depends on Claude, quote streaming, market-data freshness, and explicit account state.
-              Broker auth is optional until broker-backed execution is enabled.
+              This card tracks automation and position mark-to-market readiness. Discovery and single-candidate research can
+              still work without live ticks, but automated monitoring depends on fresh quotes, Claude availability, and
+              explicit account state.
             </CardDescription>
           </div>
           <Badge variant={statusVariantMap[snapshot.overall_status]} size="sm" className="uppercase">
@@ -74,7 +75,7 @@ export function TradingCapabilityCard({
         {snapshot.blockers.length > 0 && (
           <Alert variant="destructive">
             <ShieldAlert className="h-4 w-4" />
-            <AlertTitle>Automation blocked</AlertTitle>
+            <AlertTitle>Automation intervention required</AlertTitle>
             <AlertDescription>
               {snapshot.blockers[0]}
             </AlertDescription>

@@ -35,6 +35,10 @@ class RecommendationResult:
     reasoning: str = ""
     risk_level: str = "MEDIUM"
     time_horizon: str = "MEDIUM_TERM"
+    # Feature extraction fields (populated by FeatureExtractor + DeterministicScorer)
+    features: Optional[Dict[str, Any]] = None
+    feature_confidence: Optional[float] = None
+    research_ledger_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)

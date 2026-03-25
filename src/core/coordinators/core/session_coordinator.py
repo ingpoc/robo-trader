@@ -79,9 +79,8 @@ class SessionCoordinator(BaseCoordinator):
         """Get current Claude Agent SDK status."""
         from datetime import datetime, timezone
 
-        # Always refresh authentication status first
-        if not self.auth_coordinator.get_auth_status():
-            await self.validate_authentication()
+        # Status surfaces should reflect current runtime truth, not old coordinator memory.
+        await self.validate_authentication()
 
         status = self.auth_coordinator.get_auth_status()
 
@@ -105,13 +104,22 @@ class SessionCoordinator(BaseCoordinator):
 
             # Broadcast status update to UI via broadcast coordinator
             if self._broadcast_coordinator:
+                rate_limit_info = status.rate_limit_info or {}
+                status_value = (
+                    "degraded"
+                    if rate_limit_info.get("status") == "exhausted"
+                    else ("connected/idle" if is_connected else "authenticated")
+                )
                 status_data = {
-                    "status": "connected/idle" if is_connected else "authenticated",
+                    "status": status_value,
                     "auth_method": status.account_info.get("auth_method"),
                     "sdk_connected": is_connected,
                     "cli_process_running": is_connected,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "account_info": status.account_info
+                    "account_info": status.account_info,
+                    "data": {
+                        "rate_limit_info": rate_limit_info,
+                    },
                 }
                 await self._broadcast_coordinator.broadcast_claude_status_update(status_data)
         else:
