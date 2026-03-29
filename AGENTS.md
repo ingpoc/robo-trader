@@ -41,6 +41,7 @@ Organization baseline; do not copy it here.
 - BEFORE browser testing, UI validation, or diagnosing state mismatches between UI and backend: read `docs/workflow/browser-testing-control-plane.md`.
 - BEFORE changing branching, review, or verification expectations: read `docs/workflow/git-governance-control-plane.md`.
 - BEFORE closing a meaningful session or routing durable keep/remove/fix/improve learnings: read `docs/workflow/introspection-control-plane.md`.
+- BEFORE changing autonomous paper-trading posture or allowing autonomous entries: read `docs/workflow/autonomous-paper-entry-go-live-checklist.md`.
 - BEFORE making a material architecture decision: read `docs/reference/MISSION.md`, `docs/reference/REPO-SCOPE.md`, and `ROADMAP.md`, then capture the decision under `docs/adrs/`.
 
 ## Repo Rules
