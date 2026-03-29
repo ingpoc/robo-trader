@@ -1,28 +1,28 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
 import { Navigation } from '@/components/Sidebar/Navigation'
 import { Toaster } from '@/components/common/Toaster'
 import { GlobalErrorBoundary } from '@/components/common/GlobalErrorBoundary'
 import { WebSocketErrorBoundary } from '@/components/common/WebSocketErrorBoundary'
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
-import { useSystemStatusStore } from '@/stores/systemStatusStore'
-import { AccountProvider } from '@/contexts/AccountContext'
-import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
-import { SystemHealthFeature } from '@/features/system-health/SystemHealthFeature'
+import { Button } from '@/components/ui/Button'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { AccountProvider, useAccount, type Account } from '@/contexts/AccountContext'
 import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
+import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
 import { PaperTradingFeature } from '@/features/paper-trading/PaperTradingFeature'
+import { usePaperTradingWebMCP } from '@/features/paper-trading/hooks/usePaperTradingWebMCP'
+import { useTheme } from '@/hooks/useTheme'
 import type {
   AccountOverviewResponse,
   ClosedTradeResponse,
   OpenPositionResponse,
+  PaperTradingOperatorSnapshot,
   PerformanceMetricsResponse,
   TradingCapabilitySnapshot,
 } from '@/features/paper-trading/types'
-import { useAccount } from '@/contexts/AccountContext'
-import { Button } from '@/components/ui/Button'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { useTheme } from '@/hooks/useTheme'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,7 +34,117 @@ const queryClient = new QueryClient({
   },
 })
 
-// Wrapper for PaperTradingFeature - READ-ONLY observatory
+type JsonRecord = Record<string, unknown>
+
+interface FetchJsonResult<T = unknown> {
+  ok: boolean
+  status: number
+  payload: T | null
+  error: string | null
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) {
+    return await response.json()
+  }
+
+  const text = await response.text()
+  return text ? { message: text } : null
+}
+
+function extractResponseError(payload: unknown, fallback: string): string {
+  if (payload && typeof payload === 'object') {
+    const record = payload as JsonRecord
+    if (typeof record.error === 'string' && record.error.trim()) return record.error
+    if (typeof record.message === 'string' && record.message.trim()) return record.message
+    if (typeof record.detail === 'string' && record.detail.trim()) return record.detail
+  }
+  return fallback
+}
+
+async function fetchJsonResult<T = unknown>(url: string, init?: RequestInit): Promise<FetchJsonResult<T>> {
+  try {
+    const response = await fetch(url, init)
+    const payload = (await readResponsePayload(response)) as T | null
+    return {
+      ok: response.ok,
+      status: response.status,
+      payload,
+      error: response.ok ? null : extractResponseError(payload, `Request failed with status ${response.status}`),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      payload: null,
+      error: error instanceof Error ? error.message : 'Network request failed',
+    }
+  }
+}
+
+function normalizeOverviewPayload(data: unknown, fallbackAccountId = ''): AccountOverviewResponse | null {
+  if (!data || typeof data !== 'object') return null
+  const record = data as JsonRecord
+  return {
+    account_id: String(record.accountId ?? record.account_id ?? fallbackAccountId),
+    balance: Number(record.balance ?? record.currentBalance ?? 0),
+    deployed_capital: Number(record.deployedCapital ?? record.deployed_capital ?? 0),
+    buying_power: Number(record.marginAvailable ?? record.buyingPower ?? record.buying_power ?? 0),
+    cash_available: Number(record.cashAvailable ?? record.cash_available ?? 0),
+    last_updated: String(record.lastUpdated ?? record.last_updated ?? new Date().toISOString()),
+  }
+}
+
+function normalizePositionsPayload(data: unknown): OpenPositionResponse[] {
+  const positions = Array.isArray((data as JsonRecord | null)?.positions)
+    ? ((data as JsonRecord).positions as Array<Record<string, unknown>>)
+    : Array.isArray(data)
+      ? (data as Array<Record<string, unknown>>)
+      : []
+
+  return positions.map(position => ({
+    trade_id: String(position.trade_id ?? position.tradeId ?? position.id ?? ''),
+    symbol: String(position.symbol ?? ''),
+    quantity: Number(position.quantity ?? 0),
+    entry_price: Number(position.entry_price ?? position.entryPrice ?? position.avgPrice ?? 0),
+    current_price: Number(position.current_price ?? position.currentPrice ?? position.ltp ?? 0),
+    stop_loss: position.stop_loss == null ? Number(position.stopLoss ?? NaN) || undefined : Number(position.stop_loss),
+    target: position.target == null ? Number(position.target_price ?? position.target ?? NaN) || undefined : Number(position.target),
+    unrealized_pnl: Number(position.unrealized_pnl ?? position.pnl ?? 0),
+    unrealized_pnl_pct: Number(position.unrealized_pnl_pct ?? position.pnlPercent ?? 0),
+    entry_time: String(position.entry_time ?? position.entryDate ?? position.entry_date ?? ''),
+    strategy: typeof position.strategy === 'string' ? position.strategy : typeof position.strategy_rationale === 'string' ? position.strategy_rationale : undefined,
+    tradeType: typeof position.tradeType === 'string' ? position.tradeType : typeof position.trade_type === 'string' ? position.trade_type : undefined,
+    currentValue: Number(position.currentValue ?? position.current_value ?? 0),
+    daysHeld: Number(position.daysHeld ?? position.days_held ?? 0),
+    markStatus: (position.markStatus ?? position.market_price_status ?? null) as OpenPositionResponse['markStatus'],
+    markDetail: (position.markDetail ?? position.market_price_detail ?? null) as string | null,
+    markTimestamp: (position.markTimestamp ?? position.market_price_timestamp ?? null) as string | null,
+  }))
+}
+
+function normalizeTradesPayload(data: unknown): ClosedTradeResponse[] {
+  if (Array.isArray((data as JsonRecord | null)?.trades)) {
+    return ((data as JsonRecord).trades as ClosedTradeResponse[]) ?? []
+  }
+  return Array.isArray(data) ? (data as ClosedTradeResponse[]) : []
+}
+
+function normalizePerformancePayload(data: unknown): PerformanceMetricsResponse | null {
+  if (!data || typeof data !== 'object') return null
+  const record = data as JsonRecord
+  return (record.performance ?? record.metrics ?? record) as PerformanceMetricsResponse
+}
+
+function serializeAccounts(accounts: Account[]) {
+  return accounts.map(account => ({
+    account_id: account.account_id,
+    account_name: account.account_name,
+    strategy_type: account.strategy_type,
+  }))
+}
+
 function PaperTradingFeatureWrapper() {
   const { accounts, selectedAccount, selectAccount, isLoading: isAccountsLoading, refreshAccounts } = useAccount()
   const [accountOverview, setAccountOverview] = useState<AccountOverviewResponse | null>(null)
@@ -44,100 +154,271 @@ function PaperTradingFeatureWrapper() {
   const [capabilitySnapshot, setCapabilitySnapshot] = useState<TradingCapabilitySnapshot | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchData = async () => {
-    const accountId = selectedAccount?.account_id
-    if (!selectedAccount?.account_id) {
+  const requestSequenceRef = useRef(0)
+  const lastLoadedAccountRef = useRef<string | null>(null)
+
+  const fetchData = React.useCallback(async (options?: { preserveContent?: boolean; accountIdOverride?: string | null }) => {
+    const accountId = options?.accountIdOverride ?? selectedAccount?.account_id ?? null
+    const shouldWaitForSelection = accounts.length > 0 && !accountId
+    if (isAccountsLoading || shouldWaitForSelection) {
+      return
+    }
+
+    const preserveContent = options?.preserveContent ?? false
+    const isColdStart = !preserveContent && lastLoadedAccountRef.current !== accountId
+
+    if (isColdStart) {
+      setIsLoading(true)
+    }
+
+    if (!accountId) {
+      setCapabilitySnapshot(null)
       setAccountOverview(null)
       setOpenPositions([])
       setClosedTrades([])
       setPerformanceMetrics(null)
+      setIsLoading(false)
+      lastLoadedAccountRef.current = null
+      return
     }
 
-    setIsLoading(true)
-    try {
-      const capabilityUrl = accountId
-        ? `/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`
-        : '/api/paper-trading/capabilities'
+    const requestId = requestSequenceRef.current + 1
+    requestSequenceRef.current = requestId
 
-      const responses = await Promise.all([
-        fetch(capabilityUrl),
-        ...(accountId
-          ? [
-              fetch(`/api/paper-trading/accounts/${accountId}/overview`),
-              fetch(`/api/paper-trading/accounts/${accountId}/positions`),
-              fetch(`/api/paper-trading/accounts/${accountId}/trades`),
-              fetch(`/api/paper-trading/accounts/${accountId}/performance?period=month`),
-            ]
-          : []),
+    try {
+      void (async () => {
+        try {
+          const capabilityResponse = await fetch(`/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`)
+          if (requestSequenceRef.current !== requestId) {
+            return
+          }
+          if (capabilityResponse.ok) {
+            setCapabilitySnapshot(await capabilityResponse.json())
+          } else {
+            setCapabilitySnapshot(null)
+          }
+        } catch {
+          if (requestSequenceRef.current === requestId) {
+            setCapabilitySnapshot(null)
+          }
+        }
+      })()
+
+      const responses = await Promise.allSettled([
+        fetch(`/api/paper-trading/accounts/${accountId}/overview`),
+        fetch(`/api/paper-trading/accounts/${accountId}/positions`),
+        fetch(`/api/paper-trading/accounts/${accountId}/trades`),
+        fetch(`/api/paper-trading/accounts/${accountId}/performance?period=month`),
       ])
 
-      const capabilityRes = responses[0]
-      if (capabilityRes.ok) {
-        setCapabilitySnapshot(await capabilityRes.json())
+      if (requestSequenceRef.current !== requestId) {
+        return
+      }
+
+      const [overviewResult, positionsResult, tradesResult, performanceResult] = responses
+
+      if (overviewResult.status === 'fulfilled' && overviewResult.value.ok) {
+        setAccountOverview(normalizeOverviewPayload(await overviewResult.value.json(), accountId))
       } else {
-        setCapabilitySnapshot(null)
+        setAccountOverview(null)
       }
 
-      if (accountId) {
-        const [overviewRes, positionsRes, tradesRes, performanceRes] = responses.slice(1)
-
-        if (overviewRes?.ok) {
-          const data = await overviewRes.json()
-          setAccountOverview({
-            account_id: data.accountId || accountId,
-            balance: data.balance || data.currentBalance || 0,
-            deployed_capital: data.deployedCapital || data.deployed_capital || 0,
-            buying_power: data.marginAvailable || data.buyingPower || 0,
-            cash_available: data.cashAvailable || data.cash_available || 0,
-            last_updated: data.lastUpdated || new Date().toISOString(),
-          })
-        }
-        if (positionsRes?.ok) {
-          const data = await positionsRes.json()
-          setOpenPositions(data.positions || data || [])
-        }
-        if (tradesRes?.ok) {
-          const data = await tradesRes.json()
-          setClosedTrades(data.trades || data || [])
-        }
-        if (performanceRes?.ok) {
-          const data = await performanceRes.json()
-          setPerformanceMetrics(data.performance || data.metrics || null)
-        } else {
-          setPerformanceMetrics(null)
-        }
+      if (positionsResult.status === 'fulfilled' && positionsResult.value.ok) {
+        setOpenPositions(normalizePositionsPayload(await positionsResult.value.json()))
+      } else {
+        setOpenPositions([])
       }
+
+      if (tradesResult.status === 'fulfilled' && tradesResult.value.ok) {
+        setClosedTrades(normalizeTradesPayload(await tradesResult.value.json()))
+      } else {
+        setClosedTrades([])
+      }
+
+      if (performanceResult.status === 'fulfilled' && performanceResult.value.ok) {
+        setPerformanceMetrics(normalizePerformancePayload(await performanceResult.value.json()))
+      } else {
+        setPerformanceMetrics(null)
+      }
+
+      lastLoadedAccountRef.current = accountId
     } catch (error) {
       console.error('Error fetching paper trading data:', error)
     } finally {
-      setIsLoading(false)
+      if (requestSequenceRef.current === requestId) {
+        setIsLoading(false)
+      }
     }
-  }
+  }, [accounts.length, isAccountsLoading, selectedAccount?.account_id])
 
-  React.useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 30000)
-    return () => clearInterval(interval)
-  }, [selectedAccount?.account_id, isAccountsLoading])
+  useEffect(() => {
+    void fetchData()
+  }, [fetchData])
 
   const handleRefresh = async () => {
     await refreshAccounts()
-    await fetchData()
+    await fetchData({ preserveContent: true })
   }
+
+  const refreshOperatorView = React.useCallback(
+    async (options?: { accountId?: string | null; preserveContent?: boolean }) => {
+      await refreshAccounts()
+      await fetchData({
+        preserveContent: options?.preserveContent ?? true,
+        accountIdOverride: options?.accountId ?? selectedAccount?.account_id ?? null,
+      })
+    },
+    [fetchData, refreshAccounts, selectedAccount?.account_id],
+  )
+
+  const selectAccountById = React.useCallback(
+    async (accountId: string) => {
+      const account = accounts.find(item => item.account_id === accountId)
+      if (!account) {
+        throw new Error(`Paper trading account '${accountId}' is not available in the current session.`)
+      }
+      selectAccount(account)
+      await fetchData({ preserveContent: false, accountIdOverride: accountId })
+    },
+    [accounts, fetchData, selectAccount],
+  )
+
+  const getOperatorSnapshot = React.useCallback(
+    async (accountIdOverride?: string | null): Promise<PaperTradingOperatorSnapshot> => {
+      const accountId = accountIdOverride ?? selectedAccount?.account_id ?? null
+      const serializedAccounts = serializeAccounts(accounts)
+
+      if (!accountId) {
+        return {
+          generated_at: new Date().toISOString(),
+          selected_account_id: null,
+          execution_mode: 'operator_confirmed_execution',
+          accounts: serializedAccounts,
+          health: null,
+          configuration_status: null,
+          queue_status: null,
+          capability_snapshot: null,
+          overview: null,
+          positions: [],
+          trades: [],
+          performance: null,
+          discovery: null,
+          decisions: null,
+          review: null,
+          learning_summary: null,
+          improvement_report: null,
+          run_history: null,
+          latest_retrospective: null,
+          learning_readiness: null,
+          latest_improvement_decisions: [],
+          promotion_report: null,
+          staleness: null,
+          operator_recommendation: null,
+          positions_health: null,
+          recent_trade_outcomes: [],
+          promotable_improvements: [],
+          incidents: [],
+        }
+      }
+
+      const operatorSnapshotResult = await fetchJsonResult<PaperTradingOperatorSnapshot>(
+        `/api/paper-trading/accounts/${encodeURIComponent(accountId)}/operator-snapshot`,
+      )
+      if (operatorSnapshotResult.ok && operatorSnapshotResult.payload) {
+        const payload = operatorSnapshotResult.payload as PaperTradingOperatorSnapshot
+        return {
+          ...payload,
+          accounts: serializedAccounts,
+          selected_account_id: payload.selected_account_id ?? accountId,
+          overview: normalizeOverviewPayload(payload.overview, accountId),
+          positions: normalizePositionsPayload({ positions: payload.positions ?? [] }),
+          trades: normalizeTradesPayload({ trades: payload.trades ?? [] }),
+          performance: normalizePerformancePayload(payload.performance),
+          incidents: Array.isArray(payload.incidents) ? payload.incidents : [],
+        }
+      }
+
+      const [
+        healthResult,
+        configurationResult,
+        queueResult,
+        capabilityResult,
+        overviewResult,
+        positionsResult,
+        tradesResult,
+        performanceResult,
+        discoveryResult,
+        decisionsResult,
+        reviewResult,
+        learningResult,
+        improvementResult,
+        runHistoryResult,
+        incidentsResult,
+      ] = await Promise.all([
+        fetchJsonResult('/api/health'),
+        fetchJsonResult('/api/configuration/status'),
+        fetchJsonResult('/api/queues/status'),
+        fetchJsonResult(`/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/overview`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/positions`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/trades`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/performance?period=month`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/discovery`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/decisions`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/review`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/learning-summary`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/improvement-report`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/runs/history?limit=20`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/operator-incidents`),
+      ])
+
+      return {
+        generated_at: new Date().toISOString(),
+        selected_account_id: accountId,
+        accounts: serializedAccounts,
+        health: healthResult.payload as Record<string, unknown> | null,
+        configuration_status: ((configurationResult.payload as JsonRecord | null)?.configuration_status as Record<string, unknown> | undefined) ?? null,
+        queue_status: queueResult.payload as Record<string, unknown> | null,
+        capability_snapshot: capabilityResult.payload as TradingCapabilitySnapshot | Record<string, unknown> | null,
+        overview: normalizeOverviewPayload(overviewResult.payload, accountId),
+        positions: normalizePositionsPayload(positionsResult.payload),
+        trades: normalizeTradesPayload(tradesResult.payload),
+        performance: normalizePerformancePayload(performanceResult.payload),
+        discovery: discoveryResult.payload as Record<string, unknown> | null,
+        decisions: decisionsResult.payload as Record<string, unknown> | null,
+        review: reviewResult.payload as Record<string, unknown> | null,
+        learning_summary: learningResult.payload as Record<string, unknown> | null,
+        improvement_report: improvementResult.payload as Record<string, unknown> | null,
+        run_history: runHistoryResult.payload as Record<string, unknown> | null,
+        latest_retrospective: null,
+        learning_readiness: null,
+        latest_improvement_decisions: [],
+        promotion_report: null,
+        staleness: null,
+        operator_recommendation: null,
+        positions_health: null,
+        recent_trade_outcomes: [],
+        promotable_improvements: [],
+        incidents: (((incidentsResult.payload as JsonRecord | null)?.incidents as Array<Record<string, unknown>> | undefined) ?? []),
+      }
+    },
+    [accounts, selectedAccount?.account_id],
+  )
+
+  usePaperTradingWebMCP({
+    accounts,
+    selectedAccountId: selectedAccount?.account_id ?? null,
+    selectAccountById,
+    refreshOperatorView,
+    getOperatorSnapshot,
+  })
 
   return (
     <PaperTradingFeature
-      accounts={accounts.map(account => ({
-        account_id: account.account_id,
-        account_name: account.account_name,
-        strategy_type: account.strategy_type,
-      }))}
+      accounts={serializeAccounts(accounts)}
       selectedAccountId={selectedAccount?.account_id ?? null}
       onSelectAccount={(accountId) => {
-        const account = accounts.find(item => item.account_id === accountId)
-        if (account) {
-          selectAccount(account)
-        }
+        void selectAccountById(accountId)
       }}
       accountOverview={accountOverview}
       openPositions={openPositions}
@@ -153,32 +434,6 @@ function PaperTradingFeatureWrapper() {
 function AppContent() {
   useTheme()
 
-  // Initialize WebSocket connection globally for the entire app
-  const initializeWebSocket = useSystemStatusStore((state) => state.initializeWebSocket)
-
-  React.useEffect(() => {
-    // Add a small delay to ensure proper cleanup on page refresh
-    const timeoutId = setTimeout(() => {
-      const cleanup = initializeWebSocket()
-
-      // Add page unload cleanup
-      const handleBeforeUnload = () => {
-        if (cleanup) cleanup()
-      }
-
-      window.addEventListener('beforeunload', handleBeforeUnload)
-
-      return () => {
-        window.removeEventListener('beforeunload', handleBeforeUnload)
-        if (cleanup) cleanup()
-      }
-    }, 100) // 100ms delay
-
-    return () => {
-      clearTimeout(timeoutId)
-    }
-  }, [initializeWebSocket])
-
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const closeSidebar = React.useCallback(() => {
@@ -192,94 +447,18 @@ function AppContent() {
     setSidebarOpen(false)
   }, [])
 
-  // Keyboard navigation for sidebar and global shortcuts
-  React.useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Sidebar shortcuts
-      if (event.key === 'Escape' && sidebarOpen) {
-        closeSidebar()
-      }
-
-      // Global shortcuts (only when not typing in inputs)
-      const target = event.target as HTMLElement
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true'
-
-      if (!isInput) {
-        switch (event.key) {
-          case 'b':
-            if (event.ctrlKey || event.metaKey) {
-              event.preventDefault()
-              setSidebarOpen(prev => !prev)
-            }
-            break
-          case 'f':
-            if (event.ctrlKey || event.metaKey) {
-              event.preventDefault()
-              // Focus search input if available
-              const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement
-              if (searchInput) {
-                searchInput.focus()
-              }
-            }
-            break
-          case '1':
-          case '2':
-          case '3':
-          case '4':
-          case '5':
-          case '6':
-          case '7':
-          case '8':
-          case '9':
-            if (event.altKey) {
-              event.preventDefault()
-              // Navigate to different sections based on number
-              const routes = ['/', '/paper-trading', '/system-health', '/configuration']
-              const index = parseInt(event.key) - 1
-              if (routes[index]) {
-                window.location.href = routes[index]
-              }
-            }
-            break
-        }
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [closeSidebar, sidebarOpen])
-
   return (
     <WebSocketErrorBoundary>
-      {/* Skip links for accessibility */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-accent focus:text-white focus:rounded-md focus:shadow-lg"
-      >
-        Skip to main content
-      </a>
-      <a
-        href="#navigation"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-32 focus:z-50 focus:px-4 focus:py-2 focus:bg-accent focus:text-white focus:rounded-md focus:shadow-lg"
-      >
-        Skip to navigation
-      </a>
-
-      <div className="flex h-screen overflow-hidden bg-transparent">
-        {/* Mobile sidebar backdrop */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-sm lg:hidden"
+      <div className="flex min-h-screen bg-background text-foreground">
+        {sidebarOpen ? (
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-[1px] lg:hidden"
+            aria-label="Close navigation overlay"
             onClick={closeSidebar}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') closeSidebar()
-            }}
-            aria-hidden="true"
-            tabIndex={-1}
           />
-        )}
+        ) : null}
 
-        {/* Sidebar */}
         <aside
           id="navigation"
           className={`
@@ -293,11 +472,9 @@ function AppContent() {
           </div>
         </aside>
 
-        {/* Main content */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Mobile header */}
           <header
-            className="flex h-14 items-center gap-4 border-b border-border/80 bg-card/85 px-4 backdrop-blur-sm lg:hidden"
+            className="flex h-14 items-center gap-4 border-b border-border/80 bg-white/85 px-4 backdrop-blur-sm dark:bg-warmgray-800/85 lg:hidden"
             role="banner"
           >
             <Button
@@ -321,7 +498,6 @@ function AppContent() {
             </div>
           </header>
 
-          {/* Page content */}
           <main
             id="main-content"
             className="flex-1 overflow-y-auto"
@@ -332,7 +508,6 @@ function AppContent() {
               <Route path="/" element={<DashboardErrorBoundary><DashboardFeature /></DashboardErrorBoundary>} />
               <Route path="/configuration" element={<ConfigurationFeature />} />
               <Route path="/paper-trading" element={<PaperTradingFeatureWrapper />} />
-              <Route path="/system-health" element={<SystemHealthFeature />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

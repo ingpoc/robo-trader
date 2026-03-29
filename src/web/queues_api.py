@@ -427,39 +427,3 @@ async def clear_completed_tasks(request: Dict[str, Any]) -> Dict[str, Any]:
         "queue_type": queue_type,
         "cleared_count": 0
     }
-
-
-@router.get("/health", summary="Queue management health check")
-async def queue_health(container: Any = Depends(get_container)) -> Dict[str, Any]:
-    """Check queue management health.
-
-    Returns:
-        Dictionary with health status
-    """
-    logger.info("Queue management health check")
-
-    try:
-        queue_repo = await container.get("queue_state_repository")
-
-        if not queue_repo:
-            return {
-                "status": "unhealthy",
-                "reason": "QueueStateRepository not available"
-            }
-
-        # Get summary to verify repository works
-        summary = await queue_repo.get_queue_statistics_summary()
-
-        return {
-            "status": "healthy",
-            "queues_running": summary["total_queues"],
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-
-    except Exception as e:
-        logger.error(f"Queue health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }

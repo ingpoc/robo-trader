@@ -4,20 +4,20 @@
  */
 
 import React from 'react'
+import { ArrowRight, Aperture, Compass, Wallet } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Breadcrumb } from '@/components/common/Breadcrumb'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SkeletonCard, SkeletonLoader } from '@/components/common/SkeletonLoader'
+import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { useAccount } from '@/contexts/AccountContext'
 
 import { AlertsSummary } from './components/AlertsSummary'
-import { ArtifactSummaryGrid } from './components/ArtifactSummaryGrid'
 import { MetricsGrid } from './components/MetricsGrid'
 import { PortfolioOverview } from './components/PortfolioOverview'
 import { useDashboardData } from './hooks/useDashboardData'
-import { useOverviewArtifacts } from './hooks/useOverviewArtifacts'
 
 export interface DashboardFeatureProps {
   onNavigate?: (path: string) => void
@@ -27,14 +27,6 @@ export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }
   const navigate = useNavigate()
   const { selectedAccount } = useAccount()
   const { portfolio, analytics, isLoading } = useDashboardData()
-  const {
-    discovery,
-    research,
-    decisions,
-    review,
-    isLoading: artifactsLoading,
-    error: artifactsError,
-  } = useOverviewArtifacts(selectedAccount?.account_id ?? null)
 
   if (isLoading) {
     return (
@@ -44,11 +36,6 @@ export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, index) => (
             <SkeletonCard key={index} className="h-28" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-4 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <SkeletonCard key={index} className="h-44" />
           ))}
         </div>
         <SkeletonCard className="h-72" />
@@ -63,52 +50,69 @@ export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }
 
         <PageHeader
           title="Overview"
-          description="A thin operator summary for paper-trading capital, active blockers, and the latest agent artifacts."
+          description="A quiet operating summary for capital, active blockers, and the next manual actions. AI research no longer runs from the dashboard."
         />
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Selected Paper Account</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Account</p>
-            <p className="text-sm font-medium text-foreground">
-              {selectedAccount?.account_name || 'No account selected'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Strategy</p>
-            <p className="text-sm font-medium text-foreground">
-              {selectedAccount?.strategy_type || 'Unassigned'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Account ID</p>
-            <p className="text-sm font-medium text-foreground">
-              {selectedAccount?.account_id || 'Select an account in Paper Trading'}
-            </p>
+      <Card className="overflow-hidden border-border/70 bg-white/80 dark:bg-warmgray-800/80">
+        <CardContent className="grid gap-0 p-0 md:grid-cols-[1.2fr_0.9fr_0.9fr_auto]">
+          <WorkflowCell
+            icon={Compass}
+            label="Workflow"
+            title="Manual by default"
+            body="Discovery, focused research, decision review, and daily review now run only from explicit operator clicks in Paper Trading."
+          />
+          <WorkflowCell
+            icon={Wallet}
+            label="Selected Account"
+            title={selectedAccount?.account_name || 'No account selected'}
+            body={selectedAccount?.account_id || 'Choose an account in Paper Trading before running discovery or research.'}
+          />
+          <WorkflowCell
+            icon={Aperture}
+            label="Research Policy"
+            title="No background artifacts"
+            body="The overview page no longer hydrates discovery, research, decision, or review artifacts behind the scenes."
+          />
+          <div className="flex items-center justify-start border-t border-border/70 px-6 py-5 md:justify-end md:border-l md:border-t-0">
+            <Button variant="primary" onClick={() => (onNavigate || navigate)('/paper-trading')}>
+              Open Paper Trading
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       <MetricsGrid portfolio={portfolio} analytics={analytics} />
 
-      <ArtifactSummaryGrid
-        accountLabel={selectedAccount?.account_name}
-        discovery={discovery}
-        research={research}
-        decisions={decisions}
-        review={review}
-        isLoading={artifactsLoading}
-        error={artifactsError}
-        onOpenPaperTrading={() => (onNavigate || navigate)('/paper-trading')}
-      />
-
       <AlertsSummary />
 
       <PortfolioOverview portfolio={portfolio} />
+    </div>
+  )
+}
+
+function WorkflowCell({
+  icon: Icon,
+  label,
+  title,
+  body,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  title: string
+  body: string
+}) {
+  return (
+    <div className="border-t border-border/70 px-6 py-5 first:border-t-0 md:border-l md:first:border-l-0 md:border-t-0">
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 h-4 w-4 text-primary" />
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+          <p className="text-base font-semibold text-foreground">{title}</p>
+          <p className="text-sm leading-6 text-muted-foreground">{body}</p>
+        </div>
+      </div>
     </div>
   )
 }

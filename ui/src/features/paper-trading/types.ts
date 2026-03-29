@@ -57,6 +57,7 @@ export interface OpenPositionResponse {
   daysHeld?: number
   markStatus?: 'live' | 'stale_entry'
   markDetail?: string | null
+  markTimestamp?: string | null
 }
 
 export interface ClosedTradeResponse {
@@ -115,6 +116,41 @@ export interface TradingCapabilitySnapshot {
   checks: TradingCapabilityCheck[]
 }
 
+export interface PaperTradingOperatorSnapshot {
+  generated_at: string
+  selected_account_id: string | null
+  execution_mode?: 'observe' | 'propose' | 'operator_confirmed_execution'
+  accounts: Array<{
+    account_id: string
+    account_name: string
+    strategy_type: string
+  }>
+  health: Record<string, unknown> | null
+  configuration_status: Record<string, unknown> | null
+  queue_status: Record<string, unknown> | null
+  capability_snapshot: TradingCapabilitySnapshot | Record<string, unknown> | null
+  overview: AccountOverviewResponse | null
+  positions: OpenPositionResponse[]
+  trades: ClosedTradeResponse[]
+  performance: PerformanceMetricsResponse | null
+  discovery: DiscoveryEnvelope | Record<string, unknown> | null
+  decisions?: DecisionEnvelope | Record<string, unknown> | null
+  review?: ReviewEnvelope | Record<string, unknown> | null
+  learning_summary: Record<string, unknown> | null
+  improvement_report: Record<string, unknown> | null
+  run_history?: Record<string, unknown> | null
+  latest_retrospective?: Record<string, unknown> | null
+  learning_readiness?: Record<string, unknown> | null
+  latest_improvement_decisions?: Array<Record<string, unknown>>
+  promotion_report?: Record<string, unknown> | null
+  staleness?: Record<string, unknown> | null
+  operator_recommendation?: Record<string, unknown> | null
+  positions_health?: Record<string, unknown> | null
+  recent_trade_outcomes?: Array<Record<string, unknown>>
+  promotable_improvements?: Array<Record<string, unknown>>
+  incidents?: Array<Record<string, unknown>>
+}
+
 export interface AgentCandidate {
   candidate_id: string
   symbol: string
@@ -134,6 +170,12 @@ export interface DiscoveryEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  provider_metadata?: Record<string, unknown>
+  run_id?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  duration_ms?: number | null
+  status_reason?: string | null
   candidates: AgentCandidate[]
 }
 
@@ -151,10 +193,12 @@ export interface ResearchPacket {
   thesis_confidence: number
   analysis_mode: 'fresh_evidence' | 'stale_evidence' | 'insufficient_evidence'
   actionability: 'actionable' | 'watch_only' | 'blocked'
+  external_evidence_status: 'fresh' | 'partial' | 'missing'
   why_now: string
   source_summary: Array<{
     source_type: string
     label: string
+    tier: 'primary' | 'secondary' | 'derived'
     timestamp: string
     freshness: string
     detail: string
@@ -163,6 +207,7 @@ export interface ResearchPacket {
     source_type: string
     label: string
     reference: string
+    tier: 'primary' | 'secondary' | 'derived'
     freshness: string
     timestamp: string
   }>
@@ -176,6 +221,7 @@ export interface ResearchPacket {
     has_historical_data: boolean
   }
   next_step: string
+  provider_metadata?: Record<string, unknown>
   generated_at: string
 }
 
@@ -185,6 +231,12 @@ export interface ResearchEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  provider_metadata?: Record<string, unknown>
+  run_id?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  duration_ms?: number | null
+  status_reason?: string | null
   research: ResearchPacket | null
 }
 
@@ -206,6 +258,12 @@ export interface DecisionEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  provider_metadata?: Record<string, unknown>
+  run_id?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  duration_ms?: number | null
+  status_reason?: string | null
   decisions: DecisionPacket[]
 }
 
@@ -234,6 +292,12 @@ export interface ReviewEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  provider_metadata?: Record<string, unknown>
+  run_id?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  duration_ms?: number | null
+  status_reason?: string | null
   review: ReviewReport | null
 }
 

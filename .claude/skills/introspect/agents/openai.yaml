@@ -1,0 +1,4 @@
+interface:
+  display_name: "Robo Trader Introspect"
+  short_description: "End-of-session operator learning loop"
+  default_prompt: "Use $introspect to capture the durable keep/remove/fix/improve learnings from this Robo Trader session."

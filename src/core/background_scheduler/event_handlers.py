@@ -77,13 +77,12 @@ class EventHandlers:
         Args:
             event: News fetched event
 
-        NOTE: AI analysis is now handled by AnalysisScheduler (periodic, not event-driven)
-              Event handlers only update stock state, do not create analysis tasks
+        NOTE: Autonomous AI analysis has been removed from background startup.
+              Event handlers only update stock state; they do not queue analysis tasks.
         """
         symbol = event.data.get('symbol')
         if symbol:
-            logger.info(f"News fetched for {symbol} (analysis will be scheduled periodically)")
-            # Just update state - comprehensive analysis will be scheduled by AnalysisScheduler
+            logger.info(f"News fetched for {symbol} (background analysis scheduling removed)")
             await self.stock_state_store.update_news_check(symbol)
 
     async def handle_earnings_fetched(self, event: Event) -> None:
@@ -92,13 +91,12 @@ class EventHandlers:
         Args:
             event: Earnings fetched event
 
-        NOTE: AI analysis is now handled by AnalysisScheduler (periodic, not event-driven)
-              Event handlers only update stock state, do not create analysis tasks
+        NOTE: Autonomous AI analysis has been removed from background startup.
+              Event handlers only update stock state; they do not queue analysis tasks.
         """
         symbol = event.data.get('symbol')
         if symbol:
-            logger.info(f"Earnings fetched for {symbol} (analysis will be scheduled periodically)")
-            # Just update state - comprehensive analysis will be scheduled by AnalysisScheduler
+            logger.info(f"Earnings fetched for {symbol} (background analysis scheduling removed)")
             await self.stock_state_store.update_earnings_check(symbol)
 
     async def handle_fundamentals_updated(self, event: Event) -> None:
@@ -107,13 +105,12 @@ class EventHandlers:
         Args:
             event: Fundamentals updated event
 
-        NOTE: AI analysis is now handled by AnalysisScheduler (periodic, not event-driven)
-              Event handlers only update stock state, do not create analysis tasks
+        NOTE: Autonomous AI analysis has been removed from background startup.
+              Event handlers only update stock state; they do not queue analysis tasks.
         """
         symbol = event.data.get('symbol')
         if symbol:
-            logger.info(f"Fundamentals updated for {symbol} (analysis will be scheduled periodically)")
-            # Just update state - comprehensive analysis will be scheduled by AnalysisScheduler
+            logger.info(f"Fundamentals updated for {symbol} (background analysis scheduling removed)")
             await self.stock_state_store.update_fundamentals_check(symbol)
 
     async def handle_market_news(self, event: Event) -> None:
@@ -203,4 +200,3 @@ class EventHandlers:
             payload={"symbols": symbols, "initial_fetch": True},
             priority=9
         )
-

@@ -7,10 +7,16 @@ SDK uses Claude Code CLI for authentication, no direct API keys needed.
 
 import asyncio
 import json
+import os
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
 
 from loguru import logger
+
+from src.auth.ai_runtime_auth import (
+    get_ai_runtime_status,
+    record_ai_runtime_limit,
+)
 
 
 class ClaudeAuthStatus:
@@ -288,6 +294,20 @@ async def get_claude_sdk_status() -> ClaudeAuthStatus:
     Returns:
         ClaudeAuthStatus with current SDK connection state
     """
+    if os.getenv("AI_RUNTIME_PROVIDER", "codex") == "codex":
+        runtime_status = await get_ai_runtime_status()
+        return ClaudeAuthStatus(
+            is_valid=runtime_status.is_valid,
+            api_key_present=runtime_status.authenticated,
+            error=runtime_status.error,
+            account_info={
+                **runtime_status.account_info,
+                "provider": runtime_status.provider,
+                "model": runtime_status.model,
+            },
+            checked_at=runtime_status.checked_at,
+            rate_limit_info=runtime_status.rate_limit_info,
+        )
     return await validate_claude_sdk_auth()
 
 
@@ -319,6 +339,9 @@ _cache_duration_seconds = 300  # 5 minutes
 async def get_claude_sdk_status_cached() -> ClaudeAuthStatus:
     """Get Claude Agent SDK status with caching to reduce CLI calls."""
     global _cached_status
+
+    if os.getenv("AI_RUNTIME_PROVIDER", "codex") == "codex":
+        return await get_claude_sdk_status()
 
     if _cached_status is None:
         _cached_status = await validate_claude_sdk_auth()
@@ -355,6 +378,10 @@ def invalidate_status_cache():
 
 def record_claude_runtime_limit(message: str, *, code: Optional[str] = None) -> None:
     """Update cached Claude status immediately when a live request hits a usage cap."""
+    if os.getenv("AI_RUNTIME_PROVIDER", "codex") == "codex":
+        record_ai_runtime_limit(message, code=code)
+        return
+
     global _cached_status
 
     usage_limited_info = _extract_usage_limited_info(message, error_code=code)

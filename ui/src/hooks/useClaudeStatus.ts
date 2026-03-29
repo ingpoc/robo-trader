@@ -1,8 +1,15 @@
-import { useClaudeStatus as useSystemClaudeStatus } from '@/stores/systemStatusStore'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
 import { wsClient } from '@/api/websocket'
 
-export type ClaudeStatus = 'unavailable' | 'idle' | 'analyzing' | 'authenticated' | 'connected/idle' | 'degraded'
+export type ClaudeStatus =
+  | 'checking'
+  | 'unavailable'
+  | 'idle'
+  | 'analyzing'
+  | 'authenticated'
+  | 'connected/idle'
+  | 'degraded'
 
 export interface ClaudeStatusInfo {
   status: ClaudeStatus
@@ -14,10 +21,9 @@ export interface ClaudeStatusInfo {
     agentName?: string
     symbolsCount?: number
     status?: string
-  }
+  } | null
 }
 
-// Store active analysis from WebSocket events
 interface ActiveAnalysis {
   analysisId: string
   agentName: string
@@ -26,34 +32,101 @@ interface ActiveAnalysis {
   status: string
 }
 
-/**
- * Hook to track Claude Paper Trader agent status using event-driven WebSocket updates
- * - unavailable: Claude agent is not running or disconnected
- * - idle: Claude agent is connected but not actively analyzing
- * - analyzing: Claude agent is actively running analysis
- * - connected/idle: Claude agent is connected and ready
- */
-export function useClaudeStatus(): ClaudeStatusInfo {
-  const systemClaudeStatus = useSystemClaudeStatus()
-  const { status, authMethod, sdkConnected, cliProcessRunning } = systemClaudeStatus
-  const rateLimitInfo =
-    systemClaudeStatus.data?.rate_limit_info ||
-    systemClaudeStatus.data?.data?.rate_limit_info
-  const isUsageLimited = rateLimitInfo?.status === 'exhausted'
+interface CapabilityFallback {
+  status: ClaudeStatus
+  message: string
+  currentTask?: string
+}
 
-  // Track active analyses from WebSocket events
+function mapCapabilityStatus(payload: any): CapabilityFallback {
+  const runtimeCheck = Array.isArray(payload?.checks)
+    ? payload.checks.find((check: any) => check?.key === 'ai_runtime')
+    : null
+
+  if (!runtimeCheck) {
+    return {
+      status: 'unavailable',
+      message: 'AI runtime status unavailable',
+    }
+  }
+
+  if (runtimeCheck.status === 'ready') {
+    return {
+      status: 'connected/idle',
+      message: runtimeCheck.detail || runtimeCheck.summary || 'AI runtime is ready',
+      currentTask: runtimeCheck.current_task,
+    }
+  }
+
+  if (runtimeCheck.status === 'degraded') {
+    return {
+      status: 'degraded',
+      message: runtimeCheck.detail || runtimeCheck.summary || 'AI runtime is degraded',
+      currentTask: runtimeCheck.current_task,
+    }
+  }
+
+  return {
+    status: 'unavailable',
+    message: runtimeCheck.detail || runtimeCheck.summary || 'AI runtime is unavailable',
+    currentTask: runtimeCheck.current_task,
+  }
+}
+
+export function useClaudeStatus(): ClaudeStatusInfo {
   const [activeAnalyses, setActiveAnalyses] = useState<Map<string, ActiveAnalysis>>(new Map())
   const [latestAnalysis, setLatestAnalysis] = useState<ClaudeStatusInfo['latestAnalysis']>(null)
+  const [capabilityStatus, setCapabilityStatus] = useState<CapabilityFallback>({
+    status: 'checking',
+    message: 'AI runtime status check is in progress',
+  })
 
-  // Handle WebSocket events for real-time analysis tracking
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchCapabilities = async () => {
+      try {
+        const response = await fetch('/api/paper-trading/capabilities')
+        if (!response.ok) {
+          throw new Error('capabilities request failed')
+        }
+        const payload = await response.json()
+        if (cancelled) return
+        setCapabilityStatus(mapCapabilityStatus(payload))
+      } catch {
+        if (!cancelled) {
+          setCapabilityStatus({
+            status: 'unavailable',
+            message: 'AI runtime status unavailable',
+          })
+        }
+      }
+    }
+
+    void fetchCapabilities()
+    const intervalId = window.setInterval(() => {
+      void fetchCapabilities()
+    }, 60000)
+    const handleFocus = () => {
+      void fetchCapabilities()
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [])
+
   useEffect(() => {
     const handleAnalysisStarted = (event: any) => {
       const analysis: ActiveAnalysis = {
         analysisId: event.analysis_id,
-        agentName: event.agent_name,
+        agentName: event.agent_name || 'analyzer',
         symbolsCount: event.symbols_count || 0,
         startedAt: event.started_at || new Date().toISOString(),
-        status: event.status || 'running'
+        status: event.status || 'running',
       }
 
       setActiveAnalyses(prev => new Map(prev).set(event.analysis_id, analysis))
@@ -61,26 +134,25 @@ export function useClaudeStatus(): ClaudeStatusInfo {
         analysisId: event.analysis_id,
         agentName: event.agent_name,
         symbolsCount: event.symbols_count,
-        status: event.status
+        status: event.status,
       })
     }
 
     const handleAnalysisCompleted = (event: any) => {
       setActiveAnalyses(prev => {
-        const newMap = new Map(prev)
-        newMap.delete(event.analysis_id)
-        return newMap
+        const next = new Map(prev)
+        next.delete(event.analysis_id)
+        return next
       })
 
-      // Update latest analysis with completion info
-      setLatestAnalysis(prev => prev ? {
-        ...prev,
-        status: event.status || 'completed',
-        analysisId: event.analysis_id
-      } : null)
+      setLatestAnalysis({
+        analysisId: event.analysis_id,
+        agentName: event.agent_name,
+        symbolsCount: event.symbols_count,
+        status: event.status,
+      })
     }
 
-    // Subscribe to WebSocket events - filter by message type inside callback
     const handleWebSocketMessage = (message: any) => {
       if (message.type === 'CLAUDE_ANALYSIS_STARTED' || message.type === 'claude_analysis_started') {
         handleAnalysisStarted(message)
@@ -90,84 +162,40 @@ export function useClaudeStatus(): ClaudeStatusInfo {
     }
 
     const unsubscribe = wsClient.subscribe(handleWebSocketMessage)
-
     return () => {
       unsubscribe()
     }
   }, [])
 
-  // Convert system status to the expected format with event-driven enhancements
-  const getStatus = (): ClaudeStatus => {
-    if (isUsageLimited) {
-      return 'degraded'
-    }
-
-    // If we have active analyses from events, prioritize that status
+  const resolvedStatus = useMemo<ClaudeStatus>(() => {
     if (activeAnalyses.size > 0) {
       return 'analyzing'
     }
+    return capabilityStatus.status
+  }, [activeAnalyses.size, capabilityStatus.status])
 
-    switch (status) {
-      case 'analyzing':
-        return 'analyzing'
-      case 'degraded':
-        return 'degraded'
-      case 'connected/idle':
-        return 'connected/idle'
-      case 'active':
-        return sdkConnected && cliProcessRunning ? 'connected/idle' : 'authenticated'
-      case 'authenticated':
-        return 'authenticated'
-      case 'disconnected':
-        return 'unavailable'
-      default:
-        return 'unavailable'
-    }
-  }
-
-  const getStatusMessage = (): string => {
-    if (isUsageLimited) {
-      return rateLimitInfo?.message || 'Claude runtime is authenticated but currently usage-limited'
-    }
-
-    // If we have active analyses, show enhanced message
+  const message = useMemo(() => {
     if (activeAnalyses.size > 0) {
       const analysisList = Array.from(activeAnalyses.values())
       const totalSymbols = analysisList.reduce((sum, analysis) => sum + (analysis.symbolsCount || 0), 0)
-      const agents = [...new Set(analysisList.map(a => a.agentName))].join(', ')
+      const agents = [...new Set(analysisList.map(analysis => analysis.agentName))].join(', ')
 
       if (activeAnalyses.size === 1) {
-        return `Claude is analyzing ${totalSymbols} symbols via ${agents}`
-      } else {
-        return `Claude is running ${activeAnalyses.size} analyses on ${totalSymbols} symbols via ${agents}`
+        return `AI runtime is analyzing ${totalSymbols} symbols via ${agents}`
       }
+      return `AI runtime is running ${activeAnalyses.size} analyses on ${totalSymbols} symbols via ${agents}`
     }
 
-    switch (status) {
-      case 'analyzing':
-        return 'Claude is analyzing market data and executing strategies'
-      case 'degraded':
-        return rateLimitInfo?.message || 'Claude runtime is authenticated but currently usage-limited'
-      case 'connected/idle':
-        return 'Claude SDK is actively connected to CLI process'
-      case 'active':
-        return sdkConnected && cliProcessRunning
-          ? 'Claude agent is connected and ready'
-          : `Authenticated via ${authMethod || 'unknown method'}`
-      case 'authenticated':
-        return `Authenticated via ${authMethod || 'unknown method'}`
-      case 'disconnected':
-        return 'Claude agent is not connected'
-      default:
-        return 'Claude agent status unknown'
-    }
-  }
+    return capabilityStatus.message
+  }, [activeAnalyses, capabilityStatus.message])
 
   return {
-    status: getStatus(),
-    message: getStatusMessage(),
-    currentTask: systemClaudeStatus.data?.current_task,
+    status: resolvedStatus,
+    message,
+    currentTask: capabilityStatus.currentTask,
     activeAnalysesCount: activeAnalyses.size,
-    latestAnalysis
+    latestAnalysis,
   }
 }
+
+export const useAiRuntimeStatus = useClaudeStatus

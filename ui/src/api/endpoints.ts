@@ -48,28 +48,6 @@ export const recommendationsAPI = {
     ),
 }
 
-export const monitoringAPI = {
-  getSystemStatus: () =>
-    api.get<{
-      status: string
-      timestamp: string
-      blockers: string[]
-      initialization: {
-        orchestrator_initialized: boolean
-        bootstrap_completed: boolean
-        initialization_errors: string[]
-        last_error: string | null
-      }
-      components: {
-        orchestrator?: Record<string, unknown>
-        database?: Record<string, unknown>
-        event_bus?: Record<string, unknown>
-        background_scheduler?: Record<string, unknown>
-        websocket?: Record<string, unknown>
-      }
-    }>('/api/monitoring/status'),
-}
-
 export const alertsAPI = {
   getActive: () => api.get<{ alerts: Alert[] }>('/api/alerts/active'),
   handleAction: (alertId: string, action: string) =>
@@ -245,11 +223,4 @@ export const queueAPI = {
   clearCompletedTasks: (queueType?: QueueType) =>
     api.post<{ status: string; cleared_count: number }>('/api/queues/clear-completed', { queue_type: queueType }),
 
-  // Get queue health status
-  getHealthStatus: () =>
-    api.get<{
-      overall_health: 'healthy' | 'warning' | 'critical';
-      queue_health: Record<QueueType, 'healthy' | 'warning' | 'critical'>;
-      issues: string[];
-    }>('/api/queues/health'),
 }

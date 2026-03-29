@@ -19,7 +19,6 @@ const routeLabels: Record<string, string> = {
   '/': 'Dashboard',
   '/configuration': 'Configuration',
   '/paper-trading': 'Paper Trading',
-  '/system-health': 'System Health',
 }
 
 export function Breadcrumb({ items, className }: BreadcrumbProps) {

@@ -6,12 +6,9 @@ import json
 import re
 from typing import Dict, Any, List
 
-from claude_agent_sdk import ClaudeAgentOptions
-
 from src.config import Config
-from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
 from src.core.event_bus import EventBus
-from src.core.sdk_helpers import query_with_timeout
+from src.services.codex_runtime_client import CodexRuntimeError
 from ..base_coordinator import BaseCoordinator
 
 
@@ -42,7 +39,7 @@ class EveningPerformanceCoordinator(BaseCoordinator):
         performance_metrics: Dict[str, Any],
         open_positions: List[Any],
     ) -> List[str]:
-        """Generate trading insights with Claude based on internal performance context."""
+        """Generate trading insights with the active AI runtime based on internal performance context."""
         context = {
             "daily_performance": {
                 "pnl": performance_metrics.get("daily_pnl", 0.0),
@@ -64,28 +61,39 @@ class EveningPerformanceCoordinator(BaseCoordinator):
         )
 
         try:
-            manager = await ClaudeSDKClientManager.get_instance()
-            client_type = "evening_performance_insights"
-            options = ClaudeAgentOptions(
-                allowed_tools=[],
-                max_turns=1,
-                model="haiku",
+            runtime_client = await self.container.get("codex_runtime_client")
+            response = await runtime_client.run_structured(
                 system_prompt=(
                     "You are Robo Trader's evening performance reviewer. "
                     "Produce concise, operator-usable post-trade insights from supplied metrics only."
                 ),
+                prompt=prompt,
+                output_schema={
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "insights": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        }
+                    },
+                    "required": ["insights"],
+                },
+                model=self.config.ai_runtime.codex_model,
+                reasoning=self.config.ai_runtime.codex_reasoning_deep,
+                timeout_seconds=45.0,
+                web_search_enabled=False,
+                network_access_enabled=False,
+                working_directory=str(self.config.project_dir),
             )
-            client = await manager.get_client(client_type, options, force_recreate=True)
-            try:
-                response = await query_with_timeout(client, prompt, timeout=45.0)
-            finally:
-                await manager.cleanup_client(client_type)
 
-            insights = self._parse_insights(response)
+            insights = self._parse_insights(json.dumps(response.get("output") or {}))
             if insights:
                 return insights[:5]
+        except CodexRuntimeError as exc:
+            self._log_warning(f"AI runtime evening insight generation failed: {exc}")
         except Exception as exc:
-            self._log_warning(f"Claude evening insight generation failed: {exc}")
+            self._log_warning(f"Evening insight generation failed: {exc}")
 
         fallback = []
         if performance_metrics.get("daily_pnl", 0) > 0:
@@ -152,7 +160,7 @@ class EveningPerformanceCoordinator(BaseCoordinator):
 
     @classmethod
     def _parse_insights(cls, response: str) -> List[str]:
-        """Parse a JSON insights response from Claude."""
+        """Parse a JSON insights response from the runtime."""
         text = (response or "").strip()
         if text.startswith("```json"):
             text = text[len("```json"):].strip()

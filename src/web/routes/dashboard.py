@@ -172,24 +172,24 @@ def _build_ai_status(
     capability_snapshot: Dict[str, Any],
     config: Any,
 ) -> Dict[str, Any]:
-    """Build a truthful Claude/operator status for the dashboard."""
+    """Build a truthful AI/operator status for the dashboard."""
     blockers = capability_snapshot.get("blockers", [])
-    claude_check = next(
-        (check for check in capability_snapshot.get("checks", []) if check.get("key") == "claude_runtime"),
+    ai_check = next(
+        (check for check in capability_snapshot.get("checks", []) if check.get("key") == "ai_runtime"),
         None,
     )
 
     daily_limit = 0
-    claude_config = getattr(config, "claude_agent", None) if config else None
-    if claude_config:
-        daily_limit = getattr(claude_config, "daily_token_budget", 0) or 0
+    ai_runtime_config = getattr(config, "ai_runtime", None) if config else None
+    if ai_runtime_config:
+        daily_limit = getattr(ai_runtime_config, "daily_token_budget", 0) or 0
 
-    if claude_check and claude_check.get("status") == "ready":
-        current_task = "Claude runtime is authenticated and available for research and review workflows."
-    elif claude_check:
-        current_task = claude_check.get("detail") or claude_check.get("summary") or "Claude runtime is blocked."
+    if ai_check and ai_check.get("status") == "ready":
+        current_task = "AI runtime is authenticated and available for research and review workflows."
+    elif ai_check:
+        current_task = ai_check.get("detail") or ai_check.get("summary") or "AI runtime is blocked."
     else:
-        current_task = "Claude runtime status is unavailable."
+        current_task = "AI runtime status is unavailable."
 
     if blockers:
         portfolio_health = f"{len(blockers)} capability blocker(s) are preventing fully autonomous paper-trading workflows."
@@ -631,201 +631,3 @@ async def get_claude_status(request: Request, container: DependencyContainer = D
     except Exception as e:
         return await handle_unexpected_error(e, "get_claude_status")
 
-
-@router.get("/system/health")
-@limiter.limit(dashboard_limit)
-async def get_system_health(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
-    """Get system health status from orchestrator."""
-    try:
-        orchestrator = await container.get_orchestrator()
-        connection_manager = request.app.state.connection_manager
-
-        # Try to get system status, fall back if method not implemented
-        try:
-            system_status = await orchestrator.get_system_status()
-        except (AttributeError, NotImplementedError):
-            system_status = {}
-
-        # Transform to frontend format
-        components = {}
-
-        # Scheduler status with real data
-        if "scheduler_status" in system_status:
-            scheduler = system_status["scheduler_status"]
-            components["scheduler"] = {
-                "status": scheduler.get("status", "unknown"),
-                "lastRun": scheduler.get("lastRun", "unknown"),
-                "activeJobs": scheduler.get("activeJobs", 0),
-                "completedJobs": scheduler.get("completedJobs", 0),
-                "totalSchedulers": scheduler.get("totalSchedulers", 0),
-                "runningSchedulers": scheduler.get("runningSchedulers", 0)
-            }
-        else:
-            components["scheduler"] = {
-                "status": "unknown",
-                "lastRun": "unknown",
-                "activeJobs": 0,
-                "completedJobs": 0
-            }
-
-        # Database status
-        components["database"] = {
-            "status": "connected",  # If we got here, DB is connected
-            "connections": 1
-        }
-
-        # WebSocket status with real client count
-        ws_clients = 0
-        if connection_manager:
-            try:
-                ws_clients = len(connection_manager.active_connections)
-            except (AttributeError, TypeError):
-                ws_clients = 0
-        components["websocket"] = {
-            "status": "connected",
-            "clients": ws_clients
-        }
-
-        # Claude agent status with real data
-        if "claude_status" in system_status and system_status["claude_status"]:
-            claude = system_status["claude_status"]
-            components["claudeAgent"] = {
-                "status": "active" if claude.get("authenticated") else "inactive",
-                "tasksCompleted": claude.get("tasksCompleted", 0)
-            }
-        else:
-            components["claudeAgent"] = {
-                "status": "not_configured",
-                "tasksCompleted": 0
-            }
-
-        # Calculate uptime
-        uptime_seconds = int((datetime.now(timezone.utc) - _server_start_time).total_seconds())
-
-        return {
-            "status": "healthy",
-            "components": components,
-            "uptime_seconds": uptime_seconds,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-    except TradingError as e:
-        return await handle_trading_error(e)
-    except Exception as e:
-        logger.exception(f"Error in get_system_health: {e}")
-        return await handle_unexpected_error(e, "get_system_health")
-
-
-@router.get("/status")
-@limiter.limit(dashboard_limit)
-async def get_system_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
-    """Get overall system status - basic health and version information."""
-    try:
-        orchestrator = await container.get_orchestrator()
-
-        # Calculate uptime
-        uptime_seconds = int((datetime.now(timezone.utc) - _server_start_time).total_seconds())
-
-        # Get scheduler status for queue info
-        queue_status = "running"
-        try:
-            system_status = await orchestrator.get_system_status()
-            scheduler = system_status.get("scheduler_status", {})
-            if scheduler.get("status") == "error":
-                queue_status = "error"
-            elif scheduler.get("runningSchedulers", 0) == 0:
-                queue_status = "idle"
-        except Exception:
-            queue_status = "unknown"
-
-        # Get Claude status
-        claude_status = "unknown"
-        try:
-            claude_auth = await orchestrator.get_claude_status()
-            if claude_auth and claude_auth.is_valid:
-                claude_status = "authenticated"
-            else:
-                claude_status = "not_configured"
-        except Exception:
-            claude_status = "unknown"
-
-        status = {
-            "status": "healthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "version": "1.0.0",
-            "environment": os.getenv("ENVIRONMENT", "development"),
-            "uptime_seconds": uptime_seconds,
-            "components": {
-                "api": {"status": "healthy"},
-                "database": {"status": "connected"},
-                "orchestrator": {"status": "running"},
-                "queues": {"status": queue_status},
-                "claude": {"status": claude_status}
-            }
-        }
-
-        return status
-    except TradingError as e:
-        return await handle_trading_error(e)
-    except Exception as e:
-        return await handle_unexpected_error(e, "get_system_status")
-
-
-@router.get("/scheduler/status")
-@limiter.limit(dashboard_limit)
-async def get_scheduler_status(request: Request, container: DependencyContainer = Depends(get_container)) -> Dict[str, Any]:
-    """Get scheduler status from background scheduler with detailed metrics."""
-    try:
-        orchestrator = await container.get_orchestrator()
-        system_status = await orchestrator.get_system_status()
-
-        scheduler_status = system_status.get("scheduler_status", {})
-        schedulers = scheduler_status.get("schedulers", [])
-
-        # Calculate totals from all schedulers
-        total_processed = sum(s.get("jobs_processed", 0) for s in schedulers)
-        total_failed = sum(s.get("jobs_failed", 0) for s in schedulers)
-        total_active = sum(s.get("active_jobs", 0) for s in schedulers)
-
-        # Calculate success rate
-        total_jobs = total_processed + total_failed
-        success_rate = round((total_processed / total_jobs * 100), 1) if total_jobs > 0 else 100.0
-
-        # Get running jobs
-        running_jobs = []
-        for s in schedulers:
-            if s.get("current_task"):
-                running_jobs.append({
-                    "queue": s.get("name", s.get("scheduler_id", "unknown")),
-                    "task_id": s["current_task"].get("task_id"),
-                    "task_type": s["current_task"].get("task_type"),
-                    "started_at": s["current_task"].get("started_at")
-                })
-
-        return {
-            "status": scheduler_status.get("status", "unknown"),
-            "lastRun": scheduler_status.get("lastRun"),
-            "activeJobs": total_active,
-            "tasksQueued": total_active,
-            "tasksProcessed": total_processed,
-            "tasksFailed": total_failed,
-            "successRate": success_rate,
-            "totalSchedulers": scheduler_status.get("totalSchedulers", len(schedulers)),
-            "runningSchedulers": scheduler_status.get("runningSchedulers", 0),
-            "runningJobs": running_jobs,
-            "schedulers": [
-                {
-                    "id": s.get("scheduler_id"),
-                    "name": s.get("name"),
-                    "status": s.get("status"),
-                    "processed": s.get("jobs_processed", 0),
-                    "failed": s.get("jobs_failed", 0),
-                    "active": s.get("active_jobs", 0),
-                    "lastRun": s.get("last_run_time")
-                }
-                for s in schedulers
-            ]
-        }
-    except TradingError as e:
-        return await handle_trading_error(e)
-    except Exception as e:
-        return await handle_unexpected_error(e, "get_scheduler_status")

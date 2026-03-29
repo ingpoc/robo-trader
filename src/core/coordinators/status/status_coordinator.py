@@ -6,6 +6,7 @@ Refactored from 261-line orchestrator into focused coordinators.
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone
 from typing import Dict, Any
 
@@ -17,6 +18,16 @@ from .agent_status_coordinator import AgentStatusCoordinator
 from .portfolio_status_coordinator import PortfolioStatusCoordinator
 from .broadcast.status_broadcast_coordinator import StatusBroadcastCoordinator
 from .aggregation.status_aggregation_coordinator import StatusAggregationCoordinator
+
+
+def _legacy_claude_status_broadcasts_enabled() -> bool:
+    """Legacy Claude status broadcasts are opt-in after the Codex migration."""
+    return os.getenv("ENABLE_LEGACY_CLAUDE_STATUS_BROADCASTS", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 class StatusCoordinator(BaseCoordinator):
@@ -109,12 +120,13 @@ class StatusCoordinator(BaseCoordinator):
             components, timestamp, force=force_broadcast
         )
 
-        # Also broadcast Claude status based on active analysis tasks
-        # This ensures the icon pulsates whenever Claude is analyzing (manual or automatic)
-        try:
-            await self.ai_status_coordinator.broadcast_claude_status_based_on_analysis()
-        except Exception as e:
-            self._log_warning(f"Failed to broadcast Claude status: {e}")
+        if _legacy_claude_status_broadcasts_enabled():
+            # Legacy Claude analysis broadcasts remain available for old surfaces,
+            # but they should not run by default in the Codex-backed app.
+            try:
+                await self.ai_status_coordinator.broadcast_claude_status_based_on_analysis()
+            except Exception as e:
+                self._log_warning(f"Failed to broadcast Claude status: {e}")
 
         return status_data
     

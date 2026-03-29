@@ -1,8 +1,8 @@
 """Sequential queue manager for task execution.
 
 This module implements the parallel queue, sequential task pattern:
-- 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
-- Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time per queue)
+- selected queues execute in parallel
+- tasks within each queue execute sequentially (one-at-a-time per queue)
 
 Architecture Pattern - NON-BLOCKING EXECUTION:
 - Tasks execute in background threads via ThreadSafeQueueExecutor
@@ -31,11 +31,10 @@ class SequentialQueueManager:
     Manage queue execution with parallel queues and sequential tasks.
 
     Architecture Pattern:
-    - 3 queues (PORTFOLIO_SYNC, DATA_FETCHER, AI_ANALYSIS) execute in PARALLEL
-    - Tasks WITHIN each queue execute SEQUENTIALLY (one-at-a-time per queue)
+    - selected queues execute in parallel
+    - tasks within each queue execute sequentially (one-at-a-time per queue)
 
     This prevents:
-    - Turn limit exhaustion (AI_ANALYSIS tasks run sequentially)
     - Database contention (PORTFOLIO_SYNC tasks run sequentially)
     - Resource conflicts (each queue manages its own sequential execution)
 
@@ -101,15 +100,16 @@ class SequentialQueueManager:
             # Reload completed tasks from today
             self._completed_task_ids = await self.task_service.store.get_completed_task_ids_today()
 
-            # Define all queues to process in parallel
+            # Keep startup manual-first: do not automatically attach AI-related
+            # executors that could process stale queued research/analysis work.
             queue_names = [
                 QueueName.PORTFOLIO_SYNC,
                 QueueName.DATA_FETCHER,
-                QueueName.AI_ANALYSIS,
-                QueueName.PORTFOLIO_ANALYSIS,
-                QueueName.PAPER_TRADING_RESEARCH,
                 QueueName.PAPER_TRADING_EXECUTION
             ]
+            logger.info(
+                "AI_ANALYSIS, PORTFOLIO_ANALYSIS, and PAPER_TRADING_RESEARCH executors removed from startup path"
+            )
 
             # Create and start executor for each queue
             for queue_name in queue_names:

@@ -18,7 +18,7 @@ from src.config import Config
 from .event_bus import initialize_event_bus
 from .safety_layer import SafetyLayer
 from .database_state import DatabaseStateManager
-from .background_scheduler import BackgroundScheduler
+from .manual_only_scheduler import ManualOnlyScheduler
 from .resource_manager import ResourceManager
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,17 @@ async def register_core_services(container: 'DependencyContainer') -> None:
         return container.config
 
     container._register_singleton("config", create_config)
+
+    async def create_codex_runtime_client():
+        from src.services.codex_runtime_client import CodexRuntimeClient
+
+        runtime_config = container.config.ai_runtime
+        return CodexRuntimeClient(
+            runtime_config.codex_runtime_url,
+            timeout_seconds=runtime_config.timeout_seconds,
+        )
+
+    container._register_singleton("codex_runtime_client", create_codex_runtime_client)
 
     # Resource Manager - singleton (initialized first for cleanup tracking)
     async def create_resource_manager():
@@ -582,22 +593,12 @@ async def register_core_services(container: 'DependencyContainer') -> None:
 
     container._register_singleton("task_service", create_task_service)
 
-    # Background Scheduler
+    # Manual-only scheduler boundary
     async def create_background_scheduler():
-        task_service = await container.get("task_service")
-        event_bus = await container.get("event_bus")
         state_manager = await container.get("state_manager")
-        execution_tracker = await container.get("execution_tracker")
-        sequential_queue_manager = await container.get("sequential_queue_manager")
-        return BackgroundScheduler(
-            task_service,
-            event_bus,
-            state_manager.db._connection_pool,
-            container.config,
-            execution_tracker,
-            sequential_queue_manager,
-            container  # Pass container for AnalysisScheduler initialization
-        )
+        scheduler = ManualOnlyScheduler(state_manager.db.connection)
+        await scheduler.initialize()
+        return scheduler
 
     container._register_singleton("background_scheduler", create_background_scheduler)
 
@@ -657,12 +658,18 @@ async def register_core_services(container: 'DependencyContainer') -> None:
     async def create_prompt_optimization_service():
         from ..services.prompt_optimization_service import PromptOptimizationService
         event_bus = await container.get("event_bus")
-        market_research_service = await container.get("claude_market_research_service")
+        market_research_service = await container.get("ai_market_research_service")
+        runtime_client = await container.get("codex_runtime_client")
         return PromptOptimizationService(
-            config=getattr(container.config, "prompt_optimization", {}),
+            config={
+                **getattr(container.config, "prompt_optimization", {}),
+                "model": container.config.ai_runtime.codex_model,
+                "reasoning": container.config.ai_runtime.codex_reasoning_deep,
+            },
             event_bus=event_bus,
             container=container,
             market_research_service=market_research_service,
+            runtime_client=runtime_client,
         )
 
     container._register_singleton("prompt_optimization_service", create_prompt_optimization_service)

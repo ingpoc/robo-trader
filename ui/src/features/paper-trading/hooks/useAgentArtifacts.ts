@@ -10,12 +10,17 @@ import type {
 
 export type ArtifactTab = 'discovery' | 'research' | 'decisions' | 'review'
 
+interface UseAgentArtifactsOptions {
+  onRunComplete?: () => Promise<void> | void
+}
+
 interface AgentArtifactsState {
   discovery: DiscoveryEnvelope | null
   research: ResearchEnvelope | null
   decisions: DecisionEnvelope | null
   review: ReviewEnvelope | null
   isLoading: boolean
+  activeRequest: ArtifactTab | null
   error: string | null
 }
 
@@ -28,7 +33,7 @@ const emptyDiscovery: DiscoveryEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before loading discovery artifacts.'],
-  context_mode: 'watchlist_only',
+  context_mode: 'stateful_watchlist',
   artifact_count: 0,
   candidates: [],
 }
@@ -85,7 +90,7 @@ async function readErrorMessage(response: Response, fallback: string) {
       if (body.trim()) return body
     }
   } catch {
-    // Fall back to the generic message when the error payload cannot be parsed.
+    // Use the fallback when the error payload cannot be parsed.
   }
 
   return fallback
@@ -93,8 +98,8 @@ async function readErrorMessage(response: Response, fallback: string) {
 
 export function useAgentArtifacts(
   accountId?: string,
-  activeTab?: ArtifactTab,
   selectedCandidate?: AgentCandidate | null,
+  options?: UseAgentArtifactsOptions,
 ) {
   const [state, setState] = useState<AgentArtifactsState>({
     discovery: null,
@@ -102,6 +107,7 @@ export function useAgentArtifacts(
     decisions: null,
     review: null,
     isLoading: false,
+    activeRequest: null,
     error: null,
   })
 
@@ -120,9 +126,22 @@ export function useAgentArtifacts(
       decisions: null,
       review: null,
       isLoading: false,
+      activeRequest: null,
       error: null,
     })
   }, [accountId])
+
+  const clearTab = useCallback((tab: ArtifactTab) => {
+    setState(prev => ({
+      ...prev,
+      discovery: tab === 'discovery' ? null : prev.discovery,
+      research: tab === 'research' ? null : prev.research,
+      decisions: tab === 'decisions' ? null : prev.decisions,
+      review: tab === 'review' ? null : prev.review,
+      activeRequest: prev.activeRequest === tab ? null : prev.activeRequest,
+      error: null,
+    }))
+  }, [])
 
   const requestTab = useCallback(async (
     tab: ArtifactTab,
@@ -137,6 +156,7 @@ export function useAgentArtifacts(
         decisions: prev.decisions ?? emptyDecisions,
         review: prev.review ?? emptyReview,
         isLoading: false,
+        activeRequest: null,
         error: null,
       }))
       return
@@ -151,12 +171,13 @@ export function useAgentArtifacts(
           status: 'empty',
         },
         isLoading: false,
+        activeRequest: null,
         error: null,
       }))
       return
     }
 
-    setState(prev => ({ ...prev, isLoading: true, error: null }))
+    setState(prev => ({ ...prev, isLoading: true, activeRequest: tab, error: null }))
 
     try {
       let endpoint = ''
@@ -190,8 +211,8 @@ export function useAgentArtifacts(
           ),
         )
       }
-      const payload = await response.json()
 
+      const payload = await response.json()
       setState(prev => ({
         ...prev,
         discovery: tab === 'discovery' ? payload : prev.discovery,
@@ -199,35 +220,27 @@ export function useAgentArtifacts(
         decisions: tab === 'decisions' ? payload : prev.decisions,
         review: tab === 'review' ? payload : prev.review,
         isLoading: false,
+        activeRequest: null,
         error: null,
       }))
+      if (method === 'POST') {
+        await options?.onRunComplete?.()
+      }
     } catch (error) {
       setState(prev => ({
         ...prev,
         isLoading: false,
+        activeRequest: null,
         error: error instanceof Error ? error.message : `Failed to fetch ${tab}`,
       }))
     }
-  }, [accountId])
-
-  useEffect(() => {
-    if (!activeTab) return
-    if (activeTab === 'research') return
-    if (activeTab === 'discovery' && state.discovery) return
-    if (activeTab === 'decisions' && state.decisions) return
-    if (activeTab === 'review' && state.review) return
-    void requestTab(activeTab, 'GET')
-  }, [
-    activeTab,
-    requestTab,
-    state.decisions,
-    state.discovery,
-    state.review,
-  ])
+  }, [accountId, options, researchSelection])
 
   return {
     ...state,
+    clearTab,
     refreshTab: (tab: ArtifactTab, selection?: CandidateSelection) => requestTab(tab, 'GET', selection),
-    runTab: (tab: ArtifactTab, selection?: CandidateSelection) => requestTab(tab, 'POST', selection),
+    runTab: (tab: ArtifactTab, selection?: CandidateSelection) =>
+      requestTab(tab, 'POST', selection ?? (tab === 'research' ? researchSelection : undefined)),
   }
 }

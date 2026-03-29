@@ -131,11 +131,11 @@ async function installShellMocks(page: Page) {
           blockers: [],
           checks: [
             {
-              key: 'claude_runtime',
-              label: 'Claude Runtime',
+              key: 'ai_runtime',
+              label: 'AI Runtime',
               status: 'ready',
               blocking: false,
-              summary: 'Claude runtime is ready for operator workflows.',
+              summary: 'AI runtime is ready for operator workflows.',
               detail: null,
               metadata: {},
             },

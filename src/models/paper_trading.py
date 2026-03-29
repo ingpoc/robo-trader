@@ -17,6 +17,7 @@ class TradeStatus(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
     STOPPED_OUT = "stopped_out"
+    CANCELLED = "cancelled"
 
 
 class AccountType(str, Enum):
@@ -107,8 +108,8 @@ class PaperTrade:
     def from_dict(data: Dict[str, Any]) -> 'PaperTrade':
         """Create from dictionary."""
         data = data.copy()
-        data['trade_type'] = TradeType(data['trade_type'])
-        data['status'] = TradeStatus(data['status'])
+        data['trade_type'] = TradeType(str(data['trade_type']).lower())
+        data['status'] = TradeStatus(str(data['status']).lower())
         return PaperTrade(**data)
 
     def calculate_pnl(self, current_price: float) -> tuple[float, float]:

@@ -13,3 +13,22 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface WebMCPToolDefinition {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  execute: (input?: Record<string, unknown>) => unknown | Promise<unknown>
+}
+
+interface WebMCPRegistrationOptions {
+  signal?: AbortSignal
+}
+
+interface WebMCPModelContext {
+  registerTool: (tool: WebMCPToolDefinition, options?: WebMCPRegistrationOptions) => void
+}
+
+interface Navigator {
+  modelContext?: WebMCPModelContext
+}

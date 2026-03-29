@@ -1,7 +1,8 @@
 """Paper trading account management service."""
 
+import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from ...models.paper_trading import PaperTradingAccount, AccountType, RiskLevel
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 class PaperTradingAccountManager:
     """Manage paper trading accounts with REAL-TIME market data from Zerodha."""
 
+    MARKET_DATA_FETCH_TIMEOUT_SECONDS = 5.0
+    MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS = 5 * 60
+
     def __init__(self, store: PaperTradingStore, market_data_service=None, price_monitor=None):
         """Initialize manager with MarketDataService integration.
 
@@ -27,6 +31,37 @@ class PaperTradingAccountManager:
         self.store = store
         self.market_data_service = market_data_service  # Injected from DI container
         self.price_monitor = price_monitor  # Injected for WebSocket broadcasting
+
+    @staticmethod
+    def _parse_timestamp(value: Any) -> Optional[datetime]:
+        """Parse ISO timestamps while tolerating legacy date-only strings."""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            text = str(value).strip()
+            if not text:
+                return None
+            if len(text) == 10:
+                text = f"{text}T00:00:00+00:00"
+            elif text.endswith("Z"):
+                text = f"{text[:-1]}+00:00"
+            try:
+                parsed = datetime.fromisoformat(text)
+            except ValueError:
+                return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    @classmethod
+    def _is_fresh_market_timestamp(cls, value: Any) -> bool:
+        parsed = cls._parse_timestamp(value)
+        if parsed is None:
+            return False
+        age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+        return age_seconds <= cls.MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS
 
     async def create_account(
         self,
@@ -173,26 +208,87 @@ class PaperTradingAccountManager:
 
         # Fetch current prices from MarketDataService (Zerodha Kite integration)
         current_prices = {}
+        current_price_timestamps = {}
+        stale_price_details = {}
         market_price_detail = None
         if self.market_data_service:
             try:
-                subscriptions = await self.market_data_service.get_active_subscriptions()
-                # Subscribe to market data for all symbols if not already subscribed
-                for symbol in symbols:
-                    if symbol not in subscriptions:
-                        await self.market_data_service.subscribe_market_data(
-                            symbol=symbol,
-                            mode=SubscriptionMode.LTP,  # Last Traded Price only for efficiency
-                            provider=MarketDataProvider.ZERODHA_KITE  # Use Zerodha Kite API
-                        )
-                        logger.info(f"Subscribed to Zerodha market data for {symbol}")
-
-                # Get current market data for all symbols
                 market_data_map = await self.market_data_service.get_multiple_market_data(symbols)
                 for symbol, market_data in market_data_map.items():
                     if market_data:
-                        current_prices[symbol] = market_data.ltp
-                        logger.debug(f"Got real-time price for {symbol}: ₹{market_data.ltp}")
+                        timestamp = getattr(market_data, "timestamp", None)
+                        timestamp_text = (
+                            timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp or "")
+                        )
+                        if self._is_fresh_market_timestamp(timestamp):
+                            current_prices[symbol] = market_data.ltp
+                            current_price_timestamps[symbol] = timestamp_text
+                        else:
+                            stale_price_details[symbol] = (
+                                f"Live market price for {symbol} is stale; latest cached mark timestamp is "
+                                f"{timestamp_text or 'unknown'}."
+                            )
+
+                quote_stream_status = await self.market_data_service.get_quote_stream_status()
+                quote_stream_connected = bool(getattr(quote_stream_status, "connected", False))
+                quote_stream_state = str(getattr(quote_stream_status, "status", "") or "").strip().lower()
+                if len(current_prices) < len(symbols) and (not quote_stream_connected or quote_stream_state != "ready"):
+                    market_price_detail = (
+                        str(getattr(quote_stream_status, "detail", "") or "").strip()
+                        or str(getattr(quote_stream_status, "summary", "") or "").strip()
+                        or "Live market data unavailable because the quote stream is not ready."
+                    )
+                    logger.warning(
+                        "Skipping live market fetch for %s because quote stream is %s (connected=%s)",
+                        account_id,
+                        quote_stream_state or "unknown",
+                        quote_stream_connected,
+                    )
+                    quote_stream_status = None
+
+                async def _load_market_data():
+                    subscriptions = await self.market_data_service.get_active_subscriptions()
+                    for symbol in symbols:
+                        if symbol not in subscriptions:
+                            await self.market_data_service.subscribe_market_data(
+                                symbol=symbol,
+                                mode=SubscriptionMode.LTP,  # Last Traded Price only for efficiency
+                                provider=MarketDataProvider.ZERODHA_KITE,  # Use Zerodha Kite API
+                            )
+                            logger.info(f"Subscribed to Zerodha market data for {symbol}")
+
+                    return await self.market_data_service.get_multiple_market_data(symbols)
+
+                if len(current_prices) < len(symbols) and quote_stream_status is not None:
+                    market_data_map = await asyncio.wait_for(
+                        _load_market_data(),
+                        timeout=self.MARKET_DATA_FETCH_TIMEOUT_SECONDS,
+                    )
+                    for symbol, market_data in market_data_map.items():
+                        if market_data:
+                            timestamp = getattr(market_data, "timestamp", None)
+                            timestamp_text = (
+                                timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp or "")
+                            )
+                            if self._is_fresh_market_timestamp(timestamp):
+                                current_prices[symbol] = market_data.ltp
+                                current_price_timestamps[symbol] = timestamp_text
+                                logger.debug(f"Got real-time price for {symbol}: ₹{market_data.ltp}")
+                            else:
+                                stale_price_details[symbol] = (
+                                    f"Live market price for {symbol} is stale; latest cached mark timestamp is "
+                                    f"{timestamp_text or 'unknown'}."
+                                )
+            except asyncio.TimeoutError:
+                market_price_detail = (
+                    "Live market data unavailable: timed out after "
+                    f"{int(self.MARKET_DATA_FETCH_TIMEOUT_SECONDS)}s."
+                )
+                logger.warning(
+                    "Timed out fetching market data for %s after %.1fs",
+                    account_id,
+                    self.MARKET_DATA_FETCH_TIMEOUT_SECONDS,
+                )
             except Exception as e:
                 market_price_detail = f"Live market data unavailable: {e}"
                 logger.warning("Failed to fetch market data from Zerodha: %s", e)
@@ -207,11 +303,13 @@ class PaperTradingAccountManager:
             if has_live_price:
                 price_status = "live"
                 price_detail = None
+                price_timestamp = current_price_timestamps.get(trade.symbol) or datetime.now(timezone.utc).isoformat()
             else:
                 price_status = "stale_entry"
-                price_detail = market_price_detail or (
+                price_detail = stale_price_details.get(trade.symbol) or market_price_detail or (
                     f"No live market price is available for {trade.symbol}; using the entry price as a stale mark."
                 )
+                price_timestamp = trade.entry_timestamp
                 logger.warning(
                     "Market data unavailable for %s; exposing stale entry mark ₹%s",
                     trade.symbol,
@@ -243,6 +341,7 @@ class PaperTradingAccountManager:
                 ai_suggested=False,  # TODO: Add this field to trade model
                 market_price_status=price_status,
                 market_price_detail=price_detail,
+                market_price_timestamp=price_timestamp,
             ))
 
         logger.info(f"Retrieved {len(positions)} open positions with real-time prices from Zerodha")

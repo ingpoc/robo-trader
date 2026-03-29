@@ -40,27 +40,16 @@ class QueueEventCoordinator(BaseCoordinator):
         """Initialize queue event coordinator."""
         self._log_info("Initializing QueueEventCoordinator")
 
-        # Subscribe to relevant events
-        if self.event_bus:
-            self.event_bus.subscribe(EventType.MARKET_NEWS, self._handle_market_event)
-            self.event_bus.subscribe(EventType.MARKET_EARNINGS, self._handle_earnings_event)
-
-        # Start event router service
-        if self.event_router_service:
-            await self.event_router_service.start()
-
         self._initialized = True
-        self._log_info("QueueEventCoordinator initialized successfully")
+        self._log_info(
+            "QueueEventCoordinator initialized in manual-only mode; "
+            "automatic event routing is disabled."
+        )
 
     async def cleanup(self) -> None:
         """Cleanup queue event coordinator resources."""
         if self.event_router_service:
             await self.event_router_service.stop()
-
-        # Unsubscribe from events
-        if self.event_bus:
-            self.event_bus.unsubscribe(EventType.MARKET_NEWS)
-            self.event_bus.unsubscribe(EventType.MARKET_EARNINGS)
 
         self._log_info("QueueEventCoordinator cleanup complete")
 
@@ -75,8 +64,13 @@ class QueueEventCoordinator(BaseCoordinator):
             )
 
         try:
-            return await self.event_router_service.handle_event(event)
+            status = self.event_router_service.get_status()
+            started_here = False
+            if not status.get("running"):
+                await self.event_router_service.start()
+                started_here = True
 
+            return await self.event_router_service.handle_event(event)
         except Exception as e:
             self._log_error(f"Event routing failed: {e}")
             raise TradingError(
@@ -85,6 +79,9 @@ class QueueEventCoordinator(BaseCoordinator):
                 severity=ErrorSeverity.MEDIUM,
                 recoverable=True
             )
+        finally:
+            if "started_here" in locals() and started_here:
+                await self.event_router_service.stop()
 
     async def _handle_market_event(self, event: Event) -> None:
         """Handle market news events."""
@@ -128,4 +125,3 @@ class QueueEventCoordinator(BaseCoordinator):
             status = self.event_router_service.get_status()
             return "healthy" if status.get("running") else "stopped"
         return "not_available"
-

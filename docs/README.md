@@ -26,6 +26,7 @@ It is not a generic multi-agent platform and it does not make an active claim of
 - [Research Validation Loop](workflow/research-validation-loop.md)
 - [Browser Testing Control Plane](workflow/browser-testing-control-plane.md)
 - [Git Governance Control Plane](workflow/git-governance-control-plane.md)
+- [Introspection Control Plane](workflow/introspection-control-plane.md)
 - [Linear Issue Control Plane](workflow/linear-issue-control-plane.md)
 - [Notion Memory Control Plane](workflow/notion-memory-control-plane.md)
 - [MCP/Auth Bootstrap](workflow/mcp-auth-bootstrap.md)

@@ -40,6 +40,7 @@ Organization baseline; do not copy it here.
 - BEFORE deciding under technical uncertainty or recommending a dependency, protocol, or API change: read `docs/workflow/research-validation-loop.md`.
 - BEFORE browser testing, UI validation, or diagnosing state mismatches between UI and backend: read `docs/workflow/browser-testing-control-plane.md`.
 - BEFORE changing branching, review, or verification expectations: read `docs/workflow/git-governance-control-plane.md`.
+- BEFORE closing a meaningful session or routing durable keep/remove/fix/improve learnings: read `docs/workflow/introspection-control-plane.md`.
 - BEFORE making a material architecture decision: read `docs/reference/MISSION.md`, `docs/reference/REPO-SCOPE.md`, and `ROADMAP.md`, then capture the decision under `docs/adrs/`.
 
 ## Repo Rules

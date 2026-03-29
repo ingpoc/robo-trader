@@ -19,7 +19,6 @@ from .stores.strategy_log_store import StrategyLogStore
 from .monitors.monthly_reset_monitor import MonthlyResetMonitor
 from .event_handlers import EventHandlers
 from .triggers import Triggers
-from .analysis_scheduler import AnalysisScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class BackgroundScheduler:
     and trigger logic to specialized modules.
     """
 
-    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None, execution_tracker=None, sequential_queue_manager=None, container=None):
+    def __init__(self, task_service: SchedulerTaskService, event_bus: EventBus, db_connection, config=None, execution_tracker=None, sequential_queue_manager=None):
         """Initialize event-driven background scheduler.
 
         Args:
@@ -41,13 +40,11 @@ class BackgroundScheduler:
             config: Configuration object
             execution_tracker: ExecutionTracker for recording executions
             sequential_queue_manager: SequentialQueueManager for task execution
-            container: DependencyContainer for AnalysisScheduler initialization
         """
         self.task_service = task_service
         self.event_bus = event_bus
         self.db = db_connection
         self.config = config
-        self.container = container
 
         # Database stores
         self.task_store = TaskStore(db_connection)
@@ -86,10 +83,6 @@ class BackgroundScheduler:
             self.market_close_time,
             event_bus=event_bus  # Pass event_bus for MARKET_OPEN/MARKET_CLOSE events
         )
-
-        # Initialize AnalysisScheduler (needs DI container)
-        # Note: AnalysisScheduler will be properly initialized after container is ready
-        self.analysis_scheduler: Optional[AnalysisScheduler] = None
 
         # Register event handlers
         self._setup_event_handlers()
@@ -217,23 +210,7 @@ class BackgroundScheduler:
             await self.monthly_reset_monitor.initialize()
             self._log_initialization_step("MonthlyResetMonitor initialized")
 
-            # Initialize AnalysisScheduler (periodic smart analysis scheduling)
-            if self.container:
-                self._log_initialization_step("Initializing AnalysisScheduler")
-                self.analysis_scheduler = AnalysisScheduler(
-                    container=self.container,
-                    check_interval_minutes=5,
-                    analysis_threshold_hours=24
-                )
-                await self.analysis_scheduler.initialize()
-                self._log_initialization_step("AnalysisScheduler initialized")
-
-                # Start AnalysisScheduler background loop
-                self._log_initialization_step("Starting AnalysisScheduler")
-                await self.analysis_scheduler.start()
-                self._log_initialization_step("AnalysisScheduler started")
-            else:
-                logger.warning("Container not available - AnalysisScheduler will not run")
+            logger.info("Autonomous AI scheduling removed from startup path")
 
             # Start event listener
             self._log_initialization_step("Creating event listener task")
@@ -264,10 +241,9 @@ class BackgroundScheduler:
             else:
                 logger.warning("SequentialQueueManager not available - queue tasks will not be processed")
 
-            # Schedule daily routines
-            self._log_initialization_step("Scheduling daily routines")
-            await self._schedule_daily_routines()
-            self._log_initialization_step("Daily routines scheduled")
+            # Daily market routines are removed from automatic startup for the
+            # same reason: app boot must stay manual-first and token-silent.
+            logger.info("Daily routines removed from startup path - skipping automatic scheduling")
 
             # Mark initialization as complete
             self._initialization_complete = True
@@ -287,22 +263,12 @@ class BackgroundScheduler:
         """Stop the event-driven background scheduler.
 
         Phase 3 Update: Also stops all queue executors with graceful shutdown.
-        Also stops AnalysisScheduler background loop.
         """
         if not self._running:
             return
 
         logger.info("Stopping event-driven background scheduler...")
         self._running = False
-
-        # Stop AnalysisScheduler first
-        if self.analysis_scheduler:
-            logger.info("Stopping AnalysisScheduler...")
-            try:
-                await self.analysis_scheduler.stop()
-                logger.info("AnalysisScheduler stopped successfully")
-            except Exception as e:
-                logger.error(f"Error stopping AnalysisScheduler: {e}")
 
         # Stop queue executors (graceful shutdown for worker threads)
         if self.sequential_queue_manager:

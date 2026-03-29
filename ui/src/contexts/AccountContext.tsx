@@ -1,9 +1,9 @@
 /**
  * Account Management Context
- * Provides account selection, creation, and management functionality
+ * Provides account selection, creation, and management functionality.
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 
 export interface Account {
   account_id: string
@@ -46,8 +46,49 @@ interface CreateAccountData {
 }
 
 const AccountContext = createContext<AccountContextType | undefined>(undefined)
-
 const STORAGE_KEY = 'robo-trader-selected-account'
+
+let inFlightAccountsRequest: Promise<Account[]> | null = null
+
+function normalizeAccounts(payload: any): Account[] {
+  return (payload.accounts || []).map((accountData: any) => ({
+    account_id: accountData.accountId,
+    account_name: accountData.accountName || accountData.accountId,
+    account_type: accountData.accountType,
+    strategy_type: accountData.accountType,
+    risk_level: accountData.riskLevel || 'moderate',
+    balance: accountData.currentBalance || 0,
+    buying_power: accountData.marginAvailable || 0,
+    deployed_capital: accountData.totalInvested || 0,
+    total_pnl: 0,
+    total_pnl_pct: 0,
+    monthly_pnl: 0,
+    monthly_pnl_pct: 0,
+    open_positions_count: 0,
+    today_trades: 0,
+    win_rate: 0,
+    created_at: accountData.createdDate || new Date().toISOString(),
+    reset_date: '',
+  }))
+}
+
+async function fetchAccountsOnce(): Promise<Account[]> {
+  if (!inFlightAccountsRequest) {
+    inFlightAccountsRequest = (async () => {
+      const response = await fetch('/api/paper-trading/accounts')
+      if (!response.ok) {
+        throw new Error('Failed to fetch accounts')
+      }
+
+      const data = await response.json()
+      return normalizeAccounts(data)
+    })().finally(() => {
+      inFlightAccountsRequest = null
+    })
+  }
+
+  return inFlightAccountsRequest
+}
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -55,78 +96,31 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Load selected account from localStorage on mount
-  useEffect(() => {
-    const storedAccountId = localStorage.getItem(STORAGE_KEY)
-    if (storedAccountId) {
-      // We'll set this after loading accounts
-    }
-  }, [])
-
-  // Load accounts on mount
-  useEffect(() => {
-    refreshAccounts()
-  }, [])
-
-  // Set selected account when accounts are loaded and we have a stored ID
-  useEffect(() => {
-    if (accounts.length > 0 && !selectedAccount) {
-      const storedAccountId = localStorage.getItem(STORAGE_KEY)
-      if (storedAccountId) {
-        const storedAccount = accounts.find(acc => acc.account_id === storedAccountId)
-        if (storedAccount) {
-          setSelectedAccount(storedAccount)
-          return
-        }
-      }
-      // Default to first account if no stored account or stored account not found
-      setSelectedAccount(accounts[0])
-    }
-  }, [accounts, selectedAccount])
-
-  const selectAccount = (account: Account) => {
+  const selectAccount = useCallback((account: Account) => {
     setSelectedAccount(account)
     localStorage.setItem(STORAGE_KEY, account.account_id)
-  }
+  }, [])
 
-  const refreshAccounts = async () => {
+  const refreshAccounts = useCallback(async () => {
     try {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch('/api/paper-trading/accounts')
-      if (!response.ok) {
-        throw new Error('Failed to fetch accounts')
-      }
-
-      const data = await response.json()
-      const loadedAccounts: Account[] = (data.accounts || []).map((accountData: any) => ({
-        account_id: accountData.accountId,
-        account_name: accountData.accountName || accountData.accountId,
-        account_type: accountData.accountType,
-        strategy_type: accountData.accountType,
-        risk_level: accountData.riskLevel || 'moderate',
-        balance: accountData.currentBalance || 0,
-        buying_power: accountData.marginAvailable || 0,
-        deployed_capital: accountData.totalInvested || 0,
-        total_pnl: 0,
-        total_pnl_pct: 0,
-        monthly_pnl: 0,
-        monthly_pnl_pct: 0,
-        open_positions_count: 0,
-        today_trades: 0,
-        win_rate: 0,
-        created_at: accountData.createdDate || new Date().toISOString(),
-        reset_date: '',
-      }))
-
+      const loadedAccounts = await fetchAccountsOnce()
       setAccounts(loadedAccounts)
 
-      if (loadedAccounts.length === 0) {
-        setSelectedAccount(null)
-        localStorage.removeItem(STORAGE_KEY)
-      }
+      const storedAccountId = localStorage.getItem(STORAGE_KEY)
+      const nextSelectedAccount = storedAccountId
+        ? loadedAccounts.find(account => account.account_id === storedAccountId) || loadedAccounts[0] || null
+        : loadedAccounts[0] || null
 
+      setSelectedAccount(nextSelectedAccount)
+
+      if (!nextSelectedAccount) {
+        localStorage.removeItem(STORAGE_KEY)
+      } else if (storedAccountId !== nextSelectedAccount.account_id) {
+        localStorage.setItem(STORAGE_KEY, nextSelectedAccount.account_id)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load accounts')
       setAccounts([])
@@ -135,13 +129,16 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void refreshAccounts()
+  }, [refreshAccounts])
 
   const createAccount = async (accountData: CreateAccountData) => {
     try {
       setError(null)
 
-      // Call backend API to create account
       const response = await fetch('/api/paper-trading/accounts/create', {
         method: 'POST',
         headers: {
@@ -164,7 +161,6 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         throw new Error(data.error || 'Failed to create account')
       }
 
-      // Create account object from response
       const newAccount: Account = {
         account_id: data.account.accountId,
         account_name: data.account.accountName,
@@ -187,7 +183,6 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
       setAccounts(prev => [...prev, newAccount])
       selectAccount(newAccount)
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create account')
       throw err
@@ -198,7 +193,6 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     try {
       setError(null)
 
-      // Call backend API to delete account
       const response = await fetch(`/api/paper-trading/accounts/${accountId}`, {
         method: 'DELETE',
       })
@@ -213,20 +207,22 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         throw new Error(data.error || 'Failed to delete account')
       }
 
-      // Remove from local state
-      setAccounts(prev => prev.filter(acc => acc.account_id !== accountId))
+      setAccounts(prev => {
+        const remainingAccounts = prev.filter(account => account.account_id !== accountId)
 
-      // If deleted account was selected, select another one
-      if (selectedAccount?.account_id === accountId) {
-        const remainingAccounts = accounts.filter(acc => acc.account_id !== accountId)
-        if (remainingAccounts.length > 0) {
-          selectAccount(remainingAccounts[0])
-        } else {
-          setSelectedAccount(null)
-          localStorage.removeItem(STORAGE_KEY)
+        if (selectedAccount?.account_id === accountId) {
+          const nextAccount = remainingAccounts[0] || null
+          setSelectedAccount(nextAccount)
+
+          if (nextAccount) {
+            localStorage.setItem(STORAGE_KEY, nextAccount.account_id)
+          } else {
+            localStorage.removeItem(STORAGE_KEY)
+          }
         }
-      }
 
+        return remainingAccounts
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete account')
       throw err

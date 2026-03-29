@@ -1,7 +1,8 @@
-"""Context-bounded Claude agent artifact generation for paper trading."""
+"""Context-bounded AI artifact generation for paper trading."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -9,17 +10,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
-from claude_agent_sdk import ClaudeAgentOptions
-from claude_agent_sdk.types import AgentDefinition
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.auth.claude_auth import get_claude_status, record_claude_runtime_limit
-from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
 from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
-from src.core.sdk_helpers import (
-    query_only_with_timeout,
-    receive_response_with_timeout,
-)
 from src.models.agent_artifacts import (
     AgentPromptContext,
     Candidate,
@@ -27,6 +21,7 @@ from src.models.agent_artifacts import (
     DecisionPacket,
     DiscoveryEnvelope,
     MarketDataFreshness,
+    ResearchActionability,
     ResearchEnvelope,
     ResearchEvidenceCitation,
     ResearchPacket,
@@ -36,6 +31,7 @@ from src.models.agent_artifacts import (
     StrategyProposal,
 )
 from src.models.market_data import MarketData
+from src.services.codex_runtime_client import CodexRuntimeError, _normalize_output_schema
 from src.services.claude_agent.context_builder import ContextBuilder
 
 logger = logging.getLogger(__name__)
@@ -43,8 +39,35 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+class FocusedResearchDraft(BaseModel):
+    """Lean model-generated fields for focused research."""
+
+    thesis: str
+    evidence: List[str] = Field(default_factory=list)
+    risks: List[str] = Field(default_factory=list)
+    invalidation: str
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    thesis_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    actionability: ResearchActionability = "watch_only"
+    why_now: str = ""
+    next_step: str = ""
+
+
 class AgentArtifactService:
-    """Produce typed paper-trading artifacts with bounded Claude context."""
+    """Produce typed paper-trading artifacts with bounded AI runtime context."""
+
+    DECISION_MARK_FRESHNESS_THRESHOLD_SECONDS = 5 * 60
+    DISCOVERY_MIN_CONFIDENCE = 0.45
+    DISCOVERY_RESEARCH_READY_CONFIDENCE = 0.60
+    RESEARCH_ACTIONABLE_CONFIDENCE = 0.60
+    DECISION_MIN_CONFIDENCE = 0.55
+    DECISION_READY_CONFIDENCE = 0.65
+    REVIEW_READY_CONFIDENCE = 0.60
+    FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS = 30.0
+    FOCUSED_RESEARCH_MARKET_CONTEXT_TIMEOUT_SECONDS = 12.0
+    FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS = 28.0
+    RESEARCH_QUOTE_PREFLIGHT_WAIT_SECONDS = 4.0
+    RESEARCH_QUOTE_PREFLIGHT_POLL_SECONDS = 0.5
 
     def __init__(self, container: "DependencyContainer"):
         self.container = container
@@ -52,24 +75,25 @@ class AgentArtifactService:
         self._decision_cache: Dict[str, DecisionEnvelope] = {}
         self._review_cache: Dict[str, ReviewEnvelope] = {}
         self._research_cache: Dict[str, Dict[str, ResearchPacket]] = {}
+        self.discovery_candidate_max_age = timedelta(hours=36)
 
     @staticmethod
     def _claude_usage_exhausted(claude_status: Any) -> bool:
-        """Return whether Claude is authenticated but temporarily usage-limited."""
+        """Return whether the active runtime is authenticated but temporarily usage-limited."""
         rate_limit_info = getattr(claude_status, "rate_limit_info", {}) or {}
         return rate_limit_info.get("status") == "exhausted"
 
     @staticmethod
     def _claude_blockers(claude_status: Any, *, action: str) -> List[str]:
-        """Build a truthful blocker message for Claude-dependent workflows."""
+        """Build a truthful blocker message for runtime-dependent workflows."""
         rate_limit_info = getattr(claude_status, "rate_limit_info", {}) or {}
         if rate_limit_info.get("status") == "exhausted":
-            message = rate_limit_info.get("message") or "Claude usage is temporarily exhausted."
-            return [f"Claude runtime is usage-limited for {action}. {message}"]
-        return [f"Claude runtime is not ready for {action}."]
+            message = rate_limit_info.get("message") or "AI runtime usage is temporarily exhausted."
+            return [f"AI runtime is usage-limited for {action}. {message}"]
+        return [f"AI runtime is not ready for {action}."]
 
     async def get_discovery_view(self, account_id: str, limit: int = 10) -> DiscoveryEnvelope:
-        """Return watchlist-backed discovery candidates without inflating Claude context."""
+        """Return watchlist-backed discovery candidates without inflating runtime context."""
         account_manager = await self.container.get("paper_trading_account_manager")
         account = await account_manager.get_account(account_id)
         if account is None:
@@ -86,7 +110,7 @@ class AgentArtifactService:
             logger.warning("Stock discovery service unavailable: %s", exc)
             return DiscoveryEnvelope(
                 status="blocked",
-                context_mode="watchlist_only",
+                context_mode="stateful_watchlist",
                 blockers=["Stock discovery service is unavailable."],
                 artifact_count=0,
                 candidates=[],
@@ -101,40 +125,108 @@ class AgentArtifactService:
             symbol = item.get("symbol")
             if not symbol or symbol in held_symbols:
                 continue
-            confidence = float(item.get("confidence_score") or 0.0)
-            recommendation = str(item.get("recommendation") or "WATCH").upper()
-            if recommendation in {"BUY", "ACCUMULATE"}:
-                priority = "high"
-            elif confidence >= 0.6:
-                priority = "medium"
-            else:
-                priority = "low"
+            if not self._is_current_discovery_candidate(item):
+                continue
+            candidate = self._build_discovery_candidate(item)
+            if candidate is None:
+                continue
+            candidates.append(candidate)
 
-            candidates.append(
-                Candidate(
-                    candidate_id=str(item.get("id") or uuid.uuid4()),
-                    symbol=symbol,
-                    company_name=item.get("company_name"),
-                    sector=item.get("sector"),
-                    source=str(item.get("discovery_source") or "watchlist"),
-                    priority=priority,
-                    confidence=max(0.0, min(confidence, 1.0)),
-                    rationale=str(item.get("discovery_reason") or item.get("recommendation") or "Discovery watchlist candidate"),
-                    next_step="Open a focused research packet before making any trade decision.",
-                    generated_at=str(item.get("updated_at") or item.get("created_at") or self._utc_now()),
-                )
+        candidates.sort(
+            key=lambda candidate: (
+                {"high": 0, "medium": 1, "low": 2}.get(candidate.priority, 3),
+                -candidate.confidence,
+                candidate.symbol,
             )
-
+        )
+        promotable_count = sum(
+            1 for candidate in candidates if candidate.confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE
+        )
         status = "ready" if candidates else "empty"
-        blockers = [] if candidates else ["No active discovery candidates are available in the watchlist."]
+        blockers = [] if candidates else ["No active discovery candidates cleared the confidence threshold in the watchlist."]
+        if candidates and promotable_count == 0:
+            blockers.append(
+                "Discovery candidates remain below the research promotion confidence threshold; refresh discovery before spending research budget automatically."
+            )
 
         return DiscoveryEnvelope(
             status=status,
-            context_mode="watchlist_only",
+            context_mode="stateful_watchlist",
             blockers=blockers,
             artifact_count=len(candidates),
             candidates=candidates[:limit],
         )
+
+    def _build_discovery_candidate(self, item: Dict[str, Any]) -> Optional[Candidate]:
+        confidence = self._clamp_confidence(item.get("confidence_score"))
+        if confidence < self.DISCOVERY_MIN_CONFIDENCE:
+            return None
+
+        recommendation = str(item.get("recommendation") or "WATCH").upper()
+        if recommendation in {"BUY", "ACCUMULATE"} or confidence >= 0.75:
+            priority = "high"
+        elif confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE:
+            priority = "medium"
+        else:
+            priority = "low"
+
+        promotable = confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE
+        next_step = (
+            "Open a focused research packet before making any trade decision."
+            if promotable
+            else "Refresh discovery evidence before promoting this symbol into focused research."
+        )
+        return Candidate(
+            candidate_id=str(item.get("id") or uuid.uuid4()),
+            symbol=str(item.get("symbol") or "").upper(),
+            company_name=item.get("company_name"),
+            sector=item.get("sector"),
+            source=str(item.get("discovery_source") or "watchlist"),
+            priority=priority,
+            confidence=confidence,
+            rationale=str(
+                item.get("discovery_reason") or item.get("recommendation") or "Discovery watchlist candidate"
+            ),
+            next_step=next_step,
+            generated_at=str(item.get("updated_at") or item.get("created_at") or self._utc_now()),
+        )
+
+    def _is_current_discovery_candidate(self, item: Dict[str, Any]) -> bool:
+        """Reject watchlist rows that are too old to count as current discovery output."""
+        timestamp = (
+            item.get("last_analyzed")
+            or item.get("updated_at")
+            or item.get("discovery_date")
+            or item.get("created_at")
+        )
+        if timestamp is None:
+            return True
+        parsed = self._parse_timestamp(timestamp)
+        if parsed is None:
+            return True
+        return datetime.now(timezone.utc) - parsed <= self.discovery_candidate_max_age
+
+    @staticmethod
+    def _parse_timestamp(value: Any) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            text = str(value).strip()
+            if not text:
+                return None
+            if len(text) == 10:
+                text = f"{text}T00:00:00+00:00"
+            elif text.endswith("Z"):
+                text = f"{text[:-1]}+00:00"
+            try:
+                parsed = datetime.fromisoformat(text)
+            except ValueError:
+                return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     async def get_research_view(
         self,
@@ -164,15 +256,53 @@ class AgentArtifactService:
                     context_mode="single_candidate_research",
                     blockers=[],
                     artifact_count=1,
+                    provider_metadata=cached.provider_metadata or {},
                     research=cached,
+                )
+
+        discovery: Optional[DiscoveryEnvelope] = None
+        candidate: Optional[Candidate] = None
+        if refresh:
+            discovery = await self.get_discovery_view(account_id, limit=limit)
+            candidate = self._resolve_research_candidate(
+                discovery=discovery,
+                candidate_id=candidate_id,
+                symbol=symbol,
+            )
+            logger.info(
+                "Focused research requested for account=%s candidate_id=%s symbol=%s resolved_symbol=%s",
+                account_id,
+                candidate_id,
+                symbol,
+                getattr(candidate, "symbol", None),
+            )
+            if candidate is None:
+                blockers = (
+                    discovery.blockers
+                    if discovery.status == "blocked"
+                    else ["No discovery candidate is available for focused research."]
+                )
+                return ResearchEnvelope(
+                    status="blocked" if discovery.status == "blocked" else "empty",
+                    context_mode="single_candidate_research",
+                    blockers=blockers,
+                    artifact_count=0,
+                    research=None,
                 )
 
         claude_status = await get_claude_status()
         if not claude_status.is_valid or self._claude_usage_exhausted(claude_status):
+            blocker = self._claude_blockers(claude_status, action="research generation")[0]
+            if refresh and candidate is not None:
+                await self._record_failed_research_attempt(
+                    account_id=account_id,
+                    candidate=candidate,
+                    blocker=blocker,
+                )
             return ResearchEnvelope(
                 status="blocked",
                 context_mode="single_candidate_research",
-                blockers=self._claude_blockers(claude_status, action="research generation"),
+                blockers=[blocker],
                 artifact_count=0,
                 research=None,
             )
@@ -186,33 +316,6 @@ class AgentArtifactService:
                 research=None,
             )
 
-        discovery = await self.get_discovery_view(account_id, limit=limit)
-        candidate = self._resolve_research_candidate(
-            discovery=discovery,
-            candidate_id=candidate_id,
-            symbol=symbol,
-        )
-        logger.info(
-            "Focused research requested for account=%s candidate_id=%s symbol=%s resolved_symbol=%s",
-            account_id,
-            candidate_id,
-            symbol,
-            getattr(candidate, "symbol", None),
-        )
-        if candidate is None:
-            blockers = (
-                discovery.blockers
-                if discovery.status == "blocked"
-                else ["No discovery candidate is available for focused research."]
-            )
-            return ResearchEnvelope(
-                status="blocked" if discovery.status == "blocked" else "empty",
-                context_mode="single_candidate_research",
-                blockers=blockers,
-                artifact_count=0,
-                research=None,
-            )
-
         snapshot = await self._build_prompt_context(account_id, positions_limit=3, trades_limit=4)
         try:
             learning_service = await self.container.get("paper_trading_learning_service")
@@ -220,11 +323,17 @@ class AgentArtifactService:
         except Exception:
             learning_service = None
             symbol_learning = {}
+        runtime_inputs = await self._collect_focused_research_runtime_inputs(
+            symbol=candidate.symbol,
+            company_name=candidate.company_name,
+        )
         research_inputs = await self._build_focused_research_inputs(
             account_id=account_id,
             candidate=candidate,
             snapshot=snapshot,
             symbol_learning=symbol_learning,
+            external_research=runtime_inputs["external_research"],
+            market_context=runtime_inputs["market_context"],
         )
         logger.info(
             "Focused research inputs prepared for account=%s symbol=%s with %s sources",
@@ -232,19 +341,13 @@ class AgentArtifactService:
             candidate.symbol,
             len(research_inputs.get("source_summary", [])),
         )
-        serialized_context = json.dumps(
-            {
-                "candidate": candidate.model_dump(mode="json"),
-                "account_summary": snapshot.account_summary,
-                "capability_summary": snapshot.capability_summary,
-                "learning_summary": snapshot.learning_summary,
-                "improvement_report": snapshot.improvement_report,
-                "symbol_learning": symbol_learning,
-                "open_positions": snapshot.positions,
-                "recent_trades": snapshot.recent_trades,
-                "focused_research_inputs": research_inputs,
-            },
-            indent=2,
+        serialized_context = self.context_builder.serialize_for_prompt(
+            self._compact_research_context(
+                candidate=candidate,
+                snapshot=snapshot,
+                symbol_learning=symbol_learning,
+                research_inputs=research_inputs,
+            )
         )
         prompt = (
             "Create a focused research packet for a single swing-trading candidate.\n"
@@ -258,7 +361,7 @@ class AgentArtifactService:
         )
 
         try:
-            research = await self._run_structured_role(
+            research_draft, provider_metadata = await self._run_structured_role(
                 client_type=f"agent_research_{account_id}",
                 role_name="research",
                 system_prompt=(
@@ -266,31 +369,50 @@ class AgentArtifactService:
                     "Produce a single-candidate research packet with explicit evidence and clear invalidation."
                 ),
                 prompt=prompt,
-                output_model=ResearchPacket,
+                output_model=FocusedResearchDraft,
                 allowed_tools=[],
                 session_id=f"research:{account_id}:{candidate.candidate_id}",
                 model="haiku",
                 max_turns=3,
                 max_budget_usd=0.75,
-                timeout_seconds=45.0,
+                timeout_seconds=self.FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS,
             )
         except TradingError as exc:
             usage_limit_message = self._extract_usage_limited_message(str(exc))
             if not usage_limit_message:
-                metadata = getattr(exc.context, "metadata", {}) or {}
-                nested = metadata.get("metadata") if isinstance(metadata, dict) else {}
-                response_text = ""
-                if isinstance(metadata, dict):
-                    response_text = str(metadata.get("response") or metadata.get("error") or "")
-                if not response_text and isinstance(nested, dict):
-                    response_text = str(nested.get("response") or nested.get("error") or "")
+                response_text = self._extract_error_response_text(exc)
                 usage_limit_message = self._extract_usage_limited_message(response_text)
             if usage_limit_message:
                 record_claude_runtime_limit(usage_limit_message)
+                if learning_service is not None:
+                    await self._record_failed_research_attempt(
+                        account_id=account_id,
+                        candidate=candidate,
+                        blocker=f"AI runtime is usage-limited for research generation. {usage_limit_message}",
+                        learning_service=learning_service,
+                        research_inputs=research_inputs,
+                    )
                 return ResearchEnvelope(
                     status="blocked",
                     context_mode="single_candidate_research",
-                    blockers=[f"Claude runtime is usage-limited for research generation. {usage_limit_message}"],
+                    blockers=[f"AI runtime is usage-limited for research generation. {usage_limit_message}"],
+                    artifact_count=0,
+                    research=None,
+                )
+            runtime_blocker = self._build_runtime_blocker(exc, action="research generation")
+            if runtime_blocker:
+                if learning_service is not None:
+                    await self._record_failed_research_attempt(
+                        account_id=account_id,
+                        candidate=candidate,
+                        blocker=runtime_blocker,
+                        learning_service=learning_service,
+                        research_inputs=research_inputs,
+                    )
+                return ResearchEnvelope(
+                    status="blocked",
+                    context_mode="single_candidate_research",
+                    blockers=[runtime_blocker],
                     artifact_count=0,
                     research=None,
                 )
@@ -299,7 +421,23 @@ class AgentArtifactService:
             "Focused research synthesis completed for account=%s symbol=%s actionability=%s",
             account_id,
             candidate.symbol,
-            getattr(research, "actionability", None),
+            getattr(research_draft, "actionability", None),
+        )
+
+        research = ResearchPacket(
+            research_id=f"RESEARCH-{candidate.symbol.upper()}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}",
+            candidate_id=candidate.candidate_id,
+            account_id=account_id,
+            symbol=candidate.symbol,
+            thesis=research_draft.thesis,
+            evidence=research_draft.evidence,
+            risks=research_draft.risks,
+            invalidation=research_draft.invalidation,
+            confidence=research_draft.confidence,
+            thesis_confidence=research_draft.thesis_confidence,
+            actionability=research_draft.actionability,
+            why_now=research_draft.why_now,
+            next_step=research_draft.next_step,
         )
 
         if not research.candidate_id:
@@ -315,10 +453,16 @@ class AgentArtifactService:
             research_inputs=research_inputs,
             capability_summary=snapshot.capability_summary,
         )
+        research.provider_metadata = provider_metadata
 
         self._store_research(account_id, research)
         if learning_service is not None:
-            await learning_service.record_research_packet(account_id, candidate.candidate_id, research)
+            await learning_service.record_research_packet(
+                account_id,
+                candidate.candidate_id,
+                research,
+                sector=candidate.sector,
+            )
 
         blockers = self._derive_research_blockers(
             analysis_mode=research.analysis_mode,
@@ -333,11 +477,63 @@ class AgentArtifactService:
             context_mode="single_candidate_research",
             blockers=blockers,
             artifact_count=1,
+            provider_metadata=provider_metadata,
             research=research,
         )
 
+    async def _record_failed_research_attempt(
+        self,
+        *,
+        account_id: str,
+        candidate: Candidate,
+        blocker: str,
+        learning_service: Optional[Any] = None,
+        research_inputs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Persist a blocked research attempt so the same friction is not rediscovered repeatedly."""
+        if learning_service is None:
+            try:
+                learning_service = await self.container.get("paper_trading_learning_service")
+            except Exception:
+                learning_service = None
+        if learning_service is None:
+            return
+
+        source_summary = list((research_inputs or {}).get("source_summary") or [])
+        evidence_citations = list((research_inputs or {}).get("evidence_citations") or [])
+        market_data_freshness = (research_inputs or {}).get("market_data_freshness") or {}
+        now = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+        failed_research = ResearchPacket(
+            research_id=f"RESEARCH-FAILED-{candidate.symbol.upper()}-{now}",
+            candidate_id=candidate.candidate_id,
+            account_id=account_id,
+            symbol=candidate.symbol,
+            thesis="Focused research was blocked before a trade-ready thesis could be formed.",
+            evidence=[],
+            risks=[blocker],
+            invalidation="Retry only after the blocker clears and fresh evidence is available.",
+            confidence=0.0,
+            screening_confidence=max(0.0, min(candidate.confidence, 1.0)),
+            thesis_confidence=0.0,
+            analysis_mode="insufficient_evidence",
+            actionability="blocked",
+            why_now=str(candidate.rationale or ""),
+            source_summary=source_summary,
+            evidence_citations=evidence_citations,
+            market_data_freshness=market_data_freshness,
+            next_step=f"Do not retry this symbol until the blocker clears: {blocker}",
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+        await learning_service.record_research_packet(
+            account_id,
+            candidate.candidate_id,
+            failed_research,
+            sector=candidate.sector,
+        )
+
     async def get_decision_view(self, account_id: str, limit: int = 3, refresh: bool = False) -> DecisionEnvelope:
-        """Generate compact position-level decision packets via Claude."""
+        """Generate compact position-level decision packets via the active AI runtime."""
         account_manager = await self.container.get("paper_trading_account_manager")
         account = await account_manager.get_account(account_id)
         if account is None:
@@ -380,6 +576,16 @@ class AgentArtifactService:
                 decisions=[],
             )
 
+        stale_position_blocker = self._decision_market_data_blocker(positions)
+        if stale_position_blocker:
+            return DecisionEnvelope(
+                status="blocked",
+                context_mode="delta_position_review",
+                blockers=[stale_position_blocker],
+                artifact_count=0,
+                decisions=[],
+            )
+
         snapshot = await self._build_prompt_context(account_id, positions_limit=limit, trades_limit=6)
         serialized_context = self.context_builder.serialize_with_delta(
             f"decision:{account_id}",
@@ -394,7 +600,7 @@ class AgentArtifactService:
             f"Context:\n{serialized_context}"
         )
 
-        response = await self._run_structured_role(
+        response, provider_metadata = await self._run_structured_role(
             client_type=f"agent_decision_{account_id}",
             role_name="decision",
             system_prompt=(
@@ -406,19 +612,41 @@ class AgentArtifactService:
             allowed_tools=[],
             session_id=f"decision:{account_id}",
         )
+        decisions, confidence_blockers, ready_decision_count = self._finalize_decision_packets(
+            response.decisions,
+            positions=positions,
+        )
 
         envelope = DecisionEnvelope(
-            status="ready" if response.decisions else "empty",
+            status=(
+                "ready"
+                if decisions and ready_decision_count > 0
+                else "blocked"
+                if decisions
+                else "empty"
+            ),
             context_mode="delta_position_review",
-            blockers=[] if response.decisions else ["Claude returned no decision packets."],
-            artifact_count=len(response.decisions),
-            decisions=response.decisions,
+            blockers=confidence_blockers if decisions else ["AI runtime returned no decision packets."],
+            artifact_count=len(decisions),
+            provider_metadata=provider_metadata,
+            decisions=decisions,
         )
+        try:
+            learning_service = await self.container.get("paper_trading_learning_service")
+        except Exception:
+            learning_service = None
+        if learning_service is not None:
+            for decision in decisions:
+                await learning_service.record_decision_packet(
+                    account_id,
+                    decision,
+                    provider_metadata=provider_metadata,
+                )
         self._decision_cache[account_id] = envelope
         return envelope
 
     async def get_review_view(self, account_id: str, refresh: bool = False) -> ReviewEnvelope:
-        """Generate a compact end-of-day style review report via Claude."""
+        """Generate a compact end-of-day style review report via the active AI runtime."""
         account_manager = await self.container.get("paper_trading_account_manager")
         account = await account_manager.get_account(account_id)
         if account is None:
@@ -473,7 +701,7 @@ class AgentArtifactService:
             f"Context:\n{serialized_context}"
         )
 
-        review = await self._run_structured_role(
+        review, provider_metadata = await self._run_structured_role(
             client_type=f"agent_review_{account_id}",
             role_name="review",
             system_prompt=(
@@ -486,14 +714,29 @@ class AgentArtifactService:
             session_id=f"review:{account_id}",
         )
         review.strategy_proposals = self._deterministic_strategy_proposals(snapshot.improvement_report)
+        review, review_blockers = self._finalize_review_report(
+            review,
+            snapshot=snapshot,
+        )
 
         envelope = ReviewEnvelope(
             status="ready",
             context_mode="delta_daily_review",
-            blockers=[],
+            blockers=review_blockers,
             artifact_count=1,
+            provider_metadata=provider_metadata,
             review=review,
         )
+        try:
+            learning_service = await self.container.get("paper_trading_learning_service")
+        except Exception:
+            learning_service = None
+        if learning_service is not None:
+            await learning_service.record_review_report(
+                account_id,
+                review,
+                provider_metadata=provider_metadata,
+            )
         self._review_cache[account_id] = envelope
         return envelope
 
@@ -504,15 +747,17 @@ class AgentArtifactService:
         candidate: Candidate,
         snapshot: AgentPromptContext,
         symbol_learning: Dict[str, Any],
+        external_research: Optional[Dict[str, Any]] = None,
+        market_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         symbol = candidate.symbol.upper()
         watchlist_entry = await self._load_watchlist_entry(symbol)
         research_ledger = await self._load_research_ledger_entry(symbol)
-        external_research = await self._load_fresh_external_research(
+        external_research = external_research or await self._load_fresh_external_research(
             symbol,
             company_name=candidate.company_name,
         )
-        market_context = await self._load_market_context(symbol)
+        market_context = market_context or await self._load_market_context(symbol)
 
         stored_summary = self._parse_json_blob((watchlist_entry or {}).get("research_summary")) or {}
         if not isinstance(stored_summary, dict):
@@ -568,6 +813,7 @@ class AgentArtifactService:
 
         stored_external_research = (
             stored_summary.get("external_research")
+            or stored_summary.get("codex_web_research")
             or stored_summary.get("claude_web_research")
             or stored_summary.get("perplexity")
         )
@@ -647,6 +893,24 @@ class AgentArtifactService:
             "market_data_freshness": market_freshness.model_dump(mode="json"),
         }
 
+    async def _collect_focused_research_runtime_inputs(
+        self,
+        *,
+        symbol: str,
+        company_name: Optional[str] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        external_research, market_context = await asyncio.gather(
+            self._load_bounded_external_research(
+                symbol,
+                company_name=company_name,
+            ),
+            self._load_bounded_market_context(symbol),
+        )
+        return {
+            "external_research": external_research,
+            "market_context": market_context,
+        }
+
     async def _load_watchlist_entry(self, symbol: str) -> Dict[str, Any]:
         try:
             state_manager = await self.container.get("state_manager")
@@ -670,15 +934,15 @@ class AgentArtifactService:
         *,
         company_name: Optional[str] = None,
     ) -> Dict[str, Any]:
-        logger.info("Starting Claude web research for symbol=%s", symbol)
+        logger.info("Starting AI runtime web research for symbol=%s", symbol)
         try:
-            market_research_service = await self.container.get("claude_market_research_service")
+            market_research_service = await self.container.get("ai_market_research_service")
             result = await market_research_service.collect_symbol_research(
                 symbol,
                 company_name=company_name,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.debug("Claude web research unavailable for %s: %s", symbol, exc)
+            logger.debug("AI runtime web research unavailable for %s: %s", symbol, exc)
             return {
                 "research_timestamp": "",
                 "summary": "",
@@ -691,26 +955,103 @@ class AgentArtifactService:
                 "risks": [],
                 "source_summary": [],
                 "evidence_citations": [],
-                "errors": ["Fresh Claude web research is unavailable right now."],
+                "errors": ["Fresh AI runtime web research is unavailable right now."],
             }
         logger.info(
-            "Claude web research completed for symbol=%s with %s evidence items and %s citations",
+            "AI runtime web research completed for symbol=%s with %s evidence items and %s citations",
             symbol,
             len(result.get("evidence", [])),
             len(result.get("evidence_citations", [])),
         )
         return result
 
+    async def _load_bounded_external_research(
+        self,
+        symbol: str,
+        *,
+        company_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        try:
+            return await asyncio.wait_for(
+                self._load_fresh_external_research(
+                    symbol,
+                    company_name=company_name,
+                ),
+                timeout=self.FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "Timed out fetching fresh external research for symbol=%s after %.1fs",
+                symbol,
+                self.FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS,
+            )
+            return {
+                "research_timestamp": "",
+                "summary": "",
+                "research_summary": "",
+                "news": "",
+                "financial_data": "",
+                "filings": "",
+                "market_context": "",
+                "evidence": [],
+                "risks": [],
+                "source_summary": [],
+                "evidence_citations": [],
+                "errors": [f"Codex runtime timed out after {self.FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS:.1f}s."],
+            }
+
+    async def _load_bounded_market_context(self, symbol: str) -> Dict[str, Any]:
+        try:
+            return await asyncio.wait_for(
+                self._load_market_context(symbol),
+                timeout=self.FOCUSED_RESEARCH_MARKET_CONTEXT_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "Timed out loading market context for symbol=%s after %.1fs",
+                symbol,
+                self.FOCUSED_RESEARCH_MARKET_CONTEXT_TIMEOUT_SECONDS,
+            )
+            return {
+                "market_data": {},
+                "market_data_freshness": {
+                    "status": "missing",
+                    "summary": (
+                        "Live market quote preflight exceeded the bounded research budget; "
+                        "current price confirmation is unavailable."
+                    ),
+                    "timestamp": "",
+                    "age_seconds": None,
+                    "provider": "",
+                    "has_intraday_quote": False,
+                    "has_historical_data": False,
+                },
+                "technical_state": {},
+                "historical_data": [],
+            }
+
     async def _load_market_context(self, symbol: str) -> Dict[str, Any]:
         market_data = None
         historical_data: List[Dict[str, Any]] = []
         kite_service = None
+        market_data_service = None
 
         try:
             market_data_service = await self.container.get("market_data_service")
             market_data = await market_data_service.get_market_data(symbol)
         except Exception as exc:
             logger.debug("Market data unavailable for %s: %s", symbol, exc)
+
+        if market_data_service is not None and self._needs_fresh_quote(market_data):
+            try:
+                prefetched_market_data = await self._prime_research_market_data_subscription(
+                    symbol,
+                    market_data_service,
+                )
+                if prefetched_market_data is not None:
+                    market_data = prefetched_market_data
+            except Exception as exc:
+                logger.debug("Research quote preflight unavailable for %s: %s", symbol, exc)
 
         try:
             kite_service = await self.container.get("kite_connect_service")
@@ -756,6 +1097,28 @@ class AgentArtifactService:
             return True
         age_seconds = AgentArtifactService._age_seconds(getattr(market_data, "timestamp", ""))
         return age_seconds is None or age_seconds > 15 * 60
+
+    async def _prime_research_market_data_subscription(
+        self,
+        symbol: str,
+        market_data_service: Any,
+    ) -> Optional[MarketData]:
+        subscribe = getattr(market_data_service, "subscribe_market_data", None)
+        get_market_data = getattr(market_data_service, "get_market_data", None)
+        if subscribe is None or get_market_data is None:
+            return None
+
+        await subscribe(symbol)
+        deadline = asyncio.get_running_loop().time() + self.RESEARCH_QUOTE_PREFLIGHT_WAIT_SECONDS
+        latest_market_data: Optional[MarketData] = None
+
+        while True:
+            latest_market_data = await get_market_data(symbol)
+            if not self._needs_fresh_quote(latest_market_data):
+                return latest_market_data
+            if asyncio.get_running_loop().time() >= deadline:
+                return latest_market_data
+            await asyncio.sleep(self.RESEARCH_QUOTE_PREFLIGHT_POLL_SECONDS)
 
     @staticmethod
     def _market_data_from_quote(symbol: str, quote: Any) -> MarketData:
@@ -828,6 +1191,7 @@ class AgentArtifactService:
                     source_type=source.source_type,
                     label=source.label,
                     reference=reference,
+                    tier=source.tier,
                     freshness=source.freshness,
                     timestamp=source.timestamp,
                 )
@@ -838,6 +1202,7 @@ class AgentArtifactService:
                     source_type="candidate",
                     label="Discovery candidate",
                     reference=candidate.candidate_id,
+                    tier="derived",
                     freshness="unknown",
                     timestamp=candidate.generated_at,
                 )
@@ -892,7 +1257,11 @@ class AgentArtifactService:
 
         blockers.extend(external_errors[:2])
         for blocker in capability_blockers:
-            if "market data" in blocker.lower() and blocker not in blockers:
+            if (
+                "market data" in blocker.lower()
+                and market_data_freshness.status in {"stale", "missing", "unknown"}
+                and blocker not in blockers
+            ):
                 blockers.append(blocker)
         return blockers
 
@@ -914,6 +1283,7 @@ class AgentArtifactService:
             for item in (research.source_summary or [])
         ]
         source_summary = self._merge_source_summary(local_source_summary, model_source_summary)
+        source_summary = self._enforce_source_tiers(source_summary)
 
         local_evidence_citations = [
             ResearchEvidenceCitation.model_validate(item)
@@ -927,8 +1297,14 @@ class AgentArtifactService:
             local_evidence_citations,
             model_evidence_citations,
         )
+        evidence_citations = self._enforce_citation_tiers(evidence_citations)
         market_data_freshness = MarketDataFreshness.model_validate(
             research_inputs.get("market_data_freshness") or {}
+        )
+        external_evidence_status = self._derive_external_evidence_status(
+            source_summary=source_summary,
+            evidence_citations=evidence_citations,
+            external_errors=(research_inputs.get("fresh_external_research") or {}).get("errors", []),
         )
         analysis_mode = self._derive_analysis_mode(
             source_summary=source_summary,
@@ -951,8 +1327,16 @@ class AgentArtifactService:
             thesis_confidence = min(thesis_confidence, 0.62)
         elif analysis_mode == "insufficient_evidence":
             thesis_confidence = min(thesis_confidence, 0.35)
+        if external_evidence_status == "partial":
+            thesis_confidence = min(thesis_confidence, 0.55)
+        elif external_evidence_status == "missing":
+            thesis_confidence = min(thesis_confidence, 0.35)
         if fresh_source_count < 2:
             thesis_confidence = min(thesis_confidence, 0.58)
+        if not any(item.tier == "primary" for item in source_summary if self._source_type_is_external(item.source_type)):
+            thesis_confidence = min(thesis_confidence, 0.57)
+        if market_data_freshness.status in {"stale", "missing", "unknown"}:
+            thesis_confidence = min(thesis_confidence, 0.49)
         thesis_confidence = round(max(0.0, min(thesis_confidence, 1.0)), 2)
 
         research_blockers = self._derive_research_blockers(
@@ -966,7 +1350,7 @@ class AgentArtifactService:
         deterministic_actionability = "actionable"
         if analysis_mode == "insufficient_evidence":
             deterministic_actionability = "blocked"
-        elif thesis_confidence < 0.55 or research_blockers:
+        elif thesis_confidence < self.RESEARCH_ACTIONABLE_CONFIDENCE or research_blockers:
             deterministic_actionability = "watch_only"
 
         if research.actionability == "blocked":
@@ -980,6 +1364,7 @@ class AgentArtifactService:
         research.screening_confidence = screening_confidence
         research.thesis_confidence = thesis_confidence
         research.confidence = thesis_confidence
+        research.external_evidence_status = external_evidence_status
         research.source_summary = source_summary
         research.evidence_citations = evidence_citations
         research.market_data_freshness = market_data_freshness
@@ -1007,6 +1392,7 @@ class AgentArtifactService:
             return False
         if normalized in {
             "stored_external_research",
+            "codex_web_research",
             "claude_web_news",
             "claude_web_fundamentals",
             "exchange_disclosure",
@@ -1015,7 +1401,67 @@ class AgentArtifactService:
             "reputable_financial_news",
         }:
             return True
-        return normalized.startswith("claude_web_")
+        return normalized.startswith("claude_web_") or normalized.startswith("codex_web_")
+
+    @staticmethod
+    def _source_tier_for_type(source_type: str) -> str:
+        normalized = (source_type or "").strip().lower()
+        if normalized in {"exchange_disclosure", "company_filing", "company_ir"}:
+            return "primary"
+        if normalized in {"reputable_financial_news", "claude_web_news", "codex_web_research"}:
+            return "secondary"
+        return "derived"
+
+    @classmethod
+    def _enforce_source_tiers(
+        cls,
+        items: List[ResearchSourceSummary],
+    ) -> List[ResearchSourceSummary]:
+        normalized: List[ResearchSourceSummary] = []
+        for item in items:
+            inferred_tier = cls._source_tier_for_type(item.source_type)
+            normalized.append(
+                item.model_copy(
+                    update={
+                        "tier": inferred_tier if item.tier == "derived" and inferred_tier != "derived" else item.tier
+                    }
+                )
+            )
+        return normalized
+
+    @classmethod
+    def _enforce_citation_tiers(
+        cls,
+        items: List[ResearchEvidenceCitation],
+    ) -> List[ResearchEvidenceCitation]:
+        normalized: List[ResearchEvidenceCitation] = []
+        for item in items:
+            inferred_tier = cls._source_tier_for_type(item.source_type)
+            normalized.append(
+                item.model_copy(
+                    update={
+                        "tier": inferred_tier if item.tier == "derived" and inferred_tier != "derived" else item.tier
+                    }
+                )
+            )
+        return normalized
+
+    @classmethod
+    def _derive_external_evidence_status(
+        cls,
+        *,
+        source_summary: List[ResearchSourceSummary],
+        evidence_citations: List[ResearchEvidenceCitation],
+        external_errors: List[str],
+    ) -> str:
+        external_sources = [item for item in source_summary if cls._source_type_is_external(item.source_type)]
+        if not external_sources and not evidence_citations:
+            return "missing"
+        if external_errors:
+            return "partial"
+        if any(item.freshness == "fresh" for item in external_sources):
+            return "fresh"
+        return "partial"
 
     @staticmethod
     def _merge_source_summary(
@@ -1065,8 +1511,184 @@ class AgentArtifactService:
             or "spending cap reached" in lowered
             or "spending cap" in lowered
         ):
-            return (raw_text or "").strip() or "Claude usage is temporarily exhausted."
+            return (raw_text or "").strip() or "AI runtime usage is temporarily exhausted."
         return ""
+
+    @staticmethod
+    def _extract_error_response_text(exc: TradingError) -> str:
+        metadata = getattr(exc.context, "metadata", {}) or {}
+        nested = metadata.get("metadata") if isinstance(metadata, dict) else {}
+        response_text = ""
+        if isinstance(metadata, dict):
+            response_text = str(metadata.get("response") or metadata.get("error") or metadata.get("provider_error") or "")
+        if not response_text and isinstance(nested, dict):
+            response_text = str(
+                nested.get("response")
+                or nested.get("error")
+                or nested.get("provider_error")
+                or ""
+            )
+        return response_text
+
+    @classmethod
+    def _build_runtime_blocker(cls, exc: TradingError, *, action: str) -> str:
+        metadata = getattr(exc.context, "metadata", {}) or {}
+        nested = metadata.get("metadata") if isinstance(metadata, dict) else {}
+        runtime_state = ""
+        if isinstance(metadata, dict):
+            runtime_state = str(metadata.get("runtime_state") or "")
+        if not runtime_state and isinstance(nested, dict):
+            runtime_state = str(nested.get("runtime_state") or "")
+
+        response_text = cls._extract_error_response_text(exc) or str(exc)
+        lowered = response_text.lower()
+        if runtime_state == "timed_out" or "timed out" in lowered or "timeout" in lowered:
+            return f"AI runtime timed out during {action}. {response_text.strip()}"
+        if runtime_state == "unavailable" or "runtime is unavailable" in lowered or "couldn't connect" in lowered:
+            return f"AI runtime is currently unavailable for {action}. {response_text.strip()}"
+        return ""
+
+    @classmethod
+    def _decision_market_data_blocker(cls, positions: List[Any]) -> str:
+        stale_symbols: List[str] = []
+        for position in positions:
+            price_status = str(getattr(position, "market_price_status", "") or "").strip().lower()
+            if price_status != "live":
+                stale_symbols.append(str(getattr(position, "symbol", "UNKNOWN")))
+                continue
+
+            mark_timestamp = str(getattr(position, "market_price_timestamp", "") or "").strip()
+            mark_age_seconds = cls._age_seconds(mark_timestamp)
+            if mark_age_seconds is None or mark_age_seconds > cls.DECISION_MARK_FRESHNESS_THRESHOLD_SECONDS:
+                stale_symbols.append(str(getattr(position, "symbol", "UNKNOWN")))
+
+        if not stale_symbols:
+            return ""
+
+        affected = ", ".join(sorted(dict.fromkeys(stale_symbols)))
+        return (
+            "Decision generation requires live marks fresher than "
+            f"{cls.DECISION_MARK_FRESHNESS_THRESHOLD_SECONDS}s. "
+            f"Stale or missing marks detected for: {affected}."
+        )
+
+    @staticmethod
+    def _clamp_confidence(value: Any) -> float:
+        try:
+            return round(max(0.0, min(float(value or 0.0), 1.0)), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _finalize_decision_packets(
+        self,
+        decisions: List[DecisionPacket],
+        *,
+        positions: List[Any],
+    ) -> tuple[List[DecisionPacket], List[str], int]:
+        normalized: List[DecisionPacket] = []
+        blockers: List[str] = []
+        position_by_symbol = {
+            str(getattr(position, "symbol", "") or "").upper(): position for position in positions
+        }
+
+        for decision in decisions:
+            symbol = str(decision.symbol or "").upper()
+            decision.symbol = symbol
+            decision.confidence = self._clamp_confidence(decision.confidence)
+            position = position_by_symbol.get(symbol)
+
+            if not decision.next_step:
+                decision.next_step = "Refresh focused research and rerun decision review before changing the position."
+
+            if decision.confidence < self.DECISION_READY_CONFIDENCE:
+                if decision.confidence < self.DECISION_MIN_CONFIDENCE:
+                    decision.action = "review_exit"
+                    decision.next_step = (
+                        "Do not change this position automatically; refresh research and review the exit manually."
+                    )
+                elif decision.action in {"tighten_stop", "take_profit"}:
+                    decision.action = "hold"
+                    decision.next_step = (
+                        "Refresh focused research and rerun decision review before changing stops or taking profit."
+                    )
+
+                blocker = (
+                    f"{symbol}: decision confidence {decision.confidence:.2f} is below the deterministic "
+                    f"promotion threshold of {self.DECISION_READY_CONFIDENCE:.2f}."
+                )
+                blockers.append(blocker)
+                risk_suffix = "Confidence is below the deterministic promotion threshold; operator review is required."
+                if risk_suffix.lower() not in decision.risk_note.lower():
+                    decision.risk_note = (
+                        f"{decision.risk_note} {risk_suffix}".strip()
+                        if decision.risk_note
+                        else risk_suffix
+                    )
+
+            if position is not None:
+                mark_status = str(getattr(position, "market_price_status", "") or "").strip().lower()
+                if mark_status != "live":
+                    blocker = f"{symbol}: live mark quality degraded to '{mark_status}' during decision review."
+                    if blocker not in blockers:
+                        blockers.append(blocker)
+
+            normalized.append(decision)
+
+        ready_decision_count = sum(
+            1 for decision in normalized if decision.confidence >= self.DECISION_READY_CONFIDENCE
+        )
+        if normalized and ready_decision_count == 0:
+            blockers.append("No decision packets cleared the deterministic confidence threshold.")
+
+        deduped_blockers = list(dict.fromkeys(blockers))
+        return normalized, deduped_blockers, ready_decision_count
+
+    def _finalize_review_report(
+        self,
+        review: ReviewReport,
+        *,
+        snapshot: AgentPromptContext,
+    ) -> tuple[ReviewReport, List[str]]:
+        confidence = self._derive_review_confidence(snapshot=snapshot, review=review)
+        review.confidence = confidence
+
+        blockers: List[str] = []
+        if confidence < self.REVIEW_READY_CONFIDENCE:
+            blocker = (
+                "Daily review confidence is below the promotion threshold; treat this review as observational until more realized outcomes accumulate."
+            )
+            blockers.append(blocker)
+            if blocker not in review.risk_flags:
+                review.risk_flags.append(blocker)
+
+        return review, blockers
+
+    def _derive_review_confidence(
+        self,
+        *,
+        snapshot: AgentPromptContext,
+        review: ReviewReport,
+    ) -> float:
+        confidence = 0.35
+        if snapshot.positions:
+            confidence += 0.15
+        if snapshot.recent_trades:
+            confidence += 0.20
+        if (snapshot.learning_summary or {}).get("total_evaluations", 0):
+            confidence += 0.10
+        if review.top_lessons:
+            confidence += 0.10
+        if review.strengths or review.weaknesses or review.risk_flags:
+            confidence += 0.05
+        if review.strategy_proposals:
+            confidence += 0.05
+
+        if not snapshot.recent_trades:
+            confidence = min(confidence, 0.58)
+        elif len(snapshot.recent_trades) == 1:
+            confidence = min(confidence, 0.67)
+
+        return self._clamp_confidence(confidence)
 
     @staticmethod
     def _build_market_data_freshness(
@@ -1262,6 +1884,105 @@ class AgentArtifactService:
         )
 
     @staticmethod
+    def _compact_learning_summary(learning_summary: Dict[str, Any]) -> Dict[str, Any]:
+        if not learning_summary:
+            return {}
+        return {
+            "total_evaluations": learning_summary.get("total_evaluations", 0),
+            "wins": learning_summary.get("wins", 0),
+            "losses": learning_summary.get("losses", 0),
+            "flats": learning_summary.get("flats", 0),
+            "average_pnl_percentage": learning_summary.get("average_pnl_percentage", 0.0),
+            "top_lessons": list(learning_summary.get("top_lessons") or [])[:3],
+            "improvement_focus": list(learning_summary.get("improvement_focus") or [])[:3],
+        }
+
+    @staticmethod
+    def _compact_improvement_report(improvement_report: Dict[str, Any]) -> Dict[str, Any]:
+        if not improvement_report:
+            return {}
+
+        def _compact_proposal(item: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "proposal_id": item.get("proposal_id", ""),
+                "title": item.get("title", ""),
+                "decision": item.get("decision", ""),
+                "summary": item.get("summary", ""),
+                "guardrail": item.get("guardrail", ""),
+                "net_benefit_amount": item.get("net_benefit_amount", 0.0),
+                "candidate_win_rate": item.get("candidate_win_rate", 0.0),
+            }
+
+        promotable = [
+            _compact_proposal(item)
+            for item in list(improvement_report.get("promotable_proposals") or [])[:2]
+            if isinstance(item, dict)
+        ]
+        watch = [
+            _compact_proposal(item)
+            for item in list(improvement_report.get("watch_proposals") or [])[:2]
+            if isinstance(item, dict)
+        ]
+        return {
+            "baseline_trade_count": improvement_report.get("baseline_trade_count", 0),
+            "evaluated_trade_count": improvement_report.get("evaluated_trade_count", 0),
+            "promotable_proposals": promotable,
+            "watch_proposals": watch,
+        }
+
+    @staticmethod
+    def _compact_symbol_learning(symbol_learning: Dict[str, Any]) -> Dict[str, Any]:
+        if not symbol_learning:
+            return {}
+
+        latest_research = symbol_learning.get("latest_research") or {}
+        compact_latest_research = {}
+        if isinstance(latest_research, dict) and latest_research:
+            compact_latest_research = {
+                "analysis_mode": latest_research.get("analysis_mode", ""),
+                "actionability": latest_research.get("actionability", ""),
+                "thesis": latest_research.get("thesis", ""),
+                "why_now": latest_research.get("why_now", ""),
+                "generated_at": latest_research.get("generated_at") or latest_research.get("created_at") or "",
+            }
+
+        return {
+            "recent_lessons": list(symbol_learning.get("recent_lessons") or [])[:3],
+            "recent_improvements": list(symbol_learning.get("recent_improvements") or [])[:3],
+            "latest_research": compact_latest_research,
+        }
+
+    def _compact_research_context(
+        self,
+        *,
+        candidate: Candidate,
+        snapshot: AgentPromptContext,
+        symbol_learning: Dict[str, Any],
+        research_inputs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return {
+            "candidate": {
+                "candidate_id": candidate.candidate_id,
+                "symbol": candidate.symbol,
+                "company_name": candidate.company_name,
+                "priority": candidate.priority,
+                "source": candidate.source,
+                "confidence": candidate.confidence,
+                "rationale": candidate.rationale,
+                "next_step": candidate.next_step,
+                "generated_at": candidate.generated_at,
+            },
+            "account_summary": snapshot.account_summary,
+            "capability_summary": snapshot.capability_summary,
+            "learning_summary": self._compact_learning_summary(snapshot.learning_summary),
+            "improvement_report": self._compact_improvement_report(snapshot.improvement_report),
+            "symbol_learning": self._compact_symbol_learning(symbol_learning),
+            "open_positions": snapshot.positions[:2],
+            "recent_trades": snapshot.recent_trades[:3],
+            "focused_research_inputs": research_inputs,
+        }
+
+    @staticmethod
     def _deterministic_strategy_proposals(improvement_report: Dict[str, Any]) -> List[StrategyProposal]:
         promotable = improvement_report.get("promotable_proposals", []) if improvement_report else []
         proposals: List[StrategyProposal] = []
@@ -1305,7 +2026,9 @@ class AgentArtifactService:
             )
 
         if discovery.candidates:
-            return discovery.candidates[0]
+            for candidate in discovery.candidates:
+                if candidate.confidence >= AgentArtifactService.DISCOVERY_RESEARCH_READY_CONFIDENCE:
+                    return candidate
 
         return None
 
@@ -1345,91 +2068,111 @@ class AgentArtifactService:
         max_turns: int = 2,
         max_budget_usd: Optional[float] = None,
         timeout_seconds: float = 45.0,
-    ) -> T:
-        manager = await ClaudeSDKClientManager.get_instance()
-        schema = output_model.model_json_schema()
+    ) -> tuple[T, Dict[str, Any]]:
+        del client_type, allowed_tools, max_turns, max_budget_usd
+
+        runtime_client = await self.container.get("codex_runtime_client")
+        runtime_config = self.container.config.ai_runtime
+        schema = _normalize_output_schema(output_model.model_json_schema())
+        selected_model = (
+            model
+            if model and (model.startswith("gpt-") or model.startswith("codex"))
+            else runtime_config.codex_model
+        )
+        reasoning = (
+            runtime_config.codex_reasoning_light
+            if role_name == "research"
+            else runtime_config.codex_reasoning_deep
+            if role_name == "review"
+            else runtime_config.codex_reasoning_light
+        )
         strict_prompt = (
             f"{prompt}\n\n"
             "Return only valid JSON with no markdown, commentary, or code fences.\n"
-            "The JSON must validate against this schema:\n"
-            f"{json.dumps(schema, indent=2)}"
+            "The JSON must match the provided structured output schema exactly."
         )
-        options = ClaudeAgentOptions(
-            allowed_tools=allowed_tools,
-            max_turns=max_turns,
-            max_budget_usd=max_budget_usd,
-            model=model,
-            output_format={"type": "json_schema", "schema": schema},
-            agents={
-                role_name: AgentDefinition(
-                    description=f"{role_name.title()} role for Robo Trader",
-                    prompt=system_prompt,
-                    tools=allowed_tools,
-                    model=model,
-                )
-            },
-            system_prompt=system_prompt,
-        )
-        # Structured artifact runs are short-lived and schema-specific. Reuse across
-        # requests can poison later runs after an SDK session error, so recreate and
-        # clean up the client on every run.
-        client = await manager.get_client(client_type, options, force_recreate=True)
         try:
-            await query_only_with_timeout(client, strict_prompt, timeout=min(timeout_seconds, 30.0))
-            response_parts: List[str] = []
-            async for message in receive_response_with_timeout(client, timeout=timeout_seconds):
-                structured_output = getattr(message, "structured_output", None)
-                if structured_output is not None:
-                    return output_model.model_validate(structured_output)
+            request_payload = {
+                "system_prompt": system_prompt,
+                "prompt": strict_prompt,
+                "output_schema": schema,
+                "model": selected_model,
+                "reasoning": reasoning,
+                "timeout_seconds": timeout_seconds,
+                "working_directory": str(self.container.config.project_dir),
+                "session_id": session_id,
+            }
+            if role_name == "research":
+                response = await runtime_client.run_focused_research(request_payload)
+                payload = response.get("research")
+            elif role_name == "review":
+                response = await runtime_client.run_improvement_review(request_payload)
+                payload = response.get("review")
+            else:
+                response = await runtime_client.run_structured(
+                    system_prompt=system_prompt,
+                    prompt=strict_prompt,
+                    output_schema=schema,
+                    model=selected_model,
+                    reasoning=reasoning,
+                    timeout_seconds=timeout_seconds,
+                    web_search_enabled=False,
+                    network_access_enabled=False,
+                    working_directory=str(self.container.config.project_dir),
+                    session_id=session_id,
+                )
+                payload = response.get("output")
 
-                subtype = getattr(message, "subtype", None)
-                if subtype == "error_max_structured_output_retries":
-                    raise TradingError(
-                        f"{role_name.title()} agent exhausted structured-output retries.",
-                        category=ErrorCategory.SYSTEM,
-                        severity=ErrorSeverity.HIGH,
-                        recoverable=True,
-                    )
-
-                if hasattr(message, "content"):
-                    for content_block in message.content:
-                        if hasattr(content_block, "text"):
-                            response_parts.append(content_block.text)
-                elif getattr(message, "result", None):
-                    response_parts.append(str(message.result))
-
-            response_text = "\n".join(part for part in response_parts if part).strip()
-            usage_limit_message = self._extract_usage_limited_message(response_text)
-            if usage_limit_message:
-                record_claude_runtime_limit(usage_limit_message)
+            return (
+                output_model.model_validate(payload or {}),
+                response.get("provider_metadata") or {},
+            )
+        except CodexRuntimeError as exc:
+            usage_limit_message = self._extract_usage_limited_message(str(exc))
+            if usage_limit_message or exc.usage_limited:
+                limit_message = usage_limit_message or str(exc)
+                record_claude_runtime_limit(limit_message)
                 raise TradingError(
-                    f"Claude runtime is usage-limited. {usage_limit_message}",
+                    f"AI runtime is usage-limited. {limit_message}",
                     category=ErrorCategory.SYSTEM,
                     severity=ErrorSeverity.MEDIUM,
                     recoverable=True,
                     metadata={
                         "rate_limit_info": {
                             "status": "exhausted",
-                            "message": usage_limit_message,
+                            "message": limit_message,
                         }
                     },
-                )
-            try:
-                payload = json.loads(response_text)
-            except json.JSONDecodeError as exc:
-                payload = self._try_parse_embedded_json(response_text)
-                if payload is not None:
-                    return output_model.model_validate(payload)
-                raise TradingError(
-                    f"{role_name.title()} agent did not return valid JSON.",
-                    category=ErrorCategory.SYSTEM,
-                    severity=ErrorSeverity.HIGH,
-                    recoverable=True,
-                    metadata={"response": response_text, "error": str(exc)},
                 ) from exc
-            return output_model.model_validate(payload)
-        finally:
-            await manager.cleanup_client(client_type)
+            if exc.timed_out:
+                raise TradingError(
+                    f"AI runtime timed out during {role_name} generation.",
+                    category=ErrorCategory.SYSTEM,
+                    severity=ErrorSeverity.MEDIUM,
+                    recoverable=True,
+                    metadata={
+                        "runtime_state": "timed_out",
+                        "provider_error": str(exc),
+                    },
+                ) from exc
+            if not exc.authenticated or exc.status_code in {503, 504}:
+                raise TradingError(
+                    f"AI runtime is currently unavailable for {role_name} generation.",
+                    category=ErrorCategory.SYSTEM,
+                    severity=ErrorSeverity.MEDIUM,
+                    recoverable=True,
+                    metadata={
+                        "runtime_state": "unavailable",
+                        "provider_error": str(exc),
+                    },
+                ) from exc
+            raise TradingError(
+                f"{role_name.title()} agent runtime failed: {exc}",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.HIGH,
+                recoverable=True,
+                metadata={"error": str(exc)},
+            ) from exc
 
     @staticmethod
     def _utc_now() -> str:

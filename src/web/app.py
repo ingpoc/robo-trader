@@ -135,7 +135,9 @@ initialization_status = {
     "orchestrator_initialized": False,
     "bootstrap_completed": False,
     "initialization_errors": [],
-    "last_error": None
+    "last_error": None,
+    "runtime_mode": "request_driven",
+    "background_orchestrator": "disabled",
 }
 
 # Event for shutdown coordination
@@ -144,81 +146,6 @@ shutdown_event = asyncio.Event()
 # ============================================================================
 # Helper Functions
 # ============================================================================
-
-async def bootstrap_state(orchestrator, config):
-    """Bootstrap the application state after orchestrator initialization."""
-    try:
-        logger.info("Bootstrap state skipped for faster startup")
-        # Skip all bootstrap operations to prevent hanging during startup
-        # This will be handled by background tasks after server is running
-        return
-    except Exception as exc:
-        logger.warning(f"Bootstrap failed: {exc}")
-        # Don't fail initialization for bootstrap issues
-
-async def initialize_orchestrator(app: FastAPI, config, container, connection_manager):
-    """Initialize orchestrator in background."""
-    try:
-        logger.info("Starting orchestrator initialization...")
-
-        # Get orchestrator from container
-        orchestrator = await container.get_orchestrator()
-        app.state.orchestrator = orchestrator
-
-        await asyncio.wait_for(orchestrator.initialize(), timeout=60.0)
-        logger.info("Orchestrator initialized")
-
-        logger.info("Starting queue execution...")
-        try:
-            queue_coordinator = orchestrator.queue_coordinator
-            if queue_coordinator:
-                await queue_coordinator.start_queues()
-                logger.info("Queue execution started - queues are now processing pending tasks")
-            else:
-                logger.warning("Queue coordinator not available - queues will not start")
-        except Exception as exc:
-            logger.warning(f"Failed to start queues: {exc} - continuing without queue execution")
-
-        logger.info("Wiring WebSocket broadcasting...")
-
-        async def safe_broadcast(data):
-            try:
-                await connection_manager.broadcast(data)
-            except Exception as exc:
-                logger.debug(f"Broadcast failed (likely no active connections): {exc}")
-
-        orchestrator.broadcast_coordinator.set_broadcast_callback(
-            lambda data: asyncio.create_task(safe_broadcast(data))
-        )
-
-        if orchestrator.status_coordinator:
-            orchestrator.status_coordinator.set_connection_manager(connection_manager)
-            orchestrator.status_coordinator.set_container(container)
-            logger.info("Connection manager set on status coordinator")
-
-        logger.info("WebSocket broadcasting wired")
-
-        await orchestrator.start_session()
-        logger.info("Orchestrator session started")
-
-        # Run bootstrap state
-        logger.info("Running bootstrap state...")
-        await bootstrap_state(orchestrator, config)
-        initialization_status["bootstrap_completed"] = True
-        logger.info("Bootstrap state completed successfully")
-
-        initialization_status["orchestrator_initialized"] = True
-        logger.info("Background initialization completed")
-    except asyncio.TimeoutError:
-        error_msg = "Orchestrator initialization timed out"
-        logger.error(error_msg)
-        initialization_status["initialization_errors"].append(error_msg)
-        initialization_status["last_error"] = error_msg
-    except Exception as exc:
-        error_msg = f"Orchestrator initialization failed: {exc}"
-        logger.error(error_msg, exc_info=True)
-        initialization_status["initialization_errors"].append(error_msg)
-        initialization_status["last_error"] = error_msg
 
 # ============================================================================
 # FastAPI Application Setup
@@ -296,11 +223,10 @@ async def lifespan(app: FastAPI):
     initialization_status["bootstrap_completed"] = False
     initialization_status["initialization_errors"] = []
     initialization_status["last_error"] = None
-
-    app.state.orchestrator_init_task = asyncio.create_task(
-        initialize_orchestrator(app, config, container, connection_manager)
-    )
-    logger.info("Background orchestrator initialization task created")
+    initialization_status["runtime_mode"] = "request_driven"
+    initialization_status["background_orchestrator"] = "disabled"
+    app.state.orchestrator_init_task = None
+    logger.info("Background orchestrator startup is disabled; web runtime is request-driven only")
 
     yield
 
@@ -324,12 +250,6 @@ async def lifespan(app: FastAPI):
                 "message": "Server shutting down",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             })
-
-        orchestrator_task = getattr(app.state, "orchestrator_init_task", None)
-        if orchestrator_task and not orchestrator_task.done():
-            orchestrator_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await orchestrator_task
 
         await cleanup_container()
         logger.info("DI container cleanup completed")
@@ -647,7 +567,6 @@ async def root():
         "endpoints": {
             "dashboard": "/api/dashboard",
             "paper_trading": "/api/paper-trading/accounts",
-            "monitoring": "/api/monitoring/status",
             "configuration": "/api/configuration/status",
         }
     }
@@ -658,89 +577,47 @@ async def root():
 
 @app.get("/api/health")
 async def health_check(request: Request) -> Dict[str, Any]:
-    """Health check endpoint to verify system initialization.
-
-    Phase 4 Enhancement: Added timeout protection (2 second limit).
-    Health checks must respond quickly even during long-running tasks.
-    With thread-safe queue executors, health checks no longer block.
-    """
+    """Return a lightweight liveness check without starting background systems."""
     try:
-        # Wrap entire health check in timeout for safety
-        # With non-blocking task execution, this should respond in <100ms
-        # 2 second timeout ensures responsiveness even under high load
-        async def perform_health_check() -> Dict[str, Any]:
-            container = request.app.state.container
-            if not container:
-                return JSONResponse({
-                    "status": "unhealthy",
-                    "error": "Container not initialized",
-                    "initialization_status": initialization_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }, status_code=503)
-
-            # Test orchestrator access (should be instant with new architecture)
-            orchestrator = await container.get_orchestrator()
-            if not orchestrator:
-                return JSONResponse({
-                    "status": "degraded",
-                    "error": "Orchestrator not available",
-                    "initialization_status": initialization_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }, status_code=503)
-
-            # Test state manager access (fast check)
-            if not hasattr(orchestrator, 'state_manager') or not orchestrator.state_manager:
-                return JSONResponse({
-                    "status": "degraded",
-                    "error": "State manager not available",
-                    "initialization_status": initialization_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }, status_code=503)
-
-            # Check initialization status (cached check)
-            if not initialization_status["orchestrator_initialized"]:
-                return JSONResponse({
-                    "status": "degraded",
-                    "error": "Orchestrator initialization incomplete",
-                    "initialization_status": initialization_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }, status_code=503)
-
-            if initialization_status["initialization_errors"]:
-                return JSONResponse({
-                    "status": "degraded",
-                    "error": "Initialization errors detected",
-                    "initialization_status": initialization_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }, status_code=503)
-
-            return {
-                "status": "healthy",
-                "message": "All systems operational",
-                "components": {
-                    "container": "initialized",
-                    "orchestrator": "running",
-                    "state_manager": "available",
-                    "initialization": "complete"
-                },
+        container = request.app.state.container
+        if not container:
+            return JSONResponse({
+                "status": "unhealthy",
+                "error": "Container not initialized",
                 "initialization_status": initialization_status,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }, status_code=503)
 
-        # Execute health check with 2-second timeout
-        # This ensures health checks respond even under extreme load
-        result = await asyncio.wait_for(perform_health_check(), timeout=2.0)
-        return result
+        capability_service = await container.get("trading_capability_service")
+        capability_snapshot = await capability_service.get_snapshot()
+        readiness = {
+            "container": "ready",
+            "ai_runtime": next(
+                (check.to_dict() for check in capability_snapshot.checks if check.key == "ai_runtime"),
+                {"status": "unknown"},
+            ),
+            "quote_stream": next(
+                (check.to_dict() for check in capability_snapshot.checks if check.key == "quote_stream"),
+                {"status": "unknown"},
+            ),
+            "market_data": next(
+                (check.to_dict() for check in capability_snapshot.checks if check.key == "market_data"),
+                {"status": "unknown"},
+            ),
+        }
 
-    except asyncio.TimeoutError:
-        logger.warning("Health check exceeded timeout (2s) - returning degraded status")
-        return JSONResponse({
-            "status": "degraded",
-            "error": "Health check timeout - system may be overloaded",
+        return {
+            "status": "healthy",
+            "message": "API container is initialized.",
+            "components": {
+                "container": "initialized",
+                "background_orchestrator": "disabled",
+                "runtime_mode": "request_driven",
+            },
+            "readiness": readiness,
             "initialization_status": initialization_status,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }, status_code=503)
-
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return JSONResponse({
@@ -775,35 +652,6 @@ async def websocket_endpoint(websocket: WebSocket):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "message": "WebSocket connection established successfully"
         })
-
-        # Broadcast current status to the newly connected client
-        if container:
-            try:
-                logger.info(f"Getting orchestrator for initial status broadcast to client {client_id}")
-                orchestrator = await container.get_orchestrator()
-                if orchestrator:
-                    logger.info(f"Broadcasting system status for client {client_id}")
-                    await orchestrator.get_system_status()  # This broadcasts system health
-                    logger.info(f"Broadcasting Claude status for client {client_id}")
-                    await orchestrator.get_claude_status()  # This broadcasts Claude status
-
-                    # Also broadcast queue status
-                    logger.info(f"Getting queue coordinator for client {client_id}")
-                    queue_coordinator = await container.get('queue_coordinator')
-                    if queue_coordinator:
-                        logger.info(f"Broadcasting queue status for client {client_id}")
-                        await queue_coordinator.get_queue_status()  # This broadcasts queue status
-                        logger.info(f"Queue status broadcast completed for client {client_id}")
-                    else:
-                        logger.warning(f"Queue coordinator not available for client {client_id}")
-
-                    logger.info(f"Broadcast initial status updates to client {client_id}")
-                else:
-                    logger.warning(f"Orchestrator not available for client {client_id}")
-            except Exception as e:
-                logger.error(f"Failed to broadcast initial status to client {client_id}: {e}")
-                import traceback
-                logger.error(f"Broadcast failure traceback: {traceback.format_exc()}")
 
         while True:
             data = await websocket.receive_json()

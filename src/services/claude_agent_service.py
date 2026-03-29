@@ -1,9 +1,10 @@
 """Claude Agent SDK service for autonomous trading sessions."""
 
 import logging
+import os
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from ..core.event_bus import EventHandler, Event, EventType, EventBus
 from ..core.di import DependencyContainer
@@ -15,6 +16,16 @@ from .claude_agent import ClaudeAgentMCPServer
 from src.auth.claude_auth import get_claude_status_cached
 
 logger = logging.getLogger(__name__)
+
+
+def _legacy_event_subscriptions_enabled() -> bool:
+    """Gate legacy Claude event automation behind an explicit opt-in."""
+    return os.getenv("ENABLE_LEGACY_CLAUDE_AGENT_AUTOMATION", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 class ClaudeAgentService(EventHandler):
@@ -57,10 +68,14 @@ class ClaudeAgentService(EventHandler):
             # Get coordinator from container
             self._coordinator = await self.container.get("claude_agent_coordinator")
 
-            # Subscribe to events that trigger sessions
-            self.event_bus.subscribe(EventType.MARKET_OPEN, self)
-            self.event_bus.subscribe(EventType.MARKET_CLOSE, self)
-            self.event_bus.subscribe(EventType.SYSTEM_HEALTH_CHECK, self)
+            if _legacy_event_subscriptions_enabled():
+                # Subscribe to legacy autonomous triggers only when explicitly enabled.
+                self.event_bus.subscribe(EventType.MARKET_OPEN, self)
+                self.event_bus.subscribe(EventType.MARKET_CLOSE, self)
+                self.event_bus.subscribe(EventType.SYSTEM_HEALTH_CHECK, self)
+                logger.info("ClaudeAgentService legacy event automation enabled")
+            else:
+                logger.info("ClaudeAgentService legacy event automation disabled by default")
 
             self._initialized = True
             logger.info("ClaudeAgentService initialized with SDK integration")
@@ -504,10 +519,11 @@ class ClaudeAgentService(EventHandler):
         if self._coordinator and hasattr(self._coordinator, 'cleanup'):
             await self._coordinator.cleanup()
 
-        # Unsubscribe from events
-        self.event_bus.unsubscribe(EventType.MARKET_OPEN)
-        self.event_bus.unsubscribe(EventType.MARKET_CLOSE)
-        self.event_bus.unsubscribe(EventType.SYSTEM_HEALTH_CHECK)
+        # Unsubscribe from events only if this legacy automation path was enabled.
+        if _legacy_event_subscriptions_enabled():
+            self.event_bus.unsubscribe(EventType.MARKET_OPEN)
+            self.event_bus.unsubscribe(EventType.MARKET_CLOSE)
+            self.event_bus.unsubscribe(EventType.SYSTEM_HEALTH_CHECK)
 
         logger.info("ClaudeAgentService closed")
 

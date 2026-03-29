@@ -8,14 +8,14 @@ This repo depends on local tooling and credentials that must be explicit.
 - Governance-critical remote MCP servers are:
   - `notion` -> `https://mcp.notion.com/mcp`
   - `linear` -> `https://mcp.linear.app/mcp`
-- `.env.example` defines repo runtime credentials such as broker and research integrations.
-- Claude auth is expected to come from the local Claude CLI session, not from an `ANTHROPIC_API_KEY` in `.env.example`.
+- `.env.example` defines repo runtime credentials such as broker and runtime integrations.
+- The active paper-trading AI path expects a local Codex runtime sidecar, not a direct Claude SDK session.
 
 ## Baseline Bootstrap
 
 1. Copy `.env.example` to `.env`.
 2. Fill in required repo runtime credentials for the mode you need.
-3. Authenticate Claude CLI with `claude auth`.
+3. Authenticate Codex with `codex login`.
 4. Ensure Codex has the required governance MCP servers configured:
    - `codex mcp add notion --url https://mcp.notion.com/mcp`
    - `codex mcp add linear --url https://mcp.linear.app/mcp`
@@ -23,15 +23,17 @@ This repo depends on local tooling and credentials that must be explicit.
    - `codex mcp login notion`
    - `codex mcp login linear`
 6. Start a new Codex session after adding or authenticating a new MCP server so the tool surface is reloaded.
-7. Start the backend and frontend using the repo's documented commands.
-8. Verify health before depending on UI or automation results.
+7. Start the local Codex runtime sidecar with `./scripts/start_codex_runtime.sh`.
+8. Start the backend and frontend using the repo's documented commands.
+9. Verify health before depending on UI or automation results.
 
 ## Credentials And Auth Expectations
 
-### Claude
+### AI Runtime
 
-- Source: Claude CLI auth session
-- Do not add duplicate Anthropic key instructions to repo docs unless the runtime truly changes
+- Active source: local Codex runtime sidecar plus `codex login`
+- Do not add `ANTHROPIC_API_KEY` instructions for the active paper-trading runtime path on this branch
+- Runtime health should be verified through the local sidecar at `CODEX_RUNTIME_URL`
 
 ### Notion
 
@@ -51,7 +53,7 @@ This repo depends on local tooling and credentials that must be explicit.
 
 ### External research providers
 
-- Active source for paper-trading research and discovery: Claude CLI auth session via Claude Agent SDK
+- Active source for paper-trading research and discovery: local Codex runtime web research
 - Legacy `PERPLEXITY_API_KEYS` env vars may still exist for older modules, but they are no longer required for the primary paper-trading research path
 
 ## Verification Rules
@@ -62,7 +64,7 @@ This repo depends on local tooling and credentials that must be explicit.
 
 ## Failure Modes
 
-- Missing Claude auth: AI features may degrade or fail; do not assume local auth exists on another machine.
+- Missing Codex auth or stopped sidecar: active AI features degrade or fail; do not assume local runtime auth exists on another machine.
 - Missing Notion or Linear OAuth in Codex: governance workflows are blocked; fix the MCP auth path before claiming project management is ready.
 - Missing Zerodha credentials: broker-backed flows remain unavailable; paper trading should remain the default path.
 - Missing Zerodha account context: env tokens may load but session restore and broker-bound market-data flows can still fail.

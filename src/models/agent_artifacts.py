@@ -13,6 +13,8 @@ CandidatePriority = Literal["high", "medium", "low"]
 DecisionAction = Literal["hold", "review_exit", "tighten_stop", "take_profit"]
 ResearchAnalysisMode = Literal["fresh_evidence", "stale_evidence", "insufficient_evidence"]
 ResearchActionability = Literal["actionable", "watch_only", "blocked"]
+ResearchEvidenceTier = Literal["primary", "secondary", "derived"]
+ExternalEvidenceStatus = Literal["fresh", "partial", "missing"]
 
 
 def _utc_now() -> str:
@@ -27,6 +29,12 @@ class ArtifactEnvelope(BaseModel):
     blockers: List[str] = Field(default_factory=list)
     context_mode: str
     artifact_count: int = 0
+    provider_metadata: Dict[str, Any] = Field(default_factory=dict)
+    run_id: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    duration_ms: Optional[int] = None
+    status_reason: Optional[str] = None
 
 
 class Candidate(BaseModel):
@@ -45,6 +53,7 @@ class Candidate(BaseModel):
 class ResearchSourceSummary(BaseModel):
     source_type: str
     label: str
+    tier: ResearchEvidenceTier = "derived"
     timestamp: str = ""
     freshness: str = "unknown"
     detail: str = ""
@@ -54,6 +63,7 @@ class ResearchEvidenceCitation(BaseModel):
     source_type: str
     label: str
     reference: str
+    tier: ResearchEvidenceTier = "derived"
     freshness: str = "unknown"
     timestamp: str = ""
 
@@ -82,11 +92,13 @@ class ResearchPacket(BaseModel):
     thesis_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     analysis_mode: ResearchAnalysisMode = "insufficient_evidence"
     actionability: ResearchActionability = "watch_only"
+    external_evidence_status: ExternalEvidenceStatus = "missing"
     why_now: str = ""
     source_summary: List[ResearchSourceSummary] = Field(default_factory=list)
     evidence_citations: List[ResearchEvidenceCitation] = Field(default_factory=list)
     market_data_freshness: MarketDataFreshness = Field(default_factory=MarketDataFreshness)
     next_step: str = ""
+    provider_metadata: Dict[str, Any] = Field(default_factory=dict)
     generated_at: str = Field(default_factory=_utc_now)
 
 
@@ -113,6 +125,7 @@ class StrategyProposal(BaseModel):
 class ReviewReport(BaseModel):
     review_id: str
     summary: str
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     strengths: List[str] = Field(default_factory=list)
     weaknesses: List[str] = Field(default_factory=list)
     risk_flags: List[str] = Field(default_factory=list)

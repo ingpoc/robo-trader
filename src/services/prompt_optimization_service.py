@@ -1,7 +1,7 @@
 """
-Claude's Real-Time Prompt Optimization Service.
+AI Runtime Prompt Optimization Service.
 
-Claude self-optimizes external research briefs by:
+The active runtime self-optimizes external research briefs by:
 1. Analyzing data quality immediately after receiving it
 2. Identifying missing or unnecessary elements
 3. Rewriting the research brief to address gaps
@@ -11,29 +11,99 @@ Claude self-optimizes external research briefs by:
 
 import asyncio
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Any, TYPE_CHECKING
 
-from claude_agent_sdk import ClaudeAgentOptions
-
-from ..core.claude_sdk_client_manager import ClaudeSDKClientManager
 from ..core.event_bus import EventHandler, Event, EventType, EventBus
 from ..core.errors import TradingError, ErrorCategory, ErrorSeverity
-from ..core.sdk_helpers import query_with_timeout
+from ..services.codex_runtime_client import CodexRuntimeClient, CodexRuntimeError
 
 if TYPE_CHECKING:
     from ..core.di import DependencyContainer
-    from ..services.claude_agent.claude_market_research_service import ClaudeMarketResearchService
+    from ..services.ai_market_research_service import AIMarketResearchService
 from loguru import logger
+
+QUALITY_ANALYSIS_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "quality_score": {"type": "number"},
+        "missing_elements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "element": {"type": "string"},
+                    "description": {"type": "string"},
+                    "importance": {"type": "string"},
+                },
+                "required": ["element", "description", "importance"],
+            },
+        },
+        "redundant_elements": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "feedback": {"type": "string"},
+        "strengths": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "improvements_needed": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": [
+        "quality_score",
+        "missing_elements",
+        "redundant_elements",
+        "feedback",
+        "strengths",
+        "improvements_needed",
+    ],
+}
+
+PROMPT_IMPROVEMENT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "improved_prompt": {"type": "string"},
+        "improvements_made": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "removed_redundancy": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "data_type": {"type": "string"},
+        "focus_areas": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "expected_improvement": {"type": "string"},
+    },
+    "required": [
+        "improved_prompt",
+        "improvements_made",
+        "removed_redundancy",
+        "data_type",
+        "focus_areas",
+        "expected_improvement",
+    ],
+}
 
 
 class PromptOptimizationService(EventHandler):
     """
-    Claude's real-time prompt optimization service.
+    Runtime-backed prompt optimization service.
 
-    Claude self-optimizes external research briefs by:
+    The active AI runtime self-optimizes external research briefs by:
     1. Analyzing data quality immediately after receiving it
     2. Identifying missing or unnecessary elements
     3. Rewriting prompts to address gaps
@@ -48,26 +118,40 @@ class PromptOptimizationService(EventHandler):
         config: Dict[str, Any],
         event_bus: EventBus,
         container: Any,  # Will be DependencyContainer at runtime
-        market_research_service: "ClaudeMarketResearchService",
+        market_research_service: "AIMarketResearchService",
+        runtime_client: Optional[CodexRuntimeClient] = None,
     ):
         """Initialize service."""
         self.config = config
         self.event_bus = event_bus
         self.container = container
         self.market_research_service = market_research_service
+        self.runtime_client = runtime_client
         self._initialized = False
+        self.model = config.get("model", "gpt-5.4")
+        self.reasoning = config.get("reasoning", "medium")
 
         # Claude's optimization settings
         self.max_optimization_attempts = config.get("max_optimization_attempts", 3)
         self.quality_threshold = config.get("quality_threshold", 8.0)
-        self.enable_real_time_optimization = config.get("enable_real_time_optimization", True)
+        env_enable_optimization = os.getenv("ENABLE_REAL_TIME_PROMPT_OPTIMIZATION")
+        default_enable_optimization = False
+        if env_enable_optimization is not None:
+            default_enable_optimization = env_enable_optimization.lower() in {"1", "true", "yes", "on"}
+        self.enable_real_time_optimization = config.get(
+            "enable_real_time_optimization",
+            default_enable_optimization,
+        )
 
     async def initialize(self) -> None:
         """Initialize service and subscribe to events."""
         try:
-            # Subscribe to Claude session events
-            self.event_bus.subscribe(EventType.CLAUDE_SESSION_STARTED, self)
-            self.event_bus.subscribe(EventType.CLAUDE_DATA_QUALITY_ANALYSIS, self)
+            if self.enable_real_time_optimization:
+                # Event-driven optimization is expensive and should stay opt-in.
+                self.event_bus.subscribe(EventType.CLAUDE_SESSION_STARTED, self)
+                self.event_bus.subscribe(EventType.CLAUDE_DATA_QUALITY_ANALYSIS, self)
+            else:
+                logger.info("PromptOptimizationService real-time subscriptions disabled by default")
 
             self._initialized = True
             logger.info("PromptOptimizationService initialized")
@@ -274,6 +358,7 @@ class PromptOptimizationService(EventHandler):
                     "You are Robo Trader's research-quality evaluator. "
                     "Judge the usefulness of supplied research for trading decisions and return JSON only."
                 ),
+                output_schema=QUALITY_ANALYSIS_SCHEMA,
                 timeout=45.0,
             )
 
@@ -343,6 +428,7 @@ Return JSON only:
                 "You are Robo Trader's research-brief optimizer. "
                 "Rewrite the brief to request more actionable, factual, and structured evidence. Return JSON only."
             ),
+            output_schema=PROMPT_IMPROVEMENT_SCHEMA,
             timeout=45.0,
         )
         return {
@@ -396,23 +482,37 @@ Return JSON only:
         client_type: str,
         prompt: str,
         system_prompt: str,
+        output_schema: Dict[str, Any],
         timeout: float,
     ) -> Dict[str, Any]:
-        """Run a tool-free Claude JSON task and parse the response."""
-        manager = await ClaudeSDKClientManager.get_instance()
-        options = ClaudeAgentOptions(
-            allowed_tools=[],
-            max_turns=1,
-            model="haiku",
-            system_prompt=system_prompt,
-        )
-        client = await manager.get_client(client_type, options, force_recreate=True)
+        """Run a tool-free JSON task through the local Codex runtime and parse the response."""
+        if not self.runtime_client:
+            raise TradingError(
+                "Codex runtime client is not configured for prompt optimization.",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.HIGH,
+                recoverable=True,
+            )
+
         try:
-            response = await query_with_timeout(client, prompt, timeout=timeout)
-            json_text = self._extract_json_object(response)
-            return json.loads(json_text)
-        finally:
-            await manager.cleanup_client(client_type)
+            response = await self.runtime_client.run_structured(
+                system_prompt=system_prompt,
+                prompt=prompt,
+                output_schema=output_schema,
+                model=self.model,
+                reasoning=self.reasoning,
+                timeout_seconds=timeout,
+                web_search_enabled=False,
+                network_access_enabled=False,
+            )
+            return response.get("output") or {}
+        except CodexRuntimeError as exc:
+            raise TradingError(
+                f"Prompt optimization runtime failed: {exc}",
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.MEDIUM,
+                recoverable=True,
+            ) from exc
 
     @classmethod
     def _extract_json_object(cls, response: str) -> str:
@@ -704,9 +804,9 @@ Return JSON only:
         if not self._initialized:
             return
 
-        # Unsubscribe from events
-        self.event_bus.unsubscribe(EventType.CLAUDE_SESSION_STARTED, self)
-        self.event_bus.unsubscribe(EventType.CLAUDE_DATA_QUALITY_ANALYSIS, self)
+        if self.enable_real_time_optimization:
+            self.event_bus.unsubscribe(EventType.CLAUDE_SESSION_STARTED, self)
+            self.event_bus.unsubscribe(EventType.CLAUDE_DATA_QUALITY_ANALYSIS, self)
 
         self._initialized = False
         logger.info("PromptOptimizationService closed")

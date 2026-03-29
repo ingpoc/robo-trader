@@ -1,5 +1,6 @@
 """Morning Session Coordinator - thin orchestrator delegating to sub-coordinators."""
 import asyncio
+import os
 import uuid
 from datetime import datetime, time
 from typing import Optional, TYPE_CHECKING
@@ -42,6 +43,12 @@ class MorningSessionCoordinator(BaseCoordinator):
         super().__init__(config, event_bus)
         self.container = container
         self._session_active = False
+        self._auto_run_enabled = os.getenv("AUTO_RUN_MORNING_SESSION", "false").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         self.premarket = MorningPremarketCoordinator(config, event_bus, container)
         self.research = MorningResearchCoordinator(config, event_bus, container)
         self.trade_ideas = MorningTradeIdeaCoordinator(config, event_bus, container)
@@ -55,7 +62,11 @@ class MorningSessionCoordinator(BaseCoordinator):
             self.trade_ideas.initialize(), self.safeguards.initialize(),
             self.execution.initialize(),
         )
-        self.event_bus.subscribe(EventType.MARKET_OPEN, self)
+        if self._auto_run_enabled:
+            self.event_bus.subscribe(EventType.MARKET_OPEN, self)
+            self._log_info("MorningSessionCoordinator auto-run on MARKET_OPEN enabled")
+        else:
+            self._log_info("MorningSessionCoordinator auto-run on MARKET_OPEN disabled by default")
         self._initialized = True
         self._log_info("MorningSessionCoordinator initialized successfully")
 
@@ -142,7 +153,8 @@ class MorningSessionCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         if self._session_active:
             self._log_warning("Morning session active during cleanup")
-        self.event_bus.unsubscribe(EventType.MARKET_OPEN, self)
+        if self._auto_run_enabled:
+            self.event_bus.unsubscribe(EventType.MARKET_OPEN, self)
         await asyncio.gather(
             self.premarket.cleanup(), self.research.cleanup(),
             self.trade_ideas.cleanup(), self.safeguards.cleanup(),

@@ -313,16 +313,19 @@ class MarketDataService(EventHandler):
 
     async def get_market_data(self, symbol: str) -> Optional[MarketData]:
         """Get current market data for a symbol."""
+        normalized_symbol = self._normalize_symbol(symbol)
         async with self._lock:
-            return self._market_data.get(symbol)
+            return self._market_data.get(normalized_symbol)
 
     async def get_multiple_market_data(self, symbols: List[str]) -> Dict[str, MarketData]:
         """Get market data for multiple symbols."""
         async with self._lock:
             result = {}
             for symbol in symbols:
-                if symbol in self._market_data:
-                    result[symbol] = self._market_data[symbol]
+                normalized_symbol = self._normalize_symbol(symbol)
+                if normalized_symbol in self._market_data:
+                    # Preserve the caller's requested symbol key while serving normalized cache data.
+                    result[symbol] = self._market_data[normalized_symbol]
             return result
 
     async def get_quote_stream_status(self) -> QuoteStreamStatus:

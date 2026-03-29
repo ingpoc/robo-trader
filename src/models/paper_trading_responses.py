@@ -25,6 +25,7 @@ class OpenPositionResponse(BaseModel):
     ai_suggested: bool = Field(default=False, description="Was this AI recommended?")
     market_price_status: str = Field(default="live", description="Whether the current mark is live or stale")
     market_price_detail: Optional[str] = Field(default=None, description="Explanation when live pricing is unavailable")
+    market_price_timestamp: Optional[str] = Field(default=None, description="Timestamp of the mark used for the current position value")
 
 
 class ClosedTradeResponse(BaseModel):

@@ -1,12 +1,10 @@
 /**
  * Performance Metrics Component
- * Displays key trading performance statistics
+ * Displays key trading performance statistics in a dense operator grid.
  */
 
 import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { TrendingUp, TrendingDown, Target, Trophy, AlertTriangle, Zap } from 'lucide-react'
-import { SkeletonCard } from '@/components/common/SkeletonLoader'
+
 import type { PerformanceMetricsResponse } from '../types'
 
 export interface PerformanceMetricsProps {
@@ -16,15 +14,15 @@ export interface PerformanceMetricsProps {
 
 export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
   metrics,
-  isLoading = false
+  isLoading = false,
 }) => {
   const getNumber = (value: number | undefined | null) => value ?? 0
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(8)].map((_, i) => (
-          <SkeletonCard key={i} className="h-24" />
+      <div className="grid gap-px rounded-2xl border border-border/70 bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="h-24 animate-pulse bg-muted/20" />
         ))}
       </div>
     )
@@ -32,108 +30,45 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
 
   if (!metrics) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Performance Metrics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <Target className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">No trading data yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Metrics will appear after AI executes trades via MCP
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 px-5 py-6">
+        <p className="text-sm font-semibold text-foreground">No performance metrics yet</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Closed trades will populate expectancy, drawdown, and streak statistics as the paper account builds history.
+        </p>
+      </div>
     )
   }
 
   const metricItems = [
-    {
-      label: 'Winning Trades',
-      value: getNumber(metrics.winning_trades),
-      icon: TrendingUp,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50'
-    },
-    {
-      label: 'Losing Trades',
-      value: getNumber(metrics.losing_trades),
-      icon: TrendingDown,
-      color: 'text-red-600',
-      bg: 'bg-red-50'
-    },
-    {
-      label: 'Win Rate',
-      value: `${getNumber(metrics.win_rate).toFixed(1)}%`,
-      icon: Target,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50'
-    },
-    {
-      label: 'Avg Win',
-      value: `₹${Math.abs(getNumber(metrics.avg_win)).toLocaleString('en-IN')}`,
-      icon: TrendingUp,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50'
-    },
-    {
-      label: 'Avg Loss',
-      value: `₹${Math.abs(getNumber(metrics.avg_loss)).toLocaleString('en-IN')}`,
-      icon: TrendingDown,
-      color: 'text-red-600',
-      bg: 'bg-red-50'
-    },
-    {
-      label: 'Profit Factor',
-      value: getNumber(metrics.profit_factor).toFixed(2),
-      icon: Zap,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50'
-    },
-    {
-      label: 'Best Trade',
-      value: `₹${getNumber(metrics.best_trade).toLocaleString('en-IN')}`,
-      icon: Trophy,
-      color: 'text-yellow-600',
-      bg: 'bg-yellow-50'
-    },
-    {
-      label: 'Worst Trade',
-      value: `₹${getNumber(metrics.worst_trade).toLocaleString('en-IN')}`,
-      icon: AlertTriangle,
-      color: 'text-orange-600',
-      bg: 'bg-orange-50'
-    }
+    { label: 'Winning Trades', value: getNumber(metrics.winning_trades).toString(), detail: 'Closed winners' },
+    { label: 'Losing Trades', value: getNumber(metrics.losing_trades).toString(), detail: 'Closed losers' },
+    { label: 'Win Rate', value: `${getNumber(metrics.win_rate).toFixed(1)}%`, detail: 'Win ratio' },
+    { label: 'Profit Factor', value: getNumber(metrics.profit_factor).toFixed(2), detail: 'Gross wins / gross losses' },
+    { label: 'Avg Win', value: formatCurrency(Math.abs(getNumber(metrics.avg_win))), detail: 'Average positive close' },
+    { label: 'Avg Loss', value: formatCurrency(Math.abs(getNumber(metrics.avg_loss))), detail: 'Average negative close' },
+    { label: 'Best Trade', value: formatCurrency(getNumber(metrics.best_trade)), detail: 'Largest realized win' },
+    { label: 'Worst Trade', value: formatCurrency(getNumber(metrics.worst_trade)), detail: 'Largest realized loss' },
   ]
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Performance Metrics</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {metricItems.map((item, index) => {
-            const Icon = item.icon
-            return (
-              <div
-                key={index}
-                className={`${item.bg} p-3 rounded-lg border border-gray-200 dark:border-gray-700`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
-                  <Icon className={`w-4 h-4 ${item.color}`} />
-                </div>
-                <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
-              </div>
-            )
-          })}
+    <div className="grid gap-px overflow-hidden rounded-2xl border border-border/70 bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+      {metricItems.map((item) => (
+        <div key={item.label} className="bg-white/80 px-5 py-5 dark:bg-warmgray-800/80">
+          <p className="desk-kicker">{item.label}</p>
+          <p className="mt-3 text-2xl font-semibold text-foreground">{item.value}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{item.detail}</p>
         </div>
-      </CardContent>
-    </Card>
+      ))}
+    </div>
   )
+}
+
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount)
 }
 
 export default PerformanceMetrics

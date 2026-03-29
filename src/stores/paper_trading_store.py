@@ -2,6 +2,7 @@
 
 import logging
 import asyncio
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
@@ -16,6 +17,26 @@ logger = logging.getLogger(__name__)
 
 class PaperTradingStore:
     """Async store for paper trading data."""
+
+    REQUIRED_TRADE_COLUMNS = {
+        "trade_id",
+        "account_id",
+        "symbol",
+        "trade_type",
+        "quantity",
+        "entry_price",
+        "entry_timestamp",
+        "strategy_rationale",
+        "status",
+    }
+    CANONICAL_OPEN_STATUSES = (TradeStatus.OPEN.value,)
+    CANONICAL_CLOSED_STATUSES = (TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value)
+    VALID_TRADE_STATUSES = {
+        TradeStatus.OPEN.value,
+        TradeStatus.CLOSED.value,
+        TradeStatus.STOPPED_OUT.value,
+        TradeStatus.CANCELLED.value,
+    }
 
     def __init__(self, db_connection):
         """Initialize store with database connection."""
@@ -76,8 +97,26 @@ class PaperTradingStore:
                 )
             """)
 
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS manual_run_audit (
+                    run_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    route_name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    status_reason TEXT,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    duration_ms INTEGER NOT NULL,
+                    dependency_state TEXT NOT NULL,
+                    provider_metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
             # Check and migrate legacy schemas
             await self._migrate_legacy_schema(db)
+            await self._normalize_trade_statuses(db)
+            await self._validate_trade_schema_and_statuses(db)
 
             # Create indexes (these will only succeed if columns exist)
             await self._create_indexes_safely(db)
@@ -99,7 +138,22 @@ class PaperTradingStore:
                 # Check existing columns
                 cursor = await db.execute("PRAGMA table_info(paper_trades)")
                 columns = await cursor.fetchall()
+                await cursor.close()
                 column_names = [col[1] for col in columns]
+
+                legacy_alias_columns = {"id", "side", "entry_date", "entry_reason", "strategy_tag", "exit_date"}
+                requires_canonical_rebuild = bool(
+                    legacy_alias_columns.intersection(column_names)
+                    or (self.REQUIRED_TRADE_COLUMNS - set(column_names))
+                )
+
+                if requires_canonical_rebuild:
+                    logger.info("Rebuilding legacy paper_trades table into canonical schema")
+                    await self._rebuild_legacy_trades_table(db, set(column_names))
+                    cursor = await db.execute("PRAGMA table_info(paper_trades)")
+                    columns = await cursor.fetchall()
+                    await cursor.close()
+                    column_names = [col[1] for col in columns]
 
                 # Migration for account_id column
                 if 'account_id' not in column_names:
@@ -142,6 +196,216 @@ class PaperTradingStore:
             logger.warning(f"Schema migration failed (non-critical): {e}")
             # Continue anyway - the table might be fine or this might be a fresh install
 
+    @staticmethod
+    def _legacy_column_expression(
+        available_columns: set[str],
+        *candidates: str,
+        default_sql: str,
+        lowercase: bool = False,
+    ) -> str:
+        expressions = [name for name in candidates if name in available_columns]
+        if expressions:
+            expression = "COALESCE(" + ", ".join(expressions) + f", {default_sql})"
+        else:
+            expression = default_sql
+        if lowercase:
+            return f"LOWER({expression})"
+        return expression
+
+    async def _rebuild_legacy_trades_table(self, db, available_columns: set[str]) -> None:
+        """Upgrade legacy trade storage into the canonical paper_trades schema."""
+        await db.execute("ALTER TABLE paper_trades RENAME TO paper_trades_legacy_backup")
+        await db.execute("""
+            CREATE TABLE paper_trades (
+                trade_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                trade_type TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                entry_price REAL NOT NULL,
+                entry_timestamp TEXT NOT NULL,
+                strategy_rationale TEXT NOT NULL,
+                claude_session_id TEXT,
+                exit_price REAL,
+                exit_timestamp TEXT,
+                realized_pnl REAL,
+                unrealized_pnl REAL,
+                status TEXT NOT NULL DEFAULT 'open',
+                stop_loss REAL,
+                target_price REAL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        trade_id_expr = self._legacy_column_expression(
+            available_columns,
+            "trade_id",
+            "id",
+            default_sql="'trade_legacy_' || lower(hex(randomblob(8)))",
+        )
+        account_id_expr = self._legacy_column_expression(
+            available_columns,
+            "account_id",
+            default_sql="'paper_swing_main'",
+        )
+        trade_type_expr = self._legacy_column_expression(
+            available_columns,
+            "trade_type",
+            "side",
+            default_sql="'buy'",
+            lowercase=True,
+        )
+        entry_timestamp_expr = self._legacy_column_expression(
+            available_columns,
+            "entry_timestamp",
+            "entry_date",
+            "created_at",
+            default_sql="CURRENT_TIMESTAMP",
+        )
+        strategy_rationale_expr = self._legacy_column_expression(
+            available_columns,
+            "strategy_rationale",
+            "entry_reason",
+            "strategy_tag",
+            default_sql="''",
+        )
+        exit_timestamp_expr = self._legacy_column_expression(
+            available_columns,
+            "exit_timestamp",
+            "exit_date",
+            default_sql="NULL",
+        )
+        status_expr = self._legacy_column_expression(
+            available_columns,
+            "status",
+            default_sql="'open'",
+            lowercase=True,
+        )
+        created_at_expr = self._legacy_column_expression(
+            available_columns,
+            "created_at",
+            "entry_timestamp",
+            "entry_date",
+            default_sql="CURRENT_TIMESTAMP",
+        )
+        updated_at_expr = self._legacy_column_expression(
+            available_columns,
+            "updated_at",
+            "created_at",
+            "entry_timestamp",
+            "entry_date",
+            default_sql="CURRENT_TIMESTAMP",
+        )
+        claude_session_expr = self._legacy_column_expression(
+            available_columns,
+            "claude_session_id",
+            default_sql="NULL",
+        )
+        exit_price_expr = self._legacy_column_expression(
+            available_columns,
+            "exit_price",
+            default_sql="NULL",
+        )
+        realized_pnl_expr = self._legacy_column_expression(
+            available_columns,
+            "realized_pnl",
+            default_sql="NULL",
+        )
+        unrealized_pnl_expr = self._legacy_column_expression(
+            available_columns,
+            "unrealized_pnl",
+            default_sql="NULL",
+        )
+        stop_loss_expr = self._legacy_column_expression(
+            available_columns,
+            "stop_loss",
+            default_sql="NULL",
+        )
+        target_price_expr = self._legacy_column_expression(
+            available_columns,
+            "target_price",
+            default_sql="NULL",
+        )
+
+        await db.execute(
+            f"""
+            INSERT INTO paper_trades (
+                trade_id, account_id, symbol, trade_type, quantity, entry_price,
+                entry_timestamp, strategy_rationale, claude_session_id, exit_price,
+                exit_timestamp, realized_pnl, unrealized_pnl, status, stop_loss,
+                target_price, created_at, updated_at
+            )
+            SELECT
+                {trade_id_expr},
+                {account_id_expr},
+                symbol,
+                {trade_type_expr},
+                quantity,
+                entry_price,
+                {entry_timestamp_expr},
+                {strategy_rationale_expr},
+                {claude_session_expr},
+                {exit_price_expr},
+                {exit_timestamp_expr},
+                {realized_pnl_expr},
+                {unrealized_pnl_expr},
+                {status_expr},
+                {stop_loss_expr},
+                {target_price_expr},
+                {created_at_expr},
+                {updated_at_expr}
+            FROM paper_trades_legacy_backup
+            """
+        )
+        await db.execute("DROP TABLE paper_trades_legacy_backup")
+
+    async def _normalize_trade_statuses(self, db) -> None:
+        """Canonicalize legacy trade statuses to lowercase enum values."""
+        try:
+            cursor = await db.execute("SELECT DISTINCT status FROM paper_trades")
+            statuses = await cursor.fetchall()
+            await cursor.close()
+        except Exception as exc:
+            logger.warning("Unable to inspect trade statuses during startup migration: %s", exc)
+            return
+
+        for row in statuses:
+            raw_status = str((row or [""])[0] or "").strip()
+            if not raw_status:
+                continue
+            canonical = raw_status.lower()
+            if raw_status == canonical:
+                continue
+            logger.info("Normalizing legacy paper trade status %s -> %s", raw_status, canonical)
+            await db.execute(
+                "UPDATE paper_trades SET status = ? WHERE status = ?",
+                (canonical, raw_status),
+            )
+
+    async def _validate_trade_schema_and_statuses(self, db) -> None:
+        """Fail loud when canonical trade storage is not decision-safe."""
+        cursor = await db.execute("PRAGMA table_info(paper_trades)")
+        columns = await cursor.fetchall()
+        await cursor.close()
+        column_names = {str(column[1]) for column in columns}
+        missing_columns = sorted(self.REQUIRED_TRADE_COLUMNS - column_names)
+        if missing_columns:
+            raise RuntimeError(
+                "paper_trades schema is missing required canonical columns: "
+                + ", ".join(missing_columns)
+            )
+
+        cursor = await db.execute("SELECT DISTINCT LOWER(status) FROM paper_trades")
+        statuses = {str((row or [""])[0] or "").strip() for row in await cursor.fetchall()}
+        await cursor.close()
+        unexpected = sorted(status for status in statuses if status and status not in self.VALID_TRADE_STATUSES)
+        if unexpected:
+            raise RuntimeError(
+                "paper_trades contains unsupported status values after startup migration: "
+                + ", ".join(unexpected)
+            )
+
     async def _create_indexes_safely(self, db) -> None:
         """Create indexes safely, handling cases where columns might not exist."""
         try:
@@ -161,6 +425,14 @@ class PaperTradingStore:
             """)
         except Exception as e:
             logger.warning(f"Failed to create symbol index: {e}")
+
+        try:
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_manual_run_audit_account_started
+                ON manual_run_audit(account_id, started_at DESC)
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to create manual run audit index: {e}")
 
     async def create_account(
         self,
@@ -334,7 +606,7 @@ class PaperTradingStore:
         """Get all open trades for account."""
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
-            "SELECT * FROM paper_trades WHERE account_id = ? AND status = ?",
+            "SELECT * FROM paper_trades WHERE account_id = ? AND LOWER(status) = ?",
             (account_id, TradeStatus.OPEN.value)
         )
         rows = await cursor.fetchall()
@@ -364,7 +636,7 @@ class PaperTradingStore:
                 SET stop_loss = COALESCE(?, stop_loss),
                     target_price = COALESCE(?, target_price),
                     updated_at = ?
-                WHERE trade_id = ? AND account_id = ? AND status = ?
+                WHERE trade_id = ? AND account_id = ? AND LOWER(status) = ?
                 """,
                 (
                     stop_loss,
@@ -522,7 +794,7 @@ class PaperTradingStore:
             """
             SELECT COALESCE(SUM(realized_pnl), 0) as total
             FROM paper_trades
-            WHERE account_id = ? AND status IN (?, ?) AND exit_timestamp >= ?
+            WHERE account_id = ? AND LOWER(status) IN (?, ?) AND exit_timestamp >= ?
             """,
             (account_id, TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value, today)
         )
@@ -563,7 +835,7 @@ class PaperTradingStore:
         """Get closed trades for account with optional filters."""
         query = """
             SELECT * FROM paper_trades
-            WHERE account_id = ? AND status IN (?, ?)
+            WHERE account_id = ? AND LOWER(status) IN (?, ?)
         """
         params = [account_id, TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value]
 
@@ -584,6 +856,85 @@ class PaperTradingStore:
         rows = await cursor.fetchall()
         await cursor.close()
         return [PaperTrade.from_dict(self._normalize_trade_row(dict(row))) for row in rows]
+
+    async def record_manual_run_audit(
+        self,
+        *,
+        run_id: str,
+        account_id: str,
+        route_name: str,
+        status: str,
+        status_reason: str,
+        started_at: str,
+        completed_at: str,
+        duration_ms: int,
+        dependency_state: Dict[str, Any],
+        provider_metadata: Dict[str, Any],
+    ) -> None:
+        """Persist audit metadata for explicit operator-triggered runs."""
+        async with self._lock:
+            now = datetime.now(timezone.utc).isoformat()
+            cursor = await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO manual_run_audit (
+                    run_id, account_id, route_name, status, status_reason,
+                    started_at, completed_at, duration_ms, dependency_state,
+                    provider_metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    account_id,
+                    route_name,
+                    status,
+                    status_reason,
+                    started_at,
+                    completed_at,
+                    duration_ms,
+                    json.dumps(dependency_state or {}),
+                    json.dumps(provider_metadata or {}),
+                    now,
+                ),
+            )
+            await cursor.close()
+            await self.db_connection.commit()
+
+    async def get_manual_run_audit_entries(
+        self,
+        account_id: str,
+        *,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Return recent manual-run audit entries for the account."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                """
+                SELECT *
+                FROM manual_run_audit
+                WHERE account_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (account_id, limit),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+
+        entries: List[Dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            for field in ("dependency_state", "provider_metadata"):
+                raw_value = item.get(field)
+                if isinstance(raw_value, str) and raw_value.strip():
+                    try:
+                        item[field] = json.loads(raw_value)
+                    except json.JSONDecodeError:
+                        item[field] = {"raw": raw_value}
+                elif raw_value is None:
+                    item[field] = {}
+            entries.append(item)
+        return entries
 
     async def calculate_daily_performance_metrics(
         self,
@@ -657,7 +1008,7 @@ class PaperTradingStore:
             cursor = await self.db_connection.execute(
                 """
                 SELECT * FROM paper_trades
-                WHERE account_id = ? AND status = ?
+                WHERE account_id = ? AND LOWER(status) = ?
                 ORDER BY entry_timestamp DESC
                 """,
                 (account_id, TradeStatus.OPEN.value),
@@ -709,7 +1060,7 @@ class PaperTradingStore:
                 """
                 SELECT * FROM paper_trades
                 WHERE account_id = ?
-                  AND status IN (?, ?)
+                  AND LOWER(status) IN (?, ?)
                   AND exit_timestamp >= ?
                   AND exit_timestamp < ?
                 ORDER BY exit_timestamp DESC

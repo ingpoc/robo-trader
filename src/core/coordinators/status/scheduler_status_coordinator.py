@@ -85,9 +85,6 @@ class SchedulerStatusCoordinator(BaseCoordinator):
             queue_definitions = [
                 (QueueName.PORTFOLIO_SYNC, "Portfolio Sync", "Portfolio and account synchronization"),
                 (QueueName.DATA_FETCHER, "Data Fetcher", "Market data and news fetching"),
-                (QueueName.AI_ANALYSIS, "AI Analysis", "Claude AI analysis and recommendations"),
-                (QueueName.PORTFOLIO_ANALYSIS, "Portfolio Analysis", "Portfolio performance analysis"),
-                (QueueName.PAPER_TRADING_RESEARCH, "Paper Trading Research", "Research for paper trading"),
                 (QueueName.PAPER_TRADING_EXECUTION, "Paper Trading Execution", "Paper trade execution")
             ]
 
