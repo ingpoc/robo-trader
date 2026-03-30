@@ -106,6 +106,7 @@ RESEARCH_TIMEOUT_SECONDS = 60.0
 DECISION_TIMEOUT_SECONDS = 30.0
 DAILY_REVIEW_TIMEOUT_SECONDS = 30.0
 OPERATOR_RUNTIME_TIMEOUT_SECONDS = 15.0
+RUNTIME_VALIDATION_TIMEOUT_SECONDS = 25.0
 
 
 async def _get_required_account(account_manager, account_id: str):
@@ -2228,7 +2229,7 @@ async def validate_paper_trading_ai_runtime(
 
         runtime_status = await asyncio.wait_for(
             get_ai_runtime_status(force_refresh=True),
-            timeout=OPERATOR_RUNTIME_TIMEOUT_SECONDS,
+            timeout=RUNTIME_VALIDATION_TIMEOUT_SECONDS,
         )
         capability_service = await container.get("trading_capability_service")
         try:
@@ -2265,14 +2266,14 @@ async def validate_paper_trading_ai_runtime(
                 "is_valid": False,
                 "authenticated": False,
                 "error": (
-                    f"AI runtime validation exceeded the {int(OPERATOR_RUNTIME_TIMEOUT_SECONDS)}s operator deadline."
+                    f"AI runtime validation exceeded the {int(RUNTIME_VALIDATION_TIMEOUT_SECONDS)}s operator deadline."
                 ),
             },
             "capability_snapshot": {
                 "overall_status": "blocked",
                 "checks": [],
                 "blockers": [
-                    f"AI runtime validation exceeded the {int(OPERATOR_RUNTIME_TIMEOUT_SECONDS)}s operator deadline."
+                    f"AI runtime validation exceeded the {int(RUNTIME_VALIDATION_TIMEOUT_SECONDS)}s operator deadline."
                 ],
             },
         }

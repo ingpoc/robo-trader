@@ -929,6 +929,81 @@ async def test_validate_paper_trading_ai_runtime_returns_live_status(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_validate_paper_trading_ai_runtime_uses_runtime_specific_timeout(monkeypatch):
+    request = SimpleNamespace()
+    runtime_status = SimpleNamespace(
+        to_dict=lambda: {
+            "status": "connected",
+            "provider": "codex",
+            "is_valid": True,
+        }
+    )
+    get_ai_runtime_status = AsyncMock(return_value=runtime_status)
+    monkeypatch.setattr(paper_trading, "get_ai_runtime_status", get_ai_runtime_status)
+    capability_service = SimpleNamespace(
+        get_snapshot=AsyncMock(
+            return_value=SimpleNamespace(
+                to_dict=lambda: {"overall_status": "ready", "checks": []},
+            )
+        )
+    )
+    container = SimpleNamespace(
+        get=AsyncMock(side_effect=lambda name: {
+            "trading_capability_service": capability_service,
+        }[name])
+    )
+    observed_timeouts: list[float] = []
+
+    async def fake_wait_for(awaitable, timeout):
+        observed_timeouts.append(timeout)
+        return await awaitable
+
+    monkeypatch.setattr(paper_trading.asyncio, "wait_for", fake_wait_for)
+
+    response = await paper_trading.validate_paper_trading_ai_runtime.__wrapped__(
+        request=request,
+        account_id=None,
+        container=container,
+    )
+
+    assert response["capability_snapshot"]["overall_status"] == "ready"
+    assert observed_timeouts == [
+        paper_trading.RUNTIME_VALIDATION_TIMEOUT_SECONDS,
+        paper_trading.OPERATOR_RUNTIME_TIMEOUT_SECONDS,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_validate_paper_trading_ai_runtime_timeout_message_uses_runtime_budget(monkeypatch):
+    request = SimpleNamespace()
+
+    async def get_ai_runtime_status(*, force_refresh=False):
+        assert force_refresh is True
+        return SimpleNamespace()
+
+    monkeypatch.setattr(paper_trading, "get_ai_runtime_status", get_ai_runtime_status)
+    container = SimpleNamespace(get=AsyncMock())
+
+    async def fake_wait_for(awaitable, timeout):
+        awaitable.close()
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(paper_trading.asyncio, "wait_for", fake_wait_for)
+
+    response = await paper_trading.validate_paper_trading_ai_runtime.__wrapped__(
+        request=request,
+        account_id=None,
+        container=container,
+    )
+
+    expected_timeout = f"{int(paper_trading.RUNTIME_VALIDATION_TIMEOUT_SECONDS)}s"
+    operator_timeout = f"{int(paper_trading.OPERATOR_RUNTIME_TIMEOUT_SECONDS)}s"
+    assert expected_timeout in response["ai_runtime"]["error"]
+    assert expected_timeout in response["capability_snapshot"]["blockers"][0]
+    assert operator_timeout not in response["ai_runtime"]["error"]
+
+
+@pytest.mark.asyncio
 async def test_refresh_paper_trading_market_data_runtime_resubscribes_open_symbols():
     request = SimpleNamespace()
     account_manager = SimpleNamespace(get_account=AsyncMock(return_value=SimpleNamespace(account_id="paper_main")))
