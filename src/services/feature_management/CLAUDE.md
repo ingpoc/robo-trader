@@ -1,36 +1,10 @@
-# Feature Management - src/services/feature_management/
+# Local Context - src/services/feature_management/
 
-## Modules
-| Module | Purpose | Scope |
-|--------|---------|-------|
-| service.py | Feature CRUD & orchestration | <350 lines |
-| database.py | Database operations | Feature persistence |
-| models.py | Data models | Feature schema |
-| dependency_resolver.py | Dependency resolution | Feature deps |
-| lifecycle_manager.py | Lifecycle management | State transitions |
-| scheduler_integration.py | Scheduler integration | Task scheduling |
-| agent_integration.py | Agent management | Agent registry |
-| resource_cleanup.py | Resource cleanup | Memory management |
+## Inheritance Contract
 
-## Rules
-| Rule | Requirement |
-|------|-------------|
-| Lines | <350 per file, refactor if over |
-| Database | Use locked state methods ONLY |
-| Events | Emit via EventBus for comms |
-| Validation | Check deps before feature ops |
-| State | Maintain feature consistency |
-| Errors | Wrap in TradingError with context |
+- Canonical local policy: repo-local `AGENTS.md` at `/Users/gurusharan/Documents/remote-claude/active/apps/robo-trader/AGENTS.md`
+- Policy mode: `defer_to_agents`
+- Allowed content here: local runtime or implementation context only
+- Forbidden here: parallel policy, workflow doctrine, or owner rules
 
-## Pattern
-```python
-class FeatureManagementService(EventHandler):
-    async def enable_feature(self, feature_id):
-        await self._validate_deps(feature_id)
-        await config_state.store_feature(feature_id, enabled=True)
-        self.event_bus.emit(FeatureEnabled(feature_id))
-
-    async def cleanup(self):
-        self.event_bus.unsubscribe(EventType.ALL, self)
-```
-
+Follow repo-local `AGENTS.md` first.

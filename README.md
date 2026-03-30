@@ -119,6 +119,8 @@ PYTHONPATH=. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -p pytest_asyncio.plugin \
 - [Roadmap](ROADMAP.md)
 - [Mission-Cut ADR](docs/adrs/0001-mission-cut-paper-trading-core.md)
 - [Browser Testing Control Plane](docs/workflow/browser-testing-control-plane.md)
+- [Zerodha Broker Control Plane](docs/workflow/zerodha-broker-control-plane.md)
+- [Codex Runtime Control Plane](docs/workflow/codex-runtime-control-plane.md)
 - [Repo Governance](docs/workflow/repo-governance.md)
 - [Linear Issue Control Plane](docs/workflow/linear-issue-control-plane.md)
 - [Notion Memory Control Plane](docs/workflow/notion-memory-control-plane.md)

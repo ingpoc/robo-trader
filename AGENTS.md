@@ -1,11 +1,13 @@
 # Robo Trader Repo Instructions
 
-Repo-local instructions only. Global doctrine stays in the published
-Organization baseline; do not copy it here.
+Repo-local instructions only.
+Global entrypoint: `/Users/gurusharan/.codex/AGENTS.md`
 
 ## Inheritance Contract
 
-- Global baseline: `Organization` published baseline from `/Users/gurusharan/Documents/Organization/reports/publish/publish-manifest.json`
+- Global baseline: `/Users/gurusharan/.codex/AGENTS.md`
+- Global expansion: load only docs referenced by `/Users/gurusharan/.codex/AGENTS.md` when needed
+- Global exclusion: do not inspect or rely on external publish baselines from repo-local policy
 - Workspace parent: `none`
 - Organization routing: `inherits_by_default`
 - Local policy authority: `AGENTS.md`
@@ -34,7 +36,9 @@ Organization baseline; do not copy it here.
 
 - BEFORE changing delivery workflow or issue hygiene: read `docs/workflow/linear-issue-control-plane.md`.
 - BEFORE storing or superseding durable decisions or research: read `docs/workflow/notion-memory-control-plane.md`.
-- BEFORE changing MCP servers, auth setup, or credential expectations: read `docs/workflow/mcp-auth-bootstrap.md`.
+- BEFORE changing MCP server bootstrap, auth setup, or credential onboarding: read `docs/workflow/mcp-auth-bootstrap.md`.
+- BEFORE changing Zerodha auth, broker session restore, quote-stream behavior, or broker readiness: read `docs/workflow/zerodha-broker-control-plane.md`.
+- BEFORE changing the local Codex sidecar, `codex login` expectations, AI runtime validation, or runtime readiness semantics: read `docs/workflow/codex-runtime-control-plane.md`.
 - BEFORE changing repo boundaries, ownership, or where a rule should live: read `docs/operations/workflow-setup-responsibility-map.md`.
 - BEFORE starting new governance, feature, or enhancement planning: read `docs/workflow/repo-governance.md`.
 - BEFORE deciding under technical uncertainty or recommending a dependency, protocol, or API change: read `docs/workflow/research-validation-loop.md`.

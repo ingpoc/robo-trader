@@ -25,18 +25,13 @@ It is not a generic multi-agent platform and it does not make an active claim of
 - [Repo Governance](workflow/repo-governance.md)
 - [Research Validation Loop](workflow/research-validation-loop.md)
 - [Browser Testing Control Plane](workflow/browser-testing-control-plane.md)
+- [Zerodha Broker Control Plane](workflow/zerodha-broker-control-plane.md)
+- [Codex Runtime Control Plane](workflow/codex-runtime-control-plane.md)
 - [Git Governance Control Plane](workflow/git-governance-control-plane.md)
 - [Introspection Control Plane](workflow/introspection-control-plane.md)
 - [Autonomous Paper Entry Go-Live Checklist](workflow/autonomous-paper-entry-go-live-checklist.md)
 - [Linear Issue Control Plane](workflow/linear-issue-control-plane.md)
 - [Notion Memory Control Plane](workflow/notion-memory-control-plane.md)
 - [MCP/Auth Bootstrap](workflow/mcp-auth-bootstrap.md)
-
-## Supporting Docs
-
-- [Quickstart](QUICKSTART.md)
-- [Zerodha OAuth Setup](ZERODHA_OAUTH_SETUP.md)
-- [Claude SDK Setup Guide](CLAUDE_SDK_SETUP_GUIDE.md)
-- [Security](security.md)
 
 Use older architecture and historical notes only if they still match the active routed product. If a document describes removed product surfaces or legacy route families, treat it as historical until it is refreshed or superseded.
