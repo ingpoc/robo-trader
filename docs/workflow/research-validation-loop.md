@@ -24,7 +24,7 @@ Replace assumptions with inspected evidence.
 
 ## Output Standard
 
-When validation matters, distinguish:
+Validation output should distinguish:
 
 - what is known
 - what is inferred
@@ -36,25 +36,12 @@ When validation matters, distinguish:
 - If the chosen operating model depends on a tool, auth state, or source of truth, fix that dependency before proceeding whenever feasible.
 - Do not recommend a fallback architecture just because the primary integration is currently broken.
 
-## Tool Guidance
+## Tool Standard
 
-### Use repo inspection first
-
-If the answer is visible in code, tests, config, or repo docs, inspect that before reaching for outside sources.
-
-### Use primary docs for protocol truth
-
-For broker APIs, framework behavior, security guidance, or third-party integrations, prefer official documentation.
-
-### Use MCP tools to reduce uncertainty
-
-Use the provided MCP surfaces to get grounded answers:
-
-- repo and code understanding tools for codebase truth
-- docs tools for library or platform truth
-- browser and network tools for runtime truth
-- Linear and Notion tools only when the task depends on those systems of record
-
-## Why This Exists
-
-This repo mixes AI workflows, market integrations, persistent state, and UI control surfaces. The cost of a wrong assumption is often operational, not cosmetic.
+- If the answer is visible in code, tests, config, or repo docs, inspect that before reaching for outside sources.
+- For broker APIs, framework behavior, security guidance, or third-party integrations, prefer official documentation.
+- Use MCP surfaces to reduce uncertainty:
+  - repo and code understanding tools for codebase truth
+  - docs tools for library or platform truth
+  - browser and network tools for runtime truth
+  - Linear and Notion tools only when the task depends on those systems of record

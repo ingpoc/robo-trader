@@ -9,11 +9,13 @@ import type { PerformanceMetricsResponse } from '../types'
 
 export interface PerformanceMetricsProps {
   metrics: PerformanceMetricsResponse | null
+  error?: string | null
   isLoading?: boolean
 }
 
 export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
   metrics,
+  error = null,
   isLoading = false,
 }) => {
   const getNumber = (value: number | undefined | null) => value ?? 0
@@ -24,6 +26,17 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
         {Array.from({ length: 8 }).map((_, index) => (
           <div key={index} className="h-24 animate-pulse bg-muted/20" />
         ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-amber-300 bg-amber-50/80 px-5 py-6">
+        <p className="text-sm font-semibold text-amber-950">Performance metrics unavailable</p>
+        <p className="mt-2 text-sm leading-6 text-amber-900">
+          {error}
+        </p>
       </div>
     )
   }

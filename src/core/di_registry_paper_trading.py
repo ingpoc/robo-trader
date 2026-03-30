@@ -28,6 +28,19 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
 
     container._register_singleton("paper_trading_store", create_paper_trading_store)
 
+    async def create_paper_trading_automation_service():
+        from src.services.paper_trading_automation_service import PaperTradingAutomationService
+
+        store = await container.get("paper_trading_store")
+        service = PaperTradingAutomationService(
+            store,
+            project_dir=str(container.config.project_dir),
+        )
+        await service.initialize()
+        return service
+
+    container._register_singleton("paper_trading_automation_service", create_paper_trading_automation_service)
+
     # Paper Trading Price Monitor
     async def create_paper_trading_price_monitor():
         from src.services.paper_trading.price_monitor import PaperTradingPriceMonitor

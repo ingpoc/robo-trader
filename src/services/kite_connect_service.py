@@ -397,7 +397,13 @@ class KiteConnectService:
         except ValueError:
             return False
 
-    async def _set_access_token(self, access_token: str) -> bool:
+    async def _set_access_token(
+        self,
+        access_token: str,
+        *,
+        expires_at: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> bool:
         """
         Set access token directly from environment (for paper trading market data).
         Skips OAuth flow when access token is already available.
@@ -410,17 +416,26 @@ class KiteConnectService:
             # Set the access token
             self.kite.set_access_token(access_token)
 
-            # Create a session object
             now = datetime.now(timezone.utc)
-            # Access tokens typically last for 1 day, set expiry for 24 hours from now
-            expires_at = now + timedelta(hours=24)
             account_id = self._resolve_account_context()
+            session_expiry = now + timedelta(hours=24)
+            if expires_at:
+                try:
+                    parsed_expiry = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                    if parsed_expiry.tzinfo is None:
+                        parsed_expiry = parsed_expiry.replace(tzinfo=timezone.utc)
+                    if parsed_expiry <= now:
+                        self.logger.warning("Skipping environment access token because it is already expired")
+                        return False
+                    session_expiry = parsed_expiry
+                except ValueError:
+                    self.logger.warning("Could not parse Zerodha token expiry from environment; falling back to 24h session window")
 
             # Create session without storing to database (since it's from env)
             from src.core.database_state.real_time_trading_state import KiteSession
             self._active_session = KiteSession(
                 account_id=account_id,
-                user_id=account_id,
+                user_id=user_id or account_id,
                 public_token=None,
                 access_token=access_token,
                 refresh_token=None,
@@ -433,7 +448,7 @@ class KiteConnectService:
                 broker="ZERODHA",
                 products="[]",
                 exchanges="[]",
-                expires_at=expires_at.isoformat(),
+                expires_at=session_expiry.isoformat(),
                 active=True,
                 created_at=now.isoformat(),
                 updated_at=now.isoformat()

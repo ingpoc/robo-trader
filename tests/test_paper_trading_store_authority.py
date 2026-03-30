@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import aiosqlite
 import pytest
 
+from src.core.errors import MarketDataError
 from src.models.paper_trading import AccountType, RiskLevel, TradeType
 from src.mcp.enhanced_paper_trading_server import calculate_monthly_pnl
 from src.services.claude_agent.tool_executor import ToolExecutor
@@ -268,6 +269,94 @@ async def test_get_manual_run_audit_entries_returns_recent_runs(store):
 
 
 @pytest.mark.asyncio
+async def test_automation_run_persists_and_decodes_json_metadata(store):
+    now = datetime.now(timezone.utc).isoformat()
+    await store.create_automation_run(
+        {
+            "run_id": "autorun_1",
+            "account_id": "paper_main",
+            "job_type": "daily_review_cycle",
+            "provider": "codex_subscription_local",
+            "runtime_session_id": None,
+            "status": "queued",
+            "status_reason": "",
+            "block_reason": "",
+            "schedule_source": "manual",
+            "trigger_reason": "operator refresh",
+            "input_digest": "abc123",
+            "provider_metadata": {"provider": "codex", "model": "gpt-5.4"},
+            "tool_trace": [{"tool": "operator_snapshot"}],
+            "artifact_path": None,
+            "started_at": now,
+            "completed_at": None,
+            "timeout_at": None,
+            "duration_ms": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+    row = await store.get_automation_run("autorun_1")
+
+    assert row is not None
+    assert row["provider_metadata"]["model"] == "gpt-5.4"
+    assert row["tool_trace"][0]["tool"] == "operator_snapshot"
+
+
+@pytest.mark.asyncio
+async def test_automation_controls_and_active_run_lookup_work(store):
+    now = datetime.now(timezone.utc).isoformat()
+    await store.upsert_automation_job_control(
+        {
+            "job_type": "research_cycle",
+            "enabled": True,
+            "schedule_minutes": 60,
+            "last_run_at": None,
+            "next_run_at": now,
+            "paused_at": None,
+            "pause_reason": "",
+            "updated_at": now,
+        }
+    )
+    await store.set_automation_global_pause(True, reason="maintenance")
+    await store.create_automation_run(
+        {
+            "run_id": "autorun_active",
+            "account_id": "paper_main",
+            "job_type": "research_cycle",
+            "provider": "codex_subscription_local",
+            "runtime_session_id": None,
+            "status": "in_progress",
+            "status_reason": "",
+            "block_reason": "",
+            "schedule_source": "manual",
+            "trigger_reason": "",
+            "input_digest": "digest",
+            "provider_metadata": {},
+            "tool_trace": [],
+            "artifact_path": None,
+            "started_at": now,
+            "completed_at": None,
+            "timeout_at": None,
+            "duration_ms": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+    controls = await store.get_automation_job_control("research_cycle")
+    global_pause = await store.get_automation_global_pause()
+    active = await store.get_active_automation_run("paper_main", "research_cycle")
+
+    assert controls is not None
+    assert controls["enabled"] is True
+    assert global_pause["paused"] is True
+    assert global_pause["reason"] == "maintenance"
+    assert active is not None
+    assert active["run_id"] == "autorun_active"
+
+
+@pytest.mark.asyncio
 async def test_store_calculates_truthful_daily_performance_metrics(seeded_store):
     """Daily metrics should come from the store-backed trade authority."""
     store = seeded_store["store"]
@@ -369,8 +458,8 @@ async def test_tool_executor_requires_explicit_account_id_for_business_validatio
 
 
 @pytest.mark.asyncio
-async def test_open_positions_expose_stale_mark_status_when_live_data_is_unavailable(store):
-    """Open positions should explicitly mark stale pricing instead of pretending quotes are live."""
+async def test_open_positions_fail_loud_when_live_data_is_unavailable(store):
+    """Open positions should fail loud instead of synthesizing stale entry-price marks."""
     account = await store.create_account(
         account_name="Main",
         initial_balance=100000.0,
@@ -391,12 +480,81 @@ async def test_open_positions_expose_stale_mark_status_when_live_data_is_unavail
     )
 
     account_manager = PaperTradingAccountManager(store=store, market_data_service=None)
-    positions = await account_manager.get_open_positions(account.account_id)
+    with pytest.raises(MarketDataError, match="Live market data is unavailable"):
+        await account_manager.get_open_positions(account.account_id)
+
+
+@pytest.mark.asyncio
+async def test_store_backed_open_positions_return_readable_degraded_rows(store):
+    """Store-backed position reads should stay available without live quotes."""
+    account = await store.create_account(
+        account_name="Main",
+        initial_balance=100000.0,
+        strategy_type=AccountType.SWING,
+        risk_level=RiskLevel.MODERATE,
+        max_position_size=5.0,
+        max_portfolio_risk=10.0,
+        account_id="paper_store_backed",
+    )
+    await store.create_trade(
+        account_id=account.account_id,
+        symbol="INFY",
+        trade_type=TradeType.BUY,
+        quantity=5,
+        entry_price=100.0,
+        strategy_rationale="momentum",
+        claude_session_id="session-open",
+    )
+
+    account_manager = PaperTradingAccountManager(store=store, market_data_service=None)
+    positions = await account_manager.get_store_backed_open_positions(account.account_id)
 
     assert len(positions) == 1
-    assert positions[0].current_price == pytest.approx(100.0)
-    assert positions[0].market_price_status == "stale_entry"
-    assert "MarketDataService is not configured" in (positions[0].market_price_detail or "")
+    assert positions[0].symbol == "INFY"
+    assert positions[0].current_price is None
+    assert positions[0].current_value is None
+    assert positions[0].unrealized_pnl is None
+    assert positions[0].unrealized_pnl_pct is None
+    assert positions[0].market_price_status == "quote_unavailable"
+    assert "no entry-price substitution" in str(positions[0].market_price_detail)
+
+
+@pytest.mark.asyncio
+async def test_store_backed_position_metrics_match_open_trade_ledger(store):
+    """Store-backed deployed capital must come from the open-trade ledger only."""
+    account = await store.create_account(
+        account_name="Main",
+        initial_balance=100000.0,
+        strategy_type=AccountType.SWING,
+        risk_level=RiskLevel.MODERATE,
+        max_position_size=5.0,
+        max_portfolio_risk=10.0,
+        account_id="paper_position_metrics",
+    )
+    await store.create_trade(
+        account_id=account.account_id,
+        symbol="INFY",
+        trade_type=TradeType.BUY,
+        quantity=5,
+        entry_price=100.0,
+        strategy_rationale="momentum",
+        claude_session_id="session-open",
+    )
+    await store.create_trade(
+        account_id=account.account_id,
+        symbol="TCS",
+        trade_type=TradeType.BUY,
+        quantity=2,
+        entry_price=300.0,
+        strategy_rationale="trend",
+        claude_session_id="session-open-2",
+    )
+
+    account_manager = PaperTradingAccountManager(store=store, market_data_service=None)
+    metrics = await account_manager.get_store_backed_position_metrics(account.account_id)
+
+    assert metrics["open_positions_count"] == 2
+    assert metrics["deployed_capital"] == pytest.approx(1100.0)
 
 
 @pytest.mark.asyncio
@@ -443,12 +601,8 @@ async def test_open_positions_reject_stale_cached_quotes(store):
     )
 
     account_manager = PaperTradingAccountManager(store=store, market_data_service=market_data_service)
-    positions = await account_manager.get_open_positions(account.account_id)
-
-    assert len(positions) == 1
-    assert positions[0].current_price == pytest.approx(100.0)
-    assert positions[0].market_price_status == "stale_entry"
-    assert "stale" in (positions[0].market_price_detail or "").lower()
+    with pytest.raises(MarketDataError, match="Live market data is unavailable"):
+        await account_manager.get_open_positions(account.account_id)
 
 
 @pytest.mark.asyncio
@@ -478,12 +632,33 @@ async def test_open_positions_tolerate_legacy_date_only_entry_timestamps(store):
     )
     await store.db_connection.commit()
 
-    account_manager = PaperTradingAccountManager(store=store, market_data_service=None)
+    market_data_service = SimpleNamespace(
+        get_quote_stream_status=AsyncMock(
+            return_value=SimpleNamespace(
+                connected=True,
+                status="ready",
+                summary="Connected",
+                detail=None,
+            )
+        ),
+        get_active_subscriptions=AsyncMock(return_value={"INFY": object()}),
+        subscribe_market_data=AsyncMock(),
+        get_multiple_market_data=AsyncMock(
+            return_value={
+                "INFY": SimpleNamespace(
+                    ltp=120.0,
+                    timestamp="2026-03-30T12:03:49+00:00",
+                )
+            }
+        ),
+    )
+
+    account_manager = PaperTradingAccountManager(store=store, market_data_service=market_data_service)
     positions = await account_manager.get_open_positions(account.account_id)
 
     assert len(positions) == 1
     assert positions[0].days_held >= 1
-    assert positions[0].market_price_timestamp == "2025-12-26"
+    assert positions[0].market_price_timestamp == "2026-03-30T12:03:49+00:00"
 
 
 @pytest.mark.asyncio
@@ -528,11 +703,8 @@ async def test_open_positions_fall_back_quickly_when_market_data_times_out(store
     account_manager = PaperTradingAccountManager(store=store, market_data_service=market_data_service)
     account_manager.MARKET_DATA_FETCH_TIMEOUT_SECONDS = 1.0
 
-    positions = await account_manager.get_open_positions(account.account_id)
-
-    assert len(positions) == 1
-    assert positions[0].market_price_status == "stale_entry"
-    assert "timed out after 1s" in (positions[0].market_price_detail or "")
+    with pytest.raises(MarketDataError, match="Live market data is unavailable"):
+        await account_manager.get_open_positions(account.account_id)
     market_data_service.get_multiple_market_data.assert_awaited()
 
 
@@ -573,12 +745,40 @@ async def test_open_positions_skip_live_fetch_when_quote_stream_is_already_unhea
     )
     account_manager = PaperTradingAccountManager(store=store, market_data_service=market_data_service)
 
-    positions = await account_manager.get_open_positions(account.account_id)
-
-    assert len(positions) == 1
-    assert positions[0].market_price_status == "stale_entry"
-    assert positions[0].market_price_detail == "KiteTicker connection timeout."
+    with pytest.raises(MarketDataError, match="Live market data is unavailable"):
+        await account_manager.get_open_positions(account.account_id)
     market_data_service.subscribe_market_data.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_performance_metrics_fail_loud_without_live_quotes_for_open_positions(store):
+    """Performance metrics should fail loud instead of zeroing unrealized P&L from entry-price fallback."""
+    account = await store.create_account(
+        account_name="Main",
+        initial_balance=100000.0,
+        strategy_type=AccountType.SWING,
+        risk_level=RiskLevel.MODERATE,
+        max_position_size=5.0,
+        max_portfolio_risk=10.0,
+        account_id="paper_perf_fail_loud",
+    )
+    await store.create_trade(
+        account_id=account.account_id,
+        symbol="INFY",
+        trade_type=TradeType.BUY,
+        quantity=5,
+        entry_price=100.0,
+        strategy_rationale="momentum",
+        claude_session_id="session-open",
+    )
+
+    market_data_service = SimpleNamespace(
+        get_multiple_market_data=AsyncMock(return_value={}),
+    )
+    account_manager = PaperTradingAccountManager(store=store, market_data_service=market_data_service)
+
+    with pytest.raises(MarketDataError, match="Live market data is unavailable"):
+        await account_manager.get_performance_metrics(account.account_id, period="all-time")
 
 
 @pytest.mark.asyncio

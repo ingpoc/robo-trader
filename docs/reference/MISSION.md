@@ -1,8 +1,11 @@
 # Robo Trader Mission
 
-Robo Trader exists to turn a retail trading workflow into a trustworthy AI-assisted operating system for paper trading first, and only later for broader execution claims if the system proves it is safe, observable, and reliable.
+## Mission
 
-The mission is not to make an AI that "usually picks good trades." The mission is to build a trading system in which an autonomous agent can observe, research, recommend, and operate within explicit deterministic boundaries without hiding uncertainty, stale data, degraded dependencies, or risk.
+- Paper trading first.
+- Broader execution claims only after safety, observability, and reliability are proven.
+- Non-goal: an AI that "usually picks good trades."
+- Goal: a trading system where an autonomous agent can observe, research, recommend, and operate within explicit deterministic boundaries without hiding uncertainty, stale data, degraded dependencies, or risk.
 
 ## Product Goal
 
@@ -15,8 +18,6 @@ Build a production-grade paper-trading platform where the autonomous agent can a
 
 ## What Production-Grade Means In This Repo
 
-Production-grade for Robo Trader means:
-
 - the agent sees truthful state across account, positions, market data, AI artifacts, and system health
 - every important action runs through deterministic backend rules, persistence, and risk gates
 - stale, weak, or missing evidence causes explicit downgrade or refusal, not bluffing
@@ -24,7 +25,8 @@ Production-grade for Robo Trader means:
 - every decision, recommendation, and action is inspectable after the fact
 - the system improves from outcomes through measured promotion, not silent prompt drift
 
-Production-grade in this repo currently means manual and operator-confirmed paper trading. It does not mean unattended live-money trading.
+- Current boundary: manual and operator-confirmed paper trading
+- Excludes: unattended live-money trading
 
 ## Autonomy Model
 
@@ -48,9 +50,9 @@ The autonomous agent is not allowed to bypass:
 
 ## Deterministic Boundary
 
-AI may assist with research, synthesis, ranking, and operator guidance.
+- AI may assist with research, synthesis, ranking, and operator guidance.
 
-Deterministic code must remain the source of truth for:
+Deterministic code remains the source of truth for:
 
 - account state
 - trade and position state
@@ -61,7 +63,7 @@ Deterministic code must remain the source of truth for:
 - audit logging
 - policy promotion
 
-The system must prefer blocking over pretending readiness.
+Rule: prefer blocking over pretending readiness.
 
 ## Core Invariants
 
@@ -76,15 +78,13 @@ The repo should always move toward these invariants:
 
 ## Default Operating Posture
 
-The default operating posture is:
-
 - paper trading first
 - manual and operator-confirmed runs
 - explicit blocked/degraded/ready states
 - WebMCP and backend APIs as the agent control plane
 - no hidden schedulers or silent automation
 
-This repo should make the autonomous agent more capable only when that capability also makes the system more truthful, more reversible, and easier to audit.
+Rule: capability only expands when it also makes the system more truthful, more reversible, and easier to audit.
 
 ## What This Repo Is Optimizing For
 
@@ -107,8 +107,5 @@ This repo is not optimizing for:
 
 ## Mission Test
 
-Any meaningful change in this repo should be judged against this question:
-
-Does this make Robo Trader more trustworthy for an autonomous agent operating a paper-trading account under deterministic controls?
-
-If the change makes the agent more powerful but the system less truthful, less bounded, or less auditable, it is not mission-aligned.
+- Mission question: does this make Robo Trader more trustworthy for an autonomous agent operating a paper-trading account under deterministic controls?
+- If the change makes the agent more powerful but the system less truthful, less bounded, or less auditable, it is not mission-aligned.

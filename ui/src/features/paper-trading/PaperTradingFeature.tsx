@@ -38,6 +38,8 @@ export interface PaperTradingFeatureProps {
   closedTrades: ClosedTradeResponse[]
   performanceMetrics: PerformanceMetricsResponse | null
   capabilitySnapshot: TradingCapabilitySnapshot | null
+  dataError?: string | null
+  performanceError?: string | null
   onRefresh: () => Promise<void>
   isLoading?: boolean
 }
@@ -51,6 +53,8 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
   closedTrades,
   performanceMetrics,
   capabilitySnapshot,
+  dataError = null,
+  performanceError = null,
   onRefresh,
   isLoading = false,
 }) => {
@@ -82,13 +86,26 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
     }
   }, [clearTab, discovery, selectedCandidate])
 
-  const totalUnrealizedPnL = useMemo(
-    () => openPositions.reduce((sum, position) => sum + position.unrealized_pnl, 0),
+  const valuedPositions = useMemo(
+    () => openPositions.filter((position) => position.unrealized_pnl != null),
     [openPositions],
   )
-  const totalUnrealizedPnLPct = accountOverview && accountOverview.balance > 0
-    ? (totalUnrealizedPnL / accountOverview.balance) * 100
-    : 0
+  const totalUnrealizedPnL = useMemo(
+    () => valuedPositions.reduce((sum, position) => sum + (position.unrealized_pnl ?? 0), 0),
+    [valuedPositions],
+  )
+  const hasUnavailableValuation = valuedPositions.length !== openPositions.length
+  const livePnlValue = valuedPositions.length > 0 ? formatSignedCurrency(totalUnrealizedPnL) : 'Unavailable'
+  const livePnlDetail = hasUnavailableValuation
+    ? (
+      accountOverview?.valuation_detail
+      ?? `${valuedPositions.length} of ${openPositions.length} open position${openPositions.length === 1 ? '' : 's'} currently have live valuation.`
+    )
+    : (
+      accountOverview && accountOverview.balance > 0
+        ? `${formatSignedPercent((totalUnrealizedPnL / accountOverview.balance) * 100)} across ${openPositions.length} open position${openPositions.length === 1 ? '' : 's'}.`
+        : `Across ${openPositions.length} open position${openPositions.length === 1 ? '' : 's'}.`
+    )
 
   const strategyLabel = accounts.find(account => account.account_id === selectedAccountId)?.strategy_type || 'paper'
 
@@ -127,6 +144,14 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
         isRefreshing={isRefreshing}
       />
 
+      {dataError ? (
+        <Card className="border-red-300 bg-red-50/80 text-red-900">
+          <CardContent className="p-4 text-sm font-medium">
+            Live paper-trading data is unavailable. {dataError}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {!isLoading && !selectedAccountId ? (
         <div className="desk-panel p-6">
           <p className="desk-kicker">Operator Gate</p>
@@ -153,9 +178,9 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
         <MetricCell
           icon={Activity}
           label="Live P&L"
-          value={formatSignedCurrency(totalUnrealizedPnL)}
-          tone={totalUnrealizedPnL >= 0 ? 'positive' : 'negative'}
-          detail={`${formatSignedPercent(totalUnrealizedPnLPct)} across ${openPositions.length} open position${openPositions.length === 1 ? '' : 's'}.`}
+          value={livePnlValue}
+          tone={hasUnavailableValuation ? 'neutral' : totalUnrealizedPnL >= 0 ? 'positive' : 'negative'}
+          detail={livePnlDetail}
         />
         <MetricCell
           icon={CandlestickChart}
@@ -241,7 +266,7 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
           title="Outcome statistics"
           body="Use these numbers to judge whether the research loop is improving expectancy, not just generating more text."
         />
-        <PerformanceMetrics metrics={performanceMetrics} isLoading={isLoading} />
+        <PerformanceMetrics metrics={performanceMetrics} error={performanceError} isLoading={isLoading} />
       </section>
     </div>
   )

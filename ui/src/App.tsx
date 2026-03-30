@@ -93,7 +93,19 @@ function normalizeOverviewPayload(data: unknown, fallbackAccountId = ''): Accoun
     buying_power: Number(record.marginAvailable ?? record.buyingPower ?? record.buying_power ?? 0),
     cash_available: Number(record.cashAvailable ?? record.cash_available ?? 0),
     last_updated: String(record.lastUpdated ?? record.last_updated ?? new Date().toISOString()),
+    valuation_status: typeof (record.valuationStatus ?? record.valuation_status) === 'string'
+      ? String(record.valuationStatus ?? record.valuation_status) as AccountOverviewResponse['valuation_status']
+      : undefined,
+    valuation_detail: typeof (record.valuationDetail ?? record.valuation_detail) === 'string'
+      ? String(record.valuationDetail ?? record.valuation_detail)
+      : null,
   }
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function normalizePositionsPayload(data: unknown): OpenPositionResponse[] {
@@ -108,15 +120,15 @@ function normalizePositionsPayload(data: unknown): OpenPositionResponse[] {
     symbol: String(position.symbol ?? ''),
     quantity: Number(position.quantity ?? 0),
     entry_price: Number(position.entry_price ?? position.entryPrice ?? position.avgPrice ?? 0),
-    current_price: Number(position.current_price ?? position.currentPrice ?? position.ltp ?? 0),
+    current_price: toNullableNumber(position.current_price ?? position.currentPrice ?? position.ltp),
     stop_loss: position.stop_loss == null ? Number(position.stopLoss ?? NaN) || undefined : Number(position.stop_loss),
     target: position.target == null ? Number(position.target_price ?? position.target ?? NaN) || undefined : Number(position.target),
-    unrealized_pnl: Number(position.unrealized_pnl ?? position.pnl ?? 0),
-    unrealized_pnl_pct: Number(position.unrealized_pnl_pct ?? position.pnlPercent ?? 0),
+    unrealized_pnl: toNullableNumber(position.unrealized_pnl ?? position.pnl),
+    unrealized_pnl_pct: toNullableNumber(position.unrealized_pnl_pct ?? position.pnlPercent),
     entry_time: String(position.entry_time ?? position.entryDate ?? position.entry_date ?? ''),
     strategy: typeof position.strategy === 'string' ? position.strategy : typeof position.strategy_rationale === 'string' ? position.strategy_rationale : undefined,
     tradeType: typeof position.tradeType === 'string' ? position.tradeType : typeof position.trade_type === 'string' ? position.trade_type : undefined,
-    currentValue: Number(position.currentValue ?? position.current_value ?? 0),
+    currentValue: toNullableNumber(position.currentValue ?? position.current_value),
     daysHeld: Number(position.daysHeld ?? position.days_held ?? 0),
     markStatus: (position.markStatus ?? position.market_price_status ?? null) as OpenPositionResponse['markStatus'],
     markDetail: (position.markDetail ?? position.market_price_detail ?? null) as string | null,
@@ -152,6 +164,8 @@ function PaperTradingFeatureWrapper() {
   const [closedTrades, setClosedTrades] = useState<ClosedTradeResponse[]>([])
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetricsResponse | null>(null)
   const [capabilitySnapshot, setCapabilitySnapshot] = useState<TradingCapabilitySnapshot | null>(null)
+  const [paperTradingError, setPaperTradingError] = useState<string | null>(null)
+  const [performanceError, setPerformanceError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const requestSequenceRef = useRef(0)
@@ -177,6 +191,8 @@ function PaperTradingFeatureWrapper() {
       setOpenPositions([])
       setClosedTrades([])
       setPerformanceMetrics(null)
+      setPaperTradingError(null)
+      setPerformanceError(null)
       setIsLoading(false)
       lastLoadedAccountRef.current = null
       return
@@ -204,39 +220,45 @@ function PaperTradingFeatureWrapper() {
         }
       })()
 
-      const responses = await Promise.allSettled([
-        fetch(`/api/paper-trading/accounts/${accountId}/overview`),
-        fetch(`/api/paper-trading/accounts/${accountId}/positions`),
-        fetch(`/api/paper-trading/accounts/${accountId}/trades`),
-        fetch(`/api/paper-trading/accounts/${accountId}/performance?period=month`),
+      const [overviewResult, positionsResult, tradesResult, performanceResult] = await Promise.all([
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/overview`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/positions`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/trades`),
+        fetchJsonResult(`/api/paper-trading/accounts/${accountId}/performance?period=month`),
       ])
 
       if (requestSequenceRef.current !== requestId) {
         return
       }
 
-      const [overviewResult, positionsResult, tradesResult, performanceResult] = responses
+      const dataErrors = [
+        overviewResult.ok ? null : `Overview: ${overviewResult.error ?? 'Request failed'}`,
+        positionsResult.ok ? null : `Positions: ${positionsResult.error ?? 'Request failed'}`,
+      ].filter(Boolean) as string[]
 
-      if (overviewResult.status === 'fulfilled' && overviewResult.value.ok) {
-        setAccountOverview(normalizeOverviewPayload(await overviewResult.value.json(), accountId))
+      setPaperTradingError(dataErrors.length ? dataErrors.join(' | ') : null)
+      setPerformanceError(performanceResult.ok ? null : `Performance: ${performanceResult.error ?? 'Request failed'}`)
+
+      if (overviewResult.ok) {
+        setAccountOverview(normalizeOverviewPayload(overviewResult.payload, accountId))
       } else {
         setAccountOverview(null)
       }
 
-      if (positionsResult.status === 'fulfilled' && positionsResult.value.ok) {
-        setOpenPositions(normalizePositionsPayload(await positionsResult.value.json()))
+      if (positionsResult.ok) {
+        setOpenPositions(normalizePositionsPayload(positionsResult.payload))
       } else {
         setOpenPositions([])
       }
 
-      if (tradesResult.status === 'fulfilled' && tradesResult.value.ok) {
-        setClosedTrades(normalizeTradesPayload(await tradesResult.value.json()))
+      if (tradesResult.ok) {
+        setClosedTrades(normalizeTradesPayload(tradesResult.payload))
       } else {
         setClosedTrades([])
       }
 
-      if (performanceResult.status === 'fulfilled' && performanceResult.value.ok) {
-        setPerformanceMetrics(normalizePerformancePayload(await performanceResult.value.json()))
+      if (performanceResult.ok) {
+        setPerformanceMetrics(normalizePerformancePayload(performanceResult.payload))
       } else {
         setPerformanceMetrics(null)
       }
@@ -425,6 +447,8 @@ function PaperTradingFeatureWrapper() {
       closedTrades={closedTrades}
       performanceMetrics={performanceMetrics}
       capabilitySnapshot={capabilitySnapshot}
+      dataError={paperTradingError}
+      performanceError={performanceError}
       onRefresh={handleRefresh}
       isLoading={isLoading || isAccountsLoading}
     />

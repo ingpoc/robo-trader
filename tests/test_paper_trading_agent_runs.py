@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from src.core.errors import MarketDataError
+from src.models.paper_trading import TradeStatus
 from src.web.routes import paper_trading
 from src.models.agent_artifacts import (
     Candidate,
@@ -15,6 +17,14 @@ from src.models.agent_artifacts import (
     ReviewEnvelope,
     ReviewReport,
 )
+
+
+def _live_quotes_required(detail: str = "Live quotes unavailable.") -> MarketDataError:
+    return MarketDataError(
+        "Live market data is unavailable for one or more open positions. Refusing to synthesize entry-price marks.",
+        code="MARKET_DATA_LIVE_QUOTES_REQUIRED",
+        details=detail,
+    )
 
 
 def _assert_manual_run_metadata(response: dict, expected_reason: str) -> None:
@@ -42,6 +52,12 @@ def test_paper_trading_router_uses_agent_run_routes_not_legacy_scheduler_trigger
     assert "/api/paper-trading/accounts/{account_id}/runs/decision-review" in paths
     assert "/api/paper-trading/accounts/{account_id}/runs/daily-review" in paths
     assert "/api/paper-trading/accounts/{account_id}/runs/exit-check" in paths
+    assert "/api/paper-trading/accounts/{account_id}/automation/{job_type}" in paths
+    assert "/api/paper-trading/accounts/{account_id}/automation/runs" in paths
+    assert "/api/paper-trading/accounts/{account_id}/automation/runs/{run_id}" in paths
+    assert "/api/paper-trading/accounts/{account_id}/automation/runs/{run_id}/cancel" in paths
+    assert "/api/paper-trading/automation/pause" in paths
+    assert "/api/paper-trading/automation/resume" in paths
     assert "/api/paper-trading/accounts/{account_id}/positions/health" in paths
     assert "/api/paper-trading/accounts/{account_id}/operator/refresh-readiness" in paths
     assert "/api/paper-trading/accounts/{account_id}/execution/proposal" in paths
@@ -56,6 +72,211 @@ def test_paper_trading_router_uses_agent_run_routes_not_legacy_scheduler_trigger
     assert "/api/paper-trading/discovery/trigger-daily" not in paths
     assert "/api/paper-trading/discovery/trigger-sector" not in paths
     assert "/api/paper-trading/discovery/status" not in paths
+
+
+@pytest.mark.asyncio
+async def test_get_paper_trading_accounts_uses_store_backed_position_metrics():
+    request = SimpleNamespace()
+    account_manager = SimpleNamespace(
+        get_all_accounts=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    account_id="paper_main",
+                    account_name="Main",
+                    strategy_type=SimpleNamespace(value="swing"),
+                    created_at="2026-03-29T00:00:00+00:00",
+                    initial_balance=100000.0,
+                    current_balance=99500.0,
+                    buying_power=99000.0,
+                )
+            ]
+        ),
+        get_store_backed_position_metrics=AsyncMock(
+            return_value={"open_positions_count": 1, "deployed_capital": 500.0}
+        ),
+    )
+    container = SimpleNamespace(
+        get=AsyncMock(return_value=account_manager)
+    )
+
+    response = await paper_trading.get_paper_trading_accounts.__wrapped__(
+        request=request,
+        container=container,
+    )
+
+    assert response["accounts"][0]["accountId"] == "paper_main"
+    assert response["accounts"][0]["totalInvested"] == 500.0
+    account_manager.get_store_backed_position_metrics.assert_awaited_once_with("paper_main")
+
+
+@pytest.mark.asyncio
+async def test_get_paper_trading_account_overview_returns_partial_data_when_quotes_are_unavailable():
+    request = SimpleNamespace()
+    degraded_positions = [
+        SimpleNamespace(
+            trade_id="trade_1",
+            symbol="INFY",
+            quantity=5,
+            entry_price=100.0,
+            current_price=None,
+            current_value=None,
+            unrealized_pnl=None,
+            unrealized_pnl_pct=None,
+            stop_loss=None,
+            target_price=None,
+            entry_date="2026-03-29T00:00:00+00:00",
+            days_held=1,
+            strategy_rationale="momentum",
+            trade_type="buy",
+            market_price_status="quote_unavailable",
+            market_price_detail="Live quotes unavailable.",
+            market_price_timestamp=None,
+        )
+    ]
+    account_manager = SimpleNamespace(
+        get_account=AsyncMock(
+            return_value=SimpleNamespace(
+                account_id="paper_main",
+                strategy_type=SimpleNamespace(value="swing"),
+                created_at="2026-03-29T00:00:00+00:00",
+                initial_balance=100000.0,
+                current_balance=99500.0,
+                buying_power=99000.0,
+            )
+        ),
+        get_open_positions=AsyncMock(side_effect=_live_quotes_required()),
+        get_store_backed_open_positions=AsyncMock(return_value=degraded_positions),
+        get_store_backed_position_metrics=AsyncMock(
+            return_value={"open_positions_count": 1, "deployed_capital": 500.0}
+        ),
+        get_performance_metrics=AsyncMock(side_effect=_live_quotes_required("Performance requires live quotes.")),
+    )
+    store = SimpleNamespace(get_closed_trades=AsyncMock(return_value=[]))
+    container = SimpleNamespace(
+        get=AsyncMock(side_effect=lambda name: {
+            "paper_trading_account_manager": account_manager,
+            "paper_trading_store": store,
+        }[name])
+    )
+
+    response = await paper_trading.get_paper_trading_account_overview.__wrapped__(
+        request=request,
+        account_id="paper_main",
+        container=container,
+    )
+
+    assert response["accountId"] == "paper_main"
+    assert response["totalInvested"] == 500.0
+    assert response["openPositions"] == 1
+    assert response["todayPnL"] is None
+    assert response["monthlyROI"] is None
+    assert response["winRate"] is None
+    assert response["valuationStatus"] == "quote_unavailable"
+    assert response["valuationDetail"] == "Live quotes unavailable."
+
+
+@pytest.mark.asyncio
+async def test_get_paper_trading_positions_returns_degraded_rows_when_quotes_are_unavailable():
+    request = SimpleNamespace()
+    degraded_positions = [
+        SimpleNamespace(
+            trade_id="trade_1",
+            symbol="INFY",
+            quantity=5,
+            entry_price=100.0,
+            current_price=None,
+            current_value=None,
+            unrealized_pnl=None,
+            unrealized_pnl_pct=None,
+            stop_loss=None,
+            target_price=None,
+            entry_date="2026-03-29T00:00:00+00:00",
+            days_held=1,
+            strategy_rationale="momentum",
+            trade_type="buy",
+            market_price_status="quote_unavailable",
+            market_price_detail="Live quotes unavailable.",
+            market_price_timestamp=None,
+        )
+    ]
+    account_manager = SimpleNamespace(
+        get_account=AsyncMock(return_value=SimpleNamespace(account_id="paper_main")),
+        get_open_positions=AsyncMock(side_effect=_live_quotes_required()),
+        get_store_backed_open_positions=AsyncMock(return_value=degraded_positions),
+    )
+    container = SimpleNamespace(get=AsyncMock(return_value=account_manager))
+
+    response = await paper_trading.get_paper_trading_positions.__wrapped__(
+        request=request,
+        account_id="paper_main",
+        container=container,
+    )
+
+    assert response["valuationStatus"] == "quote_unavailable"
+    assert response["valuationDetail"] == "Live quotes unavailable."
+    assert response["positions"][0]["tradeId"] == "trade_1"
+    assert response["positions"][0]["currentPrice"] is None
+    assert response["positions"][0]["pnl"] is None
+
+
+@pytest.mark.asyncio
+async def test_submit_automation_run_returns_persisted_run_and_controls():
+    request = SimpleNamespace()
+    account_manager = SimpleNamespace(get_account=AsyncMock(return_value=SimpleNamespace(account_id="paper_main")))
+    automation_service = SimpleNamespace(
+        submit_run=AsyncMock(
+            return_value={
+                "run_id": "autorun_1",
+                "account_id": "paper_main",
+                "job_type": "daily_review_cycle",
+                "status": "queued",
+            }
+        ),
+        get_runtime_readiness=AsyncMock(return_value={"status": "ready", "provider": "codex"}),
+        get_control_state=AsyncMock(return_value=SimpleNamespace(model_dump=lambda mode="json": {"global_pause": False, "controls": []})),
+    )
+    artifact_service = SimpleNamespace(get_review_view=AsyncMock(return_value=ReviewEnvelope(status="ready", context_mode="delta_daily_review")))
+
+    async def get_service(name):
+        services = {
+            "paper_trading_account_manager": account_manager,
+            "paper_trading_automation_service": automation_service,
+            "agent_artifact_service": artifact_service,
+        }
+        return services[name]
+
+    container = SimpleNamespace(get=AsyncMock(side_effect=get_service))
+
+    response = await paper_trading.submit_paper_trading_automation_run.__wrapped__(
+        request=request,
+        account_id="paper_main",
+        job_type="daily_review_cycle",
+        body=paper_trading.AutomationTriggerRequest(trigger_reason="manual"),
+        container=container,
+    )
+
+    assert response["run"]["run_id"] == "autorun_1"
+    assert response["runtime_readiness"]["status"] == "ready"
+    assert response["controls"]["global_pause"] is False
+    automation_service.submit_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pause_automation_returns_control_state():
+    request = SimpleNamespace()
+    automation_service = SimpleNamespace(
+        pause=AsyncMock(return_value=SimpleNamespace(model_dump=lambda mode="json": {"global_pause": True, "paused_job_types": ["research_cycle"], "controls": []}))
+    )
+    container = SimpleNamespace(get=AsyncMock(return_value=automation_service))
+
+    response = await paper_trading.pause_paper_trading_automation.__wrapped__(
+        request=request,
+        body=paper_trading.AutomationControlRequest(job_types=["research_cycle"], reason="maintenance"),
+        container=container,
+    )
+
+    assert response["controls"]["global_pause"] is True
+    assert response["controls"]["paused_job_types"] == ["research_cycle"]
 
 
 @pytest.mark.asyncio
@@ -819,6 +1040,59 @@ async def test_execution_preflight_denies_stale_quote_and_weak_research():
     assert response["research_gate"]["passed"] is False
     assert any("fresh live quote" in reason.lower() or "stale" in reason.lower() for reason in response["reasons"])
     assert any("research packet" in reason.lower() for reason in response["reasons"])
+
+
+@pytest.mark.asyncio
+async def test_execution_preflight_accepts_enum_backed_open_trade_for_close_action():
+    request = SimpleNamespace()
+    open_trade = SimpleNamespace(
+        trade_id="trade-1",
+        account_id="paper_main",
+        symbol="INFY",
+        status=TradeStatus.OPEN,
+    )
+    account_manager = SimpleNamespace(
+        get_account=AsyncMock(return_value=SimpleNamespace(account_id="paper_main")),
+        get_open_positions=AsyncMock(return_value=[]),
+    )
+    learning_service = SimpleNamespace(
+        learning_store=SimpleNamespace(get_latest_research_memory=AsyncMock(return_value=None)),
+        get_latest_decision_packet=AsyncMock(
+            return_value=SimpleNamespace(
+                decision_id="decision-1",
+                confidence=0.72,
+                action="review_exit",
+            )
+        ),
+        get_latest_review_report=AsyncMock(return_value=SimpleNamespace(review_id="review-1")),
+    )
+    container = SimpleNamespace(
+        get=AsyncMock(
+            side_effect=lambda name: {
+                "paper_trading_account_manager": account_manager,
+                "paper_trading_store": SimpleNamespace(get_trade=AsyncMock(return_value=open_trade)),
+                "paper_trading_learning_service": learning_service,
+                "market_data_service": None,
+                "queue_state_repository": None,
+            }[name]
+        )
+    )
+
+    response = await paper_trading.validate_paper_trading_execution_preflight.__wrapped__(
+        request=request,
+        account_id="paper_main",
+        body=paper_trading.ExecutionPreflightRequest(
+            action="close",
+            symbol="INFY",
+            trade_id="trade-1",
+            dry_run=True,
+        ),
+        container=container,
+    )
+
+    assert response["risk_checks"]["trade_open"] is True
+    assert response["decision_gate"]["passed"] is True
+    assert not any("not an open trade" in reason.lower() for reason in response["reasons"])
 
 
 @pytest.mark.asyncio

@@ -38,6 +38,8 @@ export interface AccountOverviewResponse {
   buying_power: number
   cash_available: number
   last_updated: string
+  valuation_status?: 'live' | 'quote_unavailable' | 'market_closed'
+  valuation_detail?: string | null
 }
 
 export interface OpenPositionResponse {
@@ -45,17 +47,17 @@ export interface OpenPositionResponse {
   symbol: string
   quantity: number
   entry_price: number
-  current_price: number
+  current_price: number | null
   stop_loss?: number
   target?: number
-  unrealized_pnl: number
-  unrealized_pnl_pct: number
+  unrealized_pnl: number | null
+  unrealized_pnl_pct: number | null
   entry_time: string
   strategy?: string
   tradeType?: string
-  currentValue?: number
+  currentValue?: number | null
   daysHeld?: number
-  markStatus?: 'live' | 'stale_entry'
+  markStatus?: 'live' | 'stale_entry' | 'quote_unavailable' | 'market_closed'
   markDetail?: string | null
   markTimestamp?: string | null
 }

@@ -278,10 +278,20 @@ async def register_domain_services(container: 'DependencyContainer') -> None:
             )
             await kite_service.initialize(credentials)
 
-            # If access_token is available in env, use it directly (skip OAuth for paper trading)
+            # If a valid access token is available in env, use it directly (skip OAuth for paper trading)
             if access_token:
-                logger.info(f"Using ZERODHA_ACCESS_TOKEN from environment for market data")
-                await kite_service._set_access_token(access_token)
+                from src.core.env_helpers import get_zerodha_token_from_env
+
+                env_token = get_zerodha_token_from_env()
+                if env_token:
+                    logger.info("Using valid ZERODHA_ACCESS_TOKEN from environment for market data")
+                    await kite_service._set_access_token(
+                        env_token["access_token"],
+                        expires_at=env_token.get("expires_at"),
+                        user_id=env_token.get("user_id"),
+                    )
+                else:
+                    logger.warning("Ignoring ZERODHA_ACCESS_TOKEN from environment because it is missing expiry metadata or has already expired")
 
             logger.info(f"KiteConnectService initialized with API key: {api_key[:4]}***")
             return kite_service

@@ -113,6 +113,52 @@ class PaperTradingStore:
                 )
             """)
 
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS automation_runs (
+                    run_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    job_type TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    runtime_session_id TEXT,
+                    status TEXT NOT NULL,
+                    status_reason TEXT NOT NULL DEFAULT '',
+                    block_reason TEXT NOT NULL DEFAULT '',
+                    schedule_source TEXT NOT NULL DEFAULT 'manual',
+                    trigger_reason TEXT NOT NULL DEFAULT '',
+                    input_digest TEXT NOT NULL DEFAULT '',
+                    provider_metadata TEXT NOT NULL DEFAULT '{}',
+                    tool_trace TEXT NOT NULL DEFAULT '[]',
+                    artifact_path TEXT,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    timeout_at TEXT,
+                    duration_ms INTEGER,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS automation_job_controls (
+                    job_type TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    schedule_minutes INTEGER NOT NULL DEFAULT 60,
+                    last_run_at TEXT,
+                    next_run_at TEXT,
+                    paused_at TEXT,
+                    pause_reason TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS automation_global_control (
+                    control_key TEXT PRIMARY KEY,
+                    control_value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
             # Check and migrate legacy schemas
             await self._migrate_legacy_schema(db)
             await self._normalize_trade_statuses(db)
@@ -433,6 +479,22 @@ class PaperTradingStore:
             """)
         except Exception as e:
             logger.warning(f"Failed to create manual run audit index: {e}")
+
+        try:
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_automation_runs_account_started
+                ON automation_runs(account_id, started_at DESC)
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to create automation run history index: {e}")
+
+        try:
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_automation_runs_account_job_status
+                ON automation_runs(account_id, job_type, status)
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to create automation run active index: {e}")
 
     async def create_account(
         self,
@@ -935,6 +997,227 @@ class PaperTradingStore:
                     item[field] = {}
             entries.append(item)
         return entries
+
+    async def create_automation_run(self, entry: Dict[str, Any]) -> None:
+        """Persist a new automation run record."""
+        async with self._lock:
+            await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO automation_runs (
+                    run_id, account_id, job_type, provider, runtime_session_id, status,
+                    status_reason, block_reason, schedule_source, trigger_reason, input_digest,
+                    provider_metadata, tool_trace, artifact_path, started_at, completed_at,
+                    timeout_at, duration_ms, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry["run_id"],
+                    entry["account_id"],
+                    entry["job_type"],
+                    entry["provider"],
+                    entry.get("runtime_session_id"),
+                    entry["status"],
+                    entry.get("status_reason", ""),
+                    entry.get("block_reason", ""),
+                    entry.get("schedule_source", "manual"),
+                    entry.get("trigger_reason", ""),
+                    entry.get("input_digest", ""),
+                    json.dumps(entry.get("provider_metadata") or {}),
+                    json.dumps(entry.get("tool_trace") or []),
+                    entry.get("artifact_path"),
+                    entry["started_at"],
+                    entry.get("completed_at"),
+                    entry.get("timeout_at"),
+                    entry.get("duration_ms"),
+                    entry["created_at"],
+                    entry["updated_at"],
+                ),
+            )
+            await self.db_connection.commit()
+
+    async def update_automation_run(self, run_id: str, updates: Dict[str, Any]) -> None:
+        """Update an existing automation run record."""
+        allowed = {
+            "runtime_session_id",
+            "status",
+            "status_reason",
+            "block_reason",
+            "provider_metadata",
+            "tool_trace",
+            "artifact_path",
+            "completed_at",
+            "timeout_at",
+            "duration_ms",
+            "updated_at",
+        }
+        columns = []
+        params: List[Any] = []
+        for key, value in updates.items():
+            if key not in allowed:
+                continue
+            columns.append(f"{key} = ?")
+            if key in {"provider_metadata", "tool_trace"}:
+                params.append(json.dumps(value or ({} if key == "provider_metadata" else [])))
+            else:
+                params.append(value)
+        if not columns:
+            return
+        params.append(run_id)
+        async with self._lock:
+            await self.db_connection.execute(
+                f"UPDATE automation_runs SET {', '.join(columns)} WHERE run_id = ?",
+                tuple(params),
+            )
+            await self.db_connection.commit()
+
+    async def get_automation_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Return a single automation run record."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT * FROM automation_runs WHERE run_id = ?",
+                (run_id,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return None
+        return self._decode_automation_run_row(dict(row))
+
+    async def list_automation_runs(self, account_id: str, *, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return recent automation runs for the account."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                """
+                SELECT *
+                FROM automation_runs
+                WHERE account_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (account_id, limit),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+        return [self._decode_automation_run_row(dict(row)) for row in rows]
+
+    async def get_active_automation_run(self, account_id: str, job_type: str) -> Optional[Dict[str, Any]]:
+        """Return an active queued/in-progress automation run if present."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                """
+                SELECT *
+                FROM automation_runs
+                WHERE account_id = ? AND job_type = ? AND status IN ('queued', 'in_progress')
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (account_id, job_type),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return None
+        return self._decode_automation_run_row(dict(row))
+
+    async def set_automation_global_pause(self, paused: bool, *, reason: str = "") -> None:
+        """Persist the global automation pause state."""
+        async with self._lock:
+            now = datetime.now(timezone.utc).isoformat()
+            await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO automation_global_control (control_key, control_value, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                ("global_pause", json.dumps({"paused": paused, "reason": reason}), now),
+            )
+            await self.db_connection.commit()
+
+    async def get_automation_global_pause(self) -> Dict[str, Any]:
+        """Return the global automation pause state."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT control_value, updated_at FROM automation_global_control WHERE control_key = ?",
+                ("global_pause",),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return {"paused": False, "reason": "", "updated_at": None}
+        payload = json.loads(row["control_value"]) if row["control_value"] else {"paused": False, "reason": ""}
+        payload["updated_at"] = row["updated_at"]
+        return payload
+
+    async def upsert_automation_job_control(self, entry: Dict[str, Any]) -> None:
+        """Create or update per-job automation controls."""
+        async with self._lock:
+            await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO automation_job_controls (
+                    job_type, enabled, schedule_minutes, last_run_at, next_run_at,
+                    paused_at, pause_reason, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry["job_type"],
+                    1 if entry.get("enabled", True) else 0,
+                    int(entry.get("schedule_minutes", 60)),
+                    entry.get("last_run_at"),
+                    entry.get("next_run_at"),
+                    entry.get("paused_at"),
+                    entry.get("pause_reason", ""),
+                    entry["updated_at"],
+                ),
+            )
+            await self.db_connection.commit()
+
+    async def get_automation_job_control(self, job_type: str) -> Optional[Dict[str, Any]]:
+        """Return a single per-job automation control row."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT * FROM automation_job_controls WHERE job_type = ?",
+                (job_type,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return None
+        item = dict(row)
+        item["enabled"] = bool(item.get("enabled", 1))
+        return item
+
+    async def list_automation_job_controls(self) -> List[Dict[str, Any]]:
+        """Return all per-job automation controls."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT * FROM automation_job_controls ORDER BY job_type ASC"
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+        items: List[Dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["enabled"] = bool(item.get("enabled", 1))
+            items.append(item)
+        return items
+
+    @staticmethod
+    def _decode_automation_run_row(item: Dict[str, Any]) -> Dict[str, Any]:
+        for field, fallback in (("provider_metadata", {}), ("tool_trace", [])):
+            raw_value = item.get(field)
+            if isinstance(raw_value, str) and raw_value.strip():
+                try:
+                    item[field] = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    item[field] = fallback
+            elif raw_value is None:
+                item[field] = fallback
+        return item
 
     async def calculate_daily_performance_metrics(
         self,

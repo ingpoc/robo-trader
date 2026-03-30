@@ -5,7 +5,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
-from ...models.paper_trading import PaperTradingAccount, AccountType, RiskLevel
+from ...core.errors import ErrorSeverity, MarketDataError
+from ...models.paper_trading import PaperTradingAccount, PaperTrade, AccountType, RiskLevel
 from ...models.paper_trading_responses import OpenPositionResponse, ClosedTradeResponse
 from ...stores.paper_trading_store import PaperTradingStore
 from .performance_calculator import PerformanceCalculator
@@ -19,6 +20,7 @@ class PaperTradingAccountManager:
 
     MARKET_DATA_FETCH_TIMEOUT_SECONDS = 5.0
     MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS = 5 * 60
+    QUOTE_UNAVAILABLE_MARK_STATUS = "quote_unavailable"
 
     def __init__(self, store: PaperTradingStore, market_data_service=None, price_monitor=None):
         """Initialize manager with MarketDataService integration.
@@ -31,6 +33,24 @@ class PaperTradingAccountManager:
         self.store = store
         self.market_data_service = market_data_service  # Injected from DI container
         self.price_monitor = price_monitor  # Injected for WebSocket broadcasting
+
+    def _raise_live_market_data_unavailable(
+        self,
+        *,
+        account_id: str,
+        missing_symbols: List[str],
+        detail: Optional[str],
+    ) -> None:
+        symbols = sorted({symbol for symbol in missing_symbols if symbol})
+        raise MarketDataError(
+            "Live market data is unavailable for one or more open positions. Refusing to synthesize entry-price marks.",
+            severity=ErrorSeverity.HIGH,
+            recoverable=True,
+            code="MARKET_DATA_LIVE_QUOTES_REQUIRED",
+            details=detail,
+            account_id=account_id,
+            missing_symbols=symbols,
+        )
 
     @staticmethod
     def _parse_timestamp(value: Any) -> Optional[datetime]:
@@ -191,6 +211,90 @@ class PaperTradingAccountManager:
     async def to_dict(self, account: PaperTradingAccount) -> Dict[str, Any]:
         """Convert account to dictionary."""
         return account.to_dict()
+
+    @staticmethod
+    def _default_quote_unavailable_detail() -> str:
+        return (
+            "Live market valuation is unavailable for this position. Showing store-backed position data only; "
+            "no entry-price substitution was used."
+        )
+
+    def _build_position_response(
+        self,
+        trade: PaperTrade,
+        *,
+        current_price: Optional[float],
+        price_status: str,
+        price_detail: Optional[str],
+        price_timestamp: Optional[str],
+    ) -> OpenPositionResponse:
+        current_value = None
+        unrealized_pnl = None
+        unrealized_pnl_pct = None
+        if current_price is not None:
+            current_value = current_price * trade.quantity
+            unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
+            unrealized_pnl_pct = (
+                (unrealized_pnl / (trade.entry_price * trade.quantity)) * 100
+                if trade.entry_price > 0
+                else 0.0
+            )
+
+        return OpenPositionResponse(
+            trade_id=trade.trade_id,
+            symbol=trade.symbol,
+            trade_type=trade.trade_type.value,
+            quantity=trade.quantity,
+            entry_price=trade.entry_price,
+            current_price=current_price,
+            current_value=current_value,
+            unrealized_pnl=unrealized_pnl,
+            unrealized_pnl_pct=unrealized_pnl_pct,
+            stop_loss=trade.stop_loss,
+            target_price=trade.target_price,
+            entry_date=trade.entry_timestamp,
+            days_held=PerformanceCalculator.calculate_days_held(trade.entry_timestamp),
+            strategy_rationale=trade.strategy_rationale,
+            ai_suggested=False,
+            market_price_status=price_status,
+            market_price_detail=price_detail,
+            market_price_timestamp=price_timestamp,
+        )
+
+    async def get_store_backed_open_positions(
+        self,
+        account_id: str,
+        *,
+        mark_status: Optional[str] = None,
+        mark_detail: Optional[str] = None,
+    ) -> List[OpenPositionResponse]:
+        """Return open-position identity and entry data without live valuation."""
+        open_trades = await self.store.get_open_trades(account_id)
+        if not open_trades:
+            return []
+
+        status = mark_status or self.QUOTE_UNAVAILABLE_MARK_STATUS
+        detail = mark_detail or self._default_quote_unavailable_detail()
+        return [
+            self._build_position_response(
+                trade,
+                current_price=None,
+                price_status=status,
+                price_detail=detail,
+                price_timestamp=None,
+            )
+            for trade in open_trades
+        ]
+
+    async def get_store_backed_position_metrics(self, account_id: str) -> Dict[str, int | float]:
+        """Return deployed capital and open-position count from the trade ledger only."""
+        open_trades = await self.store.get_open_trades(account_id)
+        deployed_capital = sum(trade.entry_price * trade.quantity for trade in open_trades)
+        return {
+            "open_positions_count": len(open_trades),
+            "deployed_capital": deployed_capital,
+        }
+
     async def get_open_positions(self, account_id: str) -> List[OpenPositionResponse]:
         """Get all open positions with REAL-TIME prices from Zerodha Kite."""
         # Register account for real-time price monitoring (Phase 2: WebSocket updates)
@@ -295,54 +399,32 @@ class PaperTradingAccountManager:
         else:
             market_price_detail = "MarketDataService is not configured."
 
+        missing_symbols = [symbol for symbol in symbols if symbol not in current_prices]
+        if missing_symbols:
+            detail = "; ".join(
+                filter(
+                    None,
+                    [stale_price_details.get(symbol) for symbol in missing_symbols] + [market_price_detail],
+                )
+            ) or "A fresh live quote is required for every open position."
+            self._raise_live_market_data_unavailable(
+                account_id=account_id,
+                missing_symbols=missing_symbols,
+                detail=detail,
+            )
+
         # Convert to response format
-        positions = []
-        for trade in open_trades:
-            has_live_price = trade.symbol in current_prices
-            current_price = current_prices.get(trade.symbol, trade.entry_price)
-            if has_live_price:
-                price_status = "live"
-                price_detail = None
-                price_timestamp = current_price_timestamps.get(trade.symbol) or datetime.now(timezone.utc).isoformat()
-            else:
-                price_status = "stale_entry"
-                price_detail = stale_price_details.get(trade.symbol) or market_price_detail or (
-                    f"No live market price is available for {trade.symbol}; using the entry price as a stale mark."
-                )
-                price_timestamp = trade.entry_timestamp
-                logger.warning(
-                    "Market data unavailable for %s; exposing stale entry mark ₹%s",
-                    trade.symbol,
-                    trade.entry_price,
-                )
-
-            # Calculate unrealized P&L with current market price
-            unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
-            unrealized_pnl_pct = (unrealized_pnl / (trade.entry_price * trade.quantity)) * 100 if trade.entry_price > 0 else 0.0
-
-            # Calculate days held
-            days_held = PerformanceCalculator.calculate_days_held(trade.entry_timestamp)
-
-            positions.append(OpenPositionResponse(
-                trade_id=trade.trade_id,
-                symbol=trade.symbol,
-                trade_type=trade.trade_type.value,
-                quantity=trade.quantity,
-                entry_price=trade.entry_price,
-                current_price=current_price,  # Real-time from Zerodha!
-                current_value=current_price * trade.quantity,
-                unrealized_pnl=unrealized_pnl,  # Calculated with live price
-                unrealized_pnl_pct=unrealized_pnl_pct,
-                stop_loss=trade.stop_loss,
-                target_price=trade.target_price,
-                entry_date=trade.entry_timestamp,
-                days_held=days_held,
-                strategy_rationale=trade.strategy_rationale,
-                ai_suggested=False,  # TODO: Add this field to trade model
-                market_price_status=price_status,
-                market_price_detail=price_detail,
-                market_price_timestamp=price_timestamp,
-            ))
+        positions = [
+            self._build_position_response(
+                trade,
+                current_price=current_prices[trade.symbol],
+                price_status="live",
+                price_detail=None,
+                price_timestamp=current_price_timestamps.get(trade.symbol)
+                or datetime.now(timezone.utc).isoformat(),
+            )
+            for trade in open_trades
+        ]
 
         logger.info(f"Retrieved {len(positions)} open positions with real-time prices from Zerodha")
         return positions
@@ -413,14 +495,30 @@ class PaperTradingAccountManager:
 
         # Get current prices for open positions
         current_prices = {}
-        if open_trades and self.market_data_service:
+        if open_trades:
+            if not self.market_data_service:
+                self._raise_live_market_data_unavailable(
+                    account_id=account_id,
+                    missing_symbols=[trade.symbol for trade in open_trades],
+                    detail="MarketDataService is not configured.",
+                )
+
             symbols = list(set(trade.symbol for trade in open_trades))
             market_data_map = await self.market_data_service.get_multiple_market_data(symbols)
             current_prices = {
                 symbol: market_data.ltp
                 for symbol, market_data in market_data_map.items()
-                if market_data and market_data.ltp is not None
+                if market_data
+                and market_data.ltp is not None
+                and self._is_fresh_market_timestamp(getattr(market_data, "timestamp", None))
             }
+            missing_symbols = [symbol for symbol in symbols if symbol not in current_prices]
+            if missing_symbols:
+                self._raise_live_market_data_unavailable(
+                    account_id=account_id,
+                    missing_symbols=missing_symbols,
+                    detail="Performance metrics require fresh live quotes for every open position.",
+                )
 
         # Use PerformanceCalculator to calculate metrics
         metrics = PerformanceCalculator.calculate_account_performance(

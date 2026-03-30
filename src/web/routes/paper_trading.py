@@ -16,11 +16,14 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from src.core.di import DependencyContainer
+from src.core.errors import ErrorSeverity, MarketDataError
 from src.web.models.trade_request import BuyTradeRequest, SellTradeRequest
 from src.core.errors import TradingError
 from src.models.agent_artifacts import DiscoveryEnvelope, DecisionEnvelope, ResearchEnvelope, ReviewEnvelope
 from src.models.dto import QueueStatusDTO
+from src.models.paper_trading_automation import AutomationJobType
 from src.auth.ai_runtime_auth import get_ai_runtime_status
+from src.services.paper_trading_automation_service import AutomationPausedError, DuplicateAutomationRunError
 from ..dependencies import get_container
 
 
@@ -76,6 +79,20 @@ class SessionRetrospectiveRequest(BaseModel):
     evidence: List[Dict[str, Any]] = Field(default_factory=list)
     owner: str = "paper_trading_operator"
     promotion_state: str = "queued"
+
+
+class AutomationTriggerRequest(BaseModel):
+    limit: Optional[int] = Field(default=None, ge=1, le=50)
+    candidate_id: Optional[str] = Field(default=None)
+    symbol: Optional[str] = Field(default=None)
+    dry_run: bool = True
+    schedule_source: Literal["manual", "scheduled"] = "manual"
+    trigger_reason: str = ""
+
+
+class AutomationControlRequest(BaseModel):
+    job_types: List[AutomationJobType] = Field(default_factory=list)
+    reason: str = ""
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +338,66 @@ async def _execute_manual_run(
     ).model_dump(mode="json")
 
 
+async def _execute_automation_action(
+    *,
+    container: DependencyContainer,
+    account_id: str,
+    timeout_seconds: float,
+    action: Callable[[], Awaitable[DiscoveryEnvelope | ResearchEnvelope | DecisionEnvelope | ReviewEnvelope]],
+    timeout_factory: Callable[[str], DiscoveryEnvelope | ResearchEnvelope | DecisionEnvelope | ReviewEnvelope],
+) -> Dict[str, Any]:
+    """Execute an automation action without writing manual-run audit state."""
+    started_at = datetime.now(timezone.utc).isoformat()
+    dependency_state = await _collect_dependency_state(container, account_id)
+    try:
+        envelope = await asyncio.wait_for(action(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        envelope = timeout_factory(
+            f"Automation run exceeded the {int(timeout_seconds)}s deadline and was cancelled before completion."
+        )
+    except Exception as exc:
+        completed_at = datetime.now(timezone.utc).isoformat()
+        duration_ms = max(
+            int(
+                (
+                    datetime.fromisoformat(completed_at) - datetime.fromisoformat(started_at)
+                ).total_seconds()
+                * 1000
+            ),
+            0,
+        )
+        return {
+            "status": "error",
+            "blockers": [str(exc).strip() or "Automation run raised an unhandled exception."],
+            "provider_metadata": {},
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "duration_ms": duration_ms,
+            "status_reason": "Automation run raised an unhandled exception.",
+            "dependency_state": dependency_state,
+        }
+
+    completed_at = datetime.now(timezone.utc).isoformat()
+    duration_ms = max(
+        int(
+            (
+                datetime.fromisoformat(completed_at) - datetime.fromisoformat(started_at)
+            ).total_seconds()
+            * 1000
+        ),
+        0,
+    )
+    status_reason = _derive_status_reason(envelope.status, list(envelope.blockers))
+    return envelope.model_copy(
+        update={
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "duration_ms": duration_ms,
+            "status_reason": status_reason,
+        }
+    ).model_dump(mode="json") | {"dependency_state": dependency_state}
+
+
 async def _build_queue_status_payload(container: DependencyContainer) -> Dict[str, Any]:
     """Return the current queue snapshot without routing through the HTTP layer."""
     queue_repo = await container.get("queue_state_repository")
@@ -388,6 +465,36 @@ def _serialize_position(pos: Any) -> Dict[str, Any]:
     }
 
 
+def _trading_error_code(error: TradingError) -> str:
+    context = getattr(error, "context", None)
+    return str(getattr(context, "code", "") or "").strip().upper()
+
+
+def _trading_error_detail(error: TradingError) -> Optional[str]:
+    context = getattr(error, "context", None)
+    detail = getattr(context, "details", None)
+    return str(detail).strip() if detail else None
+
+
+async def _load_positions_for_read_surface(
+    account_manager: Any,
+    account_id: str,
+) -> tuple[List[Any], str, Optional[str]]:
+    """Return live-valued positions when available, otherwise explicit degraded rows."""
+    try:
+        return await account_manager.get_open_positions(account_id), "live", None
+    except MarketDataError as error:
+        if _trading_error_code(error) != "MARKET_DATA_LIVE_QUOTES_REQUIRED":
+            raise
+        detail = _trading_error_detail(error) or str(error)
+        positions = await account_manager.get_store_backed_open_positions(
+            account_id,
+            mark_status="quote_unavailable",
+            mark_detail=detail,
+        )
+        return positions, "quote_unavailable", detail
+
+
 def _serialize_closed_trade(trade: Any) -> Dict[str, Any]:
     """Normalize a closed trade for API and WebMCP consumers."""
     hold_days = trade.holding_period_days
@@ -411,6 +518,27 @@ def _serialize_closed_trade(trade: Any) -> Dict[str, Any]:
         "pnlPercent": trade.realized_pnl_pct,
         "strategy": trade.strategy_rationale,
     }
+
+
+def _unwrap_route_payload(name: str, payload: Any) -> Any:
+    """Fail loud when an internal route call returned an error response."""
+    if not isinstance(payload, JSONResponse):
+        return payload
+
+    try:
+        body = json.loads(payload.body.decode("utf-8")) if getattr(payload, "body", None) else {}
+    except Exception:
+        body = {}
+
+    raise TradingError(
+        str(body.get("error") or body.get("message") or f"{name} failed."),
+        code=body.get("code"),
+        severity=ErrorSeverity.HIGH,
+        recoverable=bool(body.get("recoverable", False)),
+        route_name=name,
+        route_status_code=getattr(payload, "status_code", None),
+        route_category=body.get("category"),
+    )
 
 
 def _execution_mode() -> str:
@@ -605,10 +733,11 @@ async def _build_execution_preflight_payload(
         "latest_review_id": getattr(latest_review, "review_id", None),
     }
     if decision_gate["required"]:
+        trade_status = getattr(getattr(trade, "status", None), "value", getattr(trade, "status", ""))
         risk_checks["trade_open"] = bool(
             trade is not None
             and str(getattr(trade, "account_id", "")) == account_id
-            and str(getattr(trade, "status", "")).strip().lower() == "open"
+            and str(trade_status).strip().lower() == "open"
         )
         if not risk_checks["trade_open"]:
             reasons.append(f"{preflight.trade_id or 'Trade'} is not an open trade in account {account_id}.")
@@ -986,6 +1115,11 @@ async def _build_operator_snapshot_payload(
         learning_service.learning_store.list_recent_decision_memory(account_id, limit=10),
     )
 
+    overview = _unwrap_route_payload("paper_trading.overview", overview)
+    positions_payload = _unwrap_route_payload("paper_trading.positions", positions_payload)
+    trades_payload = _unwrap_route_payload("paper_trading.trades", trades_payload)
+    performance = _unwrap_route_payload("paper_trading.performance", performance)
+
     positions = positions_payload.get("positions", []) if isinstance(positions_payload, dict) else []
     readiness = _build_readiness_payload(capability_snapshot)
     staleness = await _build_artifact_staleness_payload(
@@ -1063,6 +1197,124 @@ async def _build_operator_snapshot_payload(
         "promotable_improvements": [improvement.model_dump(mode="json") for improvement in promotable_improvements],
         "incidents": incidents,
     }
+
+
+async def _build_automation_job_execution(
+    *,
+    request: Request,
+    container: DependencyContainer,
+    account_id: str,
+    job_type: AutomationJobType,
+    trigger: AutomationTriggerRequest,
+) -> tuple[float, Callable[[], Awaitable[Dict[str, Any]]]]:
+    """Map an automation job type to an existing bounded cognition flow."""
+    if job_type == "research_cycle":
+        if not trigger.candidate_id and not trigger.symbol:
+            raise TradingError(
+                "Provide candidate_id or symbol before running research_cycle.",
+                severity=ErrorSeverity.HIGH,
+            )
+
+        async def execute() -> Dict[str, Any]:
+            artifact_service = await container.get("agent_artifact_service")
+            async def action() -> ResearchEnvelope:
+                return await artifact_service.get_research_view(
+                    account_id,
+                    candidate_id=trigger.candidate_id,
+                    symbol=trigger.symbol,
+                    refresh=True,
+                )
+
+            return await _execute_automation_action(
+                container=container,
+                account_id=account_id,
+                timeout_seconds=RESEARCH_TIMEOUT_SECONDS,
+                action=action,
+                timeout_factory=lambda message: _blocked_research_envelope(blockers=[message]),
+            )
+
+        return RESEARCH_TIMEOUT_SECONDS, execute
+
+    if job_type == "decision_review_cycle":
+        limit = trigger.limit or 3
+
+        async def execute() -> Dict[str, Any]:
+            artifact_service = await container.get("agent_artifact_service")
+            async def action() -> DecisionEnvelope:
+                return await artifact_service.get_decision_view(account_id, limit=limit, refresh=True)
+
+            return await _execute_automation_action(
+                container=container,
+                account_id=account_id,
+                timeout_seconds=DECISION_TIMEOUT_SECONDS,
+                action=action,
+                timeout_factory=lambda message: _blocked_decision_envelope(blockers=[message]),
+            )
+
+        return DECISION_TIMEOUT_SECONDS, execute
+
+    if job_type == "exit_check_cycle":
+        limit = trigger.limit or 3
+
+        async def execute() -> Dict[str, Any]:
+            artifact_service = await container.get("agent_artifact_service")
+            async def action() -> DecisionEnvelope:
+                return await artifact_service.get_decision_view(account_id, limit=limit, refresh=True)
+
+            return await _execute_automation_action(
+                container=container,
+                account_id=account_id,
+                timeout_seconds=DECISION_TIMEOUT_SECONDS,
+                action=action,
+                timeout_factory=lambda message: _blocked_decision_envelope(blockers=[message]),
+            )
+
+        return DECISION_TIMEOUT_SECONDS, execute
+
+    if job_type == "daily_review_cycle":
+        async def execute() -> Dict[str, Any]:
+            artifact_service = await container.get("agent_artifact_service")
+            async def action() -> ReviewEnvelope:
+                return await artifact_service.get_review_view(account_id, refresh=True)
+
+            return await _execute_automation_action(
+                container=container,
+                account_id=account_id,
+                timeout_seconds=DAILY_REVIEW_TIMEOUT_SECONDS,
+                action=action,
+                timeout_factory=lambda message: _blocked_review_envelope(blockers=[message]),
+            )
+
+        return DAILY_REVIEW_TIMEOUT_SECONDS, execute
+
+    if job_type == "improvement_eval_cycle":
+        async def execute() -> Dict[str, Any]:
+            learning_service = await container.get("paper_trading_learning_service")
+            improvement_service = await container.get("paper_trading_improvement_service")
+            outcomes = await learning_service.list_trade_outcomes(account_id, limit=20)
+            readiness = await learning_service.get_learning_readiness(account_id)
+            report = await improvement_service.get_improvement_report(account_id)
+            payload = {
+                "status": "ready" if (report.get("promotable_proposals") or report.get("watch_proposals") or outcomes) else "empty",
+                "blockers": [] if outcomes or report else ["No improvement evidence is currently available."],
+                "context_mode": "benchmark_gated_improvement",
+                "artifact_count": len(report.get("promotable_proposals") or []) + len(report.get("watch_proposals") or []),
+                "provider_metadata": {
+                    "provider": "codex",
+                    "job_type": job_type,
+                    "tools": ["learning_readiness", "benchmark_report"],
+                },
+                "improvement_report": report,
+                "learning_readiness": readiness.model_dump(mode="json"),
+                "recent_trade_outcomes": [item.model_dump(mode="json") for item in outcomes],
+            }
+            if payload["status"] == "empty":
+                payload["status_reason"] = "Automation run completed without any eligible artifacts."
+            return payload
+
+        return DAILY_REVIEW_TIMEOUT_SECONDS, execute
+
+    raise TradingError(f"Unsupported automation job '{job_type}'.", severity=ErrorSeverity.HIGH)
 
 
 # ============================================================================
@@ -1186,9 +1438,8 @@ async def get_paper_trading_accounts(
         # Format accounts for frontend
         accounts = []
         for acc in all_accounts:
-            # Get positions to calculate deployed capital
-            positions = await account_manager.get_open_positions(acc.account_id)
-            deployed_capital = sum(pos.entry_price * pos.quantity for pos in positions)
+            position_metrics = await account_manager.get_store_backed_position_metrics(acc.account_id)
+            deployed_capital = float(position_metrics.get("deployed_capital") or 0.0)
 
             accounts.append({
                 "accountId": acc.account_id,
@@ -1199,7 +1450,7 @@ async def get_paper_trading_accounts(
                 "initialCapital": acc.initial_balance,
                 "currentBalance": acc.current_balance,
                 "totalInvested": deployed_capital,
-                "marginAvailable": acc.buying_power
+                "marginAvailable": acc.buying_power,
             })
 
         logger.info(f"Retrieved {len(accounts)} paper trading accounts from database")
@@ -1226,15 +1477,24 @@ async def get_paper_trading_account_overview(
         if error_response is not None:
             return error_response
 
-        # Get performance metrics
-        metrics = await account_manager.get_performance_metrics(account_id, period="all-time")
+        positions, positions_valuation_status, positions_valuation_detail = await _load_positions_for_read_surface(
+            account_manager,
+            account_id,
+        )
+        position_metrics = await account_manager.get_store_backed_position_metrics(account_id)
+        open_positions_count = int(position_metrics.get("open_positions_count") or 0)
+        deployed_capital = float(position_metrics.get("deployed_capital") or 0.0)
 
-        # Get open positions
-        positions = await account_manager.get_open_positions(account_id)
-        open_positions_count = len(positions)
-
-        # Calculate deployed capital
-        deployed_capital = sum(pos.entry_price * pos.quantity for pos in positions)
+        metrics = None
+        metrics_valuation_status = "live"
+        metrics_valuation_detail = None
+        try:
+            metrics = await account_manager.get_performance_metrics(account_id, period="all-time")
+        except MarketDataError as error:
+            if _trading_error_code(error) != "MARKET_DATA_LIVE_QUOTES_REQUIRED":
+                raise
+            metrics_valuation_status = "quote_unavailable"
+            metrics_valuation_detail = _trading_error_detail(error) or str(error)
 
         # Get closed trades for today
         store = await container.get("paper_trading_store")
@@ -1244,6 +1504,13 @@ async def get_paper_trading_account_overview(
             t for t in all_closed
             if t.exit_timestamp and datetime.fromisoformat(t.exit_timestamp).date() == today
         ]
+
+        valuation_status = (
+            "live"
+            if positions_valuation_status == "live" and metrics_valuation_status == "live"
+            else "quote_unavailable"
+        )
+        valuation_detail = positions_valuation_detail or metrics_valuation_detail
 
         # Build overview response
         overview = {
@@ -1255,14 +1522,21 @@ async def get_paper_trading_account_overview(
             "currentBalance": account.current_balance,
             "totalInvested": deployed_capital,
             "marginAvailable": account.buying_power,
-            "todayPnL": metrics.get("realized_pnl", 0) + metrics.get("unrealized_pnl", 0),
-            "monthlyROI": metrics.get("monthly_roi", 0),
-            "winRate": metrics.get("win_rate", 0),
+            "todayPnL": (
+                metrics.get("realized_pnl", 0) + metrics.get("unrealized_pnl", 0)
+                if metrics is not None
+                else None
+            ),
+            "monthlyROI": metrics.get("monthly_roi", 0) if metrics is not None else None,
+            "winRate": metrics.get("win_rate", 0) if metrics is not None else None,
             "activeStrategy": "AI-Driven Strategy",
             "cashAvailable": account.buying_power,
             "deployedCapital": deployed_capital,
             "openPositions": open_positions_count,
-            "closedTodayCount": len(closed_today)
+            "closedTodayCount": len(closed_today),
+            "valuationStatus": valuation_status,
+            "valuationDetail": valuation_detail,
+            "lastUpdated": datetime.now(timezone.utc).isoformat(),
         }
 
         logger.info(f"Retrieved account overview for {account_id}: Balance=₹{account.current_balance}, Open Positions={open_positions_count}")
@@ -1288,8 +1562,10 @@ async def get_paper_trading_positions(
         if error_response is not None:
             return error_response
 
-        # Fetch open positions with real-time prices from Zerodha
-        positions_data = await account_manager.get_open_positions(account_id)
+        positions_data, valuation_status, valuation_detail = await _load_positions_for_read_surface(
+            account_manager,
+            account_id,
+        )
 
         positions = []
         for pos in positions_data:
@@ -1298,8 +1574,17 @@ async def get_paper_trading_positions(
             payload["entryDate"] = pos.entry_date
             positions.append(payload)
 
-        logger.info(f"Retrieved {len(positions)} open positions for account {account_id} with real-time Zerodha prices")
-        return {"positions": positions}
+        logger.info(
+            "Retrieved %s open positions for account %s (valuation_status=%s)",
+            len(positions),
+            account_id,
+            valuation_status,
+        )
+        return {
+            "positions": positions,
+            "valuationStatus": valuation_status,
+            "valuationDetail": valuation_detail,
+        }
 
     except TradingError as e:
         return await handle_trading_error(e)
@@ -1946,10 +2231,24 @@ async def validate_paper_trading_ai_runtime(
             timeout=OPERATOR_RUNTIME_TIMEOUT_SECONDS,
         )
         capability_service = await container.get("trading_capability_service")
-        capability_snapshot = await asyncio.wait_for(
-            capability_service.get_snapshot(account_id=account_id),
-            timeout=OPERATOR_RUNTIME_TIMEOUT_SECONDS,
-        )
+        try:
+            capability_snapshot = await asyncio.wait_for(
+                capability_service.get_snapshot(account_id=account_id),
+                timeout=OPERATOR_RUNTIME_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            return {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "account_id": account_id,
+                "ai_runtime": runtime_status.to_dict(),
+                "capability_snapshot": {
+                    "overall_status": "blocked",
+                    "checks": [],
+                    "blockers": [
+                        f"Capability snapshot exceeded the {int(OPERATOR_RUNTIME_TIMEOUT_SECONDS)}s operator deadline."
+                    ],
+                },
+            }
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "account_id": account_id,
@@ -2122,6 +2421,191 @@ async def run_paper_trading_discovery(
         return await handle_trading_error(e)
     except Exception as e:
         return await handle_unexpected_error(e, "run_paper_trading_discovery")
+
+
+@router.post("/paper-trading/accounts/{account_id}/automation/{job_type}")
+@limiter.limit("10/minute")
+async def submit_paper_trading_automation_run(
+    request: Request,
+    account_id: str,
+    job_type: AutomationJobType,
+    body: AutomationTriggerRequest,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Submit an explicit local Codex-backed automation run."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+
+        timeout_seconds, execute = await _build_automation_job_execution(
+            request=request,
+            container=container,
+            account_id=account_id,
+            job_type=job_type,
+            trigger=body,
+        )
+        automation_service = await container.get("paper_trading_automation_service")
+        run = await automation_service.submit_run(
+            account_id=account_id,
+            job_type=job_type,
+            input_payload={"account_id": account_id, "job_type": job_type, **body.model_dump(mode="json")},
+            timeout_seconds=timeout_seconds,
+            trigger_reason=body.trigger_reason,
+            schedule_source=body.schedule_source,
+            execute=execute,
+        )
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "account_id": account_id,
+            "job_type": job_type,
+            "run": run,
+            "runtime_readiness": await automation_service.get_runtime_readiness(),
+            "controls": (await automation_service.get_control_state()).model_dump(mode="json"),
+        }
+    except (AutomationPausedError, DuplicateAutomationRunError) as exc:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "account_id": account_id,
+                "job_type": job_type,
+                "status": "blocked",
+                "error": str(exc),
+            },
+        )
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "submit_paper_trading_automation_run")
+
+
+@router.get("/paper-trading/accounts/{account_id}/automation/runs")
+@limiter.limit(paper_trading_limit)
+async def list_paper_trading_automation_runs(
+    request: Request,
+    account_id: str,
+    limit: int = 20,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Return recent explicit automation runs for the account."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+        automation_service = await container.get("paper_trading_automation_service")
+        runs = await automation_service.list_runs(account_id, limit=min(limit, 100))
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "account_id": account_id,
+            "count": len(runs),
+            "runs": runs,
+            "runtime_readiness": await automation_service.get_runtime_readiness(),
+            "controls": (await automation_service.get_control_state()).model_dump(mode="json"),
+        }
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "list_paper_trading_automation_runs")
+
+
+@router.get("/paper-trading/accounts/{account_id}/automation/runs/{run_id}")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_automation_run(
+    request: Request,
+    account_id: str,
+    run_id: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Return a single explicit automation run."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+        automation_service = await container.get("paper_trading_automation_service")
+        run = await automation_service.get_run(run_id)
+        if run is None or run.get("account_id") != account_id:
+            return JSONResponse(status_code=404, content={"error": f"Automation run '{run_id}' was not found."})
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "account_id": account_id,
+            "run": run,
+            "runtime_readiness": await automation_service.get_runtime_readiness(),
+        }
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_automation_run")
+
+
+@router.post("/paper-trading/accounts/{account_id}/automation/runs/{run_id}/cancel")
+@limiter.limit("10/minute")
+async def cancel_paper_trading_automation_run(
+    request: Request,
+    account_id: str,
+    run_id: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Cancel an active explicit automation run."""
+    try:
+        error_response = await _require_account_or_error(container, account_id)
+        if error_response is not None:
+            return error_response
+        automation_service = await container.get("paper_trading_automation_service")
+        run = await automation_service.cancel_run(run_id)
+        if run is None or run.get("account_id") != account_id:
+            return JSONResponse(status_code=404, content={"error": f"Automation run '{run_id}' was not found."})
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "account_id": account_id,
+            "run": run,
+        }
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "cancel_paper_trading_automation_run")
+
+
+@router.post("/paper-trading/automation/pause")
+@limiter.limit("10/minute")
+async def pause_paper_trading_automation(
+    request: Request,
+    body: AutomationControlRequest,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Pause automation globally or for the selected job types."""
+    try:
+        automation_service = await container.get("paper_trading_automation_service")
+        controls = await automation_service.pause(job_types=body.job_types or None, reason=body.reason)
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "controls": controls.model_dump(mode="json"),
+        }
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "pause_paper_trading_automation")
+
+
+@router.post("/paper-trading/automation/resume")
+@limiter.limit("10/minute")
+async def resume_paper_trading_automation(
+    request: Request,
+    body: AutomationControlRequest,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Resume automation globally or for the selected job types."""
+    try:
+        automation_service = await container.get("paper_trading_automation_service")
+        controls = await automation_service.resume(job_types=body.job_types or None)
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "controls": controls.model_dump(mode="json"),
+        }
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "resume_paper_trading_automation")
 
 
 @router.post("/paper-trading/accounts/{account_id}/runs/research")

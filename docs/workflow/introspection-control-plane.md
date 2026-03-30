@@ -2,17 +2,13 @@
 
 Use this workflow before closing any meaningful Robo Trader session.
 
-This control plane owns the repo-local contract for the project-specific `introspect` skill in
-`.claude/skills/introspect/`.
+Owner surface: repo-local contract for `.claude/skills/introspect/`
 
 ## Goal
 
-Turn meaningful sessions into durable, evidence-backed learning without turning closeout into
-journaling or creating duplicate policy.
+Turn meaningful sessions into durable, evidence-backed learning without journaling or duplicate policy.
 
 ## When To Use
-
-Run introspection when the session:
 
 - changed code, docs, config, prompts, or workflow surfaces
 - tested a manual operator flow end to end
@@ -47,7 +43,7 @@ Prioritize by operator impact:
 3. quality
 4. speed
 
-Examples of highest-priority issues:
+Highest-priority examples:
 
 - false readiness
 - UI/API/DB mismatches
@@ -100,6 +96,6 @@ A good session closeout should:
 
 ## Relationship To Other Control Planes
 
-- Use `research-validation-loop.md` when the learning depends on technical uncertainty that still needs verification.
-- Use `notion-memory-control-plane.md` when the outcome should become durable incident or research memory.
-- Use `repo-governance.md` when the learning implies a larger workflow, feature, or architecture change.
+- `research-validation-loop.md`: when the learning depends on technical uncertainty that still needs verification
+- `notion-memory-control-plane.md`: when the outcome should become durable incident or research memory
+- `repo-governance.md`: when the learning implies a larger workflow, feature, or architecture change
