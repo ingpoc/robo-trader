@@ -376,20 +376,15 @@ test.describe('Operator Shell', () => {
     await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Overview' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Paper Trading' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'System Health' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Configuration' })).toBeVisible()
   })
 
-  test('navigates across the four mission-aligned routes', async ({ page }) => {
+  test('navigates across the three mission-aligned routes', async ({ page }) => {
     await page.goto('/')
 
     await page.getByRole('link', { name: 'Paper Trading' }).click()
     await expect(page).toHaveURL(/\/paper-trading$/)
-    await expect(page.getByText('Paper Trading Account', { exact: true })).toBeVisible()
-
-    await page.getByRole('link', { name: 'System Health' }).click()
-    await expect(page).toHaveURL(/\/system-health$/)
-    await expect(page.getByRole('heading', { name: 'System Health' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Paper Trading', exact: true })).toBeVisible()
 
     await page.getByRole('link', { name: 'Configuration' }).click()
     await expect(page).toHaveURL(/\/configuration$/)
@@ -406,5 +401,17 @@ test.describe('Operator Shell', () => {
     await expect(page.getByRole('link', { name: 'News & Earnings' })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'AI Transparency' })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Agents' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'System Health' })).toHaveCount(0)
+  })
+
+  test('shows ready operator gates on the paper trading readiness strip', async ({ page }) => {
+    await page.goto('/paper-trading')
+
+    await expect(page.getByRole('heading', { name: 'Mission status' })).toBeVisible()
+    await expect(page.getByText('All current automation gates are satisfied for the selected paper account.')).toBeVisible()
+    await expect(page.getByText('AI Runtime', { exact: true })).toBeVisible()
+    await expect(page.getByText('AI runtime is ready for operator workflows.')).toBeVisible()
+    await expect(page.getByText('Market Data', { exact: true })).toBeVisible()
+    await expect(page.getByText('Market data path is healthy.')).toBeVisible()
   })
 })
