@@ -14,6 +14,17 @@ interface ImportMeta {
   readonly env: ImportMetaEnv
 }
 
+interface AppRuntimeIdentity {
+  runtime: 'frontend' | 'backend'
+  git_sha: string | null
+  git_short_sha: string | null
+  build_id: string
+  started_at: string
+  workspace_path: string | null
+}
+
+declare const __APP_RUNTIME_IDENTITY__: AppRuntimeIdentity
+
 interface WebMCPToolDefinition {
   name: string
   description: string
@@ -29,6 +40,18 @@ interface WebMCPModelContext {
   registerTool: (tool: WebMCPToolDefinition, options?: WebMCPRegistrationOptions) => void
 }
 
+interface WebMCPRegisteredTool {
+  name: string
+  description?: string
+  inputSchema?: string | Record<string, unknown>
+}
+
+interface WebMCPModelContextTesting {
+  listTools: () => Promise<WebMCPRegisteredTool[]>
+  executeTool: (toolName: string, input: string) => Promise<unknown>
+}
+
 interface Navigator {
   modelContext?: WebMCPModelContext
+  modelContextTesting?: WebMCPModelContextTesting
 }

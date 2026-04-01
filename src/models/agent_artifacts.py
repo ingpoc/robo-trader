@@ -29,6 +29,8 @@ class ArtifactEnvelope(BaseModel):
     blockers: List[str] = Field(default_factory=list)
     context_mode: str
     artifact_count: int = 0
+    criteria: List[str] = Field(default_factory=list)
+    considered: List[str] = Field(default_factory=list)
     provider_metadata: Dict[str, Any] = Field(default_factory=dict)
     run_id: Optional[str] = None
     started_at: Optional[str] = None

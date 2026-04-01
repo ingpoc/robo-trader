@@ -1,7 +1,12 @@
+import { execSync } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
 
 const NOW = '2026-03-25T12:00:00.000Z'
 const ACCOUNT_ID = 'paper_swing_main'
+const GIT_SHA = execSync('git rev-parse HEAD', {
+  stdio: ['ignore', 'pipe', 'ignore'],
+}).toString().trim()
+const GIT_SHORT_SHA = GIT_SHA.slice(0, 12)
 
 const accountFixture = {
   accountId: ACCOUNT_ID,
@@ -22,6 +27,8 @@ const jsonResponse = (payload: unknown, status = 200) => ({
 
 async function installShellMocks(page: Page) {
   await page.addInitScript(() => {
+    const registeredTools = new Map<string, { name: string; description: string; inputSchema: Record<string, unknown>; execute: (input?: Record<string, unknown>) => unknown | Promise<unknown> }>()
+
     class MockWebSocket {
       static CONNECTING = 0
       static OPEN = 1
@@ -56,6 +63,42 @@ async function installShellMocks(page: Page) {
       writable: true,
       value: MockWebSocket,
     })
+
+    Object.defineProperty(navigator, 'modelContext', {
+      configurable: true,
+      writable: true,
+      value: {
+        registerTool(tool: { name: string; description: string; inputSchema: Record<string, unknown>; execute: (input?: Record<string, unknown>) => unknown | Promise<unknown> }) {
+          if (registeredTools.has(tool.name)) {
+            throw new Error(`Duplicate tool name: ${tool.name}`)
+          }
+          registeredTools.set(tool.name, tool)
+        },
+      },
+    })
+
+    Object.defineProperty(navigator, 'modelContextTesting', {
+      configurable: true,
+      writable: true,
+      value: {
+        async listTools() {
+          return Array.from(registeredTools.values()).map(tool => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: JSON.stringify(tool.inputSchema ?? {}),
+          }))
+        },
+        async executeTool(name: string, input = '{}') {
+          const tool = registeredTools.get(name)
+          if (!tool) {
+            throw new Error(`Unknown tool: ${name}`)
+          }
+          const parsedInput = typeof input === 'string' && input ? JSON.parse(input) : {}
+          const result = await tool.execute(parsedInput)
+          return typeof result === 'string' ? result : JSON.stringify(result)
+        },
+      },
+    })
   })
 
   await page.route('**/api/**', async route => {
@@ -64,6 +107,35 @@ async function installShellMocks(page: Page) {
 
     if (!pathname.startsWith('/api/')) {
       return route.continue()
+    }
+
+    if (pathname === '/api/health') {
+      return route.fulfill(
+        jsonResponse({
+          status: 'healthy',
+          message: 'API container is initialized.',
+          runtime_identity: {
+            runtime: 'backend',
+            git_sha: GIT_SHA,
+            git_short_sha: GIT_SHORT_SHA,
+            build_id: `backend-${GIT_SHORT_SHA}-${NOW}`,
+            started_at: NOW,
+            workspace_path: '/Users/gurusharan/Documents/remote-claude/active/apps/robo-trader',
+          },
+          components: {
+            container: 'initialized',
+            background_orchestrator: 'disabled',
+            runtime_mode: 'request_driven',
+          },
+          readiness: {
+            container: 'ready',
+            ai_runtime: { status: 'ready' },
+            quote_stream: { status: 'ready' },
+            market_data: { status: 'ready' },
+          },
+          timestamp: NOW,
+        }),
+      )
     }
 
     if (pathname === '/api/dashboard') {
@@ -210,6 +282,14 @@ async function installShellMocks(page: Page) {
           blockers: [],
           context_mode: 'paper_trading',
           artifact_count: 1,
+          criteria: [
+            'Show discovery candidates only when confidence is at least 0.45.',
+            'Promote to focused research only when confidence is at least 0.60.',
+          ],
+          considered: [
+            'INFY · 68% · research-ready',
+            'TCS · below discovery threshold of 0.45',
+          ],
           candidates: [
             {
               candidate_id: 'candidate-infy',
@@ -236,6 +316,11 @@ async function installShellMocks(page: Page) {
           blockers: ['Select a discovery candidate to run focused research.'],
           context_mode: 'paper_trading',
           artifact_count: 0,
+          criteria: [
+            'Research runs one candidate at a time from discovery or an explicit symbol selection.',
+            'Actionable research requires thesis confidence at least 0.60 and zero blockers.',
+          ],
+          considered: ['No candidate is currently staged for focused research.'],
           research: null,
         })
       )
@@ -249,6 +334,11 @@ async function installShellMocks(page: Page) {
           blockers: ['No decision packet is available yet.'],
           context_mode: 'paper_trading',
           artifact_count: 0,
+          criteria: [
+            'Decision review considers open positions only; it does not generate new entries.',
+            'Actions are limited to hold, review_exit, tighten_stop, or take_profit.',
+          ],
+          considered: ['INFY · open position in current review set'],
           decisions: [],
         })
       )
@@ -262,6 +352,11 @@ async function installShellMocks(page: Page) {
           blockers: [],
           context_mode: 'paper_trading',
           artifact_count: 1,
+          criteria: [
+            'Daily review is observational unless confidence clears the promotion threshold.',
+            'No recent closed trades caps review confidence below the ready threshold.',
+          ],
+          considered: ['INFY · recent realized outcome in review memory'],
           review: {
             review_id: 'review-1',
             summary: 'Paper-trading review is available for the selected account.',
@@ -413,5 +508,59 @@ test.describe('Operator Shell', () => {
     await expect(page.getByText('AI runtime is ready for operator workflows.')).toBeVisible()
     await expect(page.getByText('Market Data', { exact: true })).toBeVisible()
     await expect(page.getByText('Market data path is healthy.')).toBeVisible()
+    await expect(page.getByText(/WebMCP ready \(\d+\)/)).toBeVisible()
+  })
+
+  test('shows the autonomy boundary and stage criteria sidecars', async ({ page }) => {
+    await page.goto('/paper-trading')
+
+    await expect(page.getByRole('heading', { name: 'Runtime identity in sync' })).toBeVisible()
+    await expect(page.getByText('Account:')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'What I can run end to end right now' })).toBeVisible()
+    await expect(page.getByText('Autonomous Now', { exact: true })).toBeVisible()
+    await expect(page.getByText('Still Blocked', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Discovery control surface' })).toBeVisible()
+    await expect(page.getByText('Rules in force')).toHaveCount(4)
+    await expect(page.getByText('Currently considered')).toHaveCount(4)
+    await expect(page.getByRole('heading', { name: 'Focused Research control surface' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Decision Review control surface' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Daily Review control surface' })).toBeVisible()
+  })
+
+  test('renders visible discovery candidates on first load', async ({ page }) => {
+    await page.goto('/paper-trading')
+
+    await expect(page.getByText('INFY', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('Show discovery candidates only when confidence is at least 0.45.')).toBeVisible()
+  })
+
+  test('executes WebMCP tools with the current operator account context', async ({ page }) => {
+    await page.goto('/paper-trading')
+
+    await expect(page.getByText(/WebMCP ready \(\d+\)/)).toBeVisible()
+
+    const accounts = await page.evaluate(async () => {
+      const raw = await navigator.modelContextTesting?.executeTool('list_paper_accounts', '{}')
+      return typeof raw === 'string' ? JSON.parse(raw) : raw
+    })
+
+    expect(accounts?.selected_account_id).toBe(ACCOUNT_ID)
+    expect(accounts?.accounts).toHaveLength(1)
+    expect(accounts?.accounts?.[0]?.account_id).toBe(ACCOUNT_ID)
+
+    await page.evaluate(async (accountId) => {
+      await navigator.modelContextTesting?.executeTool(
+        'select_paper_account',
+        JSON.stringify({ account_id: accountId }),
+      )
+    }, ACCOUNT_ID)
+
+    const capability = await page.evaluate(async () => {
+      const raw = await navigator.modelContextTesting?.executeTool('get_capability_snapshot', '{}')
+      return typeof raw === 'string' ? JSON.parse(raw) : raw
+    })
+
+    expect(capability?.account_id).toBe(ACCOUNT_ID)
+    expect(capability?.overall_status).toBe('ready')
   })
 })

@@ -6,9 +6,72 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_LOG="$PROJECT_ROOT/logs/backend.log"
 FRONTEND_LOG="$PROJECT_ROOT/logs/frontend.log"
+BACKEND_URL="http://localhost:8000/api/health"
+FRONTEND_URL="http://localhost:3000"
+STARTUP_SOAK_SECONDS="${STARTUP_SOAK_SECONDS:-5}"
 
 # Create logs directory if it doesn't exist
 mkdir -p "$PROJECT_ROOT/logs"
+
+require_process_alive() {
+    local pid="$1"
+    local label="$2"
+    local log_file="$3"
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "❌ ${label} exited during startup validation"
+        echo "Last 20 lines of ${label} log:"
+        tail -20 "$log_file" || true
+        exit 1
+    fi
+}
+
+wait_for_http_ok() {
+    local url="$1"
+    local label="$2"
+    local pid="$3"
+    local log_file="$4"
+    local attempts="$5"
+    local sleep_seconds="$6"
+
+    for ((i=1; i<=attempts; i++)); do
+        require_process_alive "$pid" "$label" "$log_file"
+
+        if curl -fsS -m 2 "$url" > /dev/null 2>&1; then
+            echo "✅ ${label} responded successfully"
+            return 0
+        fi
+
+        if [ "$i" -eq "$attempts" ]; then
+            echo "❌ ${label} failed startup validation"
+            echo "Last 20 lines of ${label} log:"
+            tail -20 "$log_file" || true
+            exit 1
+        fi
+
+        sleep "$sleep_seconds"
+    done
+}
+
+soak_process() {
+    local url="$1"
+    local label="$2"
+    local pid="$3"
+    local log_file="$4"
+
+    echo "Soaking ${label} for ${STARTUP_SOAK_SECONDS}s..."
+    sleep "$STARTUP_SOAK_SECONDS"
+    require_process_alive "$pid" "$label" "$log_file"
+
+    if ! curl -fsS -m 2 "$url" > /dev/null 2>&1; then
+        echo "❌ ${label} failed soak validation after initial success"
+        echo "Last 20 lines of ${label} log:"
+        tail -20 "$log_file" || true
+        exit 1
+    fi
+
+    echo "✅ ${label} stayed healthy through soak window"
+}
 
 echo "Starting Robo Trader servers..."
 echo "Project root: $PROJECT_ROOT"
@@ -29,6 +92,7 @@ fi
 # Start backend
 echo "Starting backend server..."
 cd "$PROJECT_ROOT"
+nohup env \
 PYTHONUNBUFFERED=1 \
 ROBO_TRADER_PROJECT_ROOT="$PROJECT_ROOT" \
 ROBO_TRADER_API="http://localhost:8000" \
@@ -40,41 +104,20 @@ echo "Backend started with PID: $BACKEND_PID"
 
 # Wait for backend to initialize
 echo "Waiting for backend to initialize..."
-for i in {1..30}; do
-    if curl -s -m 2 http://localhost:8000/api/health > /dev/null 2>&1; then
-        echo "✅ Backend is healthy!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "❌ Backend failed to start after 60 seconds"
-        echo "Last 10 lines of backend log:"
-        tail -10 "$BACKEND_LOG"
-        exit 1
-    fi
-    sleep 2
-done
+wait_for_http_ok "$BACKEND_URL" "Backend" "$BACKEND_PID" "$BACKEND_LOG" 30 2
+soak_process "$BACKEND_URL" "Backend" "$BACKEND_PID" "$BACKEND_LOG"
 
 # Start frontend
 echo "Starting frontend server..."
 cd "$PROJECT_ROOT/ui"
-npm run dev > "$FRONTEND_LOG" 2>&1 &
+nohup npm run dev > "$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 echo "Frontend started with PID: $FRONTEND_PID"
 
 # Wait for frontend to initialize
 echo "Waiting for frontend to initialize..."
-for i in {1..60}; do
-    if curl -s -m 2 http://localhost:3000 > /dev/null 2>&1; then
-        echo "✅ Frontend is healthy!"
-        break
-    fi
-    if [ $i -eq 60 ]; then
-        echo "⚠️  Frontend may still be starting (this is normal)"
-        echo "Last 10 lines of frontend log:"
-        tail -10 "$FRONTEND_LOG"
-    fi
-    sleep 1
-done
+wait_for_http_ok "$FRONTEND_URL" "Frontend" "$FRONTEND_PID" "$FRONTEND_LOG" 60 1
+soak_process "$FRONTEND_URL" "Frontend" "$FRONTEND_PID" "$FRONTEND_LOG"
 
 echo ""
 echo "🚀 Servers started successfully!"

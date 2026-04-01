@@ -23,6 +23,7 @@ from src.models.agent_artifacts import DiscoveryEnvelope, DecisionEnvelope, Rese
 from src.models.dto import QueueStatusDTO
 from src.models.paper_trading_automation import AutomationJobType
 from src.auth.ai_runtime_auth import get_ai_runtime_status
+from src.services.claude_agent.agent_artifact_service import AgentArtifactService
 from src.services.paper_trading_automation_service import AutomationPausedError, DuplicateAutomationRunError
 from ..dependencies import get_container
 
@@ -148,6 +149,8 @@ def _blocked_discovery_envelope(
         context_mode="stateful_watchlist",
         blockers=list(blockers or ["AI runtime is not ready for discovery generation."]),
         artifact_count=0,
+        criteria=AgentArtifactService.discovery_criteria(),
+        considered=["Discovery did not load any watchlist candidates because the stage is blocked."],
         candidates=[],
         provider_metadata=provider_metadata or {},
     )
@@ -159,6 +162,8 @@ def _blocked_research_envelope(*, blockers: Optional[list[str]] = None) -> Resea
         context_mode="single_candidate_research",
         blockers=list(blockers or ["AI runtime is not ready for research generation."]),
         artifact_count=0,
+        criteria=AgentArtifactService.research_criteria(),
+        considered=["No candidate is currently being researched because the stage is blocked."],
         research=None,
     )
 
@@ -169,6 +174,8 @@ def _blocked_decision_envelope(*, blockers: Optional[list[str]] = None) -> Decis
         context_mode="delta_position_review",
         blockers=list(blockers or ["AI runtime is not ready for decision generation."]),
         artifact_count=0,
+        criteria=AgentArtifactService.decision_criteria(),
+        considered=["No open positions are being reviewed because the stage is blocked."],
         decisions=[],
     )
 
@@ -179,6 +186,8 @@ def _blocked_review_envelope(*, blockers: Optional[list[str]] = None) -> ReviewE
         context_mode="delta_daily_review",
         blockers=list(blockers or ["AI runtime is not ready for review generation."]),
         artifact_count=0,
+        criteria=AgentArtifactService.review_criteria(),
+        considered=["No realized outcomes are being reviewed because the stage is blocked."],
         review=None,
     )
 

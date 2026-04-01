@@ -21,7 +21,10 @@ import type {
   OpenPositionResponse,
   PaperTradingOperatorSnapshot,
   PerformanceMetricsResponse,
+  RuntimeHealthResponse,
+  RuntimeIdentity,
   TradingCapabilitySnapshot,
+  WebMCPReadiness,
 } from '@/features/paper-trading/types'
 
 const queryClient = new QueryClient({
@@ -164,12 +167,24 @@ function PaperTradingFeatureWrapper() {
   const [closedTrades, setClosedTrades] = useState<ClosedTradeResponse[]>([])
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetricsResponse | null>(null)
   const [capabilitySnapshot, setCapabilitySnapshot] = useState<TradingCapabilitySnapshot | null>(null)
+  const [runtimeHealth, setRuntimeHealth] = useState<RuntimeHealthResponse | null>(null)
   const [paperTradingError, setPaperTradingError] = useState<string | null>(null)
   const [performanceError, setPerformanceError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const requestSequenceRef = useRef(0)
   const lastLoadedAccountRef = useRef<string | null>(null)
+  const frontendRuntimeIdentity: RuntimeIdentity = __APP_RUNTIME_IDENTITY__
+
+  const fetchRuntimeHealth = React.useCallback(async () => {
+    const healthResult = await fetchJsonResult<RuntimeHealthResponse>('/api/health')
+    if (healthResult.ok && healthResult.payload) {
+      setRuntimeHealth(healthResult.payload)
+      return
+    }
+
+    setRuntimeHealth(null)
+  }, [])
 
   const fetchData = React.useCallback(async (options?: { preserveContent?: boolean; accountIdOverride?: string | null }) => {
     const accountId = options?.accountIdOverride ?? selectedAccount?.account_id ?? null
@@ -277,20 +292,30 @@ function PaperTradingFeatureWrapper() {
     void fetchData()
   }, [fetchData])
 
+  useEffect(() => {
+    void fetchRuntimeHealth()
+  }, [fetchRuntimeHealth])
+
   const handleRefresh = async () => {
     await refreshAccounts()
-    await fetchData({ preserveContent: true })
+    await Promise.all([
+      fetchRuntimeHealth(),
+      fetchData({ preserveContent: true }),
+    ])
   }
 
   const refreshOperatorView = React.useCallback(
     async (options?: { accountId?: string | null; preserveContent?: boolean }) => {
       await refreshAccounts()
-      await fetchData({
-        preserveContent: options?.preserveContent ?? true,
-        accountIdOverride: options?.accountId ?? selectedAccount?.account_id ?? null,
-      })
+      await Promise.all([
+        fetchRuntimeHealth(),
+        fetchData({
+          preserveContent: options?.preserveContent ?? true,
+          accountIdOverride: options?.accountId ?? selectedAccount?.account_id ?? null,
+        }),
+      ])
     },
-    [fetchData, refreshAccounts, selectedAccount?.account_id],
+    [fetchData, fetchRuntimeHealth, refreshAccounts, selectedAccount?.account_id],
   )
 
   const selectAccountById = React.useCallback(
@@ -427,7 +452,7 @@ function PaperTradingFeatureWrapper() {
     [accounts, selectedAccount?.account_id],
   )
 
-  usePaperTradingWebMCP({
+  const webmcpReadiness: WebMCPReadiness = usePaperTradingWebMCP({
     accounts,
     selectedAccountId: selectedAccount?.account_id ?? null,
     selectAccountById,
@@ -447,6 +472,9 @@ function PaperTradingFeatureWrapper() {
       closedTrades={closedTrades}
       performanceMetrics={performanceMetrics}
       capabilitySnapshot={capabilitySnapshot}
+      runtimeHealth={runtimeHealth}
+      frontendRuntimeIdentity={frontendRuntimeIdentity}
+      webmcpReadiness={webmcpReadiness}
       dataError={paperTradingError}
       performanceError={performanceError}
       onRefresh={handleRefresh}

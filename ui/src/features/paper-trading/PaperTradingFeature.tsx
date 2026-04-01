@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Activity, Aperture, ArrowRightLeft, BookOpenText, CandlestickChart, Radar, ScanSearch, Wallet } from 'lucide-react'
+import { Activity, Aperture, ArrowRightLeft, CandlestickChart, Radar, Wallet } from 'lucide-react'
 
 import { Breadcrumb } from '@/components/common/Breadcrumb'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -17,6 +17,7 @@ import { AgentReviewPanel } from './components/AgentReviewPanel'
 import { PaperTradingAccountBar } from './components/PaperTradingAccountBar'
 import { PerformanceMetrics } from './components/PerformanceMetrics'
 import { RealTimePositionsTable } from './components/RealTimePositionsTable'
+import { StageCriteriaPanel } from './components/StageCriteriaPanel'
 import { TradeHistoryTable } from './components/TradeHistoryTable'
 import { TradingCapabilityCard } from './components/TradingCapabilityCard'
 import { useAgentArtifacts } from './hooks/useAgentArtifacts'
@@ -26,7 +27,10 @@ import type {
   ClosedTradeResponse,
   OpenPositionResponse,
   PerformanceMetricsResponse,
+  RuntimeHealthResponse,
+  RuntimeIdentity,
   TradingCapabilitySnapshot,
+  WebMCPReadiness,
 } from './types'
 
 export interface PaperTradingFeatureProps {
@@ -38,6 +42,9 @@ export interface PaperTradingFeatureProps {
   closedTrades: ClosedTradeResponse[]
   performanceMetrics: PerformanceMetricsResponse | null
   capabilitySnapshot: TradingCapabilitySnapshot | null
+  runtimeHealth: RuntimeHealthResponse | null
+  frontendRuntimeIdentity: RuntimeIdentity
+  webmcpReadiness: WebMCPReadiness
   dataError?: string | null
   performanceError?: string | null
   onRefresh: () => Promise<void>
@@ -53,6 +60,9 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
   closedTrades,
   performanceMetrics,
   capabilitySnapshot,
+  runtimeHealth,
+  frontendRuntimeIdentity,
+  webmcpReadiness,
   dataError = null,
   performanceError = null,
   onRefresh,
@@ -134,7 +144,16 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
         />
       </div>
 
-      <TradingCapabilityCard snapshot={capabilitySnapshot} isLoading={isLoading} />
+      <TradingCapabilityCard snapshot={capabilitySnapshot} webmcpReadiness={webmcpReadiness} isLoading={isLoading} />
+
+      <RuntimeIdentityPanel
+        runtimeHealth={runtimeHealth}
+        frontendRuntimeIdentity={frontendRuntimeIdentity}
+        selectedAccountId={selectedAccountId ?? null}
+        latestDiscoveryAt={discovery?.generated_at ?? null}
+      />
+
+      <AutonomyBoundaryPanel />
 
       <PaperTradingAccountBar
         accounts={accounts}
@@ -194,32 +213,76 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
         />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.08fr_minmax(0,1fr)]">
-        <AgentDiscoveryPanel
+      <div className="space-y-6">
+        <StageRow
+          stageLabel="Discovery"
           envelope={discovery}
-          isLoading={artifactsLoading && activeRequest === 'discovery'}
-          error={artifactsError}
-          canRun={Boolean(selectedAccountId)}
-          onRun={() => { void runTab('discovery') }}
-          selectedCandidateId={selectedCandidate?.candidate_id ?? null}
-          onSelectCandidate={handleSelectCandidate}
-        />
+          criteria={discovery?.criteria ?? []}
+          considered={discovery?.considered ?? []}
+        >
+          <AgentDiscoveryPanel
+            envelope={discovery}
+            isLoading={artifactsLoading && activeRequest === 'discovery'}
+            error={artifactsError}
+            canRun={Boolean(selectedAccountId)}
+            onRun={() => { void runTab('discovery') }}
+            selectedCandidateId={selectedCandidate?.candidate_id ?? null}
+            onSelectCandidate={handleSelectCandidate}
+          />
+        </StageRow>
 
-        <AgentResearchPanel
+        <StageRow
+          stageLabel="Focused Research"
           envelope={research}
-          selectedCandidate={selectedCandidate}
-          isLoading={artifactsLoading && activeRequest === 'research'}
-          error={artifactsError}
-          canRun={Boolean(selectedAccountId && selectedCandidate)}
-          onRun={() => {
-            if (!selectedCandidate) return
-            void runTab('research', {
-              candidate_id: selectedCandidate.candidate_id,
-              symbol: selectedCandidate.symbol,
-            })
-          }}
-        />
-      </section>
+          criteria={research?.criteria ?? []}
+          considered={research?.considered ?? []}
+        >
+          <AgentResearchPanel
+            envelope={research}
+            selectedCandidate={selectedCandidate}
+            isLoading={artifactsLoading && activeRequest === 'research'}
+            error={artifactsError}
+            canRun={Boolean(selectedAccountId && selectedCandidate)}
+            onRun={() => {
+              if (!selectedCandidate) return
+              void runTab('research', {
+                candidate_id: selectedCandidate.candidate_id,
+                symbol: selectedCandidate.symbol,
+              })
+            }}
+          />
+        </StageRow>
+
+        <StageRow
+          stageLabel="Decision Review"
+          envelope={decisions}
+          criteria={decisions?.criteria ?? []}
+          considered={decisions?.considered ?? []}
+        >
+          <AgentDecisionPanel
+            envelope={decisions}
+            isLoading={artifactsLoading && activeRequest === 'decisions'}
+            error={artifactsError}
+            canRun={Boolean(selectedAccountId)}
+            onRun={() => { void runTab('decisions') }}
+          />
+        </StageRow>
+
+        <StageRow
+          stageLabel="Daily Review"
+          envelope={review}
+          criteria={review?.criteria ?? []}
+          considered={review?.considered ?? []}
+        >
+          <AgentReviewPanel
+            envelope={review}
+            isLoading={artifactsLoading && activeRequest === 'review'}
+            error={artifactsError}
+            canRun={Boolean(selectedAccountId)}
+            onRun={() => { void runTab('review') }}
+          />
+        </StageRow>
+      </div>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <div className="space-y-6">
@@ -233,42 +296,149 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
           <TradeHistoryTable trades={closedTrades} isLoading={isLoading} />
         </div>
 
-        <div className="space-y-6">
+        <section className="space-y-4">
           <DeskSectionHeader
-            icon={BookOpenText}
-            label="Decision Desk"
-            title="Run bounded review only when needed"
-            body="Decision review and daily review are explicit actions. They no longer hydrate when you visit the page or switch surfaces."
+            icon={Radar}
+            label="Performance"
+            title="Outcome statistics"
+            body="Use these numbers to judge whether the research loop is improving expectancy, not just generating more text."
           />
-
-          <AgentDecisionPanel
-            envelope={decisions}
-            isLoading={artifactsLoading && activeRequest === 'decisions'}
-            error={artifactsError}
-            canRun={Boolean(selectedAccountId)}
-            onRun={() => { void runTab('decisions') }}
-          />
-
-          <AgentReviewPanel
-            envelope={review}
-            isLoading={artifactsLoading && activeRequest === 'review'}
-            error={artifactsError}
-            canRun={Boolean(selectedAccountId)}
-            onRun={() => { void runTab('review') }}
-          />
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <DeskSectionHeader
-          icon={Radar}
-          label="Performance"
-          title="Outcome statistics"
-          body="Use these numbers to judge whether the research loop is improving expectancy, not just generating more text."
-        />
-        <PerformanceMetrics metrics={performanceMetrics} error={performanceError} isLoading={isLoading} />
+          <PerformanceMetrics metrics={performanceMetrics} error={performanceError} isLoading={isLoading} />
+        </section>
       </section>
     </div>
+  )
+}
+
+function StageRow({
+  stageLabel,
+  envelope,
+  criteria,
+  considered,
+  children,
+}: {
+  stageLabel: string
+  envelope: { status?: string | null; status_reason?: string | null } | null
+  criteria: string[]
+  considered: string[]
+  children: React.ReactNode
+}) {
+  return (
+    <section className="desk-stage-row">
+      <div>{children}</div>
+      <StageCriteriaPanel
+        stageLabel={stageLabel}
+        criteria={criteria}
+        considered={considered}
+        status={envelope?.status ?? null}
+        statusReason={envelope?.status_reason ?? null}
+      />
+    </section>
+  )
+}
+
+function RuntimeIdentityPanel({
+  runtimeHealth,
+  frontendRuntimeIdentity,
+  selectedAccountId,
+  latestDiscoveryAt,
+}: {
+  runtimeHealth: RuntimeHealthResponse | null
+  frontendRuntimeIdentity: RuntimeIdentity
+  selectedAccountId: string | null
+  latestDiscoveryAt: string | null
+}) {
+  const backendRuntimeIdentity = runtimeHealth?.runtime_identity ?? null
+  const isStaleBackend = Boolean(
+    backendRuntimeIdentity?.git_sha
+    && frontendRuntimeIdentity.git_sha
+    && backendRuntimeIdentity.git_sha !== frontendRuntimeIdentity.git_sha,
+  )
+  const bannerTone = isStaleBackend
+    ? 'border-amber-300 bg-amber-50/80 text-amber-950'
+    : 'border-emerald-200 bg-emerald-50/70 text-emerald-950'
+  const heading = isStaleBackend ? 'Stale runtime detected' : 'Runtime identity in sync'
+  const summary = isStaleBackend
+    ? 'The frontend and backend are serving different git revisions. Refreshing data may still hit an older backend lane until it is restarted.'
+    : 'The operator page is talking to the current backend revision, so discovery and readiness state should reflect current code.'
+
+  return (
+    <Card className={bannerTone}>
+      <CardContent className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
+        <div className="space-y-2">
+          <p className="desk-kicker">Runtime Truth</p>
+          <h2 className="desk-heading">{heading}</h2>
+          <p className="desk-copy max-w-2xl">{summary}</p>
+        </div>
+
+        <div className="space-y-2 text-sm">
+          <p className="desk-kicker">Frontend</p>
+          <p className="font-semibold">
+            {frontendRuntimeIdentity.git_short_sha ?? 'unknown'} · {formatRuntimeTimestamp(frontendRuntimeIdentity.started_at)}
+          </p>
+          <p className="text-muted-foreground">{frontendRuntimeIdentity.build_id}</p>
+        </div>
+
+        <div className="space-y-2 text-sm">
+          <p className="desk-kicker">Backend</p>
+          {backendRuntimeIdentity ? (
+            <>
+              <p className="font-semibold">
+                {backendRuntimeIdentity.git_short_sha ?? 'unknown'} · {formatRuntimeTimestamp(backendRuntimeIdentity.started_at)}
+              </p>
+              <p className="text-muted-foreground">{backendRuntimeIdentity.build_id}</p>
+            </>
+          ) : (
+            <p className="text-muted-foreground">Health endpoint unavailable. Refresh runtime truth before trusting the dashboard.</p>
+          )}
+        </div>
+
+        <div className="space-y-2 text-sm lg:col-span-3">
+          <p className="desk-kicker">Operator Context</p>
+          <p className="text-muted-foreground">
+            Account: <span className="font-medium text-foreground">{selectedAccountId ?? 'none selected'}</span>
+            {' · '}
+            Discovery envelope: <span className="font-medium text-foreground">{latestDiscoveryAt ? formatRuntimeTimestamp(latestDiscoveryAt) : 'not loaded yet'}</span>
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AutonomyBoundaryPanel() {
+  return (
+    <section className="desk-autonomy-panel">
+      <div className="space-y-2">
+        <p className="desk-kicker">Autonomy Boundary</p>
+        <h2 className="desk-heading">What I can run end to end right now</h2>
+        <p className="desk-copy max-w-4xl">
+          The dashboard is agent-operator ready for discovery, focused research, decision review, daily review, and dry-run proposal work. Autonomous paper entry is still blocked until the repo-local go-live checklist evidence window is satisfied and the execution posture is explicitly promoted in code.
+        </p>
+      </div>
+
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-5 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Autonomous Now</p>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-emerald-900">
+            <li>Operate the dashboard through WebMCP.</li>
+            <li>Run discovery and stage candidates for research.</li>
+            <li>Generate focused research, decision packets, and daily reviews.</li>
+            <li>Run dry-run proposal and preflight checks before any paper order.</li>
+          </ul>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-5 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Still Blocked</p>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-amber-900">
+            <li>Unattended autonomous paper entries.</li>
+            <li>Any execution path that bypasses proposal, preflight, or operator confirmation.</li>
+            <li>Strategy promotion based only on intuition instead of outcome or benchmark evidence.</li>
+            <li>Claiming a `GO` posture before the evidence window in the go-live checklist is met.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -340,6 +510,18 @@ function formatSignedCurrency(value?: number | null) {
 function formatSignedPercent(value?: number | null) {
   const amount = value ?? 0
   return `${amount >= 0 ? '+' : ''}${amount.toFixed(2)}%`
+}
+
+function formatRuntimeTimestamp(value?: string | null) {
+  if (!value) return 'unknown'
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+
+  return parsed.toLocaleString('en-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
 }
 
 export default PaperTradingFeature

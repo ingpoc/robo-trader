@@ -98,6 +98,25 @@ export type CapabilityStatus = 'ready' | 'degraded' | 'blocked'
 
 export type ArtifactStatus = 'ready' | 'blocked' | 'empty'
 
+export interface RuntimeIdentity {
+  runtime: 'frontend' | 'backend'
+  git_sha: string | null
+  git_short_sha: string | null
+  build_id: string
+  started_at: string
+  workspace_path: string | null
+}
+
+export interface RuntimeHealthResponse {
+  status: 'healthy' | 'unhealthy'
+  message?: string
+  error?: string
+  timestamp: string
+  runtime_identity?: RuntimeIdentity | null
+  readiness?: Record<string, unknown>
+  components?: Record<string, unknown>
+}
+
 export interface TradingCapabilityCheck {
   key: string
   label: string
@@ -116,6 +135,17 @@ export interface TradingCapabilitySnapshot {
   account_id?: string | null
   blockers: string[]
   checks: TradingCapabilityCheck[]
+}
+
+export interface WebMCPReadiness {
+  status: CapabilityStatus
+  summary: string
+  detail?: string | null
+  tool_count: number
+  registered: boolean
+  testing_available: boolean
+  direct_execution_ready: boolean
+  probe_tool?: string | null
 }
 
 export interface PaperTradingOperatorSnapshot {
@@ -172,6 +202,8 @@ export interface DiscoveryEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  criteria: string[]
+  considered: string[]
   provider_metadata?: Record<string, unknown>
   run_id?: string | null
   started_at?: string | null
@@ -233,6 +265,8 @@ export interface ResearchEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  criteria: string[]
+  considered: string[]
   provider_metadata?: Record<string, unknown>
   run_id?: string | null
   started_at?: string | null
@@ -260,6 +294,8 @@ export interface DecisionEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  criteria: string[]
+  considered: string[]
   provider_metadata?: Record<string, unknown>
   run_id?: string | null
   started_at?: string | null
@@ -294,6 +330,8 @@ export interface ReviewEnvelope {
   blockers: string[]
   context_mode: string
   artifact_count: number
+  criteria: string[]
+  considered: string[]
   provider_metadata?: Record<string, unknown>
   run_id?: string | null
   started_at?: string | null

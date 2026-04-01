@@ -3,10 +3,11 @@ import { Activity, Bot, Radio, ShieldAlert, Wallet } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent } from '@/components/ui/Card'
 
-import type { CapabilityStatus, TradingCapabilitySnapshot } from '../types'
+import type { CapabilityStatus, TradingCapabilitySnapshot, WebMCPReadiness } from '../types'
 
 interface TradingCapabilityCardProps {
   snapshot: TradingCapabilitySnapshot | null
+  webmcpReadiness: WebMCPReadiness
   isLoading?: boolean
 }
 
@@ -26,6 +27,7 @@ const iconMap = {
 
 export function TradingCapabilityCard({
   snapshot,
+  webmcpReadiness,
   isLoading = false,
 }: TradingCapabilityCardProps) {
   if (isLoading && !snapshot) {
@@ -63,6 +65,19 @@ export function TradingCapabilityCard({
           ) : (
             <p className="mt-3 text-sm leading-6 text-emerald-700">All current automation gates are satisfied for the selected paper account.</p>
           )}
+
+          <div className="mt-4 rounded-xl border border-border/70 bg-background/70 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">WebMCP</span>
+              <Badge variant={statusVariantMap[webmcpReadiness.status]} size="xs">
+                {webmcpReadiness.status}
+              </Badge>
+            </div>
+            <p className="mt-2 text-sm font-semibold text-foreground">{webmcpReadiness.summary}</p>
+            {webmcpReadiness.detail ? (
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{webmcpReadiness.detail}</p>
+            ) : null}
+          </div>
         </div>
 
         {snapshot.checks.map(check => {

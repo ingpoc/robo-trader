@@ -56,6 +56,7 @@ class FocusedResearchDraft(BaseModel):
 class AgentArtifactService:
     """Produce typed paper-trading artifacts with bounded AI runtime context."""
 
+    DISCOVERY_CANDIDATE_MAX_AGE_HOURS = 36
     DECISION_MARK_FRESHNESS_THRESHOLD_SECONDS = 5 * 60
     DISCOVERY_MIN_CONFIDENCE = 0.45
     DISCOVERY_RESEARCH_READY_CONFIDENCE = 0.60
@@ -75,7 +76,7 @@ class AgentArtifactService:
         self._decision_cache: Dict[str, DecisionEnvelope] = {}
         self._review_cache: Dict[str, ReviewEnvelope] = {}
         self._research_cache: Dict[str, Dict[str, ResearchPacket]] = {}
-        self.discovery_candidate_max_age = timedelta(hours=36)
+        self.discovery_candidate_max_age = timedelta(hours=self.DISCOVERY_CANDIDATE_MAX_AGE_HOURS)
 
     @staticmethod
     def _claude_usage_exhausted(claude_status: Any) -> bool:
@@ -91,6 +92,158 @@ class AgentArtifactService:
             message = rate_limit_info.get("message") or "AI runtime usage is temporarily exhausted."
             return [f"AI runtime is usage-limited for {action}. {message}"]
         return [f"AI runtime is not ready for {action}."]
+
+    @classmethod
+    def discovery_criteria(cls, *, discovery_defaults: Optional[Dict[str, Any]] = None) -> List[str]:
+        defaults = discovery_defaults or {}
+        min_price = float(defaults.get("min_price") or 50.0)
+        max_price = float(defaults.get("max_price") or 5000.0)
+        liquidity = str(defaults.get("liquidity_min") or "medium")
+        min_cap = str(defaults.get("min_market_cap") or "small")
+        max_cap = str(defaults.get("max_market_cap") or "mega")
+        return [
+            (
+                f"Universe: NSE names priced between INR {min_price:.0f} and INR {max_price:.0f}, "
+                f"liquidity at least {liquidity}, market-cap tiers {min_cap} through {max_cap}."
+            ),
+            "Exclude penny stocks and already-held symbols for the selected paper account.",
+            f"Ignore watchlist rows older than {cls.DISCOVERY_CANDIDATE_MAX_AGE_HOURS} hours.",
+            f"Show discovery candidates only when confidence is at least {cls.DISCOVERY_MIN_CONFIDENCE:.2f}.",
+            f"Promote to focused research only when confidence is at least {cls.DISCOVERY_RESEARCH_READY_CONFIDENCE:.2f}.",
+        ]
+
+    @classmethod
+    def research_criteria(cls) -> List[str]:
+        return [
+            "Research runs one candidate at a time from discovery or an explicit symbol selection.",
+            f"Actionable research requires thesis confidence at least {cls.RESEARCH_ACTIONABLE_CONFIDENCE:.2f} and zero blockers.",
+            "Fresh evidence target: at least two fresh sources with at least one primary external source.",
+            "Stale or missing live market data caps confidence below actionable status.",
+            (
+                f"Runtime budgets: {cls.FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS:.0f}s external research, "
+                f"{cls.FOCUSED_RESEARCH_MARKET_CONTEXT_TIMEOUT_SECONDS:.0f}s market context, "
+                f"{cls.FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS:.0f}s synthesis."
+            ),
+        ]
+
+    @classmethod
+    def decision_criteria(cls) -> List[str]:
+        return [
+            "Decision review considers open positions only; it does not generate new entries.",
+            f"Position marks must be live enough; stale marks older than {cls.DECISION_MARK_FRESHNESS_THRESHOLD_SECONDS}s block decisions.",
+            f"Decision packets are ready only when confidence is at least {cls.DECISION_READY_CONFIDENCE:.2f}.",
+            f"Confidence below {cls.DECISION_MIN_CONFIDENCE:.2f} is treated as review-exit territory rather than promotable guidance.",
+            "Actions are limited to hold, review_exit, tighten_stop, or take_profit.",
+        ]
+
+    @classmethod
+    def review_criteria(cls) -> List[str]:
+        return [
+            "Daily review is observational unless confidence clears the promotion threshold.",
+            f"Review confidence must reach at least {cls.REVIEW_READY_CONFIDENCE:.2f} before strategy proposals should influence future behavior.",
+            "No recent closed trades caps review confidence below the ready threshold.",
+            "Strategy proposals stay guarded suggestions until separate benchmark or outcome evidence promotes them.",
+            "The loop should keep only lessons that materially change research quality, risk control, or execution discipline.",
+        ]
+
+    @staticmethod
+    def _dedupe_preserving_order(values: List[str]) -> List[str]:
+        seen: set[str] = set()
+        ordered: List[str] = []
+        for value in values:
+            text = str(value).strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            ordered.append(text)
+        return ordered
+
+    def _discovery_considered(
+        self,
+        *,
+        watchlist: List[Dict[str, Any]],
+        held_symbols: set[str],
+    ) -> List[str]:
+        considered: List[str] = []
+        for item in watchlist:
+            symbol = str(item.get("symbol") or "").upper().strip()
+            if not symbol:
+                continue
+            if symbol in held_symbols:
+                considered.append(f"{symbol} · already held, excluded from discovery output")
+                continue
+            if not self._is_current_discovery_candidate(item):
+                considered.append(f"{symbol} · stale watchlist row, waiting for refresh")
+                continue
+            candidate = self._build_discovery_candidate(item)
+            if candidate is None:
+                considered.append(
+                    f"{symbol} · below discovery threshold of {self.DISCOVERY_MIN_CONFIDENCE:.2f}"
+                )
+                continue
+            readiness = (
+                "research-ready"
+                if candidate.confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE
+                else "watch-only"
+            )
+            considered.append(
+                f"{candidate.symbol} · {int(round(candidate.confidence * 100))}% · {readiness}"
+            )
+        return self._dedupe_preserving_order(considered[:8])
+
+    @staticmethod
+    def _symbol_from_trade_like(item: Dict[str, Any]) -> str:
+        for key in ("symbol", "ticker"):
+            value = item.get(key)
+            if value:
+                return str(value).upper()
+        return ""
+
+    def _review_considered(self, *, snapshot: AgentPromptContext) -> List[str]:
+        considered: List[str] = []
+        for position in snapshot.positions[:4]:
+            symbol = self._symbol_from_trade_like(position)
+            if symbol:
+                considered.append(f"{symbol} · open position under active review")
+        for trade in snapshot.recent_trades[:4]:
+            symbol = self._symbol_from_trade_like(trade)
+            if symbol:
+                considered.append(f"{symbol} · recent realized outcome in review memory")
+        if not considered:
+            considered.append("No realized trade outcomes are currently available for review.")
+        return self._dedupe_preserving_order(considered[:8])
+
+    def _research_considered(
+        self,
+        *,
+        candidate: Optional[Candidate] = None,
+        symbol: Optional[str] = None,
+        research: Optional[ResearchPacket] = None,
+    ) -> List[str]:
+        considered: List[str] = []
+        resolved_symbol = (
+            (research.symbol if research is not None else None)
+            or (candidate.symbol if candidate is not None else None)
+            or (str(symbol).upper() if symbol else "")
+        )
+        if resolved_symbol:
+            considered.append(f"{resolved_symbol} · staged candidate for focused research")
+        if candidate is not None and candidate.sector:
+            considered.append(f"{candidate.sector} · current sector context from discovery")
+        if research is not None:
+            considered.append(
+                f"External evidence · {research.external_evidence_status.replace('_', ' ')}"
+            )
+            considered.append(
+                f"Market data · {research.market_data_freshness.status.replace('_', ' ')}"
+            )
+            for source in research.source_summary[:3]:
+                considered.append(
+                    f"{source.label} · {source.freshness.replace('_', ' ')} · {source.tier}"
+                )
+        if not considered:
+            considered.append("No candidate is currently staged for focused research.")
+        return self._dedupe_preserving_order(considered[:8])
 
     async def get_discovery_view(self, account_id: str, limit: int = 10) -> DiscoveryEnvelope:
         """Return watchlist-backed discovery candidates without inflating runtime context."""
@@ -113,12 +266,18 @@ class AgentArtifactService:
                 context_mode="stateful_watchlist",
                 blockers=["Stock discovery service is unavailable."],
                 artifact_count=0,
+                criteria=self.discovery_criteria(),
+                considered=["Discovery watchlist could not be loaded because the discovery service is unavailable."],
                 candidates=[],
             )
 
         watchlist = await discovery_service.get_watchlist(limit=limit)
         open_positions = await account_manager.get_open_positions(account_id)
         held_symbols = {position.symbol for position in open_positions}
+        criteria = self.discovery_criteria(
+            discovery_defaults=getattr(discovery_service, "default_criteria", None)
+        )
+        considered = self._discovery_considered(watchlist=watchlist, held_symbols=held_symbols)
 
         candidates: List[Candidate] = []
         for item in watchlist:
@@ -154,6 +313,8 @@ class AgentArtifactService:
             context_mode="stateful_watchlist",
             blockers=blockers,
             artifact_count=len(candidates),
+            criteria=criteria,
+            considered=considered,
             candidates=candidates[:limit],
         )
 
@@ -247,6 +408,7 @@ class AgentArtifactService:
                 severity=ErrorSeverity.HIGH,
                 recoverable=False,
             )
+        criteria = self.research_criteria()
 
         if not refresh:
             cached = self._get_cached_research(account_id, candidate_id=candidate_id, symbol=symbol)
@@ -256,6 +418,8 @@ class AgentArtifactService:
                     context_mode="single_candidate_research",
                     blockers=[],
                     artifact_count=1,
+                    criteria=criteria,
+                    considered=self._research_considered(symbol=symbol, research=cached),
                     provider_metadata=cached.provider_metadata or {},
                     research=cached,
                 )
@@ -287,6 +451,8 @@ class AgentArtifactService:
                     context_mode="single_candidate_research",
                     blockers=blockers,
                     artifact_count=0,
+                    criteria=criteria,
+                    considered=self._research_considered(symbol=symbol),
                     research=None,
                 )
 
@@ -304,6 +470,8 @@ class AgentArtifactService:
                 context_mode="single_candidate_research",
                 blockers=[blocker],
                 artifact_count=0,
+                criteria=criteria,
+                considered=self._research_considered(candidate=candidate, symbol=symbol),
                 research=None,
             )
 
@@ -313,6 +481,8 @@ class AgentArtifactService:
                 context_mode="single_candidate_research",
                 blockers=["Run research from Discovery to create a focused research packet."],
                 artifact_count=0,
+                criteria=criteria,
+                considered=self._research_considered(candidate=candidate, symbol=symbol),
                 research=None,
             )
 
@@ -397,6 +567,8 @@ class AgentArtifactService:
                     context_mode="single_candidate_research",
                     blockers=[f"AI runtime is usage-limited for research generation. {usage_limit_message}"],
                     artifact_count=0,
+                    criteria=criteria,
+                    considered=self._research_considered(candidate=candidate, symbol=symbol),
                     research=None,
                 )
             runtime_blocker = self._build_runtime_blocker(exc, action="research generation")
@@ -414,6 +586,8 @@ class AgentArtifactService:
                     context_mode="single_candidate_research",
                     blockers=[runtime_blocker],
                     artifact_count=0,
+                    criteria=criteria,
+                    considered=self._research_considered(candidate=candidate, symbol=symbol),
                     research=None,
                 )
             raise
@@ -477,6 +651,8 @@ class AgentArtifactService:
             context_mode="single_candidate_research",
             blockers=blockers,
             artifact_count=1,
+            criteria=criteria,
+            considered=self._research_considered(candidate=candidate, symbol=symbol, research=research),
             provider_metadata=provider_metadata,
             research=research,
         )
@@ -543,6 +719,7 @@ class AgentArtifactService:
                 severity=ErrorSeverity.HIGH,
                 recoverable=False,
             )
+        criteria = self.decision_criteria()
 
         if not refresh and account_id in self._decision_cache:
             return self._decision_cache[account_id]
@@ -554,6 +731,8 @@ class AgentArtifactService:
                 context_mode="delta_position_review",
                 blockers=self._claude_blockers(claude_status, action="decision generation"),
                 artifact_count=0,
+                criteria=criteria,
+                considered=["AI runtime blocker prevented any open-position review."],
                 decisions=[],
             )
 
@@ -563,16 +742,23 @@ class AgentArtifactService:
                 context_mode="delta_position_review",
                 blockers=["Run decision review to generate current position guidance."],
                 artifact_count=0,
+                criteria=criteria,
+                considered=["No open positions are being reviewed until you run the decision stage."],
                 decisions=[],
             )
 
         positions = await account_manager.get_open_positions(account_id)
+        considered = self._dedupe_preserving_order(
+            [f"{position.symbol} · open position in current review set" for position in positions[:8]]
+        )
         if not positions:
             return DecisionEnvelope(
                 status="empty",
                 context_mode="delta_position_review",
                 blockers=["No open positions are available for decision review."],
                 artifact_count=0,
+                criteria=criteria,
+                considered=["No open positions are currently in scope for decision review."],
                 decisions=[],
             )
 
@@ -583,6 +769,8 @@ class AgentArtifactService:
                 context_mode="delta_position_review",
                 blockers=[stale_position_blocker],
                 artifact_count=0,
+                criteria=criteria,
+                considered=considered,
                 decisions=[],
             )
 
@@ -628,6 +816,8 @@ class AgentArtifactService:
             context_mode="delta_position_review",
             blockers=confidence_blockers if decisions else ["AI runtime returned no decision packets."],
             artifact_count=len(decisions),
+            criteria=criteria,
+            considered=considered,
             provider_metadata=provider_metadata,
             decisions=decisions,
         )
@@ -656,6 +846,7 @@ class AgentArtifactService:
                 severity=ErrorSeverity.HIGH,
                 recoverable=False,
             )
+        criteria = self.review_criteria()
 
         if not refresh and account_id in self._review_cache:
             return self._review_cache[account_id]
@@ -667,6 +858,8 @@ class AgentArtifactService:
                 context_mode="delta_daily_review",
                 blockers=self._claude_blockers(claude_status, action="review generation"),
                 artifact_count=0,
+                criteria=criteria,
+                considered=["Review runtime blocker prevented any outcome analysis."],
                 review=None,
             )
 
@@ -676,16 +869,21 @@ class AgentArtifactService:
                 context_mode="delta_daily_review",
                 blockers=["Run daily review to generate a fresh review report."],
                 artifact_count=0,
+                criteria=criteria,
+                considered=["No positions or recent trades are being reviewed until you run this stage."],
                 review=None,
             )
 
         snapshot = await self._build_prompt_context(account_id, positions_limit=5, trades_limit=10)
+        considered = self._review_considered(snapshot=snapshot)
         if not snapshot.positions and not snapshot.recent_trades:
             return ReviewEnvelope(
                 status="empty",
                 context_mode="delta_daily_review",
                 blockers=["No positions or recent trades are available for review."],
                 artifact_count=0,
+                criteria=criteria,
+                considered=considered,
                 review=None,
             )
 
@@ -724,6 +922,8 @@ class AgentArtifactService:
             context_mode="delta_daily_review",
             blockers=review_blockers,
             artifact_count=1,
+            criteria=criteria,
+            considered=considered,
             provider_metadata=provider_metadata,
             review=review,
         )

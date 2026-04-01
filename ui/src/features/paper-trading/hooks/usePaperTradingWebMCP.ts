@@ -1,8 +1,16 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { Account } from '@/contexts/AccountContext'
 
-import type { PaperTradingOperatorSnapshot } from '../types'
+import { publishPaperTradingArtifactUpdate } from './useAgentArtifacts'
+import type {
+  DecisionEnvelope,
+  DiscoveryEnvelope,
+  PaperTradingOperatorSnapshot,
+  ResearchEnvelope,
+  ReviewEnvelope,
+  WebMCPReadiness,
+} from '../types'
 
 type JsonRecord = Record<string, unknown>
 
@@ -18,19 +26,22 @@ interface ToolContext extends UsePaperTradingWebMCPOptions {
   fetchJson: <T = unknown>(url: string, init?: RequestInit) => Promise<T>
 }
 
-function createAccountSchema(accounts: Account[]) {
-  const enumValues = accounts.map(account => account.account_id)
-  const options = accounts.map(account => ({
-    const: account.account_id,
-    title: `${account.account_name} (${account.strategy_type})`,
-  }))
+type ToolContextGetter = () => ToolContext
 
-  return {
+function createAccountSchema(accounts: Account[]) {
+  const schema: Record<string, unknown> = {
     type: 'string',
     description: 'Paper trading account to operate in the current operator session.',
-    enum: enumValues,
-    anyOf: options,
   }
+
+  if (accounts.length > 0) {
+    schema.anyOf = accounts.map(account => ({
+      const: account.account_id,
+      title: `${account.account_name} (${account.strategy_type})`,
+    }))
+  }
+
+  return schema
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -84,11 +95,96 @@ function createFetchJson() {
   }
 }
 
-function buildTools(context: ToolContext): WebMCPToolDefinition[] {
-  const accountSchema = createAccountSchema(context.accounts)
+function normalizeAccountListPayload(payload: unknown): Account[] {
+  if (!payload || typeof payload !== 'object') {
+    return []
+  }
+
+  const record = payload as JsonRecord
+  const accounts = Array.isArray(record.accounts) ? record.accounts : []
+  return accounts
+    .map((value): Account | null => {
+      if (!value || typeof value !== 'object') {
+        return null
+      }
+
+      const account = value as JsonRecord
+      const accountId = String(account.account_id ?? account.accountId ?? '').trim()
+      if (!accountId) {
+        return null
+      }
+
+      return {
+        account_id: accountId,
+        account_name: String(account.account_name ?? account.accountName ?? accountId).trim(),
+        account_type: String(account.account_type ?? account.accountType ?? '').trim(),
+        strategy_type: String(account.strategy_type ?? account.accountType ?? '').trim(),
+        risk_level: String(account.risk_level ?? account.riskLevel ?? 'moderate').trim(),
+        balance: Number(account.balance ?? account.currentBalance ?? 0),
+        buying_power: Number(account.buying_power ?? account.marginAvailable ?? 0),
+        deployed_capital: Number(account.deployed_capital ?? account.totalInvested ?? 0),
+        total_pnl: Number(account.total_pnl ?? 0),
+        total_pnl_pct: Number(account.total_pnl_pct ?? 0),
+        monthly_pnl: Number(account.monthly_pnl ?? 0),
+        monthly_pnl_pct: Number(account.monthly_pnl_pct ?? 0),
+        open_positions_count: Number(account.open_positions_count ?? 0),
+        today_trades: Number(account.today_trades ?? 0),
+        win_rate: Number(account.win_rate ?? 0),
+        created_at: String(account.created_at ?? account.createdDate ?? new Date().toISOString()),
+        reset_date: String(account.reset_date ?? ''),
+      }
+    })
+    .filter((account): account is Account => account !== null)
+}
+
+const BLOCKED_WEBMCP_STATUS: WebMCPReadiness = {
+  status: 'blocked',
+  summary: 'WebMCP blocked',
+  detail: 'Browser-native tool registration is unavailable in this Chrome session.',
+  tool_count: 0,
+  registered: false,
+  testing_available: false,
+  direct_execution_ready: false,
+  probe_tool: null,
+}
+
+function parseTestingResult(value: unknown): JsonRecord {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' ? (parsed as JsonRecord) : { value: parsed }
+    } catch {
+      return { value }
+    }
+  }
+
+  if (value && typeof value === 'object') {
+    return value as JsonRecord
+  }
+
+  return { value }
+}
+
+function buildTools(getContext: ToolContextGetter): WebMCPToolDefinition[] {
+  const accountSchema = createAccountSchema(getContext().accounts)
+  const fetchJson = async <T = unknown>(url: string, init?: RequestInit) => await getContext().fetchJson<T>(url, init)
+  const getCurrentAccounts = () => getContext().accounts
+  const getCurrentSelectedAccountId = () => getContext().selectedAccountId ?? null
+  const getAvailableAccounts = async () => {
+    const accounts = getCurrentAccounts()
+    if (accounts.length > 0) {
+      return accounts
+    }
+    return normalizeAccountListPayload(await fetchJson('/api/paper-trading/accounts'))
+  }
+  const selectAccountById = async (accountId: string) => await getContext().selectAccountById(accountId)
+  const refreshOperatorView = async (options?: { accountId?: string | null; preserveContent?: boolean }) =>
+    await getContext().refreshOperatorView(options)
+  const getOperatorSnapshot = async (accountId?: string | null) => await getContext().getOperatorSnapshot(accountId)
+
   const resolveAccountId = (input?: JsonRecord, required = true): string | null => {
     const requested = String(input?.account_id ?? '').trim()
-    const accountId = requested || context.selectedAccountId || ''
+    const accountId = requested || getCurrentSelectedAccountId() || getCurrentAccounts()[0]?.account_id || ''
     if (!accountId) {
       if (!required) return null
       throw new Error('Select a paper trading account first or pass account_id explicitly.')
@@ -97,12 +193,12 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
   }
 
   const refreshAndSnapshot = async (accountId?: string | null) => {
-    await context.refreshOperatorView({ accountId, preserveContent: true })
-    return await context.getOperatorSnapshot(accountId)
+    await refreshOperatorView({ accountId, preserveContent: true })
+    return await getOperatorSnapshot(accountId)
   }
 
   const validateExecutionPreflight = async (accountId: string, payload: Record<string, unknown>) => {
-    return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/execution/preflight`, {
+    return await fetchJson(`/api/paper-trading/accounts/${accountId}/execution/preflight`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -110,7 +206,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
   }
 
   const buildExecutionProposal = async (accountId: string, payload: Record<string, unknown>) => {
-    return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/execution/proposal`, {
+    return await fetchJson(`/api/paper-trading/accounts/${accountId}/execution/proposal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -118,7 +214,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
   }
 
   const refreshOperatorReadiness = async (accountId: string) => {
-    return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/operator/refresh-readiness`, {
+    return await fetchJson(`/api/paper-trading/accounts/${accountId}/operator/refresh-readiness`, {
       method: 'POST',
     })
   }
@@ -178,16 +274,19 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       name: 'list_paper_accounts',
       description: 'List the paper trading accounts currently available in Robo Trader so the operator can choose one for monitoring or action.',
       inputSchema: { type: 'object', properties: {} },
-      execute: async () => ({
-        generated_at: new Date().toISOString(),
-        selected_account_id: context.selectedAccountId ?? null,
-        accounts: context.accounts.map(account => ({
+      execute: async () => {
+        const accounts = await getAvailableAccounts()
+        return {
+          generated_at: new Date().toISOString(),
+          selected_account_id: getCurrentSelectedAccountId() ?? accounts[0]?.account_id ?? null,
+          accounts: accounts.map(account => ({
           account_id: account.account_id,
           account_name: account.account_name,
           strategy_type: account.strategy_type,
           risk_level: account.risk_level,
         })),
-      }),
+        }
+      },
     },
     {
       name: 'select_paper_account',
@@ -201,8 +300,8 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        await context.selectAccountById(accountId)
-        return await context.getOperatorSnapshot(accountId)
+        await selectAccountById(accountId)
+        return await getOperatorSnapshot(accountId)
       },
     },
     {
@@ -217,7 +316,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
           },
         },
       },
-      execute: async (input = {}) => await context.getOperatorSnapshot(resolveAccountId(input, false)),
+      execute: async (input = {}) => await getOperatorSnapshot(resolveAccountId(input, false)),
     },
     {
       name: 'validate_operator_readiness',
@@ -271,7 +370,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       description: 'Verify that no background queue work is pending or running so the manual-only operating contract remains intact.',
       inputSchema: { type: 'object', properties: {} },
       execute: async () => {
-        const queueStatus = await context.fetchJson<Record<string, unknown>>('/api/queues/status')
+        const queueStatus = await fetchJson<Record<string, unknown>>('/api/queues/status')
         const stats = (queueStatus.stats as JsonRecord | undefined) ?? {}
         const pending = Number(stats.total_pending_tasks ?? 0)
         const running = Number(stats.total_active_tasks ?? 0)
@@ -289,7 +388,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       name: 'get_queue_statuses',
       description: 'Inspect queue state directly from the backend queue control plane, including totals, failed tasks, and per-queue counts.',
       inputSchema: { type: 'object', properties: {} },
-      execute: async () => await context.fetchJson('/api/queues/status'),
+      execute: async () => await fetchJson('/api/queues/status'),
     },
     {
       name: 'get_queue_history',
@@ -314,7 +413,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const hours = input.hours == null ? 24 : Math.trunc(normalizePositiveNumber(input.hours, 'hours'))
         const limit = input.limit == null ? 100 : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
-        return await context.fetchJson(`/api/queues/history?hours=${hours}&limit=${limit}`)
+        return await fetchJson(`/api/queues/history?hours=${hours}&limit=${limit}`)
       },
     },
     {
@@ -334,7 +433,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
         if (!accountId) {
           throw new Error('Select a paper account before requesting a capability snapshot.')
         }
-        return await context.fetchJson(`/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`)
+        return await fetchJson(`/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`)
       },
     },
     {
@@ -351,14 +450,14 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input, false)
-        const validation = await context.fetchJson(`/api/paper-trading/runtime/validate-ai${accountId ? `?account_id=${encodeURIComponent(accountId)}` : ''}`, {
+        const validation = await fetchJson(`/api/paper-trading/runtime/validate-ai${accountId ? `?account_id=${encodeURIComponent(accountId)}` : ''}`, {
           method: 'POST',
         })
-        await context.refreshOperatorView({
+        await refreshOperatorView({
           accountId,
           preserveContent: true,
         })
-        const snapshot = await context.getOperatorSnapshot(accountId)
+        const snapshot = await getOperatorSnapshot(accountId)
         return {
           validation,
           operator_snapshot: snapshot,
@@ -379,7 +478,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/operator-incidents`)
+        return await fetchJson(`/api/paper-trading/accounts/${accountId}/operator-incidents`)
       },
     },
     {
@@ -396,7 +495,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        const result = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/runtime/refresh-market-data`, {
+        const result = await fetchJson(`/api/paper-trading/accounts/${accountId}/runtime/refresh-market-data`, {
           method: 'POST',
         })
         return {
@@ -419,7 +518,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/overview`)
+        return await fetchJson(`/api/paper-trading/accounts/${accountId}/overview`)
       },
     },
     {
@@ -436,7 +535,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/positions`)
+        return await fetchJson(`/api/paper-trading/accounts/${accountId}/positions`)
       },
     },
     {
@@ -460,7 +559,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? 20 : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
-        return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/trades?limit=${limit}`)
+        return await fetchJson(`/api/paper-trading/accounts/${accountId}/trades?limit=${limit}`)
       },
     },
     {
@@ -483,7 +582,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
         const period = typeof input.period === 'string' && input.period.trim() ? input.period.trim() : 'month'
-        return await context.fetchJson(
+        return await fetchJson(
           `/api/paper-trading/accounts/${accountId}/performance?period=${encodeURIComponent(period)}`,
         )
       },
@@ -510,9 +609,10 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? null : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
         const query = limit ? `?limit=${limit}` : ''
-        const envelope = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/runs/discovery${query}`, {
+        const envelope = await fetchJson<DiscoveryEnvelope>(`/api/paper-trading/accounts/${accountId}/runs/discovery${query}`, {
           method: 'POST',
         })
+        publishPaperTradingArtifactUpdate('discovery', envelope)
         return {
           discovery: envelope,
           operator_snapshot: await refreshAndSnapshot(accountId),
@@ -549,11 +649,12 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
         if (typeof input.symbol === 'string' && input.symbol.trim()) {
           payload.symbol = normalizeSymbol(input.symbol)
         }
-        const envelope = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/runs/research`, {
+        const envelope = await fetchJson<ResearchEnvelope>(`/api/paper-trading/accounts/${accountId}/runs/research`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
+        publishPaperTradingArtifactUpdate('research', envelope)
         return {
           research: envelope,
           operator_snapshot: await refreshAndSnapshot(accountId),
@@ -582,9 +683,10 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? null : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
         const query = limit ? `?limit=${limit}` : ''
-        const envelope = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/runs/decision-review${query}`, {
+        const envelope = await fetchJson<DecisionEnvelope>(`/api/paper-trading/accounts/${accountId}/runs/decision-review${query}`, {
           method: 'POST',
         })
+        publishPaperTradingArtifactUpdate('decisions', envelope)
         return {
           decisions: envelope,
           operator_snapshot: await refreshAndSnapshot(accountId),
@@ -605,9 +707,10 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        const envelope = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/runs/daily-review`, {
+        const envelope = await fetchJson<ReviewEnvelope>(`/api/paper-trading/accounts/${accountId}/runs/daily-review`, {
           method: 'POST',
         })
+        publishPaperTradingArtifactUpdate('review', envelope)
         return {
           review: envelope,
           operator_snapshot: await refreshAndSnapshot(accountId),
@@ -636,7 +739,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? null : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
         const query = limit ? `?limit=${limit}` : ''
-        const envelope = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/runs/exit-check${query}`, {
+        const envelope = await fetchJson(`/api/paper-trading/accounts/${accountId}/runs/exit-check${query}`, {
           method: 'POST',
         })
         return {
@@ -666,7 +769,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? 20 : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
-        return await context.fetchJson(
+        return await fetchJson(
           `/api/paper-trading/accounts/${accountId}/runs/history?limit=${limit}`,
         )
       },
@@ -692,7 +795,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? 20 : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
-        return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/runs/history?limit=${limit}`)
+        return await fetchJson(`/api/paper-trading/accounts/${accountId}/runs/history?limit=${limit}`)
       },
     },
     {
@@ -709,7 +812,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/positions/health`)
+        return await fetchJson(`/api/paper-trading/accounts/${accountId}/positions/health`)
       },
     },
     {
@@ -834,7 +937,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
               ? input.promotion_state.trim()
               : 'queued',
         }
-        const retrospective = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/retrospectives`, {
+        const retrospective = await fetchJson(`/api/paper-trading/accounts/${accountId}/retrospectives`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -859,7 +962,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(`/api/paper-trading/accounts/${accountId}/retrospectives/latest`)
+        return await fetchJson(`/api/paper-trading/accounts/${accountId}/retrospectives/latest`)
       },
     },
     {
@@ -894,7 +997,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
         if (symbol) {
           params.set('symbol', symbol)
         }
-        return await context.fetchJson(
+        return await fetchJson(
           `/api/paper-trading/accounts/${accountId}/learning/outcomes?${params.toString()}`,
         )
       },
@@ -921,7 +1024,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? 20 : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
-        return await context.fetchJson(
+        return await fetchJson(
           `/api/paper-trading/accounts/${accountId}/learning/promotable-improvements?limit=${limit}`,
         )
       },
@@ -979,7 +1082,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
           benchmark_evidence: Array.isArray(input.benchmark_evidence) ? input.benchmark_evidence : [],
           guardrail: typeof input.guardrail === 'string' ? input.guardrail.trim() : '',
         }
-        const decision = await context.fetchJson(
+        const decision = await fetchJson(
           `/api/paper-trading/accounts/${accountId}/learning/promotable-improvements/${encodeURIComponent(improvementId)}/decision`,
           {
             method: 'POST',
@@ -1014,9 +1117,11 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? 10 : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
-        return await context.fetchJson(
+        const envelope = await fetchJson<DiscoveryEnvelope>(
           `/api/paper-trading/accounts/${accountId}/discovery?limit=${limit}`,
         )
+        publishPaperTradingArtifactUpdate('discovery', envelope)
+        return envelope
       },
     },
     {
@@ -1049,9 +1154,11 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
         if (typeof input.symbol === 'string' && input.symbol.trim()) {
           params.set('symbol', normalizeSymbol(input.symbol))
         }
-        return await context.fetchJson(
+        const envelope = await fetchJson<ResearchEnvelope>(
           `/api/paper-trading/accounts/${accountId}/research?${params.toString()}`,
         )
+        publishPaperTradingArtifactUpdate('research', envelope)
+        return envelope
       },
     },
     {
@@ -1075,9 +1182,11 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
         const limit = input.limit == null ? 3 : Math.trunc(normalizePositiveNumber(input.limit, 'limit'))
-        return await context.fetchJson(
+        const envelope = await fetchJson<DecisionEnvelope>(
           `/api/paper-trading/accounts/${accountId}/decisions?limit=${limit}`,
         )
+        publishPaperTradingArtifactUpdate('decisions', envelope)
+        return envelope
       },
     },
     {
@@ -1094,9 +1203,11 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(
+        const envelope = await fetchJson<ReviewEnvelope>(
           `/api/paper-trading/accounts/${accountId}/review`,
         )
+        publishPaperTradingArtifactUpdate('review', envelope)
+        return envelope
       },
     },
     {
@@ -1113,7 +1224,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(
+        return await fetchJson(
           `/api/paper-trading/accounts/${accountId}/learning-summary`,
         )
       },
@@ -1133,7 +1244,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(
+        return await fetchJson(
           `/api/paper-trading/accounts/${accountId}/learning/readiness`,
         )
       },
@@ -1167,7 +1278,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
           limit: input.limit == null ? 50 : Math.trunc(normalizePositiveNumber(input.limit, 'limit')),
           symbol: typeof input.symbol === 'string' && input.symbol.trim() ? normalizeSymbol(input.symbol) : undefined,
         }
-        const evaluation = await context.fetchJson(`/api/paper-trading/accounts/${accountId}/learning/evaluate-closed-trades`, {
+        const evaluation = await fetchJson(`/api/paper-trading/accounts/${accountId}/learning/evaluate-closed-trades`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1192,7 +1303,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
       },
       execute: async (input = {}) => {
         const accountId = resolveAccountId(input)!
-        return await context.fetchJson(
+        return await fetchJson(
           `/api/paper-trading/accounts/${accountId}/improvement-report`,
         )
       },
@@ -1253,7 +1364,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
             dry_run: false,
           },
           async () =>
-            await context.fetchJson(`/api/paper-trading/accounts/${accountId}/trades/buy`, {
+            await fetchJson(`/api/paper-trading/accounts/${accountId}/trades/buy`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -1317,7 +1428,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
             dry_run: false,
           },
           async () =>
-            await context.fetchJson(`/api/paper-trading/accounts/${accountId}/trades/sell`, {
+            await fetchJson(`/api/paper-trading/accounts/${accountId}/trades/sell`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -1356,7 +1467,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
             dry_run: false,
           },
           async () =>
-            await context.fetchJson(`/api/paper-trading/accounts/${accountId}/trades/${encodeURIComponent(tradeId)}/close`, {
+            await fetchJson(`/api/paper-trading/accounts/${accountId}/trades/${encodeURIComponent(tradeId)}/close`, {
               method: 'POST',
             }),
         )
@@ -1410,7 +1521,7 @@ function buildTools(context: ToolContext): WebMCPToolDefinition[] {
             dry_run: false,
           },
           async () =>
-            await context.fetchJson(`/api/paper-trading/accounts/${accountId}/trades/${encodeURIComponent(tradeId)}`, {
+            await fetchJson(`/api/paper-trading/accounts/${accountId}/trades/${encodeURIComponent(tradeId)}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -1426,18 +1537,22 @@ export function usePaperTradingWebMCP(options: UsePaperTradingWebMCPOptions) {
   latestOptionsRef.current = options
 
   const fetchJsonRef = useRef(createFetchJson())
+  const [readiness, setReadiness] = useState<WebMCPReadiness>(BLOCKED_WEBMCP_STATUS)
+
+  const getCurrentContext = () => ({
+    ...latestOptionsRef.current,
+    fetchJson: fetchJsonRef.current,
+  })
 
   useEffect(() => {
     const modelContext = navigator.modelContext
     if (!modelContext?.registerTool) {
+      setReadiness(BLOCKED_WEBMCP_STATUS)
       return
     }
 
     const controller = new AbortController()
-    const tools = buildTools({
-      ...latestOptionsRef.current,
-      fetchJson: fetchJsonRef.current,
-    })
+    const tools = buildTools(getCurrentContext)
 
     for (const tool of tools) {
       try {
@@ -1454,5 +1569,132 @@ export function usePaperTradingWebMCP(options: UsePaperTradingWebMCPOptions) {
     }
 
     return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const updateReadiness = (value: WebMCPReadiness) => {
+      if (active) {
+        setReadiness(value)
+      }
+    }
+
+    const verifyReadiness = async () => {
+      const modelContext = navigator.modelContext
+      const testing = navigator.modelContextTesting
+
+      if (!modelContext?.registerTool) {
+        updateReadiness(BLOCKED_WEBMCP_STATUS)
+        return
+      }
+
+      if (!testing?.listTools || !testing?.executeTool) {
+        updateReadiness({
+          status: 'blocked',
+          summary: 'WebMCP testing unavailable',
+          detail: 'navigator.modelContextTesting is missing, so direct browser-native execution cannot be proven.',
+          tool_count: 0,
+          registered: false,
+          testing_available: false,
+          direct_execution_ready: false,
+          probe_tool: null,
+        })
+        return
+      }
+
+      try {
+        const tools = await testing.listTools()
+        const toolCount = Array.isArray(tools) ? tools.length : 0
+        if (toolCount === 0) {
+          updateReadiness({
+            status: 'blocked',
+            summary: 'WebMCP registered no tools',
+            detail: 'navigator.modelContextTesting.listTools() returned zero registered tools for this page.',
+            tool_count: 0,
+            registered: false,
+            testing_available: true,
+            direct_execution_ready: false,
+            probe_tool: null,
+          })
+          return
+        }
+
+        const accountsResult = parseTestingResult(await testing.executeTool('list_paper_accounts', '{}'))
+        const accountCount = Array.isArray(accountsResult.accounts) ? accountsResult.accounts.length : 0
+        if (accountCount === 0) {
+          updateReadiness({
+            status: 'blocked',
+            summary: 'WebMCP tool context is stale',
+            detail: 'Direct execution succeeded, but list_paper_accounts returned no accounts. Reload or re-register tools with current operator state.',
+            tool_count: toolCount,
+            registered: true,
+            testing_available: true,
+            direct_execution_ready: false,
+            probe_tool: 'list_paper_accounts',
+          })
+          return
+        }
+
+        const selectedAccountId = latestOptionsRef.current.selectedAccountId ?? null
+        if (selectedAccountId) {
+          const capabilityResult = parseTestingResult(
+            await testing.executeTool(
+              'get_capability_snapshot',
+              JSON.stringify({ account_id: selectedAccountId }),
+            ),
+          )
+          if (
+            capabilityResult.account_id !== selectedAccountId ||
+            typeof capabilityResult.overall_status !== 'string'
+          ) {
+            updateReadiness({
+              status: 'blocked',
+              summary: 'WebMCP operator probe failed',
+              detail: 'get_capability_snapshot did not return the selected account state, so direct operator execution is not trustworthy yet.',
+              tool_count: toolCount,
+              registered: true,
+              testing_available: true,
+              direct_execution_ready: false,
+              probe_tool: 'get_capability_snapshot',
+            })
+            return
+          }
+        }
+
+        updateReadiness({
+          status: 'ready',
+          summary: `WebMCP ready (${toolCount})`,
+          detail: selectedAccountId
+            ? `Direct execution verified via get_capability_snapshot for ${selectedAccountId}.`
+            : 'Direct execution verified via list_paper_accounts.',
+          tool_count: toolCount,
+          registered: true,
+          testing_available: true,
+          direct_execution_ready: true,
+          probe_tool: selectedAccountId ? 'get_capability_snapshot' : 'list_paper_accounts',
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        updateReadiness({
+          status: 'blocked',
+          summary: 'WebMCP execution failed',
+          detail: message,
+          tool_count: 0,
+          registered: true,
+          testing_available: true,
+          direct_execution_ready: false,
+          probe_tool: 'list_paper_accounts',
+        })
+      }
+    }
+
+    void verifyReadiness()
+
+    return () => {
+      active = false
+    }
   }, [options.accounts, options.selectedAccountId])
+
+  return readiness
 }

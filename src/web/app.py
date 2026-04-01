@@ -12,6 +12,7 @@ import sys
 import os
 import time
 import logging
+import subprocess
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from pathlib import Path
@@ -139,6 +140,31 @@ initialization_status = {
     "runtime_mode": "request_driven",
     "background_orchestrator": "disabled",
 }
+
+APP_STARTED_AT = datetime.now(timezone.utc).isoformat()
+APP_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _read_git_sha(repo_root: Path) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except Exception:
+        return None
+
+    git_sha = result.stdout.strip()
+    return git_sha or None
+
+
+APP_GIT_SHA = _read_git_sha(APP_REPO_ROOT)
+APP_GIT_SHORT_SHA = APP_GIT_SHA[:12] if APP_GIT_SHA else None
+APP_BUILD_ID = f"backend-{APP_GIT_SHORT_SHA or 'unknown'}-{APP_STARTED_AT}"
+
 
 # Event for shutdown coordination
 shutdown_event = asyncio.Event()
@@ -609,6 +635,14 @@ async def health_check(request: Request) -> Dict[str, Any]:
         return {
             "status": "healthy",
             "message": "API container is initialized.",
+            "runtime_identity": {
+                "runtime": "backend",
+                "git_sha": APP_GIT_SHA,
+                "git_short_sha": APP_GIT_SHORT_SHA,
+                "build_id": APP_BUILD_ID,
+                "started_at": APP_STARTED_AT,
+                "workspace_path": str(APP_REPO_ROOT),
+            },
             "components": {
                 "container": "initialized",
                 "background_orchestrator": "disabled",

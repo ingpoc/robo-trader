@@ -9,6 +9,14 @@ import type {
 } from '../types'
 
 export type ArtifactTab = 'discovery' | 'research' | 'decisions' | 'review'
+export const PAPER_TRADING_ARTIFACT_EVENT = 'paper-trading-artifact-update'
+
+type ArtifactEnvelope = DiscoveryEnvelope | ResearchEnvelope | DecisionEnvelope | ReviewEnvelope
+
+interface ArtifactUpdateDetail {
+  tab: ArtifactTab
+  payload: ArtifactEnvelope
+}
 
 interface UseAgentArtifactsOptions {
   onRunComplete?: () => Promise<void> | void
@@ -29,12 +37,31 @@ interface CandidateSelection {
   symbol?: string
 }
 
+const tabEndpointSuffix: Record<ArtifactTab, string> = {
+  discovery: 'discovery',
+  research: 'research',
+  decisions: 'decisions',
+  review: 'review',
+}
+
+export function publishPaperTradingArtifactUpdate(tab: ArtifactTab, payload: ArtifactEnvelope) {
+  if (typeof window === 'undefined') return
+
+  window.dispatchEvent(
+    new CustomEvent<ArtifactUpdateDetail>(PAPER_TRADING_ARTIFACT_EVENT, {
+      detail: { tab, payload },
+    }),
+  )
+}
+
 const emptyDiscovery: DiscoveryEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before loading discovery artifacts.'],
   context_mode: 'stateful_watchlist',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
   candidates: [],
 }
 
@@ -44,6 +71,8 @@ const emptyResearch: ResearchEnvelope = {
   blockers: ['Select a paper trading account and candidate before generating research.'],
   context_mode: 'single_candidate_research',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
   research: null,
 }
 
@@ -53,6 +82,8 @@ const emptyDecisions: DecisionEnvelope = {
   blockers: ['Select a paper trading account before generating decision packets.'],
   context_mode: 'delta_position_review',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
   decisions: [],
 }
 
@@ -62,6 +93,8 @@ const emptyReview: ReviewEnvelope = {
   blockers: ['Select a paper trading account before generating a review report.'],
   context_mode: 'delta_daily_review',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
   review: null,
 }
 
@@ -131,6 +164,31 @@ export function useAgentArtifacts(
     })
   }, [accountId])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleArtifactUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<ArtifactUpdateDetail>).detail
+      if (!detail || typeof detail !== 'object') return
+
+      setState(prev => ({
+        ...prev,
+        discovery: detail.tab === 'discovery' ? (detail.payload as DiscoveryEnvelope) : prev.discovery,
+        research: detail.tab === 'research' ? (detail.payload as ResearchEnvelope) : prev.research,
+        decisions: detail.tab === 'decisions' ? (detail.payload as DecisionEnvelope) : prev.decisions,
+        review: detail.tab === 'review' ? (detail.payload as ReviewEnvelope) : prev.review,
+        isLoading: false,
+        activeRequest: null,
+        error: null,
+      }))
+    }
+
+    window.addEventListener(PAPER_TRADING_ARTIFACT_EVENT, handleArtifactUpdate as EventListener)
+    return () => {
+      window.removeEventListener(PAPER_TRADING_ARTIFACT_EVENT, handleArtifactUpdate as EventListener)
+    }
+  }, [])
+
   const clearTab = useCallback((tab: ArtifactTab) => {
     setState(prev => ({
       ...prev,
@@ -142,6 +200,70 @@ export function useAgentArtifacts(
       error: null,
     }))
   }, [])
+
+  const fetchEnvelope = useCallback(async (
+    tab: ArtifactTab,
+    selection?: CandidateSelection,
+  ): Promise<ArtifactEnvelope> => {
+    if (!accountId) {
+      throw new Error('No paper trading account selected.')
+    }
+
+    const endpoint = tab === 'research'
+      ? `/api/paper-trading/accounts/${accountId}/research${buildResearchQuery(selection)}`
+      : `/api/paper-trading/accounts/${accountId}/${tabEndpointSuffix[tab]}`
+
+    const response = await fetch(endpoint)
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `Failed to fetch ${tab}`))
+    }
+
+    return await response.json() as ArtifactEnvelope
+  }, [accountId])
+
+  useEffect(() => {
+    if (!accountId) return
+
+    let cancelled = false
+
+    void (async () => {
+      setState(prev => ({ ...prev, isLoading: true, activeRequest: null, error: null }))
+
+      try {
+        const [discovery, research, decisions, review] = await Promise.all([
+          fetchEnvelope('discovery'),
+          fetchEnvelope('research', researchSelection),
+          fetchEnvelope('decisions'),
+          fetchEnvelope('review'),
+        ])
+
+        if (cancelled) return
+
+        setState({
+          discovery: discovery as DiscoveryEnvelope,
+          research: research as ResearchEnvelope,
+          decisions: decisions as DecisionEnvelope,
+          review: review as ReviewEnvelope,
+          isLoading: false,
+          activeRequest: null,
+          error: null,
+        })
+      } catch (error) {
+        if (cancelled) return
+
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          activeRequest: null,
+          error: error instanceof Error ? error.message : 'Failed to load artifact stages',
+        }))
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [accountId, fetchEnvelope, researchSelection])
 
   const requestTab = useCallback(async (
     tab: ArtifactTab,
@@ -162,7 +284,7 @@ export function useAgentArtifacts(
       return
     }
 
-    if (tab === 'research' && !selection?.candidate_id && !selection?.symbol) {
+    if (method === 'POST' && tab === 'research' && !selection?.candidate_id && !selection?.symbol) {
       setState(prev => ({
         ...prev,
         research: {

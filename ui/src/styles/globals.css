@@ -494,6 +494,10 @@
   box-shadow: 0 14px 32px rgba(58, 57, 53, 0.06);
 }
 
+.desk-stage-row {
+  @apply grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)];
+}
+
 .desk-panel-header {
   @apply flex flex-col gap-4 border-b border-border/70 pb-5 xl:flex-row xl:items-start xl:justify-between;
 }
@@ -537,6 +541,16 @@
 
 .desk-footnote {
   @apply mt-5 flex items-center gap-2 border-t border-border/70 pt-4 text-xs uppercase tracking-[0.18em] text-muted-foreground;
+}
+
+.desk-criteria-panel {
+  @apply rounded-3xl border border-border/70 px-5 py-5 shadow-sm backdrop-blur-sm;
+  background: rgba(250, 247, 241, 0.88);
+}
+
+.desk-autonomy-panel {
+  @apply space-y-5 rounded-3xl border border-border/70 px-6 py-5 shadow-sm backdrop-blur-sm;
+  background: rgba(255, 251, 245, 0.82);
 }
 
 .desk-select {

@@ -490,6 +490,72 @@ async def test_get_paper_trading_discovery_is_read_only_and_does_not_trigger_new
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("route_callable", "artifact_method", "envelope", "route_kwargs", "expected_service_kwargs"),
+    [
+        (
+            paper_trading.get_paper_trading_discovery.__wrapped__,
+            "get_discovery_view",
+            DiscoveryEnvelope(status="empty", context_mode="stateful_watchlist"),
+            {"limit": 5},
+            {"limit": 5},
+        ),
+        (
+            paper_trading.get_paper_trading_research.__wrapped__,
+            "get_research_view",
+            ResearchEnvelope(status="blocked", context_mode="single_candidate_research"),
+            {"candidate_id": None, "symbol": None},
+            {"candidate_id": None, "symbol": None},
+        ),
+        (
+            paper_trading.get_paper_trading_decisions.__wrapped__,
+            "get_decision_view",
+            DecisionEnvelope(status="blocked", context_mode="delta_position_review"),
+            {"limit": 3},
+            {"limit": 3},
+        ),
+        (
+            paper_trading.get_paper_trading_review.__wrapped__,
+            "get_review_view",
+            ReviewEnvelope(status="empty", context_mode="delta_daily_review"),
+            {},
+            {},
+        ),
+    ],
+)
+async def test_artifact_read_routes_always_include_criteria_and_considered_lists(
+    route_callable,
+    artifact_method,
+    envelope,
+    route_kwargs,
+    expected_service_kwargs,
+):
+    request = SimpleNamespace()
+    account_manager = SimpleNamespace(get_account=AsyncMock(return_value=SimpleNamespace(account_id="paper_main")))
+    artifact_service = SimpleNamespace(**{artifact_method: AsyncMock(return_value=envelope)})
+
+    async def get_service(name):
+        services = {
+            "paper_trading_account_manager": account_manager,
+            "agent_artifact_service": artifact_service,
+        }
+        return services[name]
+
+    container = SimpleNamespace(get=AsyncMock(side_effect=get_service))
+
+    response = await route_callable(
+        request=request,
+        account_id="paper_main",
+        container=container,
+        **route_kwargs,
+    )
+
+    assert response["criteria"] == []
+    assert response["considered"] == []
+    getattr(artifact_service, artifact_method).assert_awaited_once_with("paper_main", **expected_service_kwargs)
+
+
+@pytest.mark.asyncio
 async def test_run_paper_trading_research_returns_research_envelope():
     request = SimpleNamespace()
     research_request = paper_trading.ResearchRunRequest(candidate_id="cand-1", symbol=None)
