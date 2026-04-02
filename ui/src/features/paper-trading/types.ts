@@ -3,6 +3,8 @@
  * Shared types for paper trading components and hooks
  */
 
+import type { AccountPolicy, ConfigurationStatus } from '@/types/api'
+
 export interface TradeFormData {
   symbol: string
   quantity: string
@@ -97,6 +99,14 @@ export interface PerformanceMetricsResponse {
 export type CapabilityStatus = 'ready' | 'degraded' | 'blocked'
 
 export type ArtifactStatus = 'ready' | 'blocked' | 'empty'
+export type ArtifactFreshnessState = 'fresh' | 'stale' | 'unknown'
+export type ArtifactEmptyReason =
+  | 'never_run'
+  | 'stale'
+  | 'blocked_by_runtime'
+  | 'blocked_by_quota'
+  | 'no_candidates'
+  | 'requires_selection'
 
 export interface RuntimeIdentity {
   runtime: 'frontend' | 'backend'
@@ -115,6 +125,20 @@ export interface RuntimeHealthResponse {
   runtime_identity?: RuntimeIdentity | null
   readiness?: Record<string, unknown>
   components?: Record<string, unknown>
+  active_lane?: {
+    base_url: string
+    host?: string | null
+    port?: number | null
+  } | null
+  callback_listener?: {
+    port: number
+    active: boolean
+  } | null
+  ai_runtime_quota?: {
+    usage_limited: boolean
+    retry_at?: string | null
+    last_error?: string | null
+  } | null
 }
 
 export interface TradingCapabilityCheck {
@@ -148,17 +172,84 @@ export interface WebMCPReadiness {
   probe_tool?: string | null
 }
 
+export interface OverviewSummary {
+  generated_at: string
+  account_id: string
+  execution_mode: string
+  selected_account: {
+    account_id: string
+    buying_power?: number | null
+    cash_available?: number | null
+    deployed_capital?: number | null
+    balance?: number | null
+    position_count: number
+    valuation_status?: string | null
+    valuation_detail?: string | null
+    mark_freshness?: string | null
+  }
+  readiness: {
+    overall_status?: string | null
+    blocker_count: number
+    first_blocker?: string | null
+  }
+  next_action: {
+    summary?: string | null
+    detail?: string | null
+    route: string
+  }
+  act_now?: Array<{
+    label: string
+    detail: string
+    priority: 'high' | 'medium' | 'low'
+  }>
+  staleness?: Record<string, unknown> | null
+  queue: {
+    unevaluated_closed_trades: number
+    queued_promotable_improvements: number
+    decision_pending_improvements: number
+    recent_runs: number
+    ready_now_promotions: number
+  }
+  performance: {
+    portfolio_value?: number | null
+    unrealized_pnl?: number | null
+    win_rate?: number | null
+    closed_trades: number
+  }
+  recent_stage_outputs: Array<{
+    label: string
+    status: string
+    generated_at?: string | null
+    last_generated_at?: string | null
+    status_reason?: string | null
+    freshness_state?: ArtifactFreshnessState | null
+    empty_reason?: ArtifactEmptyReason | null
+    considered_count: number
+  }>
+  guardrails: {
+    execution_mode?: string | null
+    per_trade_exposure_pct?: number | null
+    max_portfolio_risk_pct?: number | null
+    max_open_positions?: number | null
+    max_new_entries_per_day?: number | null
+    max_deployed_capital_pct?: number | null
+  }
+  incidents: Array<Record<string, unknown>>
+}
+
 export interface PaperTradingOperatorSnapshot {
   generated_at: string
   selected_account_id: string | null
-  execution_mode?: 'observe' | 'propose' | 'operator_confirmed_execution'
+  execution_mode?: 'observe' | 'propose' | 'operator_confirmed_execution' | 'manual_only'
   accounts: Array<{
     account_id: string
     account_name: string
     strategy_type: string
   }>
   health: Record<string, unknown> | null
-  configuration_status: Record<string, unknown> | null
+  configuration_status: ConfigurationStatus | null
+  account_policy?: AccountPolicy | null
+  overview_summary?: OverviewSummary | null
   queue_status: Record<string, unknown> | null
   capability_snapshot: TradingCapabilitySnapshot | Record<string, unknown> | null
   overview: AccountOverviewResponse | null
@@ -166,6 +257,7 @@ export interface PaperTradingOperatorSnapshot {
   trades: ClosedTradeResponse[]
   performance: PerformanceMetricsResponse | null
   discovery: DiscoveryEnvelope | Record<string, unknown> | null
+  research?: ResearchEnvelope | Record<string, unknown> | null
   decisions?: DecisionEnvelope | Record<string, unknown> | null
   review?: ReviewEnvelope | Record<string, unknown> | null
   learning_summary: Record<string, unknown> | null
@@ -194,11 +286,44 @@ export interface AgentCandidate {
   rationale: string
   next_step: string
   generated_at: string
+  last_researched_at?: string | null
+  last_actionability?: 'actionable' | 'watch_only' | 'blocked' | null
+  last_thesis_confidence?: number | null
+  last_analysis_mode?: 'fresh_evidence' | 'stale_evidence' | 'insufficient_evidence' | null
+  research_freshness?: ArtifactFreshnessState
+  fresh_primary_source_count?: number
+  fresh_external_source_count?: number
+  market_data_freshness?: string
+  technical_context_available?: boolean
+  evidence_mode?: string
+  lifecycle_state?: 'fresh_queue' | 'actionable' | 'keep_watch' | 'rejected'
+  reentry_reason?: string | null
+  last_trigger_type?: string | null
+  dark_horse_score?: number
+  evidence_quality_score?: number
+}
+
+export interface SessionLoopSummary {
+  target_actionable_count: number
+  actionable_found_count: number
+  research_attempt_count: number
+  attempted_candidates: string[]
+  attempted_candidate_ids: string[]
+  queue_exhausted: boolean
+  termination_reason: string
+  current_candidate_symbol?: string | null
+  current_candidate_id?: string | null
+  latest_transition_reason?: string | null
+  model_usage_by_phase?: Record<string, Record<string, unknown>>
+  token_usage_by_phase?: Record<string, Record<string, unknown>>
+  total_candidates_scanned: number
+  promoted_actionable_symbols: string[]
 }
 
 export interface DiscoveryEnvelope {
   status: ArtifactStatus
   generated_at: string
+  last_generated_at?: string | null
   blockers: string[]
   context_mode: string
   artifact_count: number
@@ -210,7 +335,10 @@ export interface DiscoveryEnvelope {
   completed_at?: string | null
   duration_ms?: number | null
   status_reason?: string | null
+  freshness_state?: ArtifactFreshnessState
+  empty_reason?: ArtifactEmptyReason | null
   candidates: AgentCandidate[]
+  loop_summary?: SessionLoopSummary | null
 }
 
 export interface ResearchPacket {
@@ -254,6 +382,12 @@ export interface ResearchPacket {
     has_intraday_quote: boolean
     has_historical_data: boolean
   }
+  fresh_primary_source_count?: number
+  fresh_external_source_count?: number
+  technical_context_available?: boolean
+  evidence_mode?: string
+  classification?: 'actionable_buy_candidate' | 'keep_watch' | 'rejected'
+  what_changed_since_last_research?: string
   next_step: string
   provider_metadata?: Record<string, unknown>
   generated_at: string
@@ -262,6 +396,7 @@ export interface ResearchPacket {
 export interface ResearchEnvelope {
   status: ArtifactStatus
   generated_at: string
+  last_generated_at?: string | null
   blockers: string[]
   context_mode: string
   artifact_count: number
@@ -273,7 +408,10 @@ export interface ResearchEnvelope {
   completed_at?: string | null
   duration_ms?: number | null
   status_reason?: string | null
+  freshness_state?: ArtifactFreshnessState
+  empty_reason?: ArtifactEmptyReason | null
   research: ResearchPacket | null
+  loop_summary?: SessionLoopSummary | null
 }
 
 export interface DecisionPacket {
@@ -291,6 +429,7 @@ export interface DecisionPacket {
 export interface DecisionEnvelope {
   status: ArtifactStatus
   generated_at: string
+  last_generated_at?: string | null
   blockers: string[]
   context_mode: string
   artifact_count: number
@@ -302,6 +441,8 @@ export interface DecisionEnvelope {
   completed_at?: string | null
   duration_ms?: number | null
   status_reason?: string | null
+  freshness_state?: ArtifactFreshnessState
+  empty_reason?: ArtifactEmptyReason | null
   decisions: DecisionPacket[]
 }
 
@@ -327,6 +468,7 @@ export interface ReviewReport {
 export interface ReviewEnvelope {
   status: ArtifactStatus
   generated_at: string
+  last_generated_at?: string | null
   blockers: string[]
   context_mode: string
   artifact_count: number
@@ -338,6 +480,8 @@ export interface ReviewEnvelope {
   completed_at?: string | null
   duration_ms?: number | null
   status_reason?: string | null
+  freshness_state?: ArtifactFreshnessState
+  empty_reason?: ArtifactEmptyReason | null
   review: ReviewReport | null
 }
 

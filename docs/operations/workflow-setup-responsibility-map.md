@@ -21,10 +21,12 @@ This document defines which surface owns which kind of truth for the Robo Trader
 | `docs/reference/REPO-SCOPE.md` | Repo docs | Boundary and ownership rules |
 | `docs/workflow/zerodha-broker-control-plane.md` | Repo docs | Zerodha auth, quote-stream, and broker readiness truth |
 | `docs/workflow/codex-runtime-control-plane.md` | Repo docs | Local Codex sidecar and AI runtime readiness truth |
+| `docs/workflow/operator-dashboard-control-plane.md` | Repo docs | Operator dashboard ownership, lane truth visibility, stage memory, and anti-duplication rules |
 | `docs/workflow/browser-testing-control-plane.md` | Repo docs | Browser-testing method and evidence rules |
 | `docs/workflow/mcp-auth-bootstrap.md` | Repo docs | First-run MCP and auth bootstrap only |
 | `docs/workflow/*.md` | Repo docs | Repo-local workflow control planes and operating rules |
 | `docs/adrs/*` | Repo docs + Notion pointer | Architecture decisions that shape the implementation |
+| `ui/src/features/*/README.md` | Feature docs | Pointer-only feature notes; not workflow control-plane owners |
 | `tests/services/VALIDATION_STRATEGY.md` | Tests | Short implementation reference that points to owning workflow docs |
 | `tests/validator/README.md` | Tests | Application-specific validation inventory and endpoint reference |
 

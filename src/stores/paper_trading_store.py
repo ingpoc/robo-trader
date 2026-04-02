@@ -9,7 +9,13 @@ from typing import Optional, List, Dict, Any, Tuple
 import aiosqlite
 
 from ..models.paper_trading import (
-    PaperTradingAccount, PaperTrade, TradeType, TradeStatus, AccountType, RiskLevel
+    PaperTradingAccount,
+    PaperTradingAccountPolicy,
+    PaperTrade,
+    TradeType,
+    TradeStatus,
+    AccountType,
+    RiskLevel,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,6 +76,21 @@ class PaperTradingStore:
                     monthly_pnl REAL DEFAULT 0.0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS paper_trading_account_policy (
+                    account_id TEXT PRIMARY KEY,
+                    execution_mode TEXT NOT NULL DEFAULT 'operator_confirmed_execution',
+                    max_open_positions INTEGER NOT NULL DEFAULT 8,
+                    max_new_entries_per_day INTEGER NOT NULL DEFAULT 3,
+                    max_deployed_capital_pct REAL NOT NULL DEFAULT 80.0,
+                    default_stop_loss_pct REAL NOT NULL DEFAULT 5.0,
+                    default_target_pct REAL NOT NULL DEFAULT 10.0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(account_id) REFERENCES paper_trading_accounts(account_id)
                 )
             """)
 
@@ -222,6 +243,7 @@ class PaperTradingStore:
                 # Migration for other missing columns that might be in legacy schemas
                 required_columns = {
                     'realized_pnl': 'REAL DEFAULT 0.0',
+                    'realized_pnl_pct': 'REAL',
                     'unrealized_pnl': 'REAL DEFAULT 0.0',
                     'status': 'TEXT NOT NULL DEFAULT "open"',
                     'stop_loss': 'REAL',
@@ -528,6 +550,7 @@ class PaperTradingStore:
                 )
             )
             await cursor.close()
+            await self._ensure_account_policy_unlocked(account_id)
             await self.db_connection.commit()
 
             logger.info(f"Created paper trading account: {account_id}")
@@ -550,6 +573,171 @@ class PaperTradingStore:
         """Get account by ID."""
         async with self._lock:
             return await self._get_account_unlocked(account_id)
+
+    async def _ensure_account_policy_unlocked(self, account_id: str) -> Optional[PaperTradingAccountPolicy]:
+        """Create a default policy row for an account when missing."""
+        account = await self._get_account_unlocked(account_id)
+        if not account:
+            return None
+
+        self.db_connection.row_factory = aiosqlite.Row
+        cursor = await self.db_connection.execute(
+            "SELECT * FROM paper_trading_account_policy WHERE account_id = ?",
+            (account_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        if row:
+            return PaperTradingAccountPolicy.from_dict(
+                {
+                    **dict(row),
+                    "per_trade_exposure_pct": float(account.max_position_size),
+                    "max_portfolio_risk_pct": float(account.max_portfolio_risk),
+                    "risk_level": account.risk_level.value,
+                }
+            )
+
+        now = datetime.now(timezone.utc).isoformat()
+        await self.db_connection.execute(
+            """
+            INSERT INTO paper_trading_account_policy (
+                account_id,
+                execution_mode,
+                max_open_positions,
+                max_new_entries_per_day,
+                max_deployed_capital_pct,
+                default_stop_loss_pct,
+                default_target_pct,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                account_id,
+                "operator_confirmed_execution",
+                8,
+                3,
+                80.0,
+                5.0,
+                10.0,
+                now,
+                now,
+            ),
+        )
+
+        return PaperTradingAccountPolicy(
+            account_id=account_id,
+            execution_mode="operator_confirmed_execution",
+            max_open_positions=8,
+            max_new_entries_per_day=3,
+            max_deployed_capital_pct=80.0,
+            default_stop_loss_pct=5.0,
+            default_target_pct=10.0,
+            per_trade_exposure_pct=float(account.max_position_size),
+            max_portfolio_risk_pct=float(account.max_portfolio_risk),
+            risk_level=account.risk_level.value,
+            created_at=now,
+            updated_at=now,
+        )
+
+    async def get_account_policy(self, account_id: str) -> Optional[PaperTradingAccountPolicy]:
+        """Return merged account policy from policy storage and account risk fields."""
+        async with self._lock:
+            policy = await self._ensure_account_policy_unlocked(account_id)
+            if policy is None:
+                return None
+            await self.db_connection.commit()
+            return policy
+
+    async def update_account_policy(self, account_id: str, policy_data: Dict[str, Any]) -> Optional[PaperTradingAccountPolicy]:
+        """Update merged account policy and account-level risk fields."""
+        async with self._lock:
+            account = await self._get_account_unlocked(account_id)
+            if account is None:
+                return None
+
+            policy = await self._ensure_account_policy_unlocked(account_id)
+            if policy is None:
+                return None
+
+            now = datetime.now(timezone.utc).isoformat()
+            next_execution_mode = str(policy_data.get("execution_mode", policy.execution_mode) or policy.execution_mode)
+            next_max_open_positions = int(policy_data.get("max_open_positions", policy.max_open_positions) or policy.max_open_positions)
+            next_max_new_entries_per_day = int(
+                policy_data.get("max_new_entries_per_day", policy.max_new_entries_per_day) or policy.max_new_entries_per_day
+            )
+            next_max_deployed_capital_pct = float(
+                policy_data.get("max_deployed_capital_pct", policy.max_deployed_capital_pct) or policy.max_deployed_capital_pct
+            )
+            next_default_stop_loss_pct = float(
+                policy_data.get("default_stop_loss_pct", policy.default_stop_loss_pct) or policy.default_stop_loss_pct
+            )
+            next_default_target_pct = float(
+                policy_data.get("default_target_pct", policy.default_target_pct) or policy.default_target_pct
+            )
+            next_per_trade_exposure_pct = float(
+                policy_data.get("per_trade_exposure_pct", account.max_position_size) or account.max_position_size
+            )
+            next_max_portfolio_risk_pct = float(
+                policy_data.get("max_portfolio_risk_pct", account.max_portfolio_risk) or account.max_portfolio_risk
+            )
+            next_risk_level = str(policy_data.get("risk_level", account.risk_level.value) or account.risk_level.value)
+
+            await self.db_connection.execute(
+                """
+                UPDATE paper_trading_accounts
+                SET risk_level = ?, max_position_size = ?, max_portfolio_risk = ?, updated_at = ?
+                WHERE account_id = ?
+                """,
+                (
+                    next_risk_level,
+                    next_per_trade_exposure_pct,
+                    next_max_portfolio_risk_pct,
+                    now,
+                    account_id,
+                ),
+            )
+
+            await self.db_connection.execute(
+                """
+                INSERT INTO paper_trading_account_policy (
+                    account_id,
+                    execution_mode,
+                    max_open_positions,
+                    max_new_entries_per_day,
+                    max_deployed_capital_pct,
+                    default_stop_loss_pct,
+                    default_target_pct,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(
+                    (SELECT created_at FROM paper_trading_account_policy WHERE account_id = ?), ?
+                ), ?)
+                ON CONFLICT(account_id) DO UPDATE SET
+                    execution_mode = excluded.execution_mode,
+                    max_open_positions = excluded.max_open_positions,
+                    max_new_entries_per_day = excluded.max_new_entries_per_day,
+                    max_deployed_capital_pct = excluded.max_deployed_capital_pct,
+                    default_stop_loss_pct = excluded.default_stop_loss_pct,
+                    default_target_pct = excluded.default_target_pct,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    account_id,
+                    next_execution_mode,
+                    next_max_open_positions,
+                    next_max_new_entries_per_day,
+                    next_max_deployed_capital_pct,
+                    next_default_stop_loss_pct,
+                    next_default_target_pct,
+                    account_id,
+                    now,
+                    now,
+                ),
+            )
+
+            await self.db_connection.commit()
+            return await self._ensure_account_policy_unlocked(account_id)
 
     async def get_all_accounts(self) -> List[PaperTradingAccount]:
         """Get all paper trading accounts."""
@@ -589,6 +777,10 @@ class PaperTradingStore:
             await self.db_connection.execute(
                 "DELETE FROM paper_trading_accounts WHERE account_id = ?",
                 (account_id,)
+            )
+            await self.db_connection.execute(
+                "DELETE FROM paper_trading_account_policy WHERE account_id = ?",
+                (account_id,),
             )
             await self.db_connection.commit()
             logger.info(f"Deleted paper trading account: {account_id}")
@@ -728,6 +920,7 @@ class PaperTradingStore:
             'exit_price': row.get('exit_price'),
             'exit_timestamp': row.get('exit_timestamp') or row.get('exit_date'),
             'realized_pnl': row.get('realized_pnl'),
+            'realized_pnl_pct': row.get('realized_pnl_pct'),
             'unrealized_pnl': row.get('unrealized_pnl'),
             'status': (row.get('status') or 'open').lower(),
             'stop_loss': row.get('stop_loss'),
@@ -777,15 +970,20 @@ class PaperTradingStore:
         """Close a trade."""
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
+            existing_trade = await self._get_trade_unlocked(trade_id)
+            realized_pnl_pct = 0.0
+            if existing_trade and existing_trade.entry_price and existing_trade.quantity:
+                cost_basis = existing_trade.entry_price * existing_trade.quantity
+                realized_pnl_pct = (realized_pnl / cost_basis) * 100 if cost_basis else 0.0
 
             cursor = await self.db_connection.execute(
                 """
                 UPDATE paper_trades
-                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?,
+                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?, realized_pnl_pct = ?,
                     status = ?, updated_at = ?
                 WHERE trade_id = ?
                 """,
-                (exit_price, now, realized_pnl, TradeStatus.CLOSED.value, now, trade_id)
+                (exit_price, now, realized_pnl, realized_pnl_pct, TradeStatus.CLOSED.value, now, trade_id)
             )
             await cursor.close()
             await self.db_connection.commit()
@@ -796,15 +994,20 @@ class PaperTradingStore:
         """Mark trade as stopped out."""
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
+            existing_trade = await self._get_trade_unlocked(trade_id)
+            realized_pnl_pct = 0.0
+            if existing_trade and existing_trade.entry_price and existing_trade.quantity:
+                cost_basis = existing_trade.entry_price * existing_trade.quantity
+                realized_pnl_pct = (realized_pnl / cost_basis) * 100 if cost_basis else 0.0
 
             cursor = await self.db_connection.execute(
                 """
                 UPDATE paper_trades
-                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?,
+                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?, realized_pnl_pct = ?,
                     status = ?, updated_at = ?
                 WHERE trade_id = ?
                 """,
-                (exit_price, now, realized_pnl, TradeStatus.STOPPED_OUT.value, now, trade_id)
+                (exit_price, now, realized_pnl, realized_pnl_pct, TradeStatus.STOPPED_OUT.value, now, trade_id)
             )
             await cursor.close()
             await self.db_connection.commit()

@@ -2,7 +2,7 @@
 
 Use this workflow before closing any meaningful Robo Trader session.
 
-Owner surface: repo-local contract for `.claude/skills/introspect/`
+Owner surface: repo-local contract for `.codex/skills/introspect/`
 
 ## Goal
 
@@ -33,6 +33,11 @@ Every item should include:
 - evidence
 - owner
 - whether it should be applied now or only recorded
+
+Every meaningful closeout should also answer:
+
+- what should have been visible, preloaded, or enforced at session start so the operator would not waste tokens debugging or rediscovering context
+- where that missing truth belongs
 
 ## Priority Standard
 
@@ -89,6 +94,7 @@ If evidence is weak, record the uncertainty instead of overstating the learning.
 A good session closeout should:
 
 - state intended outcome versus actual outcome
+- state the start-of-session information gap when one existed
 - capture only durable learnings
 - route each learning to one owner
 - apply obvious safe fixes immediately when possible

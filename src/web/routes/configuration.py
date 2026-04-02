@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Request, Depends
 from slowapi import Limiter
@@ -40,6 +40,54 @@ async def _apply_runtime_quote_stream_preferences(
             runtime_error,
             exc_info=True,
         )
+
+
+async def _build_configuration_status_payload(
+    *,
+    container: DependencyContainer,
+    account_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Assemble operator-facing configuration truth for the UI."""
+    config_state = await container.get("configuration_state")
+    status = await config_state.get_system_status()
+    settings = dict(status.get("globalSettings", {}))
+    ai_runtime = dict(status.get("aiRuntime", {}))
+
+    effective_execution_mode = "operator_confirmed_execution"
+    if account_id:
+        try:
+            account_manager = await container.get("paper_trading_account_manager")
+            policy = await account_manager.get_account_policy(account_id)
+            if policy and getattr(policy, "execution_mode", None):
+                effective_execution_mode = str(policy.execution_mode)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to resolve account policy for configuration status (%s)", account_id, exc_info=True)
+
+    integration_config = getattr(getattr(container, "config", None), "integration", None)
+    fallback_provider = getattr(integration_config, "quote_stream_provider", None) or "upstox"
+    fallback_mode = getattr(integration_config, "upstox_stream_mode", None) or "ltpc"
+
+    status["effectiveQuoteStream"] = {
+        "provider": settings.get("quoteStreamProvider") or fallback_provider,
+        "mode": settings.get("quoteStreamMode") or fallback_mode,
+        "symbolLimit": int(settings.get("quoteStreamSymbolLimit") or 50),
+    }
+    status["persistence"] = {
+        "source": "database_first",
+        "global_settings_loaded": bool(settings),
+        "ai_agents_loaded": int((status.get("aiAgents") or {}).get("configured") or 0) >= 0,
+        "checkedAt": status.get("checkedAt"),
+    }
+    status["effectiveExecutionPosture"] = {
+        "mode": effective_execution_mode,
+        "account_id": account_id,
+        "source": "paper_trading_account_policy" if account_id else "default_runtime_boundary",
+    }
+    status["runtimeIdentityLink"] = {
+        "source": "/api/health",
+        "field": "runtime_identity",
+    }
+    return status
 
 
 @router.get("/configuration/ai-agents")
@@ -94,9 +142,14 @@ async def get_global_settings(
         config_state = await container.get("configuration_state")
         global_settings = await config_state.get_global_settings_config()
         settings = global_settings.get("global_settings", {})
+        settings.setdefault("claudeEnabled", True)
+        settings.setdefault("claudeDailyTokenLimit", 120000)
+        settings.setdefault("claudeCostAlerts", True)
+        settings.setdefault("claudeCostThreshold", 10)
         settings.setdefault("quoteStreamProvider", container.config.integration.quote_stream_provider or "upstox")
         settings.setdefault("quoteStreamMode", container.config.integration.upstox_stream_mode or "ltpc")
         settings.setdefault("quoteStreamSymbolLimit", 50)
+        settings.setdefault("dailyApiLimit", 25)
 
         return {"global_settings": settings}
 
@@ -150,9 +203,7 @@ async def get_configuration_status(
 ) -> Dict[str, Any]:
     """Get configuration system status."""
     try:
-        config_state = await container.get("configuration_state")
-        status = await config_state.get_system_status()
-
+        status = await _build_configuration_status_payload(container=container)
         return {"configuration_status": status}
 
     except Exception as e:

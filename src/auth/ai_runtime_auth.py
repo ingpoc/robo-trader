@@ -56,6 +56,7 @@ class AIRuntimeStatus:
 _last_recorded_runtime_limit: Dict[str, Any] = {}
 _last_successful_runtime_validation_at: Optional[str] = None
 _runtime_readiness_ttl_seconds = int(os.getenv("AI_RUNTIME_READY_TTL_SECONDS", "300"))
+_runtime_force_validation_timeout_seconds = float(os.getenv("AI_RUNTIME_FORCE_VALIDATION_TIMEOUT_SECONDS", "45"))
 
 
 def _build_client() -> CodexRuntimeClient:
@@ -115,9 +116,10 @@ async def validate_ai_runtime_auth(*, force_refresh: bool = False) -> AIRuntimeS
         )
 
     client = _build_client()
+    validation_timeout_seconds = min(client.timeout_seconds, _runtime_force_validation_timeout_seconds)
     try:
         payload = await (
-            client.validate_runtime(timeout_seconds=min(client.timeout_seconds, 20.0))
+            client.validate_runtime(timeout_seconds=validation_timeout_seconds)
             if force_refresh
             else client.get_health()
         )

@@ -10,6 +10,7 @@ import json
 import signal
 import sys
 import os
+import socket
 import time
 import logging
 import subprocess
@@ -108,6 +109,7 @@ from src.config import load_config
 from src.core.di import initialize_container, cleanup_container, DependencyContainer
 from src.core.database_state.database_state import DatabaseStateManager
 from src.core.errors import TradingError, ErrorHandler
+from src.auth.ai_runtime_auth import get_ai_runtime_status
 from .queues_api import router as queues_router
 from .websocket_differ import WebSocketDiffer
 from .connection_manager import ConnectionManager
@@ -616,6 +618,14 @@ async def health_check(request: Request) -> Dict[str, Any]:
 
         capability_service = await container.get("trading_capability_service")
         capability_snapshot = await capability_service.get_snapshot()
+        ai_runtime_status = await get_ai_runtime_status()
+        callback_port = int(os.getenv("ZERODHA_DEV_CALLBACK_PORT", "8010"))
+        callback_active = False
+        try:
+            with socket.create_connection(("127.0.0.1", callback_port), timeout=0.25):
+                callback_active = True
+        except OSError:
+            callback_active = False
         readiness = {
             "container": "ready",
             "ai_runtime": next(
@@ -647,6 +657,24 @@ async def health_check(request: Request) -> Dict[str, Any]:
                 "container": "initialized",
                 "background_orchestrator": "disabled",
                 "runtime_mode": "request_driven",
+            },
+            "active_lane": {
+                "base_url": str(request.base_url).rstrip("/"),
+                "host": request.url.hostname,
+                "port": request.url.port or 80,
+            },
+            "callback_listener": {
+                "port": callback_port,
+                "active": callback_active,
+            },
+            "ai_runtime_quota": {
+                "usage_limited": bool((ai_runtime_status.rate_limit_info or {}).get("status") == "exhausted"),
+                "retry_at": (
+                    (ai_runtime_status.rate_limit_info or {}).get("retry_at")
+                    or (ai_runtime_status.rate_limit_info or {}).get("resets_at")
+                    or None
+                ),
+                "last_error": ai_runtime_status.error,
             },
             "readiness": readiness,
             "initialization_status": initialization_status,

@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from ...core.errors import ErrorSeverity, MarketDataError
-from ...models.paper_trading import PaperTradingAccount, PaperTrade, AccountType, RiskLevel
+from ...models.paper_trading import (
+    PaperTradingAccount,
+    PaperTradingAccountPolicy,
+    PaperTrade,
+    AccountType,
+    RiskLevel,
+)
 from ...models.paper_trading_responses import OpenPositionResponse, ClosedTradeResponse
 from ...stores.paper_trading_store import PaperTradingStore
 from .performance_calculator import PerformanceCalculator
@@ -109,6 +115,18 @@ class PaperTradingAccountManager:
     async def get_account(self, account_id: str) -> Optional[PaperTradingAccount]:
         """Get account by ID."""
         return await self.store.get_account(account_id)
+
+    async def get_account_policy(self, account_id: str) -> Optional[PaperTradingAccountPolicy]:
+        """Get operator policy for an account."""
+        return await self.store.get_account_policy(account_id)
+
+    async def update_account_policy(
+        self,
+        account_id: str,
+        policy_data: Dict[str, Any],
+    ) -> Optional[PaperTradingAccountPolicy]:
+        """Update operator policy for an account."""
+        return await self.store.update_account_policy(account_id, policy_data)
 
     async def get_all_accounts(self) -> List[PaperTradingAccount]:
         """Get all paper trading accounts."""
@@ -538,7 +556,7 @@ class PaperTradingAccountManager:
         """Filter trades based on period."""
         from datetime import timedelta
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if period == "today":
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         elif period == "week":
@@ -551,7 +569,9 @@ class PaperTradingAccountManager:
         filtered = []
         for trade in trades:
             if hasattr(trade, 'exit_timestamp') and trade.exit_timestamp:
-                trade_date = datetime.fromisoformat(trade.exit_timestamp)
+                trade_date = self._parse_timestamp(trade.exit_timestamp)
+                if trade_date is None:
+                    continue
                 if trade_date >= start_date:
                     filtered.append(trade)
 

@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,7 +9,7 @@ from src.web.app import APP_BUILD_ID, APP_GIT_SHA, APP_GIT_SHORT_SHA, health_che
 
 
 @pytest.mark.asyncio
-async def test_health_check_exposes_runtime_identity():
+async def test_health_check_exposes_runtime_identity(monkeypatch):
     capability_service = AsyncMock()
     capability_service.get_snapshot.return_value = TradingCapabilitySnapshot.build(
         mode="paper_only",
@@ -36,7 +37,19 @@ async def test_health_check_exposes_runtime_identity():
 
     container = MagicMock()
     container.get = AsyncMock(return_value=capability_service)
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(container=container)))
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(container=container)),
+        base_url="http://testserver/",
+        url=SimpleNamespace(hostname="testserver", port=8000),
+    )
+    monkeypatch.setattr(
+        "src.web.app.get_ai_runtime_status",
+        AsyncMock(return_value=SimpleNamespace(rate_limit_info={}, error=None)),
+    )
+    monkeypatch.setattr(
+        "src.web.app.socket.create_connection",
+        lambda *args, **kwargs: nullcontext(),
+    )
 
     payload = await health_check(request=request)
 
@@ -53,3 +66,6 @@ async def test_health_check_exposes_runtime_identity():
     assert payload["readiness"]["ai_runtime"]["status"] == "ready"
     assert payload["readiness"]["quote_stream"]["status"] == "ready"
     assert payload["readiness"]["market_data"]["status"] == "ready"
+    assert payload["active_lane"]["base_url"] == "http://testserver"
+    assert payload["callback_listener"]["port"] == 8010
+    assert payload["ai_runtime_quota"]["usage_limited"] is False

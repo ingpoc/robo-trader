@@ -219,6 +219,7 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
             reasoning=runtime_config.codex_reasoning_light,
             timeout_seconds=float(runtime_config.timeout_seconds),
             discovery_timeout_seconds=max(float(runtime_config.timeout_seconds), 300.0),
+            supports_compact_models=str(getattr(runtime_config, "mode", "")).strip().lower() != "local_runtime_service",
         )
 
     container._register_singleton("ai_market_research_service", create_ai_market_research_service)

@@ -6,6 +6,8 @@ interface StageCriteriaPanelProps {
   considered: string[]
   status?: string | null
   statusReason?: string | null
+  freshnessState?: string | null
+  emptyReason?: string | null
 }
 
 export function StageCriteriaPanel({
@@ -14,6 +16,8 @@ export function StageCriteriaPanel({
   considered,
   status,
   statusReason,
+  freshnessState,
+  emptyReason,
 }: StageCriteriaPanelProps) {
   return (
     <aside className="desk-criteria-panel">
@@ -27,6 +31,12 @@ export function StageCriteriaPanel({
           This is the explicit rule set and in-scope work the dashboard is using right now.
         </p>
         {statusReason ? <p className="text-sm leading-6 text-foreground">{statusReason}</p> : null}
+        {(freshnessState || emptyReason) ? (
+          <div className="flex flex-wrap gap-2">
+            {freshnessState ? <Badge variant="outline" size="xs">Freshness {freshnessState.replace(/_/g, ' ')}</Badge> : null}
+            {emptyReason ? <Badge variant="outline" size="xs">Empty reason {emptyReason.replace(/_/g, ' ')}</Badge> : null}
+          </div>
+        ) : null}
       </div>
 
       <CriteriaSection

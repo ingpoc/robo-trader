@@ -57,44 +57,56 @@ export function publishPaperTradingArtifactUpdate(tab: ArtifactTab, payload: Art
 const emptyDiscovery: DiscoveryEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before loading discovery artifacts.'],
   context_mode: 'stateful_watchlist',
   artifact_count: 0,
   criteria: [],
   considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'blocked_by_runtime',
   candidates: [],
 }
 
 const emptyResearch: ResearchEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account and candidate before generating research.'],
   context_mode: 'single_candidate_research',
   artifact_count: 0,
   criteria: [],
   considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'requires_selection',
   research: null,
 }
 
 const emptyDecisions: DecisionEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before generating decision packets.'],
   context_mode: 'delta_position_review',
   artifact_count: 0,
   criteria: [],
   considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'blocked_by_runtime',
   decisions: [],
 }
 
 const emptyReview: ReviewEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before generating a review report.'],
   context_mode: 'delta_daily_review',
   artifact_count: 0,
   criteria: [],
   considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'blocked_by_runtime',
   review: null,
 }
 
@@ -284,21 +296,6 @@ export function useAgentArtifacts(
       return
     }
 
-    if (method === 'POST' && tab === 'research' && !selection?.candidate_id && !selection?.symbol) {
-      setState(prev => ({
-        ...prev,
-        research: {
-          ...emptyResearch,
-          blockers: ['Choose a discovery candidate before generating research.'],
-          status: 'empty',
-        },
-        isLoading: false,
-        activeRequest: null,
-        error: null,
-      }))
-      return
-    }
-
     setState(prev => ({ ...prev, isLoading: true, activeRequest: tab, error: null }))
 
     try {
@@ -335,9 +332,12 @@ export function useAgentArtifacts(
       }
 
       const payload = await response.json()
+      const refreshedDiscovery = method === 'POST' && tab === 'research'
+        ? await fetchEnvelope('discovery')
+        : null
       setState(prev => ({
         ...prev,
-        discovery: tab === 'discovery' ? payload : prev.discovery,
+        discovery: refreshedDiscovery ?? (tab === 'discovery' ? payload : prev.discovery),
         research: tab === 'research' ? payload : prev.research,
         decisions: tab === 'decisions' ? payload : prev.decisions,
         review: tab === 'review' ? payload : prev.review,

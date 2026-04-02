@@ -33,12 +33,15 @@ let runtimeHealth: RuntimeHealthSnapshot = {
   provider: "codex",
   authenticated: false,
   usage_limited: false,
-  message: "Codex runtime sidecar is reachable, but no explicit AI request has validated auth/quota in this session yet.",
+  message: "Codex runtime sidecar is reachable, and startup warmup validation is pending.",
   checked_at: new Date().toISOString(),
   model: defaultModel,
   reasoning_profile: lightReasoning,
   mode: "local_runtime_service",
 };
+
+let runtimeValidationInFlight: Promise<Awaited<ReturnType<typeof validateRuntime>>> | null = null;
+let startupWarmupInFlight = false;
 
 const structuredRunRequestSchema = z.object({
   system_prompt: z.string().min(1),
@@ -46,6 +49,7 @@ const structuredRunRequestSchema = z.object({
   output_schema: z.record(z.unknown()),
   model: z.string().optional(),
   reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  prompt_cache_key: z.string().optional(),
   working_directory: z.string().optional(),
   web_search_enabled: z.boolean().optional(),
   web_search_mode: z.enum(["disabled", "cached", "live"]).optional(),
@@ -54,12 +58,19 @@ const structuredRunRequestSchema = z.object({
   session_id: z.string().optional(),
 });
 
+const runtimeValidateRequestSchema = z.object({
+  model: z.string().optional(),
+  reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  timeout_seconds: z.number().positive().max(300).optional(),
+});
+
 const batchResearchRequestSchema = z.object({
   symbols: z.array(z.string().min(1)).min(1),
   company_names: z.record(z.string()).optional(),
   research_brief: z.string().optional(),
   model: z.string().optional(),
   reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  prompt_cache_key: z.string().optional(),
   timeout_seconds: z.number().positive().max(300).optional(),
 });
 
@@ -70,6 +81,7 @@ const discoveryScoutRequestSchema = z.object({
   limit: z.number().int().min(1).max(10).default(5),
   model: z.string().optional(),
   reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  prompt_cache_key: z.string().optional(),
   timeout_seconds: z.number().positive().max(300).optional(),
 });
 
@@ -292,7 +304,7 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-function providerMetadata(runId: string, model: string, reasoning: string) {
+function providerMetadata(runId: string, model: string, reasoning: string, promptCacheKey?: string) {
   return {
     provider: "codex",
     model,
@@ -300,6 +312,7 @@ function providerMetadata(runId: string, model: string, reasoning: string) {
     run_id: runId,
     checked_at: isoNow(),
     mode: "local_runtime_service",
+    ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
   };
 }
 
@@ -587,7 +600,12 @@ async function runStructured(request: z.infer<typeof structuredRunRequestSchema>
     });
     return {
       output: parsed,
-      provider_metadata: providerMetadata(thread.id ?? request.session_id ?? crypto.randomUUID(), model, reasoning),
+      provider_metadata: providerMetadata(
+        thread.id ?? request.session_id ?? crypto.randomUUID(),
+        model,
+        reasoning,
+        request.prompt_cache_key,
+      ),
       usage: turn.usage,
       raw_response: turn.finalResponse,
     };
@@ -633,6 +651,48 @@ async function validateRuntime(request?: {
     validation: result.output,
     usage: result.usage,
   };
+}
+
+async function ensureRuntimeValidated(request?: {
+  model?: string;
+  reasoning?: ModelReasoningEffort;
+  timeout_seconds?: number;
+}) {
+  if (!runtimeValidationInFlight) {
+    runtimeValidationInFlight = validateRuntime(request).finally(() => {
+      runtimeValidationInFlight = null;
+    });
+  }
+
+  return await runtimeValidationInFlight;
+}
+
+function scheduleStartupWarmup() {
+  if (startupWarmupInFlight) {
+    return;
+  }
+
+  startupWarmupInFlight = true;
+  updateRuntimeHealth({
+    status: "degraded",
+    authenticated: false,
+    usage_limited: false,
+    message: "Codex runtime sidecar is reachable, and startup warmup validation is in progress.",
+  });
+
+  void ensureRuntimeValidated({ timeout_seconds: 25 })
+    .catch((error) => {
+      const classified = classifyRuntimeError(error);
+      updateRuntimeHealth({
+        status: classified.status,
+        authenticated: classified.authenticated,
+        usage_limited: classified.usage_limited,
+        message: `Startup warmup failed: ${classified.message}`,
+      });
+    })
+    .finally(() => {
+      startupWarmupInFlight = false;
+    });
 }
 
 async function runBatchResearch(request: z.infer<typeof batchResearchRequestSchema>) {
@@ -855,9 +915,14 @@ app.get("/health", async (_req: Request, res: Response) => {
   res.json(runtimeHealth);
 });
 
-app.post("/v1/runtime/validate", async (_req: Request, res: Response) => {
+app.post("/v1/runtime/validate", async (req: Request, res: Response) => {
+  const parsed = runtimeValidateRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid runtime validation request", detail: parsed.error.flatten() });
+    return;
+  }
   try {
-    const result = await validateRuntime();
+    const result = await ensureRuntimeValidated(parsed.data);
     res.json(result);
   } catch (error) {
     const classified = classifyRuntimeError(error);
@@ -1055,4 +1120,5 @@ app.post("/v1/improvement/review", async (req: Request, res: Response) => {
 
 app.listen(port, host, () => {
   console.log(`Codex runtime listening on http://${host}:${port}`);
+  scheduleStartupWarmup();
 });

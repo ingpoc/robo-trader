@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Settings, Wallet, X } from 'lucide-react'
+import { Activity, Home, Settings, Wallet, X } from 'lucide-react'
 
 import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator'
 import { Button } from '@/components/ui/Button'
@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils'
 
 const menuItems = [
   { path: '/', label: 'Overview', icon: Home, detail: 'Capital, blockers, operator posture' },
+  { path: '/health', label: 'Health', icon: Activity, detail: 'Runtime truth, readiness, broker state' },
   { path: '/paper-trading', label: 'Paper Trading', icon: Wallet, detail: 'Explicit discovery, research, review' },
-  { path: '/configuration', label: 'Configuration', icon: Settings, detail: 'Guardrails, runtime, quote settings' },
+  { path: '/configuration', label: 'Configuration', icon: Settings, detail: 'Policy, limits, criteria guardrails' },
 ]
 
 interface NavigationProps {

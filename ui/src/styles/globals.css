@@ -498,6 +498,12 @@
   @apply grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)];
 }
 
+.desk-stage-row--active {
+  @apply rounded-[2rem] border border-copper-400/70 p-4 shadow-md;
+  background: linear-gradient(180deg, rgba(191, 120, 58, 0.08) 0%, rgba(255, 248, 240, 0.72) 100%);
+  box-shadow: 0 16px 34px rgba(191, 120, 58, 0.12);
+}
+
 .desk-panel-header {
   @apply flex flex-col gap-4 border-b border-border/70 pb-5 xl:flex-row xl:items-start xl:justify-between;
 }
@@ -544,7 +550,7 @@
 }
 
 .desk-criteria-panel {
-  @apply rounded-3xl border border-border/70 px-5 py-5 shadow-sm backdrop-blur-sm;
+  @apply space-y-5 rounded-3xl border border-border/70 px-5 py-5 shadow-sm backdrop-blur-sm;
   background: rgba(250, 247, 241, 0.88);
 }
 
@@ -569,6 +575,11 @@
 .candidate-row--selected {
   border-color: rgba(184, 115, 51, 0.45);
   background: linear-gradient(180deg, rgba(184, 115, 51, 0.06) 0%, rgba(255,255,255,0.82) 100%);
+}
+
+.desk-candidate-group {
+  @apply space-y-3 rounded-[1.75rem] border border-border/60 px-4 py-4;
+  background: rgba(255, 252, 248, 0.56);
 }
 
 /* ===================================================================

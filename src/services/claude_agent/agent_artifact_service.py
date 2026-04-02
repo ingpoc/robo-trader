@@ -17,17 +17,20 @@ from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
 from src.models.agent_artifacts import (
     AgentPromptContext,
     Candidate,
+    CandidateLifecycleState,
     DecisionEnvelope,
     DecisionPacket,
     DiscoveryEnvelope,
     MarketDataFreshness,
     ResearchActionability,
+    ResearchClassification,
     ResearchEnvelope,
     ResearchEvidenceCitation,
     ResearchPacket,
     ResearchSourceSummary,
     ReviewEnvelope,
     ReviewReport,
+    SessionLoopSummary,
     StrategyProposal,
 )
 from src.models.market_data import MarketData
@@ -66,9 +69,22 @@ class AgentArtifactService:
     REVIEW_READY_CONFIDENCE = 0.60
     FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS = 30.0
     FOCUSED_RESEARCH_MARKET_CONTEXT_TIMEOUT_SECONDS = 12.0
-    FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS = 28.0
+    FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS = 60.0
     RESEARCH_QUOTE_PREFLIGHT_WAIT_SECONDS = 4.0
     RESEARCH_QUOTE_PREFLIGHT_POLL_SECONDS = 0.5
+    RESEARCH_MEMORY_FRESH_HOURS = 6
+    SESSION_TARGET_ACTIONABLE_COUNT = 1
+    MAX_RESEARCH_ATTEMPTS_PER_SESSION = 6
+    DISCOVERY_POSTURE = "balanced"
+    REENTRY_POLICY = "event_plus_stale"
+    MODEL_ROUTE_TRIAGE = "gpt-5-mini"
+    MODEL_ROUTE_DISCOVERY = "gpt-5-mini"
+    MODEL_ROUTE_RESEARCH = "gpt-5.4"
+    MODEL_ROUTE_DECISION = "gpt-5.4"
+
+    @staticmethod
+    def _runtime_supports_compact_models(runtime_mode: str) -> bool:
+        return (runtime_mode or "").strip().lower() not in {"local_runtime_service"}
 
     def __init__(self, container: "DependencyContainer"):
         self.container = container
@@ -95,7 +111,7 @@ class AgentArtifactService:
 
     @classmethod
     def discovery_criteria(cls, *, discovery_defaults: Optional[Dict[str, Any]] = None) -> List[str]:
-        defaults = discovery_defaults or {}
+        defaults = discovery_defaults if isinstance(discovery_defaults, dict) else {}
         min_price = float(defaults.get("min_price") or 50.0)
         max_price = float(defaults.get("max_price") or 5000.0)
         liquidity = str(defaults.get("liquidity_min") or "medium")
@@ -106,24 +122,28 @@ class AgentArtifactService:
                 f"Universe: NSE names priced between INR {min_price:.0f} and INR {max_price:.0f}, "
                 f"liquidity at least {liquidity}, market-cap tiers {min_cap} through {max_cap}."
             ),
+            f"Discovery posture defaults to {cls.DISCOVERY_POSTURE}: prefer undercovered small and mid caps with regime fit and stronger evidence, not novelty alone.",
             "Exclude penny stocks and already-held symbols for the selected paper account.",
             f"Ignore watchlist rows older than {cls.DISCOVERY_CANDIDATE_MAX_AGE_HOURS} hours.",
             f"Show discovery candidates only when confidence is at least {cls.DISCOVERY_MIN_CONFIDENCE:.2f}.",
             f"Promote to focused research only when confidence is at least {cls.DISCOVERY_RESEARCH_READY_CONFIDENCE:.2f}.",
+            f"Previously analyzed names reenter only on stale research or a fresh trigger ({cls.REENTRY_POLICY}).",
         ]
 
     @classmethod
     def research_criteria(cls) -> List[str]:
         return [
-            "Research runs one candidate at a time from discovery or an explicit symbol selection.",
+            "Research runs from the fresh queue or an explicit symbol selection and keeps advancing until one actionable candidate is found or the queue is exhausted.",
             f"Actionable research requires thesis confidence at least {cls.RESEARCH_ACTIONABLE_CONFIDENCE:.2f} and zero blockers.",
             "Fresh evidence target: at least two fresh sources with at least one primary external source.",
             "Stale or missing live market data caps confidence below actionable status.",
+            "Research must classify the candidate as actionable_buy_candidate, keep_watch, or rejected.",
             (
                 f"Runtime budgets: {cls.FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS:.0f}s external research, "
                 f"{cls.FOCUSED_RESEARCH_MARKET_CONTEXT_TIMEOUT_SECONDS:.0f}s market context, "
                 f"{cls.FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS:.0f}s synthesis."
             ),
+            "Use cheaper model routing for routine triage and reserve GPT-5.4 synthesis for finalists.",
         ]
 
     @classmethod
@@ -158,11 +178,269 @@ class AgentArtifactService:
             ordered.append(text)
         return ordered
 
+    @classmethod
+    def _freshness_from_timestamp(
+        cls,
+        value: Optional[str],
+        *,
+        max_age_hours: int,
+    ) -> str:
+        parsed = cls._parse_timestamp(value)
+        if parsed is None:
+            return "unknown"
+        age = datetime.now(timezone.utc) - parsed
+        return "fresh" if age <= timedelta(hours=max_age_hours) else "stale"
+
+    @classmethod
+    def _empty_reason_from_state(
+        cls,
+        *,
+        status: str,
+        blockers: List[str],
+        default_empty_reason: Optional[str] = None,
+    ) -> Optional[str]:
+        if default_empty_reason:
+            return default_empty_reason
+        lowered = " ".join(blockers).lower()
+        if status == "empty":
+            if "select" in lowered or "choose" in lowered:
+                return "requires_selection"
+            if "stale" in lowered:
+                return "stale"
+            return "no_candidates"
+        if status == "blocked":
+            if "usage-limited" in lowered or "usage limit" in lowered or "spending cap" in lowered:
+                return "blocked_by_quota"
+            if "ai runtime" in lowered:
+                return "blocked_by_runtime"
+        return None
+
+    @staticmethod
+    def _research_source_counts(source_summary: List[ResearchSourceSummary]) -> tuple[int, int]:
+        primary = sum(
+            1
+            for item in source_summary
+            if item.tier == "primary" and item.freshness in {"fresh", "live"}
+        )
+        external = sum(
+            1
+            for item in source_summary
+            if item.freshness in {"fresh", "live"}
+            and AgentArtifactService._source_type_is_external(item.source_type)
+        )
+        return primary, external
+
+    @staticmethod
+    def _technical_context_available(source_summary: List[ResearchSourceSummary]) -> bool:
+        return any(item.source_type == "technical_context" for item in source_summary)
+
+    def _project_discovery_research_memory(
+        self,
+        latest_research: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        latest_research = latest_research if isinstance(latest_research, dict) else {}
+        generated_at = latest_research.get("generated_at")
+        source_summary = [
+            ResearchSourceSummary.model_validate(item)
+            for item in list(latest_research.get("source_summary") or [])
+        ]
+        primary_sources, external_sources = self._research_source_counts(source_summary)
+        latest_market_data = latest_research.get("market_data_freshness") or {}
+
+        return {
+            "generated_at": generated_at,
+            "actionability": latest_research.get("actionability"),
+            "thesis_confidence": self._clamp_confidence(latest_research.get("thesis_confidence")),
+            "analysis_mode": latest_research.get("analysis_mode"),
+            "freshness": self._freshness_from_timestamp(
+                generated_at,
+                max_age_hours=self.RESEARCH_MEMORY_FRESH_HOURS,
+            ) if generated_at else "unknown",
+            "fresh_primary_source_count": primary_sources,
+            "fresh_external_source_count": external_sources,
+            "market_data_freshness": str(latest_market_data.get("status") or "unknown"),
+            "technical_context_available": self._technical_context_available(source_summary),
+            "evidence_mode": str(latest_research.get("analysis_mode") or ""),
+        }
+
+    @staticmethod
+    def _market_trigger_text(item: Dict[str, Any], latest_research: Dict[str, Any]) -> str:
+        research_summary = item.get("research_summary") or {}
+        trigger_fields: List[str] = []
+        for key in ("discovery_reason", "summary", "research_summary", "news", "financial_data", "filings", "market_context"):
+            value = research_summary.get(key) if isinstance(research_summary, dict) else None
+            if value:
+                trigger_fields.append(str(value))
+        trigger_fields.extend(str(entry) for entry in (latest_research.get("evidence") or []) if entry)
+        trigger_fields.extend(str(entry) for entry in (latest_research.get("risks") or []) if entry)
+        return " ".join(trigger_fields).lower()
+
+    @classmethod
+    def _detect_trigger_type(cls, item: Dict[str, Any], latest_research: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        research_summary = item.get("research_summary") or {}
+        if isinstance(research_summary, dict) and research_summary.get("last_trigger_type"):
+            return str(research_summary.get("last_trigger_type"))
+        text = cls._market_trigger_text(item, latest_research or {})
+        if not text:
+            return None
+        if any(marker in text for marker in ("earnings", "result", "quarter", "q1", "q2", "q3", "q4")):
+            return "earnings"
+        if any(marker in text for marker in ("guidance", "outlook", "margin expansion")):
+            return "guidance_change"
+        if any(marker in text for marker in ("order win", "order book", "contract win", "award")):
+            return "order_win"
+        if any(marker in text for marker in ("filing", "exchange disclosure", "board meeting", "investor presentation", "disclosure")):
+            return "filing"
+        if any(marker in text for marker in ("breakout", "relative strength", "uptrend", "momentum")):
+            return "price_regime_change"
+        if any(marker in text for marker in ("news", "catalyst", "re-rating", "rerating")):
+            return "news"
+        return None
+
+    @classmethod
+    def _evidence_quality_score(cls, research_memory: Dict[str, Any]) -> float:
+        primary = int(research_memory.get("fresh_primary_source_count") or 0)
+        external = int(research_memory.get("fresh_external_source_count") or 0)
+        technical = 0.1 if research_memory.get("technical_context_available") else 0.0
+        market_status = str(research_memory.get("market_data_freshness") or "unknown")
+        market_bonus = 0.15 if market_status in {"fresh", "live"} else 0.0
+        freshness_bonus = 0.15 if research_memory.get("freshness") == "fresh" else 0.0
+        score = min(primary * 0.25 + external * 0.2 + technical + market_bonus + freshness_bonus, 1.0)
+        return round(max(score, 0.0), 2)
+
+    @classmethod
+    def _lifecycle_state_for_candidate(
+        cls,
+        *,
+        research_memory: Dict[str, Any],
+        trigger_type: Optional[str],
+    ) -> CandidateLifecycleState:
+        freshness = str(research_memory.get("freshness") or "unknown")
+        actionability = str(research_memory.get("actionability") or "")
+        if freshness != "fresh":
+            return "fresh_queue"
+        if trigger_type:
+            return "fresh_queue"
+        if actionability == "actionable":
+            return "actionable"
+        if actionability == "watch_only":
+            return "keep_watch"
+        return "rejected"
+
+    @classmethod
+    def _reentry_reason_for_candidate(
+        cls,
+        *,
+        lifecycle_state: CandidateLifecycleState,
+        research_memory: Dict[str, Any],
+        trigger_type: Optional[str],
+    ) -> Optional[str]:
+        if lifecycle_state != "fresh_queue":
+            return None
+        if trigger_type:
+            return f"fresh_{trigger_type}"
+        if research_memory.get("generated_at"):
+            return "stale_research_memory"
+        return None
+
+    @classmethod
+    def _dark_horse_score_for_candidate(
+        cls,
+        *,
+        item: Dict[str, Any],
+        confidence: float,
+        research_memory: Dict[str, Any],
+        trigger_type: Optional[str],
+    ) -> float:
+        score = confidence * 0.45
+        sector = str(item.get("sector") or "").lower()
+        if sector and sector not in {"banking", "financial services"}:
+            score += 0.05
+        discovery_source = str(item.get("discovery_source") or "")
+        if "stateful_opportunity_funnel" in discovery_source:
+            score += 0.1
+        rationale = str(item.get("discovery_reason") or "").lower()
+        if any(marker in rationale for marker in ("underfollowed", "dark horse", "re-rating", "under-researched")):
+            score += 0.15
+        if trigger_type:
+            score += 0.15
+        if research_memory.get("freshness") == "fresh" and research_memory.get("actionability") == "blocked":
+            score -= 0.2
+        return round(max(0.0, min(score, 1.0)), 2)
+
+    @classmethod
+    def _research_classification(cls, research: ResearchPacket) -> ResearchClassification:
+        if research.actionability == "actionable":
+            return "actionable_buy_candidate"
+        if research.actionability == "blocked" or research.analysis_mode == "insufficient_evidence":
+            return "rejected"
+        return "keep_watch"
+
+    def _transition_reason_for_research(self, research: ResearchPacket) -> str:
+        if research.classification == "actionable_buy_candidate":
+            return "Fresh evidence, adequate thesis confidence, and zero blockers cleared the packet into the actionable queue."
+        if research.classification == "rejected":
+            return "Evidence quality or runtime blockers were too weak for continued promotion, so the name moved to rejected memory."
+        return "The packet is not fit for action now but remains worth watching for a fresh trigger or stale-memory refresh."
+
+    def _build_loop_summary(
+        self,
+        *,
+        candidates: List[Candidate],
+        attempted_candidates: Optional[List[Candidate]] = None,
+        promoted: Optional[List[Candidate]] = None,
+        termination_reason: str = "not_started",
+        latest_transition_reason: Optional[str] = None,
+        model_usage_by_phase: Optional[Dict[str, Dict[str, Any]]] = None,
+        token_usage_by_phase: Optional[Dict[str, Dict[str, Any]]] = None,
+        current_candidate: Optional[Candidate] = None,
+    ) -> SessionLoopSummary:
+        attempted_candidates = attempted_candidates or []
+        promoted = promoted or []
+        actionable_found_count = len(promoted)
+        return SessionLoopSummary(
+            target_actionable_count=self.SESSION_TARGET_ACTIONABLE_COUNT,
+            actionable_found_count=actionable_found_count,
+            research_attempt_count=len(attempted_candidates),
+            attempted_candidates=[candidate.symbol for candidate in attempted_candidates],
+            attempted_candidate_ids=[candidate.candidate_id for candidate in attempted_candidates],
+            queue_exhausted=termination_reason == "queue_exhausted",
+            termination_reason=termination_reason,
+            current_candidate_symbol=current_candidate.symbol if current_candidate else None,
+            current_candidate_id=current_candidate.candidate_id if current_candidate else None,
+            latest_transition_reason=latest_transition_reason,
+            model_usage_by_phase=model_usage_by_phase or {},
+            token_usage_by_phase=token_usage_by_phase or {},
+            total_candidates_scanned=len(candidates),
+            promoted_actionable_symbols=[candidate.symbol for candidate in promoted],
+        )
+
+    async def _latest_research_memory_by_symbol(
+        self,
+        *,
+        account_id: str,
+        symbols: List[str],
+    ) -> Dict[str, Dict[str, Any]]:
+        if not symbols:
+            return {}
+        try:
+            learning_service = await self.container.get("paper_trading_learning_service")
+        except Exception:
+            return {}
+
+        memory: Dict[str, Dict[str, Any]] = {}
+        for symbol in sorted({symbol for symbol in symbols if symbol}):
+            latest = await learning_service.learning_store.get_latest_research_memory(account_id, symbol)
+            if isinstance(latest, dict) and latest:
+                memory[symbol] = latest
+        return memory
+
     def _discovery_considered(
         self,
         *,
         watchlist: List[Dict[str, Any]],
         held_symbols: set[str],
+        latest_research_by_symbol: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> List[str]:
         considered: List[str] = []
         for item in watchlist:
@@ -186,9 +464,20 @@ class AgentArtifactService:
                 if candidate.confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE
                 else "watch-only"
             )
-            considered.append(
-                f"{candidate.symbol} · {int(round(candidate.confidence * 100))}% · {readiness}"
-            )
+            latest_research = (latest_research_by_symbol or {}).get(candidate.symbol) or {}
+            if latest_research:
+                freshness = self._freshness_from_timestamp(
+                    latest_research.get("generated_at"),
+                    max_age_hours=self.RESEARCH_MEMORY_FRESH_HOURS,
+                )
+                considered.append(
+                    f"{candidate.symbol} · {int(round(candidate.confidence * 100))}% · "
+                    f"{latest_research.get('actionability', readiness)} · {freshness} research memory"
+                )
+            else:
+                considered.append(
+                    f"{candidate.symbol} · {int(round(candidate.confidence * 100))}% · {readiness}"
+                )
         return self._dedupe_preserving_order(considered[:8])
 
     @staticmethod
@@ -268,16 +557,27 @@ class AgentArtifactService:
                 artifact_count=0,
                 criteria=self.discovery_criteria(),
                 considered=["Discovery watchlist could not be loaded because the discovery service is unavailable."],
+                freshness_state="unknown",
+                empty_reason="blocked_by_runtime",
                 candidates=[],
             )
 
         watchlist = await discovery_service.get_watchlist(limit=limit)
         open_positions = await account_manager.get_open_positions(account_id)
         held_symbols = {position.symbol for position in open_positions}
-        criteria = self.discovery_criteria(
-            discovery_defaults=getattr(discovery_service, "default_criteria", None)
+        discovery_defaults = getattr(discovery_service, "default_criteria", None)
+        if not isinstance(discovery_defaults, dict):
+            discovery_defaults = None
+        criteria = self.discovery_criteria(discovery_defaults=discovery_defaults)
+        latest_research_by_symbol = await self._latest_research_memory_by_symbol(
+            account_id=account_id,
+            symbols=[str(item.get("symbol") or "").upper() for item in watchlist],
         )
-        considered = self._discovery_considered(watchlist=watchlist, held_symbols=held_symbols)
+        considered = self._discovery_considered(
+            watchlist=watchlist,
+            held_symbols=held_symbols,
+            latest_research_by_symbol=latest_research_by_symbol,
+        )
 
         candidates: List[Candidate] = []
         for item in watchlist:
@@ -286,7 +586,10 @@ class AgentArtifactService:
                 continue
             if not self._is_current_discovery_candidate(item):
                 continue
-            candidate = self._build_discovery_candidate(item)
+            candidate = self._build_discovery_candidate(
+                item,
+                latest_research=latest_research_by_symbol.get(str(symbol).upper()),
+            )
             if candidate is None:
                 continue
             candidates.append(candidate)
@@ -298,15 +601,30 @@ class AgentArtifactService:
                 candidate.symbol,
             )
         )
-        promotable_count = sum(
-            1 for candidate in candidates if candidate.confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE
+        candidates.sort(
+            key=lambda candidate: (
+                1 if candidate.lifecycle_state == "fresh_queue" else 0,
+                candidate.dark_horse_score,
+                candidate.evidence_quality_score,
+                candidate.confidence,
+            ),
+            reverse=True,
         )
+        promotable_count = sum(
+            1
+            for candidate in candidates
+            if candidate.lifecycle_state == "fresh_queue"
+            and candidate.confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE
+        )
+        fresh_queue = [candidate for candidate in candidates if candidate.lifecycle_state == "fresh_queue"]
         status = "ready" if candidates else "empty"
         blockers = [] if candidates else ["No active discovery candidates cleared the confidence threshold in the watchlist."]
-        if candidates and promotable_count == 0:
+        if fresh_queue and promotable_count == 0:
             blockers.append(
                 "Discovery candidates remain below the research promotion confidence threshold; refresh discovery before spending research budget automatically."
             )
+        if not fresh_queue and candidates:
+            blockers.append("All visible candidates already have fresh analyzed memory; wait for stale or trigger-based reentry before spending research budget again.")
 
         return DiscoveryEnvelope(
             status=status,
@@ -315,10 +633,33 @@ class AgentArtifactService:
             artifact_count=len(candidates),
             criteria=criteria,
             considered=considered,
+            freshness_state="fresh" if status == "ready" else "unknown",
+            empty_reason=self._empty_reason_from_state(status=status, blockers=blockers),
             candidates=candidates[:limit],
+            loop_summary=self._build_loop_summary(
+                candidates=candidates[:limit],
+                termination_reason="idle" if fresh_queue else "waiting_for_reentry" if candidates else "queue_exhausted",
+                current_candidate=fresh_queue[0] if fresh_queue else None,
+                latest_transition_reason=(
+                    "The next research run will start with the highest-ranked fresh queue candidate."
+                    if fresh_queue
+                    else "No fresh queue candidate is currently eligible; analyzed names are waiting for stale or trigger-based reentry."
+                ),
+                model_usage_by_phase={
+                    "discovery_scout": {
+                        "model": self.MODEL_ROUTE_DISCOVERY,
+                        "reasoning": "low",
+                    }
+                },
+            ),
         )
 
-    def _build_discovery_candidate(self, item: Dict[str, Any]) -> Optional[Candidate]:
+    def _build_discovery_candidate(
+        self,
+        item: Dict[str, Any],
+        *,
+        latest_research: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Candidate]:
         confidence = self._clamp_confidence(item.get("confidence_score"))
         if confidence < self.DISCOVERY_MIN_CONFIDENCE:
             return None
@@ -332,10 +673,38 @@ class AgentArtifactService:
             priority = "low"
 
         promotable = confidence >= self.DISCOVERY_RESEARCH_READY_CONFIDENCE
+        research_memory = self._project_discovery_research_memory(latest_research)
+        trigger_type = self._detect_trigger_type(item, latest_research or {})
+        if research_memory.get("freshness") == "fresh":
+            trigger_type = None
+        lifecycle_state = self._lifecycle_state_for_candidate(
+            research_memory=research_memory,
+            trigger_type=trigger_type,
+        )
+        reentry_reason = self._reentry_reason_for_candidate(
+            lifecycle_state=lifecycle_state,
+            research_memory=research_memory,
+            trigger_type=trigger_type,
+        )
+        dark_horse_score = self._dark_horse_score_for_candidate(
+            item=item,
+            confidence=confidence,
+            research_memory=research_memory,
+            trigger_type=trigger_type,
+        )
+        evidence_quality_score = self._evidence_quality_score(research_memory)
         next_step = (
-            "Open a focused research packet before making any trade decision."
-            if promotable
-            else "Refresh discovery evidence before promoting this symbol into focused research."
+            "View the current focused research packet before making any trade decision."
+            if lifecycle_state == "actionable"
+            else "Keep this packet on watch until a new trigger or stale-memory refresh brings it back into the queue."
+            if lifecycle_state == "keep_watch"
+            else "Leave this name in rejected memory until a new trigger or stale-memory refresh changes the setup."
+            if lifecycle_state == "rejected"
+            else (
+                "Open a focused research packet before making any trade decision."
+                if promotable
+                else "Refresh discovery evidence before promoting this symbol into focused research."
+            )
         )
         return Candidate(
             candidate_id=str(item.get("id") or uuid.uuid4()),
@@ -350,6 +719,21 @@ class AgentArtifactService:
             ),
             next_step=next_step,
             generated_at=str(item.get("updated_at") or item.get("created_at") or self._utc_now()),
+            last_researched_at=research_memory["generated_at"],
+            last_actionability=research_memory["actionability"],
+            last_thesis_confidence=research_memory["thesis_confidence"],
+            last_analysis_mode=research_memory["analysis_mode"],
+            research_freshness=research_memory["freshness"],
+            fresh_primary_source_count=research_memory["fresh_primary_source_count"],
+            fresh_external_source_count=research_memory["fresh_external_source_count"],
+            market_data_freshness=research_memory["market_data_freshness"],
+            technical_context_available=research_memory["technical_context_available"],
+            evidence_mode=research_memory["evidence_mode"],
+            lifecycle_state=lifecycle_state,
+            reentry_reason=reentry_reason,
+            last_trigger_type=trigger_type,
+            dark_horse_score=dark_horse_score,
+            evidence_quality_score=evidence_quality_score,
         )
 
     def _is_current_discovery_candidate(self, item: Dict[str, Any]) -> bool:
@@ -367,28 +751,6 @@ class AgentArtifactService:
             return True
         return datetime.now(timezone.utc) - parsed <= self.discovery_candidate_max_age
 
-    @staticmethod
-    def _parse_timestamp(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            parsed = value
-        else:
-            text = str(value).strip()
-            if not text:
-                return None
-            if len(text) == 10:
-                text = f"{text}T00:00:00+00:00"
-            elif text.endswith("Z"):
-                text = f"{text[:-1]}+00:00"
-            try:
-                parsed = datetime.fromisoformat(text)
-            except ValueError:
-                return None
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-
     async def get_research_view(
         self,
         account_id: str,
@@ -398,7 +760,7 @@ class AgentArtifactService:
         limit: int = 10,
         refresh: bool = False,
     ) -> ResearchEnvelope:
-        """Generate a focused research packet for one candidate only."""
+        """Generate focused research and continue through the fresh queue until actionable or exhausted."""
         account_manager = await self.container.get("paper_trading_account_manager")
         account = await account_manager.get_account(account_id)
         if account is None:
@@ -421,50 +783,191 @@ class AgentArtifactService:
                     criteria=criteria,
                     considered=self._research_considered(symbol=symbol, research=cached),
                     provider_metadata=cached.provider_metadata or {},
+                    freshness_state=self._freshness_from_timestamp(
+                        cached.generated_at,
+                        max_age_hours=self.RESEARCH_MEMORY_FRESH_HOURS,
+                    ),
                     research=cached,
+                    loop_summary=self._build_loop_summary(
+                        candidates=[],
+                        termination_reason="cached_packet",
+                        current_candidate=Candidate(
+                            candidate_id=cached.candidate_id or f"symbol:{cached.symbol.lower()}",
+                            symbol=cached.symbol,
+                            source="cached_research_packet",
+                            priority="medium",
+                            confidence=cached.confidence,
+                            rationale=cached.thesis,
+                            next_step=cached.next_step,
+                        ),
+                        model_usage_by_phase={
+                            "research_synthesis": {
+                                "model": str((cached.provider_metadata or {}).get("model") or self.MODEL_ROUTE_RESEARCH),
+                                "reasoning": str((cached.provider_metadata or {}).get("reasoning") or "medium"),
+                            }
+                        },
+                    ),
                 )
+            return ResearchEnvelope(
+                status="empty",
+                context_mode="single_candidate_research",
+                blockers=["Run research from Discovery to create a focused research packet."],
+                artifact_count=0,
+                criteria=criteria,
+                considered=self._research_considered(symbol=symbol),
+                freshness_state="unknown",
+                empty_reason="never_run",
+                research=None,
+            )
 
-        discovery: Optional[DiscoveryEnvelope] = None
-        candidate: Optional[Candidate] = None
-        if refresh:
-            discovery = await self.get_discovery_view(account_id, limit=limit)
-            candidate = self._resolve_research_candidate(
-                discovery=discovery,
-                candidate_id=candidate_id,
-                symbol=symbol,
+        discovery = await self.get_discovery_view(account_id, limit=limit)
+        preferred_candidate = self._resolve_research_candidate(
+            discovery=discovery,
+            candidate_id=candidate_id,
+            symbol=symbol,
+        )
+        logger.info(
+            "Focused research loop requested for account=%s candidate_id=%s symbol=%s resolved_symbol=%s",
+            account_id,
+            candidate_id,
+            symbol,
+            getattr(preferred_candidate, "symbol", None),
+        )
+        if preferred_candidate is None:
+            blockers = (
+                discovery.blockers
+                if discovery.status == "blocked"
+                else ["No discovery candidate is available for focused research."]
             )
-            logger.info(
-                "Focused research requested for account=%s candidate_id=%s symbol=%s resolved_symbol=%s",
-                account_id,
-                candidate_id,
-                symbol,
-                getattr(candidate, "symbol", None),
-            )
-            if candidate is None:
-                blockers = (
-                    discovery.blockers
-                    if discovery.status == "blocked"
-                    else ["No discovery candidate is available for focused research."]
-                )
-                return ResearchEnvelope(
+            return ResearchEnvelope(
+                status="blocked" if discovery.status == "blocked" else "empty",
+                context_mode="single_candidate_research",
+                blockers=blockers,
+                artifact_count=0,
+                criteria=criteria,
+                considered=self._research_considered(symbol=symbol),
+                freshness_state="unknown",
+                empty_reason=self._empty_reason_from_state(
                     status="blocked" if discovery.status == "blocked" else "empty",
-                    context_mode="single_candidate_research",
                     blockers=blockers,
-                    artifact_count=0,
-                    criteria=criteria,
-                    considered=self._research_considered(symbol=symbol),
-                    research=None,
-                )
+                ),
+                research=None,
+                loop_summary=self._build_loop_summary(
+                    candidates=discovery.candidates,
+                    termination_reason="runtime_blocked" if discovery.status == "blocked" else "no_candidates",
+                    latest_transition_reason=blockers[0] if blockers else None,
+                ),
+            )
 
+        loop_candidates = self._eligible_loop_candidates(discovery, preferred_candidate=preferred_candidate)
+        if not loop_candidates:
+            blockers = ["No fresh-queue candidate is currently eligible for focused research."]
+            return ResearchEnvelope(
+                status="empty",
+                context_mode="single_candidate_research",
+                blockers=blockers,
+                artifact_count=0,
+                criteria=criteria,
+                considered=self._research_considered(candidate=preferred_candidate, symbol=symbol),
+                freshness_state="unknown",
+                empty_reason="no_candidates",
+                research=None,
+                loop_summary=self._build_loop_summary(
+                    candidates=discovery.candidates,
+                    termination_reason="queue_exhausted",
+                    latest_transition_reason=blockers[0],
+                ),
+            )
+
+        attempted_candidates: List[Candidate] = []
+        promoted: List[Candidate] = []
+        model_usage_by_phase: Dict[str, Dict[str, Any]] = {}
+        token_usage_by_phase: Dict[str, Dict[str, Any]] = {}
+        latest_transition_reason: Optional[str] = None
+        last_envelope: Optional[ResearchEnvelope] = None
+
+        for current_candidate in loop_candidates:
+            attempted_candidates.append(current_candidate)
+            envelope = await self._generate_research_for_candidate(
+                account_id=account_id,
+                candidate=current_candidate,
+                symbol=symbol,
+                criteria=criteria,
+            )
+            last_envelope = envelope
+
+            provider_metadata = envelope.provider_metadata or {}
+            if provider_metadata:
+                model_usage_by_phase["research_synthesis"] = {
+                    "model": str(provider_metadata.get("model") or self.MODEL_ROUTE_RESEARCH),
+                    "reasoning": str(provider_metadata.get("reasoning") or "medium"),
+                }
+                usage_payload = provider_metadata.get("usage")
+                if isinstance(usage_payload, dict) and usage_payload:
+                    token_usage_by_phase["research_synthesis"] = usage_payload
+
+            if envelope.research is not None:
+                latest_transition_reason = self._transition_reason_for_research(envelope.research)
+                if envelope.research.classification == "actionable_buy_candidate":
+                    promoted.append(current_candidate)
+                    break
+            elif envelope.blockers:
+                latest_transition_reason = envelope.blockers[0]
+
+            if envelope.status == "blocked" and envelope.empty_reason in {"blocked_by_runtime", "blocked_by_quota"}:
+                break
+
+        if last_envelope is None:
+            last_envelope = ResearchEnvelope(
+                status="empty",
+                context_mode="single_candidate_research",
+                blockers=["No focused research attempt was executed."],
+                artifact_count=0,
+                criteria=criteria,
+                considered=self._research_considered(candidate=preferred_candidate, symbol=symbol),
+                freshness_state="unknown",
+                empty_reason="no_candidates",
+                research=None,
+            )
+
+        if promoted:
+            termination_reason = "actionable_found"
+        elif last_envelope.status == "blocked" and last_envelope.empty_reason in {"blocked_by_runtime", "blocked_by_quota"}:
+            termination_reason = "runtime_blocked"
+        else:
+            termination_reason = "queue_exhausted"
+
+        return last_envelope.model_copy(
+            update={
+                "loop_summary": self._build_loop_summary(
+                    candidates=discovery.candidates,
+                    attempted_candidates=attempted_candidates,
+                    promoted=promoted,
+                    termination_reason=termination_reason,
+                    latest_transition_reason=latest_transition_reason,
+                    model_usage_by_phase=model_usage_by_phase,
+                    token_usage_by_phase=token_usage_by_phase,
+                    current_candidate=attempted_candidates[-1] if attempted_candidates else preferred_candidate,
+                )
+            }
+        )
+
+    async def _generate_research_for_candidate(
+        self,
+        *,
+        account_id: str,
+        candidate: Candidate,
+        symbol: Optional[str],
+        criteria: List[str],
+    ) -> ResearchEnvelope:
         claude_status = await get_claude_status()
         if not claude_status.is_valid or self._claude_usage_exhausted(claude_status):
             blocker = self._claude_blockers(claude_status, action="research generation")[0]
-            if refresh and candidate is not None:
-                await self._record_failed_research_attempt(
-                    account_id=account_id,
-                    candidate=candidate,
-                    blocker=blocker,
-                )
+            await self._record_failed_research_attempt(
+                account_id=account_id,
+                candidate=candidate,
+                blocker=blocker,
+            )
             return ResearchEnvelope(
                 status="blocked",
                 context_mode="single_candidate_research",
@@ -472,17 +975,8 @@ class AgentArtifactService:
                 artifact_count=0,
                 criteria=criteria,
                 considered=self._research_considered(candidate=candidate, symbol=symbol),
-                research=None,
-            )
-
-        if not refresh:
-            return ResearchEnvelope(
-                status="empty",
-                context_mode="single_candidate_research",
-                blockers=["Run research from Discovery to create a focused research packet."],
-                artifact_count=0,
-                criteria=criteria,
-                considered=self._research_considered(candidate=candidate, symbol=symbol),
+                freshness_state="unknown",
+                empty_reason=self._empty_reason_from_state(status="blocked", blockers=[blocker]),
                 research=None,
             )
 
@@ -493,6 +987,7 @@ class AgentArtifactService:
         except Exception:
             learning_service = None
             symbol_learning = {}
+
         runtime_inputs = await self._collect_focused_research_runtime_inputs(
             symbol=candidate.symbol,
             company_name=candidate.company_name,
@@ -521,12 +1016,12 @@ class AgentArtifactService:
         )
         prompt = (
             "Create a focused research packet for a single swing-trading candidate.\n"
+            "Optimize for the highest probability of clearing actionability, not just interesting stories.\n"
             "Use only the provided context. Fresh external web research has already been captured in the context when available.\n"
             "Do not invent catalysts, prices, filings, or technical levels.\n"
-            "Separate discovery screening confidence from thesis confidence.\n"
-            "Base the thesis on verifiable evidence, then state clearly when evidence is stale or missing.\n"
-            "The packet must answer why_now, supporting evidence, key risks, invalidation, actionability, and the next operator step.\n"
-            "If evidence is thin or stale, downgrade actionability instead of bluffing certainty.\n"
+            "Separate screening confidence, evidence quality, thesis confidence, and trade readiness.\n"
+            "If evidence is thin or stale, stop early and classify as keep_watch or rejected instead of bluffing certainty.\n"
+            "Return a concise why_now, supporting evidence, key risks, invalidation, actionability, and the next operator step.\n"
             f"Context:\n{serialized_context}"
         )
 
@@ -536,13 +1031,13 @@ class AgentArtifactService:
                 role_name="research",
                 system_prompt=(
                     "You are the Research Agent for Robo Trader. "
-                    "Produce a single-candidate research packet with explicit evidence and clear invalidation."
+                    "Produce a single-candidate research packet with explicit evidence, explicit classification, and clear invalidation."
                 ),
                 prompt=prompt,
                 output_model=FocusedResearchDraft,
                 allowed_tools=[],
                 session_id=f"research:{account_id}:{candidate.candidate_id}",
-                model="haiku",
+                model=self.MODEL_ROUTE_RESEARCH,
                 max_turns=3,
                 max_budget_usd=0.75,
                 timeout_seconds=self.FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS,
@@ -569,6 +1064,8 @@ class AgentArtifactService:
                     artifact_count=0,
                     criteria=criteria,
                     considered=self._research_considered(candidate=candidate, symbol=symbol),
+                    freshness_state="unknown",
+                    empty_reason="blocked_by_quota",
                     research=None,
                 )
             runtime_blocker = self._build_runtime_blocker(exc, action="research generation")
@@ -588,9 +1085,12 @@ class AgentArtifactService:
                     artifact_count=0,
                     criteria=criteria,
                     considered=self._research_considered(candidate=candidate, symbol=symbol),
+                    freshness_state="unknown",
+                    empty_reason="blocked_by_runtime",
                     research=None,
                 )
             raise
+
         logger.info(
             "Focused research synthesis completed for account=%s symbol=%s actionability=%s",
             account_id,
@@ -627,7 +1127,23 @@ class AgentArtifactService:
             research_inputs=research_inputs,
             capability_summary=snapshot.capability_summary,
         )
-        research.provider_metadata = provider_metadata
+        research.provider_metadata = {
+            **provider_metadata,
+            "usage": (provider_metadata or {}).get("usage", {}),
+            "phase": "research_synthesis",
+        }
+        research.classification = self._research_classification(research)
+        research.what_changed_since_last_research = (
+            f"Reactivated because {candidate.reentry_reason.replace('_', ' ')}."
+            if candidate.reentry_reason
+            else (
+                f"Fresh trigger detected: {candidate.last_trigger_type.replace('_', ' ')}."
+                if candidate.last_trigger_type
+                else "No prior research memory existed for this symbol."
+                if not candidate.last_researched_at
+                else "The previous packet was refreshed to replace stale or incomplete evidence."
+            )
+        )
 
         self._store_research(account_id, research)
         if learning_service is not None:
@@ -653,7 +1169,11 @@ class AgentArtifactService:
             artifact_count=1,
             criteria=criteria,
             considered=self._research_considered(candidate=candidate, symbol=symbol, research=research),
-            provider_metadata=provider_metadata,
+            provider_metadata=research.provider_metadata,
+            freshness_state=self._freshness_from_timestamp(
+                research.generated_at,
+                max_age_hours=self.RESEARCH_MEMORY_FRESH_HOURS,
+            ),
             research=research,
         )
 
@@ -726,13 +1246,16 @@ class AgentArtifactService:
 
         claude_status = await get_claude_status()
         if not claude_status.is_valid or self._claude_usage_exhausted(claude_status):
+            blockers = self._claude_blockers(claude_status, action="decision generation")
             return DecisionEnvelope(
                 status="blocked",
                 context_mode="delta_position_review",
-                blockers=self._claude_blockers(claude_status, action="decision generation"),
+                blockers=blockers,
                 artifact_count=0,
                 criteria=criteria,
                 considered=["AI runtime blocker prevented any open-position review."],
+                freshness_state="unknown",
+                empty_reason=self._empty_reason_from_state(status="blocked", blockers=blockers),
                 decisions=[],
             )
 
@@ -744,6 +1267,8 @@ class AgentArtifactService:
                 artifact_count=0,
                 criteria=criteria,
                 considered=["No open positions are being reviewed until you run the decision stage."],
+                freshness_state="unknown",
+                empty_reason="never_run",
                 decisions=[],
             )
 
@@ -759,6 +1284,8 @@ class AgentArtifactService:
                 artifact_count=0,
                 criteria=criteria,
                 considered=["No open positions are currently in scope for decision review."],
+                freshness_state="unknown",
+                empty_reason="no_candidates",
                 decisions=[],
             )
 
@@ -771,6 +1298,8 @@ class AgentArtifactService:
                 artifact_count=0,
                 criteria=criteria,
                 considered=considered,
+                freshness_state="stale",
+                empty_reason="stale",
                 decisions=[],
             )
 
@@ -819,6 +1348,8 @@ class AgentArtifactService:
             criteria=criteria,
             considered=considered,
             provider_metadata=provider_metadata,
+            freshness_state="fresh" if decisions else "unknown",
+            empty_reason="no_candidates" if not decisions else None,
             decisions=decisions,
         )
         try:
@@ -853,13 +1384,16 @@ class AgentArtifactService:
 
         claude_status = await get_claude_status()
         if not claude_status.is_valid or self._claude_usage_exhausted(claude_status):
+            blockers = self._claude_blockers(claude_status, action="review generation")
             return ReviewEnvelope(
                 status="blocked",
                 context_mode="delta_daily_review",
-                blockers=self._claude_blockers(claude_status, action="review generation"),
+                blockers=blockers,
                 artifact_count=0,
                 criteria=criteria,
                 considered=["Review runtime blocker prevented any outcome analysis."],
+                freshness_state="unknown",
+                empty_reason=self._empty_reason_from_state(status="blocked", blockers=blockers),
                 review=None,
             )
 
@@ -871,6 +1405,8 @@ class AgentArtifactService:
                 artifact_count=0,
                 criteria=criteria,
                 considered=["No positions or recent trades are being reviewed until you run this stage."],
+                freshness_state="unknown",
+                empty_reason="never_run",
                 review=None,
             )
 
@@ -884,6 +1420,8 @@ class AgentArtifactService:
                 artifact_count=0,
                 criteria=criteria,
                 considered=considered,
+                freshness_state="unknown",
+                empty_reason="no_candidates",
                 review=None,
             )
 
@@ -925,6 +1463,7 @@ class AgentArtifactService:
             criteria=criteria,
             considered=considered,
             provider_metadata=provider_metadata,
+            freshness_state="fresh",
             review=review,
         )
         try:
@@ -1568,6 +2107,11 @@ class AgentArtifactService:
         research.source_summary = source_summary
         research.evidence_citations = evidence_citations
         research.market_data_freshness = market_data_freshness
+        primary_source_count, external_source_count = self._research_source_counts(source_summary)
+        research.fresh_primary_source_count = primary_source_count
+        research.fresh_external_source_count = external_source_count
+        research.technical_context_available = self._technical_context_available(source_summary)
+        research.evidence_mode = analysis_mode
         research.why_now = research.why_now or candidate.rationale
 
         existing_risks = {risk.lower(): risk for risk in research.risks}
@@ -2227,10 +2771,32 @@ class AgentArtifactService:
 
         if discovery.candidates:
             for candidate in discovery.candidates:
-                if candidate.confidence >= AgentArtifactService.DISCOVERY_RESEARCH_READY_CONFIDENCE:
+                if (
+                    candidate.lifecycle_state == "fresh_queue"
+                    and candidate.confidence >= AgentArtifactService.DISCOVERY_RESEARCH_READY_CONFIDENCE
+                ):
+                    return candidate
+            for candidate in discovery.candidates:
+                if candidate.lifecycle_state == "fresh_queue":
                     return candidate
 
         return None
+
+    @staticmethod
+    def _eligible_loop_candidates(
+        discovery: DiscoveryEnvelope,
+        *,
+        preferred_candidate: Optional[Candidate] = None,
+    ) -> List[Candidate]:
+        candidates = [candidate for candidate in discovery.candidates if candidate.lifecycle_state == "fresh_queue"]
+        ordered: List[Candidate] = []
+        if preferred_candidate is not None:
+            ordered.append(preferred_candidate)
+        seen = {candidate.candidate_id for candidate in ordered}
+        for candidate in candidates:
+            if candidate.candidate_id not in seen:
+                ordered.append(candidate)
+        return ordered[: AgentArtifactService.MAX_RESEARCH_ATTEMPTS_PER_SESSION]
 
     def _get_cached_research(
         self,
@@ -2264,7 +2830,7 @@ class AgentArtifactService:
         output_model: Type[T],
         allowed_tools: List[str],
         session_id: str,
-        model: str = "haiku",
+        model: Optional[str] = None,
         max_turns: int = 2,
         max_budget_usd: Optional[float] = None,
         timeout_seconds: float = 45.0,
@@ -2274,30 +2840,48 @@ class AgentArtifactService:
         runtime_client = await self.container.get("codex_runtime_client")
         runtime_config = self.container.config.ai_runtime
         schema = _normalize_output_schema(output_model.model_json_schema())
+        default_model_by_role = {
+            "research": self.MODEL_ROUTE_RESEARCH,
+            "review": self.MODEL_ROUTE_DECISION,
+            "decision": self.MODEL_ROUTE_DECISION,
+            "discovery": self.MODEL_ROUTE_DISCOVERY,
+            "triage": self.MODEL_ROUTE_TRIAGE,
+        }
+        default_reasoning_by_role = {
+            "research": "medium",
+            "review": "low",
+            "decision": "low",
+            "discovery": "low",
+            "triage": "minimal",
+        }
+        compact_models_supported = self._runtime_supports_compact_models(
+            getattr(runtime_config, "mode", ""),
+        )
         selected_model = (
             model
             if model and (model.startswith("gpt-") or model.startswith("codex"))
-            else runtime_config.codex_model
+            else default_model_by_role.get(role_name, runtime_config.codex_model)
         )
-        reasoning = (
-            runtime_config.codex_reasoning_light
-            if role_name == "research"
-            else runtime_config.codex_reasoning_deep
-            if role_name == "review"
-            else runtime_config.codex_reasoning_light
-        )
+        if (
+            not compact_models_supported
+            and selected_model in {"gpt-5-mini", "gpt-5-nano"}
+        ):
+            selected_model = runtime_config.codex_model
+        reasoning = default_reasoning_by_role.get(role_name, runtime_config.codex_reasoning_light)
         strict_prompt = (
             f"{prompt}\n\n"
             "Return only valid JSON with no markdown, commentary, or code fences.\n"
             "The JSON must match the provided structured output schema exactly."
         )
         try:
+            prompt_cache_key = f"paper-trading:{role_name}:{session_id.split(':')[0]}"
             request_payload = {
                 "system_prompt": system_prompt,
                 "prompt": strict_prompt,
                 "output_schema": schema,
                 "model": selected_model,
                 "reasoning": reasoning,
+                "prompt_cache_key": prompt_cache_key,
                 "timeout_seconds": timeout_seconds,
                 "working_directory": str(self.container.config.project_dir),
                 "session_id": session_id,
@@ -2315,17 +2899,26 @@ class AgentArtifactService:
                     output_schema=schema,
                     model=selected_model,
                     reasoning=reasoning,
+                    prompt_cache_key=prompt_cache_key,
                     timeout_seconds=timeout_seconds,
                     web_search_enabled=False,
                     network_access_enabled=False,
                     working_directory=str(self.container.config.project_dir),
-                    session_id=session_id,
+                        session_id=session_id,
                 )
                 payload = response.get("output")
 
+            provider_metadata = response.get("provider_metadata") or {}
+            usage = response.get("usage")
+            if usage is not None and isinstance(provider_metadata, dict):
+                provider_metadata = {
+                    **provider_metadata,
+                    "usage": usage,
+                }
+
             return (
                 output_model.model_validate(payload or {}),
-                response.get("provider_metadata") or {},
+                provider_metadata,
             )
         except CodexRuntimeError as exc:
             usage_limit_message = self._extract_usage_limited_message(str(exc))

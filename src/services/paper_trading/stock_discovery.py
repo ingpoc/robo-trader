@@ -410,6 +410,15 @@ class StockDiscoveryService(EventHandler):
             cap = str(stock.get("cap", "unknown")).lower()
             sector_score = float(sector_scores.get(sector, 0.0))
             recent_sector_coverage = int(sector_recent_counts.get(sector, 0))
+            latest_research = memory_context.get("recent_research_by_symbol", {}).get(symbol) or {}
+            trigger_type = self._detect_reentry_trigger_type(latest_research)
+            fresh_research = self._is_recent(
+                latest_research.get("generated_at"),
+                now=datetime.now(timezone.utc),
+                window=timedelta(hours=6),
+            ) if latest_research else False
+            if fresh_research:
+                trigger_type = None
 
             opportunity_score = 50.0
             opportunity_score += sector_score * 12.0
@@ -419,6 +428,18 @@ class StockDiscoveryService(EventHandler):
                 opportunity_score += 6.0
             if symbol in blocked_symbols:
                 opportunity_score -= 18.0
+            if cap in {"small", "mid"}:
+                opportunity_score += 6.0
+            if fresh_research and not trigger_type:
+                opportunity_score -= 22.0
+            if latest_research.get("actionability") == "blocked" and not trigger_type:
+                opportunity_score -= 12.0
+            if latest_research.get("external_evidence_status") == "missing":
+                opportunity_score -= 8.0
+            if trigger_type in {"earnings", "guidance_change", "order_win", "filing"}:
+                opportunity_score += 12.0
+            elif trigger_type in {"news", "price_regime_change"}:
+                opportunity_score += 7.0
 
             rationale_parts = []
             if sector_score > 0.5:
@@ -433,10 +454,11 @@ class StockDiscoveryService(EventHandler):
             elif cap == "large":
                 rationale_parts.append("Large-cap quality keeps this name on the list, but it is not being prioritized as a dark horse.")
 
-            latest_research = memory_context.get("recent_research_by_symbol", {}).get(symbol)
             if latest_research:
                 actionability = latest_research.get("actionability", "watch_only")
                 rationale_parts.append(f"Prior research ended as {actionability}; discovery is not repeating it immediately.")
+                if trigger_type:
+                    rationale_parts.append(f"A fresh {trigger_type.replace('_', ' ')} trigger justifies reentry despite prior analysis.")
             else:
                 rationale_parts.append("The symbol has not been researched recently, so it qualifies as fresh discovery inventory.")
 
@@ -446,6 +468,7 @@ class StockDiscoveryService(EventHandler):
                     "discovery_source": "stateful_opportunity_funnel",
                     "discovery_reason": " ".join(rationale_parts[:3]),
                     "opportunity_score": round(opportunity_score, 2),
+                    "last_trigger_type": trigger_type,
                 }
             )
 
@@ -493,6 +516,30 @@ class StockDiscoveryService(EventHandler):
             favored_sectors,
         )
         return shortlist, market_conditions, key_insights
+
+    @staticmethod
+    def _detect_reentry_trigger_type(latest_research: Dict[str, Any]) -> Optional[str]:
+        if not latest_research:
+            return None
+        text_parts = [str(value) for value in (latest_research.get("evidence") or []) if value]
+        text_parts.extend(str(value) for value in (latest_research.get("risks") or []) if value)
+        text_parts.append(str(latest_research.get("why_now") or ""))
+        text = " ".join(text_parts).lower()
+        if not text:
+            return None
+        if any(marker in text for marker in ("earnings", "result", "quarter", "q1", "q2", "q3", "q4")):
+            return "earnings"
+        if any(marker in text for marker in ("guidance", "outlook", "margin expansion")):
+            return "guidance_change"
+        if any(marker in text for marker in ("order win", "order book", "contract win", "award")):
+            return "order_win"
+        if any(marker in text for marker in ("filing", "exchange disclosure", "board", "investor presentation")):
+            return "filing"
+        if any(marker in text for marker in ("breakout", "relative strength", "uptrend", "momentum")):
+            return "price_regime_change"
+        if any(marker in text for marker in ("news", "catalyst", "rerating", "re-rating")):
+            return "news"
+        return None
 
     @staticmethod
     def _cap_bonus(cap: str) -> float:
@@ -781,6 +828,14 @@ class StockDiscoveryService(EventHandler):
                 analysis = stock["claude_analysis"]
                 score = analysis.get("score", 0.0)
                 recommendation = analysis.get("recommendation", "HOLD")
+                if stock.get("last_trigger_type") in {"earnings", "guidance_change", "order_win", "filing"}:
+                    score += 8.0
+                elif stock.get("last_trigger_type") in {"news", "price_regime_change"}:
+                    score += 4.0
+                if str(stock.get("cap") or "").lower() in {"small", "mid"}:
+                    score += 3.0
+                if (stock.get("external_research") or {}).get("external_evidence_status") == "missing":
+                    score -= 6.0
 
             scored_stocks.append(
                 {
@@ -845,6 +900,7 @@ class StockDiscoveryService(EventHandler):
                         "structured_analysis": stock.get("claude_analysis"),
                         "discovery_reason": stock.get("discovery_reason", ""),
                         "opportunity_score": stock.get("opportunity_score"),
+                        "last_trigger_type": stock.get("last_trigger_type"),
                     },
                     "technical_indicators": stock.get("claude_analysis", {}).get("features", {}),
                     "fundamental_metrics": stock.get("claude_analysis", {}).get("features", {}),

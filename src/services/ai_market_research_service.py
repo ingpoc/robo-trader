@@ -17,6 +17,12 @@ class AIMarketResearchService:
 
     MAX_MANUAL_RESEARCH_TIMEOUT_SECONDS = 35.0
     MAX_MANUAL_DISCOVERY_TIMEOUT_SECONDS = 45.0
+    DISCOVERY_MODEL = "gpt-5-mini"
+    DISCOVERY_REASONING = "low"
+    TRIAGE_MODEL = "gpt-5-mini"
+    TRIAGE_REASONING = "minimal"
+    SYNTHESIS_MODEL = "gpt-5.4"
+    SYNTHESIS_REASONING = "medium"
 
     def __init__(
         self,
@@ -26,10 +32,12 @@ class AIMarketResearchService:
         reasoning: str = "low",
         timeout_seconds: float = 12.0,
         discovery_timeout_seconds: Optional[float] = None,
+        supports_compact_models: bool = True,
     ) -> None:
         self.runtime_client = runtime_client
-        self.default_model = default_model
-        self.reasoning = reasoning
+        self.default_model = default_model or self.SYNTHESIS_MODEL
+        self.reasoning = reasoning or self.SYNTHESIS_REASONING
+        self.supports_compact_models = supports_compact_models
         requested_timeout_seconds = timeout_seconds
         self.timeout_seconds = min(timeout_seconds, self.MAX_MANUAL_RESEARCH_TIMEOUT_SECONDS)
         requested_discovery_timeout = (
@@ -41,6 +49,21 @@ class AIMarketResearchService:
             requested_discovery_timeout,
             self.MAX_MANUAL_DISCOVERY_TIMEOUT_SECONDS,
         )
+
+    def _model_for(self, stage: str) -> str:
+        if self.supports_compact_models:
+            if stage == "discovery":
+                return self.DISCOVERY_MODEL
+            if stage == "triage":
+                return self.TRIAGE_MODEL
+        return self.default_model
+
+    def _reasoning_for(self, stage: str) -> str:
+        if stage == "discovery":
+            return self.DISCOVERY_REASONING
+        if stage == "triage":
+            return self.TRIAGE_REASONING if self.supports_compact_models else "low"
+        return self.reasoning
 
     async def collect_symbol_research(
         self,
@@ -72,8 +95,9 @@ class AIMarketResearchService:
                     "criteria": criteria or {},
                     "memory_context": memory_context or {},
                     "limit": limit,
-                    "model": self.default_model,
-                    "reasoning": self.reasoning,
+                    "model": self._model_for("discovery"),
+                    "reasoning": self._reasoning_for("discovery"),
+                    "prompt_cache_key": f"paper-trading:discovery:{account_id or 'global'}",
                     "timeout_seconds": self.discovery_timeout_seconds,
                 }
             )
@@ -130,8 +154,9 @@ class AIMarketResearchService:
                     "symbols": symbols,
                     "company_names": company_names or {},
                     "research_brief": research_brief,
-                    "model": self.default_model,
-                    "reasoning": self.reasoning,
+                    "model": self._model_for("triage"),
+                    "reasoning": self._reasoning_for("triage"),
+                    "prompt_cache_key": f"paper-trading:batch-research:{'-'.join(sorted(symbols)[:3])}",
                     "timeout_seconds": self.timeout_seconds,
                 }
             )

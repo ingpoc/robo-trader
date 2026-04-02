@@ -18,11 +18,18 @@ import type {
   Alert,
   SymbolData,
   AIAgentConfig,
+  AccountPolicy,
+  ConfigurationStatus,
   GlobalConfig,
 } from '@/types/api'
+import type { PaperTradingOperatorSnapshot, RuntimeHealthResponse } from '@/features/paper-trading/types'
 
 export const dashboardAPI = {
   getDashboardData: () => api.get<DashboardData>('/api/dashboard'),
+}
+
+export const runtimeAPI = {
+  getHealth: () => api.get<RuntimeHealthResponse>('/api/health'),
 }
 
 export const aiAPI = {
@@ -75,7 +82,18 @@ export const configurationAPI = {
     api.put<{ status: string }>('/api/configuration/global-settings', settings),
 
   getStatus: () =>
-    api.get<{ configuration_status: Record<string, unknown> }>('/api/configuration/status'),
+    api.get<{ configuration_status: ConfigurationStatus }>('/api/configuration/status'),
+
+  getAccountPolicy: (accountId: string) =>
+    api.get<{ success: boolean; account_id: string; policy: AccountPolicy }>(`/api/paper-trading/accounts/${accountId}/policy`),
+
+  updateAccountPolicy: (accountId: string, policy: Partial<AccountPolicy>) =>
+    api.put<{ success: boolean; account_id: string; policy: AccountPolicy }>(`/api/paper-trading/accounts/${accountId}/policy`, policy),
+}
+
+export const operatorAPI = {
+  getOperatorSnapshot: (accountId: string) =>
+    api.get<PaperTradingOperatorSnapshot>(`/api/paper-trading/accounts/${accountId}/operator-snapshot`),
 }
 
 export const newsEarningsAPI = {

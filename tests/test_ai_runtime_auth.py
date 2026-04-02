@@ -70,3 +70,36 @@ async def test_recent_validation_is_not_reused_for_auth_failures(monkeypatch):
     assert status.is_valid is False
     assert "sign in" in (status.error or "").lower()
     assert status.metadata["reused_recent_validation"] is False
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_uses_extended_validation_timeout(monkeypatch):
+    ai_runtime_auth = _load_ai_runtime_auth_module()
+    payload = {
+        "status": "ready",
+        "authenticated": True,
+        "provider": "codex",
+        "message": "Codex runtime is reachable.",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "model": "gpt-5.4",
+        "reasoning_profile": "low",
+        "mode": "local_runtime_service",
+    }
+    captured: dict[str, float | None] = {}
+
+    class _TimeoutCapturingClient(_FakeClient):
+        def __init__(self, payload):
+            super().__init__(payload)
+            self.timeout_seconds = 90.0
+
+        async def validate_runtime(self, *, timeout_seconds=None):
+            captured["timeout_seconds"] = timeout_seconds
+            return self.payload
+
+    monkeypatch.setattr(ai_runtime_auth, "_build_client", lambda: _TimeoutCapturingClient(payload))
+    monkeypatch.setattr(ai_runtime_auth, "_runtime_force_validation_timeout_seconds", 45.0)
+
+    status = await ai_runtime_auth.validate_ai_runtime_auth(force_refresh=True)
+
+    assert status.is_valid is True
+    assert captured["timeout_seconds"] == 45.0

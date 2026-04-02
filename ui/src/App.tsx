@@ -12,9 +12,11 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { AccountProvider, useAccount, type Account } from '@/contexts/AccountContext'
 import ConfigurationFeature from '@/features/configuration/ConfigurationFeature'
 import { DashboardFeature } from '@/features/dashboard/DashboardFeature'
+import HealthFeature from '@/features/health/HealthFeature'
 import { PaperTradingFeature } from '@/features/paper-trading/PaperTradingFeature'
 import { usePaperTradingWebMCP } from '@/features/paper-trading/hooks/usePaperTradingWebMCP'
 import { useTheme } from '@/hooks/useTheme'
+import type { ConfigurationStatus } from '@/types/api'
 import type {
   AccountOverviewResponse,
   ClosedTradeResponse,
@@ -140,16 +142,63 @@ function normalizePositionsPayload(data: unknown): OpenPositionResponse[] {
 }
 
 function normalizeTradesPayload(data: unknown): ClosedTradeResponse[] {
-  if (Array.isArray((data as JsonRecord | null)?.trades)) {
-    return ((data as JsonRecord).trades as ClosedTradeResponse[]) ?? []
-  }
-  return Array.isArray(data) ? (data as ClosedTradeResponse[]) : []
+  const rawTrades = Array.isArray((data as JsonRecord | null)?.trades)
+    ? ((data as JsonRecord).trades as Array<Record<string, unknown>>)
+    : Array.isArray(data)
+      ? (data as Array<Record<string, unknown>>)
+      : []
+
+  return rawTrades.map((trade) => {
+    const holdTime = String(trade.holdTime ?? trade.holding_period ?? '').trim()
+    const holdTimeDays = Number.parseInt(holdTime, 10)
+
+    return {
+      trade_id: String(trade.trade_id ?? trade.tradeId ?? trade.id ?? ''),
+      symbol: String(trade.symbol ?? ''),
+      quantity: Number(trade.quantity ?? 0),
+      entry_price: Number(trade.entry_price ?? trade.entryPrice ?? 0),
+      exit_price: Number(trade.exit_price ?? trade.exitPrice ?? 0),
+      pnl: Number(trade.pnl ?? trade.realized_pnl ?? 0),
+      pnl_pct: Number(trade.pnl_pct ?? trade.pnlPercent ?? trade.realized_pnl_pct ?? 0),
+      strategy: String(trade.strategy ?? trade.strategy_rationale ?? 'Manual'),
+      entry_time: String(
+        trade.entry_time ?? trade.entryDate ?? trade.entry_date ?? trade.date ?? ''
+      ),
+      exit_time: String(
+        trade.exit_time ?? trade.exitDate ?? trade.exit_date ?? trade.date ?? ''
+      ),
+      holding_days: Number(
+        trade.holding_days ?? trade.holding_period_days ?? (Number.isNaN(holdTimeDays) ? 0 : holdTimeDays)
+      ),
+    }
+  })
 }
 
 function normalizePerformancePayload(data: unknown): PerformanceMetricsResponse | null {
   if (!data || typeof data !== 'object') return null
   const record = data as JsonRecord
-  return (record.performance ?? record.metrics ?? record) as PerformanceMetricsResponse
+  const metrics = (record.performance ?? record.metrics ?? record) as JsonRecord
+
+  return {
+    winning_trades: Number(metrics.winning_trades ?? metrics.winningTrades ?? 0),
+    losing_trades: Number(metrics.losing_trades ?? metrics.losingTrades ?? 0),
+    win_rate: Number(metrics.win_rate ?? metrics.winRate ?? 0),
+    avg_win: Number(metrics.avg_win ?? metrics.avgWin ?? 0),
+    avg_loss: Number(metrics.avg_loss ?? metrics.avgLoss ?? 0),
+    profit_factor: Number(metrics.profit_factor ?? metrics.profitFactor ?? 0),
+    best_trade: Number(metrics.best_trade ?? metrics.bestTrade ?? 0),
+    worst_trade: Number(metrics.worst_trade ?? metrics.worstTrade ?? 0),
+    largest_win_streak: Number(metrics.largest_win_streak ?? metrics.largestWinStreak ?? 0),
+    largest_loss_streak: Number(metrics.largest_loss_streak ?? metrics.largestLossStreak ?? 0),
+    total_pnl: Number(metrics.total_pnl ?? metrics.totalReturn ?? 0),
+    max_drawdown: Number(metrics.max_drawdown ?? metrics.maxDrawdown ?? 0),
+    max_drawdown_pct: Number(metrics.max_drawdown_pct ?? metrics.maxDrawdownPercent ?? 0),
+    sharpe_ratio:
+      metrics.sharpe_ratio == null && metrics.sharpeRatio == null
+        ? null
+        : Number(metrics.sharpe_ratio ?? metrics.sharpeRatio ?? 0),
+    return_on_equity: Number(metrics.return_on_equity ?? metrics.totalReturnPercent ?? 0),
+  }
 }
 
 function serializeAccounts(accounts: Account[]) {
@@ -424,7 +473,7 @@ function PaperTradingFeatureWrapper() {
         selected_account_id: accountId,
         accounts: serializedAccounts,
         health: healthResult.payload as Record<string, unknown> | null,
-        configuration_status: ((configurationResult.payload as JsonRecord | null)?.configuration_status as Record<string, unknown> | undefined) ?? null,
+        configuration_status: ((configurationResult.payload as JsonRecord | null)?.configuration_status as ConfigurationStatus | undefined) ?? null,
         queue_status: queueResult.payload as Record<string, unknown> | null,
         capability_snapshot: capabilityResult.payload as TradingCapabilitySnapshot | Record<string, unknown> | null,
         overview: normalizeOverviewPayload(overviewResult.payload, accountId),
@@ -471,10 +520,6 @@ function PaperTradingFeatureWrapper() {
       openPositions={openPositions}
       closedTrades={closedTrades}
       performanceMetrics={performanceMetrics}
-      capabilitySnapshot={capabilitySnapshot}
-      runtimeHealth={runtimeHealth}
-      frontendRuntimeIdentity={frontendRuntimeIdentity}
-      webmcpReadiness={webmcpReadiness}
       dataError={paperTradingError}
       performanceError={performanceError}
       onRefresh={handleRefresh}
@@ -558,6 +603,7 @@ function AppContent() {
           >
             <Routes>
               <Route path="/" element={<DashboardErrorBoundary><DashboardFeature /></DashboardErrorBoundary>} />
+              <Route path="/health" element={<HealthFeature />} />
               <Route path="/configuration" element={<ConfigurationFeature />} />
               <Route path="/paper-trading" element={<PaperTradingFeatureWrapper />} />
               <Route path="*" element={<Navigate to="/" replace />} />

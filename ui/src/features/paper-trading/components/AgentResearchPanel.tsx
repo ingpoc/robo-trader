@@ -23,6 +23,7 @@ export function AgentResearchPanel({
   onRun,
 }: AgentResearchPanelProps) {
   const research = envelope?.research
+  const loopSummary = envelope?.loop_summary
   const renderedSymbol = research?.symbol || selectedCandidate?.symbol || 'No candidate selected'
   const renderedSector = research?.source_summary.find(source => source.source_type === 'screening')?.label || selectedCandidate?.sector
   const packetMatchesSelection = Boolean(
@@ -42,13 +43,13 @@ export function AgentResearchPanel({
           </div>
           <h2 className="desk-heading">Research runs only when you ask for it</h2>
           <p className="desk-copy max-w-2xl">
-            Selecting a candidate stages the context. The expensive step is explicit: one bounded research run, one packet, one next action.
+            The loop keeps advancing through the fresh queue until it finds one actionable buy candidate or exhausts the eligible list. Weak packets should stop fast and move into memory instead of burning more context.
           </p>
         </div>
 
         {onRun ? (
           <Button variant="primary" size="sm" onClick={onRun} disabled={!canRun || isLoading}>
-            {isLoading ? 'Running research...' : 'Run Research'}
+            {isLoading ? 'Running research...' : selectedCandidate ? 'Run Research' : 'Run Loop'}
           </Button>
         ) : null}
       </header>
@@ -59,6 +60,27 @@ export function AgentResearchPanel({
         <MetaItem label="Status" value={envelope?.status || 'idle'} />
         <MetaItem label="Generated" value={research ? new Date(research.generated_at).toLocaleString() : 'Not run yet'} />
       </div>
+
+      {loopSummary ? (
+        <div className="mt-4 rounded-2xl border border-border/70 bg-muted/15 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Attempts {loopSummary.research_attempt_count}</Badge>
+            <Badge variant={loopSummary.actionable_found_count > 0 ? 'success' : 'secondary'}>
+              Actionable {loopSummary.actionable_found_count}/{loopSummary.target_actionable_count}
+            </Badge>
+            {loopSummary.current_candidate_symbol ? (
+              <Badge variant="outline">Current {loopSummary.current_candidate_symbol}</Badge>
+            ) : null}
+            <Badge variant={loopSummary.queue_exhausted ? 'warning' : 'info'}>
+              {loopSummary.queue_exhausted ? 'Queue exhausted' : 'Loop active'}
+            </Badge>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {formatLabel(loopSummary.termination_reason)}
+            {loopSummary.latest_transition_reason ? ` Latest move: ${formatLabel(loopSummary.latest_transition_reason)}.` : ''}
+          </p>
+        </div>
+      ) : null}
 
       {selectedCandidate ? (
         <div className="rounded-2xl border border-border/70 bg-muted/15 px-5 py-4">
@@ -110,6 +132,9 @@ export function AgentResearchPanel({
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={analysisModeVariant(research.analysis_mode)}>{formatLabel(research.analysis_mode)}</Badge>
                   <Badge variant={actionabilityVariant(research.actionability)}>{formatLabel(research.actionability)}</Badge>
+                  {research.classification ? (
+                    <Badge variant={classificationVariant(research.classification)}>{formatLabel(research.classification)}</Badge>
+                  ) : null}
                 </div>
               )}
             />
@@ -130,6 +155,9 @@ export function AgentResearchPanel({
           <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
             <div className="space-y-5">
               <SignalBlock title="Next step" body={research.next_step} />
+              {research.what_changed_since_last_research ? (
+                <SignalBlock title="What changed since last research" body={research.what_changed_since_last_research} />
+              ) : null}
               <SignalBlock title="Invalidation" body={research.invalidation} />
               <ArtifactList title="Evidence" items={research.evidence} tone="info" />
               <ArtifactList title="Risks" items={research.risks} tone="warning" />
@@ -290,6 +318,12 @@ function formatLabel(value: string) {
 function actionabilityVariant(actionability: string) {
   if (actionability === 'actionable') return 'success'
   if (actionability === 'blocked') return 'error'
+  return 'warning'
+}
+
+function classificationVariant(classification: string) {
+  if (classification === 'actionable_buy_candidate') return 'success'
+  if (classification === 'rejected') return 'error'
   return 'warning'
 }
 

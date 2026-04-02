@@ -25,6 +25,7 @@ from src.models.paper_trading_automation import AutomationJobType
 from src.auth.ai_runtime_auth import get_ai_runtime_status
 from src.services.claude_agent.agent_artifact_service import AgentArtifactService
 from src.services.paper_trading_automation_service import AutomationPausedError, DuplicateAutomationRunError
+from .configuration import _build_configuration_status_payload
 from ..dependencies import get_container
 
 
@@ -82,6 +83,18 @@ class SessionRetrospectiveRequest(BaseModel):
     promotion_state: str = "queued"
 
 
+class AccountPolicyUpdateRequest(BaseModel):
+    execution_mode: Optional[Literal["operator_confirmed_execution", "manual_only"]] = None
+    max_open_positions: Optional[int] = Field(default=None, ge=1, le=100)
+    max_new_entries_per_day: Optional[int] = Field(default=None, ge=0, le=100)
+    per_trade_exposure_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    max_portfolio_risk_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    max_deployed_capital_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    default_stop_loss_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    default_target_pct: Optional[float] = Field(default=None, gt=0, le=500)
+    risk_level: Optional[Literal["conservative", "moderate", "aggressive"]] = None
+
+
 class AutomationTriggerRequest(BaseModel):
     limit: Optional[int] = Field(default=None, ge=1, le=50)
     candidate_id: Optional[str] = Field(default=None)
@@ -103,11 +116,11 @@ limiter = Limiter(key_func=get_remote_address)
 
 paper_trading_limit = os.getenv("RATE_LIMIT_PAPER_TRADING", "20/minute")
 DISCOVERY_TIMEOUT_SECONDS = 60.0
-RESEARCH_TIMEOUT_SECONDS = 60.0
+RESEARCH_TIMEOUT_SECONDS = float(os.getenv("PAPER_TRADING_RESEARCH_TIMEOUT_SECONDS", "360"))
 DECISION_TIMEOUT_SECONDS = 30.0
 DAILY_REVIEW_TIMEOUT_SECONDS = 30.0
 OPERATOR_RUNTIME_TIMEOUT_SECONDS = 15.0
-RUNTIME_VALIDATION_TIMEOUT_SECONDS = 25.0
+RUNTIME_VALIDATION_TIMEOUT_SECONDS = float(os.getenv("PAPER_TRADING_RUNTIME_VALIDATION_TIMEOUT_SECONDS", "60"))
 
 
 async def _get_required_account(account_manager, account_id: str):
@@ -151,6 +164,8 @@ def _blocked_discovery_envelope(
         artifact_count=0,
         criteria=AgentArtifactService.discovery_criteria(),
         considered=["Discovery did not load any watchlist candidates because the stage is blocked."],
+        freshness_state="unknown",
+        empty_reason="blocked_by_runtime",
         candidates=[],
         provider_metadata=provider_metadata or {},
     )
@@ -164,6 +179,8 @@ def _blocked_research_envelope(*, blockers: Optional[list[str]] = None) -> Resea
         artifact_count=0,
         criteria=AgentArtifactService.research_criteria(),
         considered=["No candidate is currently being researched because the stage is blocked."],
+        freshness_state="unknown",
+        empty_reason="blocked_by_runtime",
         research=None,
     )
 
@@ -176,6 +193,8 @@ def _blocked_decision_envelope(*, blockers: Optional[list[str]] = None) -> Decis
         artifact_count=0,
         criteria=AgentArtifactService.decision_criteria(),
         considered=["No open positions are being reviewed because the stage is blocked."],
+        freshness_state="unknown",
+        empty_reason="blocked_by_runtime",
         decisions=[],
     )
 
@@ -188,6 +207,8 @@ def _blocked_review_envelope(*, blockers: Optional[list[str]] = None) -> ReviewE
         artifact_count=0,
         criteria=AgentArtifactService.review_criteria(),
         considered=["No realized outcomes are being reviewed because the stage is blocked."],
+        freshness_state="unknown",
+        empty_reason="blocked_by_runtime",
         review=None,
     )
 
@@ -551,7 +572,16 @@ def _unwrap_route_payload(name: str, payload: Any) -> Any:
     )
 
 
-def _execution_mode() -> str:
+async def _execution_mode(container: DependencyContainer, account_id: Optional[str] = None) -> str:
+    if not account_id:
+        return "operator_confirmed_execution"
+    try:
+        account_manager = await container.get("paper_trading_account_manager")
+        policy = await account_manager.get_account_policy(account_id)
+        if policy and getattr(policy, "execution_mode", None):
+            return str(policy.execution_mode)
+    except Exception:  # noqa: BLE001
+        logger.debug("Falling back to default execution mode for %s", account_id, exc_info=True)
     return "operator_confirmed_execution"
 
 
@@ -625,6 +655,151 @@ async def _load_symbol_quote_freshness(
     }
 
 
+def _serialize_account_policy(policy: Any) -> Dict[str, Any]:
+    if policy is None:
+        return {}
+    if hasattr(policy, "to_dict"):
+        return policy.to_dict()
+    if hasattr(policy, "model_dump"):
+        return policy.model_dump(mode="json")
+    return dict(policy)
+
+
+def _artifact_summary(envelope: Optional[Dict[str, Any]], label: str) -> Dict[str, Any]:
+    if not isinstance(envelope, dict):
+        return {
+            "label": label,
+            "status": "empty",
+            "generated_at": None,
+            "last_generated_at": None,
+            "status_reason": None,
+            "freshness_state": "unknown",
+            "empty_reason": "never_run",
+            "considered_count": 0,
+        }
+    considered = envelope.get("considered")
+    return {
+        "label": label,
+        "status": envelope.get("status") or "empty",
+        "generated_at": envelope.get("generated_at"),
+        "last_generated_at": envelope.get("last_generated_at") or envelope.get("generated_at"),
+        "status_reason": envelope.get("status_reason") or (envelope.get("blockers") or [None])[0],
+        "freshness_state": envelope.get("freshness_state") or "unknown",
+        "empty_reason": envelope.get("empty_reason"),
+        "considered_count": len(considered) if isinstance(considered, list) else 0,
+    }
+
+
+def _build_overview_summary_payload(
+    *,
+    account_id: str,
+    capability_snapshot: Dict[str, Any],
+    account_policy: Dict[str, Any],
+    overview: Dict[str, Any],
+    performance: Dict[str, Any],
+    discovery: Dict[str, Any],
+    research: Dict[str, Any],
+    decisions: Dict[str, Any],
+    review: Dict[str, Any],
+    learning_readiness: Dict[str, Any],
+    promotion_report: Dict[str, Any],
+    run_history: Dict[str, Any],
+    staleness: Dict[str, Any],
+    operator_recommendation: Dict[str, Any],
+    positions_health: Dict[str, Any],
+    incidents: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    overview_data = (overview or {}).get("data", {}) if isinstance(overview, dict) else {}
+    performance_data = (performance or {}).get("performance", {}) if isinstance(performance, dict) else {}
+    recent_runs = (run_history or {}).get("runs", []) if isinstance(run_history, dict) else []
+    blocker = next(iter(capability_snapshot.get("blockers", [])), None)
+    obligations: List[Dict[str, Any]] = []
+    if blocker:
+        obligations.append({
+            "label": "Resolve blocker",
+            "detail": blocker,
+            "priority": "high",
+        })
+    if str(positions_health.get("status") or "") != "ready":
+        obligations.append({
+            "label": "Review open positions",
+            "detail": "One or more positions still rely on stale marks or degraded position health.",
+            "priority": "high",
+        })
+    unevaluated_closed_trades = int(learning_readiness.get("unevaluated_closed_trade_count") or 0)
+    if unevaluated_closed_trades > 0:
+        obligations.append({
+            "label": "Evaluate closed trades",
+            "detail": f"{unevaluated_closed_trades} closed trade(s) still need outcome evaluation.",
+            "priority": "medium",
+        })
+    if not obligations and operator_recommendation.get("summary"):
+        obligations.append({
+            "label": "Next operator step",
+            "detail": operator_recommendation.get("summary"),
+            "priority": "medium",
+        })
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "account_id": account_id,
+        "execution_mode": account_policy.get("execution_mode", "operator_confirmed_execution"),
+        "selected_account": {
+            "account_id": account_id,
+            "buying_power": overview_data.get("buying_power"),
+            "cash_available": overview_data.get("cash_available"),
+            "deployed_capital": overview_data.get("deployed_capital"),
+            "balance": overview_data.get("balance"),
+            "position_count": int(positions_health.get("position_count") or 0),
+            "valuation_status": overview_data.get("valuation_status"),
+            "valuation_detail": overview_data.get("valuation_detail"),
+            "mark_freshness": positions_health.get("status"),
+        },
+        "readiness": {
+            "overall_status": capability_snapshot.get("overall_status"),
+            "blocker_count": len(capability_snapshot.get("blockers", [])),
+            "first_blocker": blocker,
+        },
+        "next_action": {
+            "summary": operator_recommendation.get("summary"),
+            "detail": operator_recommendation.get("detail"),
+            "route": "/paper-trading",
+        },
+        "act_now": obligations[:3],
+        "staleness": staleness,
+        "queue": {
+            "unevaluated_closed_trades": int(learning_readiness.get("unevaluated_closed_trade_count") or 0),
+            "queued_promotable_improvements": int(learning_readiness.get("queued_promotable_count") or 0),
+            "decision_pending_improvements": int(learning_readiness.get("decision_pending_improvement_count") or 0),
+            "recent_runs": len(recent_runs),
+            "ready_now_promotions": int(promotion_report.get("ready_now") or 0),
+        },
+        "performance": {
+            "portfolio_value": performance_data.get("portfolio_value"),
+            "unrealized_pnl": performance_data.get("total_pnl"),
+            "win_rate": performance_data.get("win_rate"),
+            "closed_trades": (
+                int(performance_data.get("winning_trades") or 0)
+                + int(performance_data.get("losing_trades") or 0)
+            ),
+        },
+        "recent_stage_outputs": [
+            _artifact_summary(discovery, "Discovery"),
+            _artifact_summary(research, "Focused Research"),
+            _artifact_summary(decisions, "Decision Review"),
+            _artifact_summary(review, "Daily Review"),
+        ],
+        "guardrails": {
+            "execution_mode": account_policy.get("execution_mode"),
+            "per_trade_exposure_pct": account_policy.get("per_trade_exposure_pct"),
+            "max_portfolio_risk_pct": account_policy.get("max_portfolio_risk_pct"),
+            "max_open_positions": account_policy.get("max_open_positions"),
+            "max_new_entries_per_day": account_policy.get("max_new_entries_per_day"),
+            "max_deployed_capital_pct": account_policy.get("max_deployed_capital_pct"),
+        },
+        "incidents": incidents[:6],
+    }
+
+
 async def _build_position_health_payload(
     container: DependencyContainer,
     account_id: str,
@@ -637,7 +812,7 @@ async def _build_position_health_payload(
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "account_id": account_id,
-        "execution_mode": _execution_mode(),
+        "execution_mode": await _execution_mode(container, account_id),
         "position_count": len(serialized_positions),
         "healthy_count": len(healthy_positions),
         "stale_count": len(stale_positions),
@@ -803,7 +978,7 @@ async def _build_execution_preflight_payload(
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "account_id": account_id,
-        "execution_mode": _execution_mode(),
+        "execution_mode": await _execution_mode(container, account_id),
         "action": preflight.action,
         "symbol": symbol,
         "trade_id": preflight.trade_id,
@@ -1082,9 +1257,11 @@ async def _build_operator_snapshot_payload(
     capability_snapshot_obj = await capability_service.get_snapshot(account_id=account_id)
     capability_snapshot = capability_snapshot_obj.to_dict()
     learning_service = await container.get("paper_trading_learning_service")
+    account_manager = await container.get("paper_trading_account_manager")
+    account_policy_obj = await account_manager.get_account_policy(account_id)
+    account_policy = _serialize_account_policy(account_policy_obj)
 
-    config_state = await container.get("configuration_state")
-    configuration_status = await config_state.get_system_status()
+    configuration_status = await _build_configuration_status_payload(container=container, account_id=account_id)
     queue_status = await _build_queue_status_payload(container)
 
     (
@@ -1093,6 +1270,7 @@ async def _build_operator_snapshot_payload(
         trades_payload,
         performance,
         discovery,
+        research,
         decisions,
         review,
         learning_summary,
@@ -1111,6 +1289,7 @@ async def _build_operator_snapshot_payload(
         _route_impl(get_paper_trading_trades)(request=request, account_id=account_id, limit=20, container=container),
         _route_impl(get_paper_trading_performance)(request=request, account_id=account_id, period="month", container=container),
         _route_impl(get_paper_trading_discovery)(request=request, account_id=account_id, limit=10, container=container),
+        _route_impl(get_paper_trading_research)(request=request, account_id=account_id, container=container),
         _route_impl(get_paper_trading_decisions)(request=request, account_id=account_id, limit=3, container=container),
         _route_impl(get_paper_trading_review)(request=request, account_id=account_id, container=container),
         _route_impl(get_paper_trading_learning_summary)(request=request, account_id=account_id, container=container),
@@ -1172,11 +1351,29 @@ async def _build_operator_snapshot_payload(
         queue_status=queue_status,
         positions=positions,
     )
+    overview_summary = _build_overview_summary_payload(
+        account_id=account_id,
+        capability_snapshot=capability_snapshot,
+        account_policy=account_policy,
+        overview=overview,
+        performance=performance,
+        discovery=discovery,
+        research=research,
+        decisions=decisions,
+        review=review,
+        learning_readiness=learning_readiness,
+        promotion_report=promotion_report,
+        run_history=run_history,
+        staleness=staleness,
+        operator_recommendation=operator_recommendation,
+        positions_health=positions_health,
+        incidents=incidents,
+    )
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "selected_account_id": account_id,
-        "execution_mode": _execution_mode(),
+        "execution_mode": account_policy.get("execution_mode", "operator_confirmed_execution"),
         "health": {
             "status": "healthy",
             "message": "Paper trading operator snapshot assembled.",
@@ -1184,6 +1381,8 @@ async def _build_operator_snapshot_payload(
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
         "configuration_status": configuration_status,
+        "account_policy": account_policy,
+        "overview_summary": overview_summary,
         "queue_status": queue_status,
         "capability_snapshot": capability_snapshot,
         "overview": overview,
@@ -1191,6 +1390,7 @@ async def _build_operator_snapshot_payload(
         "trades": trades_payload.get("trades", []) if isinstance(trades_payload, dict) else [],
         "performance": performance,
         "discovery": discovery,
+        "research": research,
         "decisions": decisions,
         "review": review,
         "learning_summary": learning_summary,
@@ -1471,6 +1671,67 @@ async def get_paper_trading_accounts(
     except Exception as e:
         return await handle_unexpected_error(e, "get_paper_trading_accounts")
 
+@router.get("/paper-trading/accounts/{account_id}/policy")
+@limiter.limit(paper_trading_limit)
+async def get_paper_trading_account_policy(
+    request: Request,
+    account_id: str,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Return the selected account's operator policy."""
+    try:
+        account_manager = await container.get("paper_trading_account_manager")
+        account, error_response = await _get_required_account(account_manager, account_id)
+        if error_response is not None:
+            return error_response
+
+        policy = await account_manager.get_account_policy(account_id)
+        if policy is None:
+            raise TradingError(f"Paper trading account '{account_id}' policy was not found.")
+
+        return {
+            "success": True,
+            "account_id": account.account_id,
+            "policy": _serialize_account_policy(policy),
+        }
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "get_paper_trading_account_policy")
+
+
+@router.put("/paper-trading/accounts/{account_id}/policy")
+@limiter.limit(paper_trading_limit)
+async def update_paper_trading_account_policy(
+    request: Request,
+    account_id: str,
+    body: AccountPolicyUpdateRequest,
+    container: DependencyContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    """Update the selected account's operator policy."""
+    try:
+        account_manager = await container.get("paper_trading_account_manager")
+        _, error_response = await _get_required_account(account_manager, account_id)
+        if error_response is not None:
+            return error_response
+
+        policy = await account_manager.update_account_policy(
+            account_id,
+            body.model_dump(exclude_none=True),
+        )
+        if policy is None:
+            raise TradingError(f"Paper trading account '{account_id}' policy could not be updated.")
+
+        return {
+            "success": True,
+            "account_id": account_id,
+            "policy": _serialize_account_policy(policy),
+        }
+    except TradingError as e:
+        return await handle_trading_error(e)
+    except Exception as e:
+        return await handle_unexpected_error(e, "update_paper_trading_account_policy")
+
 
 @router.get("/paper-trading/accounts/{account_id}/overview")
 @limiter.limit(paper_trading_limit)
@@ -1671,7 +1932,7 @@ async def get_paper_trading_performance(
         account_manager = await container.get("paper_trading_account_manager")
         performance_calculator = await container.get("performance_calculator")
         store = await container.get("paper_trading_store")
-        _, error_response = await _get_required_account(account_manager, account_id)
+        account, error_response = await _get_required_account(account_manager, account_id)
         if error_response is not None:
             return error_response
 
@@ -1684,16 +1945,30 @@ async def get_paper_trading_performance(
         # Calculate max drawdown
         max_drawdown = 0.0
         if all_trades:
-            max_drawdown = performance_calculator.calculate_max_drawdown([
-                trade.realized_pnl for trade in all_trades
-            ])
+            drawdown_metrics = performance_calculator.calculate_drawdown(
+                all_trades,
+                account.initial_balance,
+            )
+            max_drawdown = drawdown_metrics.get("max_drawdown", 0.0)
 
         # Calculate volatility (std dev of returns)
         volatility = 0.0
         if len(all_trades) > 1:
-            returns = [trade.realized_pnl_pct for trade in all_trades]
             import statistics
-            volatility = statistics.stdev(returns)
+            returns = []
+            for trade in all_trades:
+                realized_pnl_pct = getattr(trade, "realized_pnl_pct", None)
+                if realized_pnl_pct is None:
+                    entry_price = getattr(trade, "entry_price", None)
+                    quantity = getattr(trade, "quantity", None)
+                    realized_pnl = getattr(trade, "realized_pnl", None)
+                    if entry_price and quantity and realized_pnl is not None:
+                        cost_basis = entry_price * quantity
+                        realized_pnl_pct = (realized_pnl / cost_basis) * 100 if cost_basis else 0.0
+                if realized_pnl_pct is not None:
+                    returns.append(float(realized_pnl_pct))
+            if len(returns) > 1:
+                volatility = statistics.stdev(returns)
 
         # Format for frontend (camelCase keys)
         performance_data = {
@@ -2626,17 +2901,8 @@ async def run_paper_trading_research(
     research_request: ResearchRunRequest,
     container: DependencyContainer = Depends(get_container),
 ) -> Dict[str, Any]:
-    """Run a focused research pass for one candidate or explicit symbol."""
+    """Run the focused research loop for one candidate, an explicit symbol, or the next fresh queue candidate."""
     try:
-        if not research_request.candidate_id and not research_request.symbol:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "success": False,
-                    "error": "Provide candidate_id or symbol before running research.",
-                },
-            )
-
         error_response = await _require_account_or_error(container, account_id)
         if error_response is not None:
             return error_response

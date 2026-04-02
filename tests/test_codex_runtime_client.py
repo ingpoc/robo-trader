@@ -140,6 +140,6 @@ async def test_codex_runtime_client_validate_runtime_hits_validation_endpoint(mo
     assert captured == {
         "method": "POST",
         "url": "http://127.0.0.1:8765/v1/runtime/validate",
-        "json": None,
+        "json": {"timeout_seconds": 12.0},
     }
     assert payload["status"] == "ready"

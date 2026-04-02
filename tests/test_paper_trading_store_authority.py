@@ -632,6 +632,7 @@ async def test_open_positions_tolerate_legacy_date_only_entry_timestamps(store):
     )
     await store.db_connection.commit()
 
+    fresh_timestamp = datetime.now(timezone.utc).isoformat()
     market_data_service = SimpleNamespace(
         get_quote_stream_status=AsyncMock(
             return_value=SimpleNamespace(
@@ -647,7 +648,7 @@ async def test_open_positions_tolerate_legacy_date_only_entry_timestamps(store):
             return_value={
                 "INFY": SimpleNamespace(
                     ltp=120.0,
-                    timestamp="2026-03-30T12:03:49+00:00",
+                    timestamp=fresh_timestamp,
                 )
             }
         ),
@@ -658,7 +659,7 @@ async def test_open_positions_tolerate_legacy_date_only_entry_timestamps(store):
 
     assert len(positions) == 1
     assert positions[0].days_held >= 1
-    assert positions[0].market_price_timestamp == "2026-03-30T12:03:49+00:00"
+    assert positions[0].market_price_timestamp == fresh_timestamp
 
 
 @pytest.mark.asyncio
@@ -779,6 +780,65 @@ async def test_performance_metrics_fail_loud_without_live_quotes_for_open_positi
 
     with pytest.raises(MarketDataError, match="Live market data is unavailable"):
         await account_manager.get_performance_metrics(account.account_id, period="all-time")
+
+
+@pytest.mark.asyncio
+async def test_performance_metrics_accept_timezone_aware_closed_trade_timestamps(store):
+    """Closed trades with timezone-aware exit timestamps should not break monthly performance filtering."""
+    account = await store.create_account(
+        account_name="Main",
+        initial_balance=100000.0,
+        strategy_type=AccountType.SWING,
+        risk_level=RiskLevel.MODERATE,
+        max_position_size=5.0,
+        max_portfolio_risk=10.0,
+        account_id="paper_perf_tz_safe",
+    )
+    trade = await store.create_trade(
+        account_id=account.account_id,
+        symbol="INFY",
+        trade_type=TradeType.BUY,
+        quantity=5,
+        entry_price=100.0,
+        strategy_rationale="momentum",
+        claude_session_id="session-open",
+    )
+    await store.close_trade(trade.trade_id, 120.0, 100.0)
+
+    account_manager = PaperTradingAccountManager(store=store, market_data_service=None)
+    metrics = await account_manager.get_performance_metrics(account.account_id, period="month")
+
+    assert metrics["total_trades"] == 1
+    assert metrics["winning_trades"] == 1
+    assert metrics["losing_trades"] == 0
+
+
+@pytest.mark.asyncio
+async def test_close_trade_persists_realized_pnl_pct(store):
+    account = await store.create_account(
+        account_name="Main",
+        initial_balance=100000.0,
+        strategy_type=AccountType.SWING,
+        risk_level=RiskLevel.MODERATE,
+        max_position_size=5.0,
+        max_portfolio_risk=10.0,
+        account_id="paper_realized_pct",
+    )
+    trade = await store.create_trade(
+        account_id=account.account_id,
+        symbol="INFY",
+        trade_type=TradeType.BUY,
+        quantity=5,
+        entry_price=100.0,
+        strategy_rationale="momentum",
+        claude_session_id="session-open",
+    )
+
+    closed_trade = await store.close_trade(trade.trade_id, 120.0, 100.0)
+
+    assert closed_trade is not None
+    assert closed_trade.realized_pnl == 100.0
+    assert closed_trade.realized_pnl_pct == 20.0
 
 
 @pytest.mark.asyncio

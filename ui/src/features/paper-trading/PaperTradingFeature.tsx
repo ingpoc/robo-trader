@@ -13,24 +13,21 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { AgentDecisionPanel } from './components/AgentDecisionPanel'
 import { AgentDiscoveryPanel } from './components/AgentDiscoveryPanel'
 import { AgentResearchPanel } from './components/AgentResearchPanel'
+import { AnalyzedWatchlistPanel } from './components/AnalyzedWatchlistPanel'
 import { AgentReviewPanel } from './components/AgentReviewPanel'
 import { PaperTradingAccountBar } from './components/PaperTradingAccountBar'
 import { PerformanceMetrics } from './components/PerformanceMetrics'
 import { RealTimePositionsTable } from './components/RealTimePositionsTable'
 import { StageCriteriaPanel } from './components/StageCriteriaPanel'
 import { TradeHistoryTable } from './components/TradeHistoryTable'
-import { TradingCapabilityCard } from './components/TradingCapabilityCard'
 import { useAgentArtifacts } from './hooks/useAgentArtifacts'
+import { getAnalyzedCandidates, getDiscoveryQueueCandidates, getPreferredResearchCandidate } from './lib/candidateLifecycle'
 import type {
   AccountOverviewResponse,
   AgentCandidate,
   ClosedTradeResponse,
   OpenPositionResponse,
   PerformanceMetricsResponse,
-  RuntimeHealthResponse,
-  RuntimeIdentity,
-  TradingCapabilitySnapshot,
-  WebMCPReadiness,
 } from './types'
 
 export interface PaperTradingFeatureProps {
@@ -41,10 +38,6 @@ export interface PaperTradingFeatureProps {
   openPositions: OpenPositionResponse[]
   closedTrades: ClosedTradeResponse[]
   performanceMetrics: PerformanceMetricsResponse | null
-  capabilitySnapshot: TradingCapabilitySnapshot | null
-  runtimeHealth: RuntimeHealthResponse | null
-  frontendRuntimeIdentity: RuntimeIdentity
-  webmcpReadiness: WebMCPReadiness
   dataError?: string | null
   performanceError?: string | null
   onRefresh: () => Promise<void>
@@ -59,10 +52,6 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
   openPositions,
   closedTrades,
   performanceMetrics,
-  capabilitySnapshot,
-  runtimeHealth,
-  frontendRuntimeIdentity,
-  webmcpReadiness,
   dataError = null,
   performanceError = null,
   onRefresh,
@@ -89,12 +78,72 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
     clearTab('research')
   }, [selectedAccountId, clearTab])
 
-  useEffect(() => {
-    if (!selectedCandidate && discovery?.candidates.length) {
-      setSelectedCandidate(discovery.candidates[0])
-      clearTab('research')
+  const analyzedCandidates = useMemo(
+    () => getAnalyzedCandidates(discovery?.candidates ?? []),
+    [discovery?.candidates],
+  )
+  const discoveryQueueCandidates = useMemo(
+    () => getDiscoveryQueueCandidates(discovery?.candidates ?? []),
+    [discovery?.candidates],
+  )
+  const filteredDiscoveryEnvelope = useMemo(() => {
+    if (!discovery) return null
+
+    const analyzedSymbols = new Set(analyzedCandidates.map(candidate => candidate.symbol.toUpperCase()))
+    const considered = (discovery.considered ?? []).filter(item => {
+      const symbol = item.split('·')[0]?.trim().toUpperCase()
+      return !analyzedSymbols.has(symbol)
+    })
+
+    return {
+      ...discovery,
+      artifact_count: discoveryQueueCandidates.length,
+      candidates: discoveryQueueCandidates,
+      considered,
     }
-  }, [clearTab, discovery, selectedCandidate])
+  }, [analyzedCandidates, discovery, discoveryQueueCandidates])
+
+  useEffect(() => {
+    const allCandidates = discovery?.candidates ?? []
+    if (!allCandidates.length) {
+      if (selectedCandidate) {
+        setSelectedCandidate(null)
+        clearTab('research')
+      }
+      return
+    }
+
+    const selectedFromLatest = selectedCandidate
+      ? allCandidates.find(candidate => candidate.candidate_id === selectedCandidate.candidate_id) ?? null
+      : null
+
+    if (!selectedFromLatest) {
+      const preferredCandidate = getPreferredResearchCandidate(discoveryQueueCandidates) ?? analyzedCandidates[0] ?? null
+      if (preferredCandidate) {
+        setSelectedCandidate(preferredCandidate)
+        clearTab('research')
+      }
+      return
+    }
+
+    if (selectedFromLatest !== selectedCandidate) {
+      setSelectedCandidate(selectedFromLatest)
+    }
+  }, [analyzedCandidates, clearTab, discovery?.candidates, discoveryQueueCandidates, selectedCandidate])
+
+  useEffect(() => {
+    if (!research?.loop_summary || !selectedCandidate) return
+
+    const selectedStillFresh = discoveryQueueCandidates.some(
+      candidate => candidate.candidate_id === selectedCandidate.candidate_id,
+    )
+    if (selectedStillFresh) return
+
+    const nextCandidate = getPreferredResearchCandidate(discoveryQueueCandidates)
+    if (nextCandidate && nextCandidate.candidate_id !== selectedCandidate.candidate_id) {
+      setSelectedCandidate(nextCandidate)
+    }
+  }, [discoveryQueueCandidates, research?.generated_at, research?.loop_summary, selectedCandidate])
 
   const valuedPositions = useMemo(
     () => openPositions.filter((position) => position.unrealized_pnl != null),
@@ -143,17 +192,6 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
           description="Run the loop deliberately: verify readiness, stage dark-horse candidates, then spend tokens only on explicit research and review actions."
         />
       </div>
-
-      <TradingCapabilityCard snapshot={capabilitySnapshot} webmcpReadiness={webmcpReadiness} isLoading={isLoading} />
-
-      <RuntimeIdentityPanel
-        runtimeHealth={runtimeHealth}
-        frontendRuntimeIdentity={frontendRuntimeIdentity}
-        selectedAccountId={selectedAccountId ?? null}
-        latestDiscoveryAt={discovery?.generated_at ?? null}
-      />
-
-      <AutonomyBoundaryPanel />
 
       <PaperTradingAccountBar
         accounts={accounts}
@@ -216,12 +254,14 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
       <div className="space-y-6">
         <StageRow
           stageLabel="Discovery"
-          envelope={discovery}
-          criteria={discovery?.criteria ?? []}
-          considered={discovery?.considered ?? []}
+          envelope={filteredDiscoveryEnvelope}
+          criteria={filteredDiscoveryEnvelope?.criteria ?? []}
+          considered={filteredDiscoveryEnvelope?.considered ?? []}
+          isActive={artifactsLoading && activeRequest === 'discovery'}
         >
           <AgentDiscoveryPanel
-            envelope={discovery}
+            envelope={filteredDiscoveryEnvelope}
+            movedCandidateCount={analyzedCandidates.length}
             isLoading={artifactsLoading && activeRequest === 'discovery'}
             error={artifactsError}
             canRun={Boolean(selectedAccountId)}
@@ -231,24 +271,32 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
           />
         </StageRow>
 
+        <AnalyzedWatchlistPanel
+          candidates={analyzedCandidates}
+          selectedCandidateId={selectedCandidate?.candidate_id ?? null}
+          onSelectCandidate={handleSelectCandidate}
+        />
+
         <StageRow
           stageLabel="Focused Research"
           envelope={research}
           criteria={research?.criteria ?? []}
           considered={research?.considered ?? []}
+          isActive={artifactsLoading && activeRequest === 'research'}
         >
           <AgentResearchPanel
             envelope={research}
             selectedCandidate={selectedCandidate}
             isLoading={artifactsLoading && activeRequest === 'research'}
             error={artifactsError}
-            canRun={Boolean(selectedAccountId && selectedCandidate)}
+            canRun={Boolean(selectedAccountId)}
             onRun={() => {
-              if (!selectedCandidate) return
-              void runTab('research', {
-                candidate_id: selectedCandidate.candidate_id,
-                symbol: selectedCandidate.symbol,
-              })
+              void runTab('research', selectedCandidate
+                ? {
+                    candidate_id: selectedCandidate.candidate_id,
+                    symbol: selectedCandidate.symbol,
+                  }
+                : undefined)
             }}
           />
         </StageRow>
@@ -258,6 +306,7 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
           envelope={decisions}
           criteria={decisions?.criteria ?? []}
           considered={decisions?.considered ?? []}
+          isActive={artifactsLoading && activeRequest === 'decisions'}
         >
           <AgentDecisionPanel
             envelope={decisions}
@@ -273,6 +322,7 @@ export const PaperTradingFeature: React.FC<PaperTradingFeatureProps> = ({
           envelope={review}
           criteria={review?.criteria ?? []}
           considered={review?.considered ?? []}
+          isActive={artifactsLoading && activeRequest === 'review'}
         >
           <AgentReviewPanel
             envelope={review}
@@ -315,16 +365,23 @@ function StageRow({
   envelope,
   criteria,
   considered,
+  isActive = false,
   children,
 }: {
   stageLabel: string
-  envelope: { status?: string | null; status_reason?: string | null } | null
+  envelope: {
+    status?: string | null
+    status_reason?: string | null
+    freshness_state?: string | null
+    empty_reason?: string | null
+  } | null
   criteria: string[]
   considered: string[]
+  isActive?: boolean
   children: React.ReactNode
 }) {
   return (
-    <section className="desk-stage-row">
+    <section className={`desk-stage-row ${isActive ? 'desk-stage-row--active' : ''}`}>
       <div>{children}</div>
       <StageCriteriaPanel
         stageLabel={stageLabel}
@@ -332,112 +389,9 @@ function StageRow({
         considered={considered}
         status={envelope?.status ?? null}
         statusReason={envelope?.status_reason ?? null}
+        freshnessState={envelope?.freshness_state ?? null}
+        emptyReason={envelope?.empty_reason ?? null}
       />
-    </section>
-  )
-}
-
-function RuntimeIdentityPanel({
-  runtimeHealth,
-  frontendRuntimeIdentity,
-  selectedAccountId,
-  latestDiscoveryAt,
-}: {
-  runtimeHealth: RuntimeHealthResponse | null
-  frontendRuntimeIdentity: RuntimeIdentity
-  selectedAccountId: string | null
-  latestDiscoveryAt: string | null
-}) {
-  const backendRuntimeIdentity = runtimeHealth?.runtime_identity ?? null
-  const isStaleBackend = Boolean(
-    backendRuntimeIdentity?.git_sha
-    && frontendRuntimeIdentity.git_sha
-    && backendRuntimeIdentity.git_sha !== frontendRuntimeIdentity.git_sha,
-  )
-  const bannerTone = isStaleBackend
-    ? 'border-amber-300 bg-amber-50/80 text-amber-950'
-    : 'border-emerald-200 bg-emerald-50/70 text-emerald-950'
-  const heading = isStaleBackend ? 'Stale runtime detected' : 'Runtime identity in sync'
-  const summary = isStaleBackend
-    ? 'The frontend and backend are serving different git revisions. Refreshing data may still hit an older backend lane until it is restarted.'
-    : 'The operator page is talking to the current backend revision, so discovery and readiness state should reflect current code.'
-
-  return (
-    <Card className={bannerTone}>
-      <CardContent className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
-        <div className="space-y-2">
-          <p className="desk-kicker">Runtime Truth</p>
-          <h2 className="desk-heading">{heading}</h2>
-          <p className="desk-copy max-w-2xl">{summary}</p>
-        </div>
-
-        <div className="space-y-2 text-sm">
-          <p className="desk-kicker">Frontend</p>
-          <p className="font-semibold">
-            {frontendRuntimeIdentity.git_short_sha ?? 'unknown'} · {formatRuntimeTimestamp(frontendRuntimeIdentity.started_at)}
-          </p>
-          <p className="text-muted-foreground">{frontendRuntimeIdentity.build_id}</p>
-        </div>
-
-        <div className="space-y-2 text-sm">
-          <p className="desk-kicker">Backend</p>
-          {backendRuntimeIdentity ? (
-            <>
-              <p className="font-semibold">
-                {backendRuntimeIdentity.git_short_sha ?? 'unknown'} · {formatRuntimeTimestamp(backendRuntimeIdentity.started_at)}
-              </p>
-              <p className="text-muted-foreground">{backendRuntimeIdentity.build_id}</p>
-            </>
-          ) : (
-            <p className="text-muted-foreground">Health endpoint unavailable. Refresh runtime truth before trusting the dashboard.</p>
-          )}
-        </div>
-
-        <div className="space-y-2 text-sm lg:col-span-3">
-          <p className="desk-kicker">Operator Context</p>
-          <p className="text-muted-foreground">
-            Account: <span className="font-medium text-foreground">{selectedAccountId ?? 'none selected'}</span>
-            {' · '}
-            Discovery envelope: <span className="font-medium text-foreground">{latestDiscoveryAt ? formatRuntimeTimestamp(latestDiscoveryAt) : 'not loaded yet'}</span>
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function AutonomyBoundaryPanel() {
-  return (
-    <section className="desk-autonomy-panel">
-      <div className="space-y-2">
-        <p className="desk-kicker">Autonomy Boundary</p>
-        <h2 className="desk-heading">What I can run end to end right now</h2>
-        <p className="desk-copy max-w-4xl">
-          The dashboard is agent-operator ready for discovery, focused research, decision review, daily review, and dry-run proposal work. Autonomous paper entry is still blocked until the repo-local go-live checklist evidence window is satisfied and the execution posture is explicitly promoted in code.
-        </p>
-      </div>
-
-      <div className="grid gap-5 md:grid-cols-2">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-5 py-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Autonomous Now</p>
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-emerald-900">
-            <li>Operate the dashboard through WebMCP.</li>
-            <li>Run discovery and stage candidates for research.</li>
-            <li>Generate focused research, decision packets, and daily reviews.</li>
-            <li>Run dry-run proposal and preflight checks before any paper order.</li>
-          </ul>
-        </div>
-
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-5 py-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Still Blocked</p>
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-amber-900">
-            <li>Unattended autonomous paper entries.</li>
-            <li>Any execution path that bypasses proposal, preflight, or operator confirmation.</li>
-            <li>Strategy promotion based only on intuition instead of outcome or benchmark evidence.</li>
-            <li>Claiming a `GO` posture before the evidence window in the go-live checklist is met.</li>
-          </ul>
-        </div>
-      </div>
     </section>
   )
 }
@@ -510,18 +464,6 @@ function formatSignedCurrency(value?: number | null) {
 function formatSignedPercent(value?: number | null) {
   const amount = value ?? 0
   return `${amount >= 0 ? '+' : ''}${amount.toFixed(2)}%`
-}
-
-function formatRuntimeTimestamp(value?: string | null) {
-  if (!value) return 'unknown'
-
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return value
-
-  return parsed.toLocaleString('en-IN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
 }
 
 export default PaperTradingFeature

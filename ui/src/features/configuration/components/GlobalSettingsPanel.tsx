@@ -1,31 +1,29 @@
 import React from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/Label'
-import { Input } from '@/components/ui/Input'
-import { Separator } from '@/components/ui/separator'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select'
+import { Brain, Radio, RefreshCw } from 'lucide-react'
+
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Brain, Globe, Radio, Settings, RefreshCw } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
+import { Label } from '@/components/ui/Label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select'
+import { Switch } from '@/components/ui/switch'
 import type { GlobalConfig } from '@/types/api'
 
 interface GlobalSettingsPanelProps {
   globalSettings: GlobalConfig | null
   isLoading: boolean
-  onUpdateSetting: (section: keyof GlobalConfig, field: string, value: any) => void
-  onSetGlobalSettings: React.Dispatch<React.SetStateAction<GlobalConfig | null>>
+  onUpdateSetting: (field: keyof GlobalConfig, value: unknown) => void
 }
 
 export const GlobalSettingsPanel: React.FC<GlobalSettingsPanelProps> = ({
   globalSettings,
   isLoading,
   onUpdateSetting,
-  onSetGlobalSettings,
 }) => {
   if (isLoading) {
     return (
-      <div className="text-center py-8">
-        <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin text-gray-400" />
+      <div className="py-8 text-center">
+        <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-gray-400" />
         <p className="text-gray-600">Loading global settings...</p>
       </div>
     )
@@ -33,8 +31,7 @@ export const GlobalSettingsPanel: React.FC<GlobalSettingsPanelProps> = ({
 
   if (!globalSettings) {
     return (
-      <div className="text-center py-8">
-        <Globe className="w-8 h-8 mx-auto mb-3 text-gray-400" />
+      <div className="py-8 text-center">
         <p className="text-gray-600">Global settings not loaded</p>
       </div>
     )
@@ -44,198 +41,131 @@ export const GlobalSettingsPanel: React.FC<GlobalSettingsPanelProps> = ({
     <div className="space-y-6">
       <Alert>
         <AlertDescription>
-          System-wide limits and agent defaults for the paper-trading operator.
-          Background scheduler controls are intentionally excluded from the active product.
+          Global policy owns runtime defaults that apply across paper-trading accounts. Live runtime truth is shown separately and is never edited from this section.
         </AlertDescription>
       </Alert>
 
-      <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Radio className="w-5 h-5" />
-              Quote Stream Defaults
-            </CardTitle>
-            <CardDescription>
-              Paper-mode live P&amp;L uses the quote stream provider, independent of the future broker adapter.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="quote-stream-provider">Provider</Label>
-                <Select
-                  value={globalSettings.quoteStreamProvider ?? 'upstox'}
-                  onValueChange={(value) => onSetGlobalSettings(prev => ({ ...prev!, quoteStreamProvider: value as GlobalConfig['quoteStreamProvider'] }))}
-                >
-                  <SelectTrigger id="quote-stream-provider">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="upstox">Upstox</SelectItem>
-                    <SelectItem value="zerodha_kite">Zerodha Kite</SelectItem>
-                    <SelectItem value="none">Disabled</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500">
-                  Upstox is the default zero-cost quote stream for paper mode.
-                </p>
-              </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Radio className="h-5 w-5" />
+            Quote Stream Policy
+          </CardTitle>
+          <CardDescription>Operator-wide defaults for live quote delivery and subscription breadth.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-6 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="quote-stream-provider">Provider</Label>
+            <Select
+              value={globalSettings.quoteStreamProvider ?? 'upstox'}
+              onValueChange={(value) => onUpdateSetting('quoteStreamProvider', value)}
+            >
+              <SelectTrigger id="quote-stream-provider">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="upstox">Upstox</SelectItem>
+                <SelectItem value="zerodha_kite">Zerodha Kite</SelectItem>
+                <SelectItem value="none">Disabled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="quote-stream-mode">Mode</Label>
-                <Select
-                  value={globalSettings.quoteStreamMode ?? 'ltpc'}
-                  onValueChange={(value) => onSetGlobalSettings(prev => ({ ...prev!, quoteStreamMode: value as GlobalConfig['quoteStreamMode'] }))}
-                >
-                  <SelectTrigger id="quote-stream-mode">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ltpc">LTPC</SelectItem>
-                    <SelectItem value="full">Full</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500">
-                  LTPC is the efficient default for live paper marks.
-                </p>
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="quote-stream-mode">Mode</Label>
+            <Select
+              value={globalSettings.quoteStreamMode ?? 'ltpc'}
+              onValueChange={(value) => onUpdateSetting('quoteStreamMode', value)}
+            >
+              <SelectTrigger id="quote-stream-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ltpc">LTPC</SelectItem>
+                <SelectItem value="full">Full</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="quote-stream-limit">Watched Symbols Limit</Label>
-                <Input
-                  id="quote-stream-limit"
-                  type="number"
-                  min="1"
-                  max="5000"
-                  value={globalSettings.quoteStreamSymbolLimit ?? 50}
-                  onChange={e => onSetGlobalSettings(prev => ({ ...prev!, quoteStreamSymbolLimit: parseInt(e.target.value, 10) || 50 }))}
-                />
-                <p className="text-xs text-gray-500">
-                  Controls how many symbols the operator console should actively stream.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="space-y-2">
+            <Label htmlFor="quote-stream-limit">Symbol limit</Label>
+            <Input
+              id="quote-stream-limit"
+              type="number"
+              min="1"
+              max="5000"
+              value={globalSettings.quoteStreamSymbolLimit ?? 50}
+              onChange={e => onUpdateSetting('quoteStreamSymbolLimit', parseInt(e.target.value, 10) || 50)}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* Claude AI Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Brain className="w-5 h-5" />
-              Claude AI Settings
-            </CardTitle>
-            <CardDescription>
-              Global Claude AI configuration and limits
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <Label htmlFor="claude-enabled">Enable Claude AI</Label>
-                <p className="text-sm text-gray-600">
-                  Master switch for all Claude AI usage
-                </p>
-              </div>
-              <Switch
-                id="claude-enabled"
-                checked={globalSettings?.claudeUsage?.enabled ?? true}
-                onCheckedChange={(checked) => onUpdateSetting('claudeUsage', 'enabled', checked)}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" />
+            Claude Usage Policy
+          </CardTitle>
+          <CardDescription>Budget and alert defaults for research and review runs.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center gap-3">
+            <Switch
+              id="claude-enabled"
+              checked={globalSettings.claudeEnabled ?? true}
+              onCheckedChange={(checked) => onUpdateSetting('claudeEnabled', checked)}
+            />
+            <Label htmlFor="claude-enabled">Enable Claude-powered operator runs</Label>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="claude-daily-token-limit">Daily token budget</Label>
+              <Input
+                id="claude-daily-token-limit"
+                type="number"
+                min="1000"
+                step="1000"
+                value={globalSettings.claudeDailyTokenLimit ?? 120000}
+                onChange={e => onUpdateSetting('claudeDailyTokenLimit', parseInt(e.target.value, 10) || 120000)}
               />
             </div>
 
-            <Separator />
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="token-limit">Daily Token Limit</Label>
-                <Input
-                  id="token-limit"
-                  type="number"
-                  value={globalSettings?.claudeUsage?.dailyTokenLimit ?? 50000}
-                  onChange={(e) => onUpdateSetting('claudeUsage', 'dailyTokenLimit', parseInt(e.target.value))}
-                  disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cost-threshold">Cost Alert Threshold ($)</Label>
-                <Input
-                  id="cost-threshold"
-                  type="number"
-                  step="0.01"
-                  value={globalSettings?.claudeUsage?.costThreshold ?? 10.00}
-                  onChange={(e) => onUpdateSetting('claudeUsage', 'costThreshold', parseFloat(e.target.value))}
-                  disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Switch
-                id="cost-alerts"
-                checked={globalSettings?.claudeUsage?.costAlerts ?? true}
-                onCheckedChange={(checked) => onUpdateSetting('claudeUsage', 'costAlerts', checked)}
-                disabled={!(globalSettings?.claudeUsage?.enabled ?? true)}
+            <div className="space-y-2">
+              <Label htmlFor="claude-cost-threshold">Cost alert threshold (USD)</Label>
+              <Input
+                id="claude-cost-threshold"
+                type="number"
+                min="1"
+                step="1"
+                value={globalSettings.claudeCostThreshold ?? 10}
+                onChange={e => onUpdateSetting('claudeCostThreshold', parseFloat(e.target.value) || 10)}
               />
-              <Label htmlFor="cost-alerts">Enable cost alerts</Label>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* System Limits */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5" />
-              System Limits
-            </CardTitle>
-            <CardDescription>
-              Configure core system parameters and limits
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <Label htmlFor="max-turns">Max Conversation Turns</Label>
-                <Input
-                  id="max-turns"
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={globalSettings.maxTurns ?? 5}
-                  onChange={e => onSetGlobalSettings(prev => ({...prev!, maxTurns: parseInt(e.target.value)}))}
-                />
-                <p className="text-xs text-gray-500">Maximum number of conversation turns allowed per session</p>
-              </div>
-              <div>
-                <Label htmlFor="risk-tolerance">Risk Tolerance (1-10)</Label>
-                <Input
-                  id="risk-tolerance"
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={globalSettings.riskTolerance ?? 5}
-                  onChange={e => onSetGlobalSettings(prev => ({...prev!, riskTolerance: parseInt(e.target.value)}))}
-                />
-                <p className="text-xs text-gray-500">Higher = more aggressive trading strategies</p>
-              </div>
-              <div>
-                <Label htmlFor="daily-api-limit">Daily API Call Limit</Label>
-                <Input
-                  id="daily-api-limit"
-                  type="number"
-                  min="1"
-                  value={globalSettings.dailyApiLimit ?? 25}
-                  onChange={e => onSetGlobalSettings(prev => ({...prev!, dailyApiLimit: parseInt(e.target.value)}))}
-                />
-                <p className="text-xs text-gray-500">Maximum number of API calls allowed daily</p>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="daily-api-limit">Daily API limit</Label>
+              <Input
+                id="daily-api-limit"
+                type="number"
+                min="1"
+                value={globalSettings.dailyApiLimit ?? 25}
+                onChange={e => onUpdateSetting('dailyApiLimit', parseInt(e.target.value, 10) || 25)}
+              />
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Switch
+              id="claude-cost-alerts"
+              checked={globalSettings.claudeCostAlerts ?? true}
+              onCheckedChange={(checked) => onUpdateSetting('claudeCostAlerts', checked)}
+            />
+            <Label htmlFor="claude-cost-alerts">Raise cost alerts</Label>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

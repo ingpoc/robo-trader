@@ -39,6 +39,8 @@ Use this document when changing Zerodha auth, broker session restore, quote-stre
 - Production redirect placeholder: update `src/services/zerodha_oauth_service.py` before claiming production support
 - A temporary listener on `8010` is acceptable only to receive the browser callback when the development redirect is already configured that way
 - Do not silently change redirect expectations in code, `.env`, and operator instructions independently
+- If the browser callback is handled by a temporary listener on `8010`, treat the long-lived main backend on `8000` as stale until it has explicitly rebound its in-memory broker and quote-stream services to the fresh stored token.
+- Do not claim the stack is ready just because the callback listener succeeded. Broker auth must be valid in the main backend process that serves the dashboard.
 
 ## Account Context
 
@@ -66,6 +68,16 @@ Code-or-runtime-fix-required:
 - token restore accepts expired credentials as ready
 - callback succeeds but the live broker session is not rebound
 - quote stream is disconnected or live marks are not refreshing
+- the temporary callback listener refreshes stored auth but the main backend serving the dashboard is still running an old in-memory broker session
+
+## Main Backend Rebind Rule
+
+- When development OAuth completes on `8010`, verify readiness from the main dashboard backend on `8000`, not from the callback listener.
+- Required truth surfaces after callback:
+  - `GET /api/auth/zerodha/status` on `8000` shows `authenticated: true`
+  - `GET /api/health` on `8000` shows quote stream `ready` and market data `ready`
+  - `GET /api/paper-trading/accounts/{account_id}/positions` on `8000` returns live marks, not `quote_unavailable`
+- If stored auth is fresh but the main backend still reports disconnected quote stream or missing live marks, do not side-step the issue. Rebind or restart the main backend so its in-memory Kite session picks up the fresh token, then verify the three truth surfaces above before resuming operator work.
 
 Do not route around quote-stream or broker-auth blockers and call the system ready.
 

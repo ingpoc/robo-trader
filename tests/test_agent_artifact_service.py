@@ -136,14 +136,81 @@ async def test_discovery_view_keeps_low_confidence_candidates_out_of_auto_resear
     assert discovery.status == "ready"
     assert discovery.candidates[0].symbol == "SBIN"
     assert "promotion confidence threshold" in discovery.blockers[0]
+    assert discovery.candidates[0].lifecycle_state == "fresh_queue"
     assert (
         service._resolve_research_candidate(
             discovery=discovery,
             candidate_id=None,
             symbol=None,
-        )
-        is None
+        ).symbol
+        == "SBIN"
     )
+
+
+@pytest.mark.asyncio
+async def test_discovery_view_surfaces_latest_research_memory_from_learning_store():
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
+    account_manager.get_open_positions.return_value = []
+
+    discovery_service = AsyncMock()
+    discovery_service.get_watchlist.return_value = [
+        {
+            "id": "cand-1",
+            "symbol": "KAYNES",
+            "company_name": "Kaynes Technology",
+            "sector": "Industrials",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.78,
+            "discovery_reason": "Automation tailwind and earnings momentum.",
+        }
+    ]
+    learning_store = SimpleNamespace(
+        get_latest_research_memory=AsyncMock(
+            return_value={
+                "symbol": "KAYNES",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "actionability": "watch_only",
+                "thesis_confidence": 0.31,
+                "analysis_mode": "stale_evidence",
+                "evidence": ["Fresh filing was reviewed in the latest packet."],
+                "source_summary": [
+                    {"source_type": "research_ledger", "label": "Stored packet", "tier": "primary", "freshness": "fresh"},
+                    {"source_type": "technical_context", "label": "Technical context", "tier": "derived", "freshness": "fresh"},
+                ],
+                "market_data_freshness": {"status": "fresh"},
+            }
+        )
+    )
+    learning_service = SimpleNamespace(learning_store=learning_store)
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "stock_discovery_service": discovery_service,
+                "paper_trading_learning_service": learning_service,
+            }
+        )
+    )
+
+    envelope = await service.get_discovery_view("paper_main")
+
+    candidate = envelope.candidates[0]
+    assert candidate.symbol == "KAYNES"
+    assert candidate.last_researched_at
+    assert candidate.last_actionability == "watch_only"
+    assert candidate.last_thesis_confidence == 0.31
+    assert candidate.last_analysis_mode == "stale_evidence"
+    assert candidate.research_freshness == "fresh"
+    assert candidate.fresh_primary_source_count == 1
+    assert candidate.fresh_external_source_count == 0
+    assert candidate.technical_context_available is True
+    assert candidate.market_data_freshness == "fresh"
+    assert candidate.evidence_mode == "stale_evidence"
+    assert candidate.lifecycle_state == "keep_watch"
+    assert candidate.reentry_reason is None
+    assert candidate.last_trigger_type is None
 
 
 @pytest.mark.asyncio
@@ -316,7 +383,7 @@ async def test_research_view_blocks_when_ai_runtime_is_invalid(monkeypatch):
         _invalid_status,
     )
 
-    envelope = await service.get_research_view("paper_main")
+    envelope = await service.get_research_view("paper_main", refresh=True)
 
     assert envelope.status == "blocked"
     assert envelope.research is None
@@ -397,7 +464,7 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
         assert "recent_lessons" in kwargs["prompt"]
         assert "top_lessons" in kwargs["prompt"]
         assert kwargs["allowed_tools"] == []
-        assert kwargs["model"] == "haiku"
+        assert kwargs["model"] == service.MODEL_ROUTE_RESEARCH
         assert kwargs["timeout_seconds"] == service.FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS
         return (
             kwargs["output_model"](
@@ -493,6 +560,7 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
     assert envelope.research.account_id == "paper_main"
     assert envelope.research.analysis_mode == "fresh_evidence"
     assert envelope.research.actionability == "watch_only"
+    assert envelope.research.classification == "keep_watch"
     assert envelope.research.external_evidence_status == "fresh"
     assert envelope.research.screening_confidence == 0.82
     assert envelope.research.thesis_confidence == 0.57
@@ -500,7 +568,197 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
     assert any(item.source_type == "codex_web_research" for item in envelope.research.source_summary)
     assert any(item.reference == "ledger:entry-1" for item in envelope.research.evidence_citations)
     assert any(item.reference == "https://example.com/tcs-news" for item in envelope.research.evidence_citations)
+    assert envelope.loop_summary is not None
+    assert envelope.loop_summary.research_attempt_count == 1
+    assert envelope.loop_summary.queue_exhausted is True
     learning_service.record_research_packet.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_research_view_continues_until_actionable_candidate(monkeypatch):
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(
+        account_id="paper_main",
+        current_balance=100000.0,
+        buying_power=100000.0,
+        monthly_pnl=0.0,
+    )
+    account_manager.get_open_positions.return_value = []
+    account_manager.get_closed_trades.return_value = []
+    account_manager.get_performance_metrics.return_value = {"win_rate": 0.0, "profit_factor": 0.0}
+
+    discovery_service = AsyncMock()
+    discovery_service.get_watchlist.return_value = [
+        {
+            "id": "cand-1",
+            "symbol": "TCS",
+            "company_name": "TCS",
+            "sector": "Technology",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.81,
+            "discovery_reason": "Trend remains constructive.",
+        },
+        {
+            "id": "cand-2",
+            "symbol": "KPITTECH",
+            "company_name": "KPIT Technologies",
+            "sector": "Technology",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.79,
+            "discovery_reason": "Fresh trigger and relative strength improved.",
+        },
+    ]
+
+    capability_service = AsyncMock()
+    capability_service.get_snapshot.return_value = TradingCapabilitySnapshot.build(
+        mode="paper_only",
+        checks=[
+            CapabilityCheck(
+                key="ai_runtime",
+                label="AI Runtime",
+                status=CapabilityStatus.READY,
+                summary="AI runtime is ready.",
+            )
+        ],
+        account_id="paper_main",
+    )
+    learning_service = AsyncMock()
+    learning_service.get_learning_summary.return_value = SimpleNamespace(model_dump=lambda mode="json": {})
+    learning_service.get_symbol_learning_context.return_value = {}
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "stock_discovery_service": discovery_service,
+                "trading_capability_service": capability_service,
+                "paper_trading_learning_service": learning_service,
+            }
+        )
+    )
+
+    async def _valid_status():
+        return SimpleNamespace(is_valid=True)
+
+    monkeypatch.setattr(
+        "src.services.claude_agent.agent_artifact_service.get_claude_status",
+        _valid_status,
+    )
+
+    async def _fake_inputs(*, candidate, **kwargs):
+        source_summary = [
+            {
+                "source_type": "screening",
+                "label": candidate.sector or "Unknown",
+                "timestamp": "2026-03-23T09:00:00+00:00",
+                "freshness": "fresh",
+                "detail": candidate.rationale,
+            },
+            {
+                "source_type": "technical_context",
+                "label": "Recent OHLCV state",
+                "timestamp": "2026-03-23T09:06:00+00:00",
+                "freshness": "fresh",
+                "detail": "Momentum and structure remain available for review.",
+            },
+        ]
+        evidence_citations = []
+        if candidate.symbol == "KPITTECH":
+            source_summary.append(
+                {
+                    "source_type": "company_filing",
+                    "label": "Fresh exchange filing",
+                    "timestamp": "2026-03-23T09:05:00+00:00",
+                    "freshness": "fresh",
+                    "detail": "A fresh catalyst confirms the reentry case.",
+                }
+            )
+            evidence_citations.append(
+                {
+                    "source_type": "company_filing",
+                    "label": "Fresh exchange filing",
+                    "reference": "https://example.com/kpittech-filing",
+                    "freshness": "fresh",
+                    "timestamp": "2026-03-23T09:05:00+00:00",
+                }
+            )
+
+        return {
+            "screening_snapshot": {
+                "candidate_confidence": candidate.confidence,
+                "candidate_priority": candidate.priority,
+                "candidate_rationale": candidate.rationale,
+                "watchlist": {"id": candidate.candidate_id, "symbol": candidate.symbol},
+                "research_ledger": {"symbol": candidate.symbol},
+            },
+            "source_summary": source_summary,
+            "evidence_citations": evidence_citations,
+            "market_data_freshness": {
+                "status": "fresh",
+                "summary": "Quotes are current.",
+                "timestamp": "2026-03-23T09:10:00+00:00",
+                "age_seconds": 45.0,
+                "provider": "zerodha_kite",
+                "has_intraday_quote": True,
+                "has_historical_data": True,
+            },
+        }
+
+    monkeypatch.setattr(service, "_build_focused_research_inputs", AsyncMock(side_effect=_fake_inputs))
+
+    async def _fake_run(**kwargs):
+        symbol = "KPITTECH" if "KPITTECH" in kwargs["prompt"] else "TCS"
+        if symbol == "TCS":
+            return (
+                kwargs["output_model"](
+                    thesis="Interesting but evidence is still thin.",
+                    evidence=["Trend is constructive."],
+                    risks=["Catalyst confirmation is missing."],
+                    invalidation="Break below recent pivot.",
+                    confidence=0.52,
+                    screening_confidence=0.81,
+                    thesis_confidence=0.48,
+                    actionability="watch_only",
+                    analysis_mode="fresh_evidence",
+                    external_evidence_status="partial",
+                    why_now="Screening signal improved but not enough to buy.",
+                    next_step="Keep on watch.",
+                ),
+                {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium", "usage": {"input_tokens": 200, "output_tokens": 120}},
+            )
+        return (
+            kwargs["output_model"](
+                thesis="Fresh trigger and follow-through make the setup actionable.",
+                evidence=["New trigger confirmed.", "Relative strength improved."],
+                risks=["Breakout can still fail."],
+                invalidation="Close back into the base.",
+                confidence=0.78,
+                screening_confidence=0.79,
+                thesis_confidence=0.72,
+                actionability="actionable",
+                analysis_mode="fresh_evidence",
+                external_evidence_status="fresh",
+                why_now="A new trigger improved the probability of follow-through.",
+                next_step="Promote to decision packet.",
+            ),
+            {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium", "usage": {"input_tokens": 240, "output_tokens": 160}},
+        )
+
+    monkeypatch.setattr(service, "_run_structured_role", AsyncMock(side_effect=_fake_run))
+
+    envelope = await service.get_research_view("paper_main", refresh=True)
+
+    assert envelope.status == "ready"
+    assert envelope.research is not None
+    assert envelope.research.symbol == "KPITTECH"
+    assert envelope.research.classification == "actionable_buy_candidate"
+    assert envelope.loop_summary is not None
+    assert envelope.loop_summary.attempted_candidates == ["TCS", "KPITTECH"]
+    assert envelope.loop_summary.research_attempt_count == 2
+    assert envelope.loop_summary.actionable_found_count == 1
+    assert envelope.loop_summary.queue_exhausted is False
+    assert envelope.loop_summary.termination_reason == "actionable_found"
+    assert learning_service.record_research_packet.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -1500,7 +1758,9 @@ async def test_run_structured_role_recreates_and_cleans_up_client(monkeypatch):
     assert provider_metadata["provider"] == "codex"
     runtime_client.run_focused_research.assert_awaited_once()
     payload = runtime_client.run_focused_research.await_args.args[0]
-    assert payload["reasoning"] == "low"
+    assert payload["reasoning"] == "medium"
+    assert payload["model"] == "gpt-5.4"
+    assert payload["prompt_cache_key"] == "paper-trading:research:research"
     assert "The JSON must validate against this schema" not in payload["prompt"]
     assert payload["output_schema"]["additionalProperties"] is False
     assert "required" in payload["output_schema"]

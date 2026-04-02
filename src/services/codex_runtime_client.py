@@ -36,14 +36,19 @@ class CodexRuntimeClient:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
 
+    def _runtime_validation_timeout(self, timeout_seconds: Optional[float]) -> float:
+        return timeout_seconds or min(self.timeout_seconds, 45.0)
+
     async def get_health(self) -> Dict[str, Any]:
         return await self._request_json("GET", "/health", timeout_seconds=min(self.timeout_seconds, 20.0))
 
     async def validate_runtime(self, *, timeout_seconds: Optional[float] = None) -> Dict[str, Any]:
+        request_timeout = self._runtime_validation_timeout(timeout_seconds)
         return await self._request_json(
             "POST",
             "/v1/runtime/validate",
-            timeout_seconds=timeout_seconds or min(self.timeout_seconds, 20.0),
+            json_body={"timeout_seconds": request_timeout},
+            timeout_seconds=request_timeout,
         )
 
     async def run_structured(
@@ -54,6 +59,7 @@ class CodexRuntimeClient:
         output_schema: Dict[str, Any],
         model: Optional[str] = None,
         reasoning: Optional[str] = None,
+        prompt_cache_key: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
         web_search_enabled: bool = False,
         web_search_mode: Optional[str] = None,
@@ -71,6 +77,7 @@ class CodexRuntimeClient:
                 "output_schema": normalized_schema,
                 "model": model,
                 "reasoning": reasoning,
+                "prompt_cache_key": prompt_cache_key,
                 "timeout_seconds": timeout_seconds or self.timeout_seconds,
                 "web_search_enabled": web_search_enabled,
                 "web_search_mode": web_search_mode,
