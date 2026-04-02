@@ -129,13 +129,19 @@ async def register_sdk_services(container: 'DependencyContainer') -> None:
     async def create_prompt_optimization_service():
         from src.services.prompt_optimization_service import PromptOptimizationService
         event_bus = await container.get("event_bus")
-        market_research_service = await container.get("claude_market_research_service")
+        market_research_service = await container.get("ai_market_research_service")
+        runtime_client = await container.get("codex_runtime_client")
 
         prompt_service = PromptOptimizationService(
-            config=getattr(container.config, 'prompt_optimization', {}),
+            config={
+                **getattr(container.config, 'prompt_optimization', {}),
+                "model": container.config.ai_runtime.codex_model,
+                "reasoning": container.config.ai_runtime.codex_reasoning_deep,
+            },
             event_bus=event_bus,
             container=container,
             market_research_service=market_research_service,
+            runtime_client=runtime_client,
         )
         await prompt_service.initialize()
         return prompt_service

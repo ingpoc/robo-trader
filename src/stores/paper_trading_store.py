@@ -2,13 +2,20 @@
 
 import logging
 import asyncio
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
 import aiosqlite
 
 from ..models.paper_trading import (
-    PaperTradingAccount, PaperTrade, TradeType, TradeStatus, AccountType, RiskLevel
+    PaperTradingAccount,
+    PaperTradingAccountPolicy,
+    PaperTrade,
+    TradeType,
+    TradeStatus,
+    AccountType,
+    RiskLevel,
 )
 
 logger = logging.getLogger(__name__)
@@ -16,6 +23,26 @@ logger = logging.getLogger(__name__)
 
 class PaperTradingStore:
     """Async store for paper trading data."""
+
+    REQUIRED_TRADE_COLUMNS = {
+        "trade_id",
+        "account_id",
+        "symbol",
+        "trade_type",
+        "quantity",
+        "entry_price",
+        "entry_timestamp",
+        "strategy_rationale",
+        "status",
+    }
+    CANONICAL_OPEN_STATUSES = (TradeStatus.OPEN.value,)
+    CANONICAL_CLOSED_STATUSES = (TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value)
+    VALID_TRADE_STATUSES = {
+        TradeStatus.OPEN.value,
+        TradeStatus.CLOSED.value,
+        TradeStatus.STOPPED_OUT.value,
+        TradeStatus.CANCELLED.value,
+    }
 
     def __init__(self, db_connection):
         """Initialize store with database connection."""
@@ -52,6 +79,21 @@ class PaperTradingStore:
                 )
             """)
 
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS paper_trading_account_policy (
+                    account_id TEXT PRIMARY KEY,
+                    execution_mode TEXT NOT NULL DEFAULT 'operator_confirmed_execution',
+                    max_open_positions INTEGER NOT NULL DEFAULT 8,
+                    max_new_entries_per_day INTEGER NOT NULL DEFAULT 3,
+                    max_deployed_capital_pct REAL NOT NULL DEFAULT 80.0,
+                    default_stop_loss_pct REAL NOT NULL DEFAULT 5.0,
+                    default_target_pct REAL NOT NULL DEFAULT 10.0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(account_id) REFERENCES paper_trading_accounts(account_id)
+                )
+            """)
+
             # Create trades table with current schema
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS paper_trades (
@@ -76,8 +118,72 @@ class PaperTradingStore:
                 )
             """)
 
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS manual_run_audit (
+                    run_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    route_name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    status_reason TEXT,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    duration_ms INTEGER NOT NULL,
+                    dependency_state TEXT NOT NULL,
+                    provider_metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS automation_runs (
+                    run_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    job_type TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    runtime_session_id TEXT,
+                    status TEXT NOT NULL,
+                    status_reason TEXT NOT NULL DEFAULT '',
+                    block_reason TEXT NOT NULL DEFAULT '',
+                    schedule_source TEXT NOT NULL DEFAULT 'manual',
+                    trigger_reason TEXT NOT NULL DEFAULT '',
+                    input_digest TEXT NOT NULL DEFAULT '',
+                    provider_metadata TEXT NOT NULL DEFAULT '{}',
+                    tool_trace TEXT NOT NULL DEFAULT '[]',
+                    artifact_path TEXT,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    timeout_at TEXT,
+                    duration_ms INTEGER,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS automation_job_controls (
+                    job_type TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    schedule_minutes INTEGER NOT NULL DEFAULT 60,
+                    last_run_at TEXT,
+                    next_run_at TEXT,
+                    paused_at TEXT,
+                    pause_reason TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS automation_global_control (
+                    control_key TEXT PRIMARY KEY,
+                    control_value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
             # Check and migrate legacy schemas
             await self._migrate_legacy_schema(db)
+            await self._normalize_trade_statuses(db)
+            await self._validate_trade_schema_and_statuses(db)
 
             # Create indexes (these will only succeed if columns exist)
             await self._create_indexes_safely(db)
@@ -99,7 +205,22 @@ class PaperTradingStore:
                 # Check existing columns
                 cursor = await db.execute("PRAGMA table_info(paper_trades)")
                 columns = await cursor.fetchall()
+                await cursor.close()
                 column_names = [col[1] for col in columns]
+
+                legacy_alias_columns = {"id", "side", "entry_date", "entry_reason", "strategy_tag", "exit_date"}
+                requires_canonical_rebuild = bool(
+                    legacy_alias_columns.intersection(column_names)
+                    or (self.REQUIRED_TRADE_COLUMNS - set(column_names))
+                )
+
+                if requires_canonical_rebuild:
+                    logger.info("Rebuilding legacy paper_trades table into canonical schema")
+                    await self._rebuild_legacy_trades_table(db, set(column_names))
+                    cursor = await db.execute("PRAGMA table_info(paper_trades)")
+                    columns = await cursor.fetchall()
+                    await cursor.close()
+                    column_names = [col[1] for col in columns]
 
                 # Migration for account_id column
                 if 'account_id' not in column_names:
@@ -122,6 +243,7 @@ class PaperTradingStore:
                 # Migration for other missing columns that might be in legacy schemas
                 required_columns = {
                     'realized_pnl': 'REAL DEFAULT 0.0',
+                    'realized_pnl_pct': 'REAL',
                     'unrealized_pnl': 'REAL DEFAULT 0.0',
                     'status': 'TEXT NOT NULL DEFAULT "open"',
                     'stop_loss': 'REAL',
@@ -142,6 +264,216 @@ class PaperTradingStore:
             logger.warning(f"Schema migration failed (non-critical): {e}")
             # Continue anyway - the table might be fine or this might be a fresh install
 
+    @staticmethod
+    def _legacy_column_expression(
+        available_columns: set[str],
+        *candidates: str,
+        default_sql: str,
+        lowercase: bool = False,
+    ) -> str:
+        expressions = [name for name in candidates if name in available_columns]
+        if expressions:
+            expression = "COALESCE(" + ", ".join(expressions) + f", {default_sql})"
+        else:
+            expression = default_sql
+        if lowercase:
+            return f"LOWER({expression})"
+        return expression
+
+    async def _rebuild_legacy_trades_table(self, db, available_columns: set[str]) -> None:
+        """Upgrade legacy trade storage into the canonical paper_trades schema."""
+        await db.execute("ALTER TABLE paper_trades RENAME TO paper_trades_legacy_backup")
+        await db.execute("""
+            CREATE TABLE paper_trades (
+                trade_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                trade_type TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                entry_price REAL NOT NULL,
+                entry_timestamp TEXT NOT NULL,
+                strategy_rationale TEXT NOT NULL,
+                claude_session_id TEXT,
+                exit_price REAL,
+                exit_timestamp TEXT,
+                realized_pnl REAL,
+                unrealized_pnl REAL,
+                status TEXT NOT NULL DEFAULT 'open',
+                stop_loss REAL,
+                target_price REAL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        trade_id_expr = self._legacy_column_expression(
+            available_columns,
+            "trade_id",
+            "id",
+            default_sql="'trade_legacy_' || lower(hex(randomblob(8)))",
+        )
+        account_id_expr = self._legacy_column_expression(
+            available_columns,
+            "account_id",
+            default_sql="'paper_swing_main'",
+        )
+        trade_type_expr = self._legacy_column_expression(
+            available_columns,
+            "trade_type",
+            "side",
+            default_sql="'buy'",
+            lowercase=True,
+        )
+        entry_timestamp_expr = self._legacy_column_expression(
+            available_columns,
+            "entry_timestamp",
+            "entry_date",
+            "created_at",
+            default_sql="CURRENT_TIMESTAMP",
+        )
+        strategy_rationale_expr = self._legacy_column_expression(
+            available_columns,
+            "strategy_rationale",
+            "entry_reason",
+            "strategy_tag",
+            default_sql="''",
+        )
+        exit_timestamp_expr = self._legacy_column_expression(
+            available_columns,
+            "exit_timestamp",
+            "exit_date",
+            default_sql="NULL",
+        )
+        status_expr = self._legacy_column_expression(
+            available_columns,
+            "status",
+            default_sql="'open'",
+            lowercase=True,
+        )
+        created_at_expr = self._legacy_column_expression(
+            available_columns,
+            "created_at",
+            "entry_timestamp",
+            "entry_date",
+            default_sql="CURRENT_TIMESTAMP",
+        )
+        updated_at_expr = self._legacy_column_expression(
+            available_columns,
+            "updated_at",
+            "created_at",
+            "entry_timestamp",
+            "entry_date",
+            default_sql="CURRENT_TIMESTAMP",
+        )
+        claude_session_expr = self._legacy_column_expression(
+            available_columns,
+            "claude_session_id",
+            default_sql="NULL",
+        )
+        exit_price_expr = self._legacy_column_expression(
+            available_columns,
+            "exit_price",
+            default_sql="NULL",
+        )
+        realized_pnl_expr = self._legacy_column_expression(
+            available_columns,
+            "realized_pnl",
+            default_sql="NULL",
+        )
+        unrealized_pnl_expr = self._legacy_column_expression(
+            available_columns,
+            "unrealized_pnl",
+            default_sql="NULL",
+        )
+        stop_loss_expr = self._legacy_column_expression(
+            available_columns,
+            "stop_loss",
+            default_sql="NULL",
+        )
+        target_price_expr = self._legacy_column_expression(
+            available_columns,
+            "target_price",
+            default_sql="NULL",
+        )
+
+        await db.execute(
+            f"""
+            INSERT INTO paper_trades (
+                trade_id, account_id, symbol, trade_type, quantity, entry_price,
+                entry_timestamp, strategy_rationale, claude_session_id, exit_price,
+                exit_timestamp, realized_pnl, unrealized_pnl, status, stop_loss,
+                target_price, created_at, updated_at
+            )
+            SELECT
+                {trade_id_expr},
+                {account_id_expr},
+                symbol,
+                {trade_type_expr},
+                quantity,
+                entry_price,
+                {entry_timestamp_expr},
+                {strategy_rationale_expr},
+                {claude_session_expr},
+                {exit_price_expr},
+                {exit_timestamp_expr},
+                {realized_pnl_expr},
+                {unrealized_pnl_expr},
+                {status_expr},
+                {stop_loss_expr},
+                {target_price_expr},
+                {created_at_expr},
+                {updated_at_expr}
+            FROM paper_trades_legacy_backup
+            """
+        )
+        await db.execute("DROP TABLE paper_trades_legacy_backup")
+
+    async def _normalize_trade_statuses(self, db) -> None:
+        """Canonicalize legacy trade statuses to lowercase enum values."""
+        try:
+            cursor = await db.execute("SELECT DISTINCT status FROM paper_trades")
+            statuses = await cursor.fetchall()
+            await cursor.close()
+        except Exception as exc:
+            logger.warning("Unable to inspect trade statuses during startup migration: %s", exc)
+            return
+
+        for row in statuses:
+            raw_status = str((row or [""])[0] or "").strip()
+            if not raw_status:
+                continue
+            canonical = raw_status.lower()
+            if raw_status == canonical:
+                continue
+            logger.info("Normalizing legacy paper trade status %s -> %s", raw_status, canonical)
+            await db.execute(
+                "UPDATE paper_trades SET status = ? WHERE status = ?",
+                (canonical, raw_status),
+            )
+
+    async def _validate_trade_schema_and_statuses(self, db) -> None:
+        """Fail loud when canonical trade storage is not decision-safe."""
+        cursor = await db.execute("PRAGMA table_info(paper_trades)")
+        columns = await cursor.fetchall()
+        await cursor.close()
+        column_names = {str(column[1]) for column in columns}
+        missing_columns = sorted(self.REQUIRED_TRADE_COLUMNS - column_names)
+        if missing_columns:
+            raise RuntimeError(
+                "paper_trades schema is missing required canonical columns: "
+                + ", ".join(missing_columns)
+            )
+
+        cursor = await db.execute("SELECT DISTINCT LOWER(status) FROM paper_trades")
+        statuses = {str((row or [""])[0] or "").strip() for row in await cursor.fetchall()}
+        await cursor.close()
+        unexpected = sorted(status for status in statuses if status and status not in self.VALID_TRADE_STATUSES)
+        if unexpected:
+            raise RuntimeError(
+                "paper_trades contains unsupported status values after startup migration: "
+                + ", ".join(unexpected)
+            )
+
     async def _create_indexes_safely(self, db) -> None:
         """Create indexes safely, handling cases where columns might not exist."""
         try:
@@ -161,6 +493,30 @@ class PaperTradingStore:
             """)
         except Exception as e:
             logger.warning(f"Failed to create symbol index: {e}")
+
+        try:
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_manual_run_audit_account_started
+                ON manual_run_audit(account_id, started_at DESC)
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to create manual run audit index: {e}")
+
+        try:
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_automation_runs_account_started
+                ON automation_runs(account_id, started_at DESC)
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to create automation run history index: {e}")
+
+        try:
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_automation_runs_account_job_status
+                ON automation_runs(account_id, job_type, status)
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to create automation run active index: {e}")
 
     async def create_account(
         self,
@@ -194,6 +550,7 @@ class PaperTradingStore:
                 )
             )
             await cursor.close()
+            await self._ensure_account_policy_unlocked(account_id)
             await self.db_connection.commit()
 
             logger.info(f"Created paper trading account: {account_id}")
@@ -216,6 +573,171 @@ class PaperTradingStore:
         """Get account by ID."""
         async with self._lock:
             return await self._get_account_unlocked(account_id)
+
+    async def _ensure_account_policy_unlocked(self, account_id: str) -> Optional[PaperTradingAccountPolicy]:
+        """Create a default policy row for an account when missing."""
+        account = await self._get_account_unlocked(account_id)
+        if not account:
+            return None
+
+        self.db_connection.row_factory = aiosqlite.Row
+        cursor = await self.db_connection.execute(
+            "SELECT * FROM paper_trading_account_policy WHERE account_id = ?",
+            (account_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        if row:
+            return PaperTradingAccountPolicy.from_dict(
+                {
+                    **dict(row),
+                    "per_trade_exposure_pct": float(account.max_position_size),
+                    "max_portfolio_risk_pct": float(account.max_portfolio_risk),
+                    "risk_level": account.risk_level.value,
+                }
+            )
+
+        now = datetime.now(timezone.utc).isoformat()
+        await self.db_connection.execute(
+            """
+            INSERT INTO paper_trading_account_policy (
+                account_id,
+                execution_mode,
+                max_open_positions,
+                max_new_entries_per_day,
+                max_deployed_capital_pct,
+                default_stop_loss_pct,
+                default_target_pct,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                account_id,
+                "operator_confirmed_execution",
+                8,
+                3,
+                80.0,
+                5.0,
+                10.0,
+                now,
+                now,
+            ),
+        )
+
+        return PaperTradingAccountPolicy(
+            account_id=account_id,
+            execution_mode="operator_confirmed_execution",
+            max_open_positions=8,
+            max_new_entries_per_day=3,
+            max_deployed_capital_pct=80.0,
+            default_stop_loss_pct=5.0,
+            default_target_pct=10.0,
+            per_trade_exposure_pct=float(account.max_position_size),
+            max_portfolio_risk_pct=float(account.max_portfolio_risk),
+            risk_level=account.risk_level.value,
+            created_at=now,
+            updated_at=now,
+        )
+
+    async def get_account_policy(self, account_id: str) -> Optional[PaperTradingAccountPolicy]:
+        """Return merged account policy from policy storage and account risk fields."""
+        async with self._lock:
+            policy = await self._ensure_account_policy_unlocked(account_id)
+            if policy is None:
+                return None
+            await self.db_connection.commit()
+            return policy
+
+    async def update_account_policy(self, account_id: str, policy_data: Dict[str, Any]) -> Optional[PaperTradingAccountPolicy]:
+        """Update merged account policy and account-level risk fields."""
+        async with self._lock:
+            account = await self._get_account_unlocked(account_id)
+            if account is None:
+                return None
+
+            policy = await self._ensure_account_policy_unlocked(account_id)
+            if policy is None:
+                return None
+
+            now = datetime.now(timezone.utc).isoformat()
+            next_execution_mode = str(policy_data.get("execution_mode", policy.execution_mode) or policy.execution_mode)
+            next_max_open_positions = int(policy_data.get("max_open_positions", policy.max_open_positions) or policy.max_open_positions)
+            next_max_new_entries_per_day = int(
+                policy_data.get("max_new_entries_per_day", policy.max_new_entries_per_day) or policy.max_new_entries_per_day
+            )
+            next_max_deployed_capital_pct = float(
+                policy_data.get("max_deployed_capital_pct", policy.max_deployed_capital_pct) or policy.max_deployed_capital_pct
+            )
+            next_default_stop_loss_pct = float(
+                policy_data.get("default_stop_loss_pct", policy.default_stop_loss_pct) or policy.default_stop_loss_pct
+            )
+            next_default_target_pct = float(
+                policy_data.get("default_target_pct", policy.default_target_pct) or policy.default_target_pct
+            )
+            next_per_trade_exposure_pct = float(
+                policy_data.get("per_trade_exposure_pct", account.max_position_size) or account.max_position_size
+            )
+            next_max_portfolio_risk_pct = float(
+                policy_data.get("max_portfolio_risk_pct", account.max_portfolio_risk) or account.max_portfolio_risk
+            )
+            next_risk_level = str(policy_data.get("risk_level", account.risk_level.value) or account.risk_level.value)
+
+            await self.db_connection.execute(
+                """
+                UPDATE paper_trading_accounts
+                SET risk_level = ?, max_position_size = ?, max_portfolio_risk = ?, updated_at = ?
+                WHERE account_id = ?
+                """,
+                (
+                    next_risk_level,
+                    next_per_trade_exposure_pct,
+                    next_max_portfolio_risk_pct,
+                    now,
+                    account_id,
+                ),
+            )
+
+            await self.db_connection.execute(
+                """
+                INSERT INTO paper_trading_account_policy (
+                    account_id,
+                    execution_mode,
+                    max_open_positions,
+                    max_new_entries_per_day,
+                    max_deployed_capital_pct,
+                    default_stop_loss_pct,
+                    default_target_pct,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(
+                    (SELECT created_at FROM paper_trading_account_policy WHERE account_id = ?), ?
+                ), ?)
+                ON CONFLICT(account_id) DO UPDATE SET
+                    execution_mode = excluded.execution_mode,
+                    max_open_positions = excluded.max_open_positions,
+                    max_new_entries_per_day = excluded.max_new_entries_per_day,
+                    max_deployed_capital_pct = excluded.max_deployed_capital_pct,
+                    default_stop_loss_pct = excluded.default_stop_loss_pct,
+                    default_target_pct = excluded.default_target_pct,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    account_id,
+                    next_execution_mode,
+                    next_max_open_positions,
+                    next_max_new_entries_per_day,
+                    next_max_deployed_capital_pct,
+                    next_default_stop_loss_pct,
+                    next_default_target_pct,
+                    account_id,
+                    now,
+                    now,
+                ),
+            )
+
+            await self.db_connection.commit()
+            return await self._ensure_account_policy_unlocked(account_id)
 
     async def get_all_accounts(self) -> List[PaperTradingAccount]:
         """Get all paper trading accounts."""
@@ -255,6 +777,10 @@ class PaperTradingStore:
             await self.db_connection.execute(
                 "DELETE FROM paper_trading_accounts WHERE account_id = ?",
                 (account_id,)
+            )
+            await self.db_connection.execute(
+                "DELETE FROM paper_trading_account_policy WHERE account_id = ?",
+                (account_id,),
             )
             await self.db_connection.commit()
             logger.info(f"Deleted paper trading account: {account_id}")
@@ -334,7 +860,7 @@ class PaperTradingStore:
         """Get all open trades for account."""
         self.db_connection.row_factory = aiosqlite.Row
         cursor = await self.db_connection.execute(
-            "SELECT * FROM paper_trades WHERE account_id = ? AND status = ?",
+            "SELECT * FROM paper_trades WHERE account_id = ? AND LOWER(status) = ?",
             (account_id, TradeStatus.OPEN.value)
         )
         rows = await cursor.fetchall()
@@ -364,7 +890,7 @@ class PaperTradingStore:
                 SET stop_loss = COALESCE(?, stop_loss),
                     target_price = COALESCE(?, target_price),
                     updated_at = ?
-                WHERE trade_id = ? AND account_id = ? AND status = ?
+                WHERE trade_id = ? AND account_id = ? AND LOWER(status) = ?
                 """,
                 (
                     stop_loss,
@@ -394,6 +920,7 @@ class PaperTradingStore:
             'exit_price': row.get('exit_price'),
             'exit_timestamp': row.get('exit_timestamp') or row.get('exit_date'),
             'realized_pnl': row.get('realized_pnl'),
+            'realized_pnl_pct': row.get('realized_pnl_pct'),
             'unrealized_pnl': row.get('unrealized_pnl'),
             'status': (row.get('status') or 'open').lower(),
             'stop_loss': row.get('stop_loss'),
@@ -443,15 +970,20 @@ class PaperTradingStore:
         """Close a trade."""
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
+            existing_trade = await self._get_trade_unlocked(trade_id)
+            realized_pnl_pct = 0.0
+            if existing_trade and existing_trade.entry_price and existing_trade.quantity:
+                cost_basis = existing_trade.entry_price * existing_trade.quantity
+                realized_pnl_pct = (realized_pnl / cost_basis) * 100 if cost_basis else 0.0
 
             cursor = await self.db_connection.execute(
                 """
                 UPDATE paper_trades
-                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?,
+                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?, realized_pnl_pct = ?,
                     status = ?, updated_at = ?
                 WHERE trade_id = ?
                 """,
-                (exit_price, now, realized_pnl, TradeStatus.CLOSED.value, now, trade_id)
+                (exit_price, now, realized_pnl, realized_pnl_pct, TradeStatus.CLOSED.value, now, trade_id)
             )
             await cursor.close()
             await self.db_connection.commit()
@@ -462,15 +994,20 @@ class PaperTradingStore:
         """Mark trade as stopped out."""
         async with self._lock:
             now = datetime.now(timezone.utc).isoformat()
+            existing_trade = await self._get_trade_unlocked(trade_id)
+            realized_pnl_pct = 0.0
+            if existing_trade and existing_trade.entry_price and existing_trade.quantity:
+                cost_basis = existing_trade.entry_price * existing_trade.quantity
+                realized_pnl_pct = (realized_pnl / cost_basis) * 100 if cost_basis else 0.0
 
             cursor = await self.db_connection.execute(
                 """
                 UPDATE paper_trades
-                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?,
+                SET exit_price = ?, exit_timestamp = ?, realized_pnl = ?, realized_pnl_pct = ?,
                     status = ?, updated_at = ?
                 WHERE trade_id = ?
                 """,
-                (exit_price, now, realized_pnl, TradeStatus.STOPPED_OUT.value, now, trade_id)
+                (exit_price, now, realized_pnl, realized_pnl_pct, TradeStatus.STOPPED_OUT.value, now, trade_id)
             )
             await cursor.close()
             await self.db_connection.commit()
@@ -522,7 +1059,7 @@ class PaperTradingStore:
             """
             SELECT COALESCE(SUM(realized_pnl), 0) as total
             FROM paper_trades
-            WHERE account_id = ? AND status IN (?, ?) AND exit_timestamp >= ?
+            WHERE account_id = ? AND LOWER(status) IN (?, ?) AND exit_timestamp >= ?
             """,
             (account_id, TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value, today)
         )
@@ -563,7 +1100,7 @@ class PaperTradingStore:
         """Get closed trades for account with optional filters."""
         query = """
             SELECT * FROM paper_trades
-            WHERE account_id = ? AND status IN (?, ?)
+            WHERE account_id = ? AND LOWER(status) IN (?, ?)
         """
         params = [account_id, TradeStatus.CLOSED.value, TradeStatus.STOPPED_OUT.value]
 
@@ -584,6 +1121,306 @@ class PaperTradingStore:
         rows = await cursor.fetchall()
         await cursor.close()
         return [PaperTrade.from_dict(self._normalize_trade_row(dict(row))) for row in rows]
+
+    async def record_manual_run_audit(
+        self,
+        *,
+        run_id: str,
+        account_id: str,
+        route_name: str,
+        status: str,
+        status_reason: str,
+        started_at: str,
+        completed_at: str,
+        duration_ms: int,
+        dependency_state: Dict[str, Any],
+        provider_metadata: Dict[str, Any],
+    ) -> None:
+        """Persist audit metadata for explicit operator-triggered runs."""
+        async with self._lock:
+            now = datetime.now(timezone.utc).isoformat()
+            cursor = await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO manual_run_audit (
+                    run_id, account_id, route_name, status, status_reason,
+                    started_at, completed_at, duration_ms, dependency_state,
+                    provider_metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    account_id,
+                    route_name,
+                    status,
+                    status_reason,
+                    started_at,
+                    completed_at,
+                    duration_ms,
+                    json.dumps(dependency_state or {}),
+                    json.dumps(provider_metadata or {}),
+                    now,
+                ),
+            )
+            await cursor.close()
+            await self.db_connection.commit()
+
+    async def get_manual_run_audit_entries(
+        self,
+        account_id: str,
+        *,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Return recent manual-run audit entries for the account."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                """
+                SELECT *
+                FROM manual_run_audit
+                WHERE account_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (account_id, limit),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+
+        entries: List[Dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            for field in ("dependency_state", "provider_metadata"):
+                raw_value = item.get(field)
+                if isinstance(raw_value, str) and raw_value.strip():
+                    try:
+                        item[field] = json.loads(raw_value)
+                    except json.JSONDecodeError:
+                        item[field] = {"raw": raw_value}
+                elif raw_value is None:
+                    item[field] = {}
+            entries.append(item)
+        return entries
+
+    async def create_automation_run(self, entry: Dict[str, Any]) -> None:
+        """Persist a new automation run record."""
+        async with self._lock:
+            await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO automation_runs (
+                    run_id, account_id, job_type, provider, runtime_session_id, status,
+                    status_reason, block_reason, schedule_source, trigger_reason, input_digest,
+                    provider_metadata, tool_trace, artifact_path, started_at, completed_at,
+                    timeout_at, duration_ms, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry["run_id"],
+                    entry["account_id"],
+                    entry["job_type"],
+                    entry["provider"],
+                    entry.get("runtime_session_id"),
+                    entry["status"],
+                    entry.get("status_reason", ""),
+                    entry.get("block_reason", ""),
+                    entry.get("schedule_source", "manual"),
+                    entry.get("trigger_reason", ""),
+                    entry.get("input_digest", ""),
+                    json.dumps(entry.get("provider_metadata") or {}),
+                    json.dumps(entry.get("tool_trace") or []),
+                    entry.get("artifact_path"),
+                    entry["started_at"],
+                    entry.get("completed_at"),
+                    entry.get("timeout_at"),
+                    entry.get("duration_ms"),
+                    entry["created_at"],
+                    entry["updated_at"],
+                ),
+            )
+            await self.db_connection.commit()
+
+    async def update_automation_run(self, run_id: str, updates: Dict[str, Any]) -> None:
+        """Update an existing automation run record."""
+        allowed = {
+            "runtime_session_id",
+            "status",
+            "status_reason",
+            "block_reason",
+            "provider_metadata",
+            "tool_trace",
+            "artifact_path",
+            "completed_at",
+            "timeout_at",
+            "duration_ms",
+            "updated_at",
+        }
+        columns = []
+        params: List[Any] = []
+        for key, value in updates.items():
+            if key not in allowed:
+                continue
+            columns.append(f"{key} = ?")
+            if key in {"provider_metadata", "tool_trace"}:
+                params.append(json.dumps(value or ({} if key == "provider_metadata" else [])))
+            else:
+                params.append(value)
+        if not columns:
+            return
+        params.append(run_id)
+        async with self._lock:
+            await self.db_connection.execute(
+                f"UPDATE automation_runs SET {', '.join(columns)} WHERE run_id = ?",
+                tuple(params),
+            )
+            await self.db_connection.commit()
+
+    async def get_automation_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Return a single automation run record."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT * FROM automation_runs WHERE run_id = ?",
+                (run_id,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return None
+        return self._decode_automation_run_row(dict(row))
+
+    async def list_automation_runs(self, account_id: str, *, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return recent automation runs for the account."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                """
+                SELECT *
+                FROM automation_runs
+                WHERE account_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (account_id, limit),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+        return [self._decode_automation_run_row(dict(row)) for row in rows]
+
+    async def get_active_automation_run(self, account_id: str, job_type: str) -> Optional[Dict[str, Any]]:
+        """Return an active queued/in-progress automation run if present."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                """
+                SELECT *
+                FROM automation_runs
+                WHERE account_id = ? AND job_type = ? AND status IN ('queued', 'in_progress')
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (account_id, job_type),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return None
+        return self._decode_automation_run_row(dict(row))
+
+    async def set_automation_global_pause(self, paused: bool, *, reason: str = "") -> None:
+        """Persist the global automation pause state."""
+        async with self._lock:
+            now = datetime.now(timezone.utc).isoformat()
+            await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO automation_global_control (control_key, control_value, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                ("global_pause", json.dumps({"paused": paused, "reason": reason}), now),
+            )
+            await self.db_connection.commit()
+
+    async def get_automation_global_pause(self) -> Dict[str, Any]:
+        """Return the global automation pause state."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT control_value, updated_at FROM automation_global_control WHERE control_key = ?",
+                ("global_pause",),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return {"paused": False, "reason": "", "updated_at": None}
+        payload = json.loads(row["control_value"]) if row["control_value"] else {"paused": False, "reason": ""}
+        payload["updated_at"] = row["updated_at"]
+        return payload
+
+    async def upsert_automation_job_control(self, entry: Dict[str, Any]) -> None:
+        """Create or update per-job automation controls."""
+        async with self._lock:
+            await self.db_connection.execute(
+                """
+                INSERT OR REPLACE INTO automation_job_controls (
+                    job_type, enabled, schedule_minutes, last_run_at, next_run_at,
+                    paused_at, pause_reason, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry["job_type"],
+                    1 if entry.get("enabled", True) else 0,
+                    int(entry.get("schedule_minutes", 60)),
+                    entry.get("last_run_at"),
+                    entry.get("next_run_at"),
+                    entry.get("paused_at"),
+                    entry.get("pause_reason", ""),
+                    entry["updated_at"],
+                ),
+            )
+            await self.db_connection.commit()
+
+    async def get_automation_job_control(self, job_type: str) -> Optional[Dict[str, Any]]:
+        """Return a single per-job automation control row."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT * FROM automation_job_controls WHERE job_type = ?",
+                (job_type,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+        if not row:
+            return None
+        item = dict(row)
+        item["enabled"] = bool(item.get("enabled", 1))
+        return item
+
+    async def list_automation_job_controls(self) -> List[Dict[str, Any]]:
+        """Return all per-job automation controls."""
+        async with self._lock:
+            self.db_connection.row_factory = aiosqlite.Row
+            cursor = await self.db_connection.execute(
+                "SELECT * FROM automation_job_controls ORDER BY job_type ASC"
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+        items: List[Dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["enabled"] = bool(item.get("enabled", 1))
+            items.append(item)
+        return items
+
+    @staticmethod
+    def _decode_automation_run_row(item: Dict[str, Any]) -> Dict[str, Any]:
+        for field, fallback in (("provider_metadata", {}), ("tool_trace", [])):
+            raw_value = item.get(field)
+            if isinstance(raw_value, str) and raw_value.strip():
+                try:
+                    item[field] = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    item[field] = fallback
+            elif raw_value is None:
+                item[field] = fallback
+        return item
 
     async def calculate_daily_performance_metrics(
         self,
@@ -657,7 +1494,7 @@ class PaperTradingStore:
             cursor = await self.db_connection.execute(
                 """
                 SELECT * FROM paper_trades
-                WHERE account_id = ? AND status = ?
+                WHERE account_id = ? AND LOWER(status) = ?
                 ORDER BY entry_timestamp DESC
                 """,
                 (account_id, TradeStatus.OPEN.value),
@@ -709,7 +1546,7 @@ class PaperTradingStore:
                 """
                 SELECT * FROM paper_trades
                 WHERE account_id = ?
-                  AND status IN (?, ?)
+                  AND LOWER(status) IN (?, ?)
                   AND exit_timestamp >= ?
                   AND exit_timestamp < ?
                 ORDER BY exit_timestamp DESC

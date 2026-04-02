@@ -17,9 +17,19 @@ class PerformanceCalculator:
         if timestamp is None:
             return None
         if isinstance(timestamp, datetime):
-            return timestamp
+            return (
+                timestamp.astimezone(timezone.utc)
+                if timestamp.tzinfo is not None
+                else timestamp.replace(tzinfo=timezone.utc)
+            )
         if isinstance(timestamp, str):
-            return datetime.fromisoformat(timestamp)
+            text = timestamp.strip()
+            if not text:
+                return None
+            if text.endswith("Z"):
+                text = f"{text[:-1]}+00:00"
+            parsed = datetime.fromisoformat(text)
+            return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
         raise TypeError(f"Unsupported timestamp type: {type(timestamp)!r}")
 
     @staticmethod

@@ -1,225 +1,161 @@
 """
 Feature Extractor Service
 
-Replaces free-form "should I buy?" Claude prompts with specific factual questions.
-Each extraction prompt asks targeted, independently verifiable questions.
-Returns structured features — never buy/sell opinions.
-
-Uses ClaudeSDKClientManager per project rules (never import anthropic directly).
+Uses one structured Codex call per symbol to extract the research-ledger features
+needed by the deterministic scorer. This keeps discovery token-efficient and
+avoids redundant multi-prompt extraction passes.
 """
 
-import json
 import logging
 import time
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, Optional
 
-from claude_agent_sdk import ClaudeAgentOptions
-
-from src.core.claude_sdk_client_manager import ClaudeSDKClientManager
-from src.core.sdk_helpers import query_with_timeout
 from src.models.research_ledger import (
-    ResearchLedgerEntry,
-    ManagementFeatures,
-    FinancialFeatures,
     CatalystFeatures,
+    FinancialFeatures,
+    ManagementFeatures,
     MarketFeatures,
+    ResearchLedgerEntry,
 )
+from src.services.codex_runtime_client import CodexRuntimeClient, CodexRuntimeError
 
 logger = logging.getLogger(__name__)
 
-# Extraction timeout per prompt (seconds)
 EXTRACTION_TIMEOUT = 30
+
+FEATURE_EXTRACTION_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "management": ManagementFeatures.model_json_schema(),
+        "financial": FinancialFeatures.model_json_schema(),
+        "catalyst": CatalystFeatures.model_json_schema(),
+        "market": MarketFeatures.model_json_schema(),
+        "sources": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": ["management", "financial", "catalyst", "market", "sources"],
+}
 
 
 class FeatureExtractor:
     """
-    Extracts structured features from unstructured data using Claude.
+    Extracts the structured research-ledger fields in one runtime call.
 
-    Instead of asking "should I buy?", asks specific factual questions
-    and maps answers to typed Pydantic models.
+    The model is used only as a factual extractor. Deterministic scoring still
+    decides BUY/HOLD/AVOID downstream.
     """
 
-    def __init__(self):
-        self.client_manager: Optional[ClaudeSDKClientManager] = None
-        self.client_type = "feature_extractor"
-        self.client_options = ClaudeAgentOptions(
-            allowed_tools=[],
-            max_turns=1,
-            model="haiku",
-            system_prompt=(
-                "You are a financial data extraction assistant. "
-                "Extract factual information and return only valid JSON. "
-                "Use null for unknown values. Never provide opinions or recommendations."
-            ),
-        )
+    def __init__(
+        self,
+        *,
+        runtime_client: Optional[CodexRuntimeClient] = None,
+        model: str = "gpt-5.4",
+        reasoning: str = "low",
+        working_directory: Optional[str] = None,
+    ):
+        self.runtime_client = runtime_client
+        self.model = model
+        self.reasoning = reasoning
+        self.working_directory = working_directory
 
     async def initialize(self) -> None:
-        """Initialize Claude SDK client."""
-        self.client_manager = await ClaudeSDKClientManager.get_instance()
-        logger.info("FeatureExtractor initialized with Claude SDK")
+        """Initialize runtime dependencies."""
+        logger.info("FeatureExtractor initialized with Codex runtime")
 
     async def extract_features(
         self,
         symbol: str,
         research_data: Dict[str, Any],
     ) -> ResearchLedgerEntry:
-        """
-        Extract structured features for a symbol from research data.
-
-        Args:
-            symbol: Stock symbol (e.g., "RELIANCE")
-            research_data: Dict with keys like "news", "financials", "filings", "market_data"
-
-        Returns:
-            ResearchLedgerEntry with all feature groups populated
-        """
+        """Extract all structured features for one symbol."""
         start_time = time.monotonic()
-
         entry = ResearchLedgerEntry(symbol=symbol, sources=[])
 
-        # Extract each feature group independently — failure in one doesn't block others
-        entry.management = await self._extract_management(symbol, research_data)
-        entry.financial = await self._extract_financial(symbol, research_data)
-        entry.catalyst = await self._extract_catalyst(symbol, research_data)
-        entry.market = await self._extract_market(symbol, research_data)
+        payload = await self._extract_feature_bundle(symbol, research_data)
+        if payload:
+            entry.management = ManagementFeatures(**(payload.get("management") or {}))
+            entry.financial = FinancialFeatures(**(payload.get("financial") or {}))
+            entry.catalyst = CatalystFeatures(**(payload.get("catalyst") or {}))
+            entry.market = MarketFeatures(**(payload.get("market") or {}))
+            entry.sources = list(payload.get("sources") or [])
+        else:
+            if research_data.get("news"):
+                entry.sources.append("codex_research_news")
+            if research_data.get("financials"):
+                entry.sources.append("financial_statements")
+            if research_data.get("filings"):
+                entry.sources.append("exchange_filings")
+            if research_data.get("market_data"):
+                entry.sources.append("market_data")
 
-        # Track sources
-        if research_data.get("news"):
-            entry.sources.append("claude_web_news")
-        if research_data.get("financials"):
-            entry.sources.append("financial_statements")
-        if research_data.get("filings"):
-            entry.sources.append("exchange_filings")
-        if research_data.get("market_data"):
-            entry.sources.append("market_data")
-
+        entry.extraction_model = self.model
         entry.extraction_duration_ms = int((time.monotonic() - start_time) * 1000)
-        logger.info(f"Extracted features for {symbol} in {entry.extraction_duration_ms}ms")
-
+        logger.info("Extracted features for %s in %sms", symbol, entry.extraction_duration_ms)
         return entry
 
-    async def _extract_management(
-        self, symbol: str, data: Dict[str, Any]
-    ) -> ManagementFeatures:
-        """Extract management/governance features."""
-        news = data.get("news", "No news available")
-        filings = data.get("filings", "No filings available")
-
-        prompt = f"""Analyze the following news and filings for {symbol} and answer each question as JSON.
-If you cannot determine the answer, use null.
-
-News: {_truncate(str(news), 3000)}
-Filings: {_truncate(str(filings), 2000)}
-
-Answer ONLY with this JSON (no other text):
-{{
-    "guidance_raised": true/false/null,
-    "guidance_lowered": true/false/null,
-    "promoter_pledge_change_pct": number/null,
-    "dilution_signal": true/false/null,
-    "insider_buying_net_90d": number/null,
-    "ceo_cfo_change_recent": true/false/null,
-    "auditor_flags": true/false/null
-}}"""
-
-        result = await self._query_claude(prompt)
-        return _parse_features(result, ManagementFeatures)
-
-    async def _extract_financial(
-        self, symbol: str, data: Dict[str, Any]
-    ) -> FinancialFeatures:
-        """Extract financial metrics."""
-        financials = data.get("financials", "No financial data available")
-
-        prompt = f"""Analyze the following financial data for {symbol} and answer each question as JSON.
-If you cannot determine the answer, use null.
-
-Financial Data: {_truncate(str(financials), 4000)}
-
-Answer ONLY with this JSON (no other text):
-{{
-    "revenue_growth_yoy_pct": number/null,
-    "eps_growth_yoy_pct": number/null,
-    "operating_margin_trend": "expanding"/"stable"/"contracting"/null,
-    "free_cash_flow_positive": true/false/null,
-    "debt_equity_ratio": number/null,
-    "return_on_equity_pct": number/null,
-    "revenue_surprise_pct": number/null,
-    "eps_surprise_pct": number/null
-}}"""
-
-        result = await self._query_claude(prompt)
-        return _parse_features(result, FinancialFeatures)
-
-    async def _extract_catalyst(
-        self, symbol: str, data: Dict[str, Any]
-    ) -> CatalystFeatures:
-        """Extract catalyst and event signals."""
-        news = data.get("news", "No news available")
-        filings = data.get("filings", "No filings available")
-
-        prompt = f"""Analyze the following data for {symbol} and answer each question as JSON.
-If you cannot determine the answer, use null.
-
-News: {_truncate(str(news), 3000)}
-Filings: {_truncate(str(filings), 2000)}
-
-Answer ONLY with this JSON (no other text):
-{{
-    "results_date_in_window": true/false/null,
-    "order_book_win": true/false/null,
-    "regulatory_approval": true/false/null,
-    "sector_tailwind": true/false/null,
-    "story_crowded": true/false/null,
-    "demerger_or_restructuring": true/false/null
-}}"""
-
-        result = await self._query_claude(prompt)
-        return _parse_features(result, CatalystFeatures)
-
-    async def _extract_market(
-        self, symbol: str, data: Dict[str, Any]
-    ) -> MarketFeatures:
-        """Extract market and technical context."""
-        market_data = data.get("market_data", "No market data available")
-
-        prompt = f"""Analyze the following market data for {symbol} and answer each question as JSON.
-If you cannot determine the answer, use null.
-
-Market Data: {_truncate(str(market_data), 4000)}
-
-Answer ONLY with this JSON (no other text):
-{{
-    "relative_strength_vs_nifty_90d": number/null,
-    "sector_momentum": "expanding"/"stable"/"contracting"/null,
-    "institutional_holding_change_pct": number/null,
-    "delivery_pct_avg_20d": number/null,
-    "base_breakout_setup": true/false/null,
-    "volume_expansion": true/false/null
-}}"""
-
-        result = await self._query_claude(prompt)
-        return _parse_features(result, MarketFeatures)
-
-    async def _query_claude(self, prompt: str) -> Optional[str]:
-        """Query Claude with timeout. Returns raw response text or None on failure."""
-        if not self.client_manager:
-            logger.warning("FeatureExtractor not initialized — returning None")
+    async def _extract_feature_bundle(
+        self,
+        symbol: str,
+        research_data: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Extract all research-ledger groups in one structured runtime call."""
+        if not self.runtime_client:
+            logger.warning("FeatureExtractor runtime client not initialized — returning None")
             return None
 
+        prompt = f"""Extract structured swing-trading features for {symbol}.
+Use only the provided evidence.
+If a field cannot be determined, use null.
+Do not provide recommendations or narrative outside the schema.
+
+News:
+{_truncate(str(research_data.get("news", "")), 3500)}
+
+Financials:
+{_truncate(str(research_data.get("financials", "")), 3500)}
+
+Filings:
+{_truncate(str(research_data.get("filings", "")), 2500)}
+
+Market Data:
+{_truncate(str(research_data.get("market_data", "")), 2500)}
+
+Populate management, financial, catalyst, and market fields.
+For sources, include only simple identifiers from this set when supported by the evidence:
+- codex_research_news
+- financial_statements
+- exchange_filings
+- market_data
+"""
+
         try:
-            client = await self.client_manager.get_client(
-                self.client_type,
-                self.client_options,
+            response = await self.runtime_client.run_structured(
+                system_prompt=(
+                    "You are a financial data extraction assistant. "
+                    "Extract factual information and return only valid structured JSON. "
+                    "Use null for unknown values. Never provide opinions or recommendations."
+                ),
+                prompt=prompt,
+                output_schema=FEATURE_EXTRACTION_SCHEMA,
+                model=self.model,
+                reasoning=self.reasoning,
+                timeout_seconds=EXTRACTION_TIMEOUT,
+                web_search_enabled=False,
+                network_access_enabled=False,
+                working_directory=self.working_directory,
             )
-            response = await query_with_timeout(
-                client,
-                prompt,
-                timeout=EXTRACTION_TIMEOUT,
-            )
-            return response
+            output = response.get("output") or {}
+            if isinstance(output, dict):
+                return output
+            return None
+        except CodexRuntimeError as e:
+            logger.warning("Codex bundled extraction failed: %s", e)
+            return None
         except Exception as e:
-            logger.warning(f"Claude extraction failed: {e}")
+            logger.warning("Bundled feature extraction failed: %s", e)
             return None
 
 
@@ -228,26 +164,3 @@ def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len] + "... [truncated]"
-
-
-def _parse_features(raw_response: Optional[str], model_class):
-    """Parse Claude's JSON response into a Pydantic model. Returns defaults on failure."""
-    if not raw_response:
-        return model_class()
-
-    try:
-        # Extract JSON from response (Claude may wrap in markdown code blocks)
-        text = raw_response.strip()
-        if text.startswith("```"):
-            # Remove code block markers
-            lines = text.split("\n")
-            text = "\n".join(
-                line for line in lines
-                if not line.strip().startswith("```")
-            )
-
-        parsed = json.loads(text)
-        return model_class(**parsed)
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning(f"Failed to parse features into {model_class.__name__}: {e}")
-        return model_class()

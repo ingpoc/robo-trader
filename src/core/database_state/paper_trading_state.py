@@ -53,22 +53,22 @@ class PaperTradingState(BaseState):
 
             -- Paper Trades
             CREATE TABLE IF NOT EXISTS paper_trades (
-                id TEXT PRIMARY KEY,
+                trade_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL DEFAULT 'paper_swing_main',
                 symbol TEXT NOT NULL,
-                side TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+                trade_type TEXT NOT NULL CHECK (trade_type IN ('buy', 'sell')),
                 quantity INTEGER NOT NULL,
                 entry_price REAL NOT NULL,
                 exit_price REAL,
-                entry_date TEXT NOT NULL,
-                exit_date TEXT,
-                status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'CANCELLED')),
-                entry_reason TEXT NOT NULL,
-                exit_reason TEXT,
-                strategy_tag TEXT NOT NULL,
-                confidence_score REAL CHECK (confidence_score >= 0 AND confidence_score <= 1),
-                research_sources TEXT,  -- JSON array of research sources
-                market_conditions TEXT,  -- JSON blob
-                risk_metrics TEXT,  -- JSON blob
+                entry_timestamp TEXT NOT NULL,
+                exit_timestamp TEXT,
+                status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed', 'stopped_out', 'cancelled')),
+                strategy_rationale TEXT NOT NULL,
+                claude_session_id TEXT,
+                realized_pnl REAL,
+                unrealized_pnl REAL,
+                stop_loss REAL,
+                target_price REAL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -286,8 +286,8 @@ class PaperTradingState(BaseState):
             -- Indexes for performance
             CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol);
             CREATE INDEX IF NOT EXISTS idx_paper_trades_status ON paper_trades(status);
-            CREATE INDEX IF NOT EXISTS idx_paper_trades_strategy ON paper_trades(strategy_tag);
-            CREATE INDEX IF NOT EXISTS idx_paper_trades_entry_date ON paper_trades(entry_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_paper_trades_strategy ON paper_trades(strategy_rationale);
+            CREATE INDEX IF NOT EXISTS idx_paper_trades_entry_date ON paper_trades(entry_timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_paper_positions_symbol ON paper_positions(symbol);
             CREATE INDEX IF NOT EXISTS idx_research_log_symbol ON market_research_log(symbol);
             CREATE INDEX IF NOT EXISTS idx_research_log_date ON market_research_log(research_date DESC);
@@ -1220,14 +1220,81 @@ class PaperTradingState(BaseState):
                 logger.error(f"Failed to add {stock_data.get('symbol')} to discovery watchlist: {e}")
                 return False
 
+    async def update_discovery_watchlist(self, watchlist_id: int, updates: Dict[str, Any]) -> bool:
+        """Update a discovery watchlist row by id."""
+        async with self._lock:
+            try:
+                set_clauses = []
+                values = []
+
+                for key in [
+                    "symbol",
+                    "company_name",
+                    "sector",
+                    "discovery_date",
+                    "discovery_source",
+                    "discovery_reason",
+                    "current_price",
+                    "market_cap",
+                    "recommendation",
+                    "confidence_score",
+                    "last_analyzed",
+                    "status",
+                    "updated_at",
+                ]:
+                    if key in updates:
+                        set_clauses.append(f"{key} = ?")
+                        values.append(updates[key])
+
+                for key in ["research_summary", "technical_indicators", "fundamental_metrics"]:
+                    if key in updates:
+                        set_clauses.append(f"{key} = ?")
+                        values.append(json.dumps(updates[key] or {}))
+
+                if "updated_at" not in updates:
+                    set_clauses.append("updated_at = ?")
+                    values.append(datetime.now(timezone.utc).isoformat())
+
+                if not set_clauses:
+                    return True
+
+                values.append(watchlist_id)
+                await self.db.connection.execute(
+                    f"""UPDATE stock_discovery_watchlist
+                       SET {', '.join(set_clauses)}
+                       WHERE id = ?""",
+                    values,
+                )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to update discovery watchlist entry {watchlist_id}: {e}")
+                return False
+
+    async def delete_discovery_watchlist_entry(self, watchlist_id: int) -> bool:
+        """Delete a discovery watchlist row by id."""
+        async with self._lock:
+            try:
+                await self.db.connection.execute(
+                    "DELETE FROM stock_discovery_watchlist WHERE id = ?",
+                    (watchlist_id,),
+                )
+                await self.db.connection.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to delete discovery watchlist entry {watchlist_id}: {e}")
+                return False
+
     async def get_discovery_watchlist(self, limit: int = 50, status: str = "ACTIVE") -> List[Dict[str, Any]]:
         """Get discovery watchlist with optional filters."""
         async with self._lock:
             try:
                 cursor = await self.db.connection.execute(
                     """SELECT id, symbol, company_name, sector, discovery_date,
-                             discovery_source, recommendation, confidence_score,
-                             current_price, status, last_analyzed, created_at
+                             discovery_source, discovery_reason, recommendation, confidence_score,
+                             current_price, status, last_analyzed, created_at, updated_at
                        FROM stock_discovery_watchlist
                        WHERE status = ?
                        ORDER BY confidence_score DESC, discovery_date DESC
@@ -1245,12 +1312,14 @@ class PaperTradingState(BaseState):
                         "sector": row[3],
                         "discovery_date": row[4],
                         "discovery_source": row[5],
-                        "recommendation": row[6],
-                        "confidence_score": row[7],
-                        "current_price": row[8],
-                        "status": row[9],
-                        "last_analyzed": row[10],
-                        "created_at": row[11]
+                        "discovery_reason": row[6],
+                        "recommendation": row[7],
+                        "confidence_score": row[8],
+                        "current_price": row[9],
+                        "status": row[10],
+                        "last_analyzed": row[11],
+                        "created_at": row[12],
+                        "updated_at": row[13],
                     })
                 return watchlist
 

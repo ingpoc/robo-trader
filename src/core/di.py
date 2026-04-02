@@ -85,6 +85,11 @@ class DependencyContainer:
 
         # Orchestrator must be last (depends on all coordinators)
         await register_orchestrator(self)
+
+        # Eagerly resolve the manual-only scheduler boundary so stale legacy
+        # queue entries are cleared during startup rather than on first status
+        # request.
+        await self.get("background_scheduler")
     def _register_singleton(self, name: str, factory: callable) -> None:
         """Register a singleton service."""
         self._factories[name] = factory

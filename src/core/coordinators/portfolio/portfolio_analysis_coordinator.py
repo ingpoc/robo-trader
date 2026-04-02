@@ -80,10 +80,9 @@ class PortfolioAnalysisCoordinator(BaseCoordinator):
                 raise ValueError("TaskService is required")
             self._log_init_step("task_service verified")
 
-            # Create monitoring background task
-            self._log_init_step("Creating monitoring background task")
-            self._monitoring_task = asyncio.create_task(self._monitoring_loop())
-            self._log_init_step("Monitoring task created")
+            logger.info(
+                "Portfolio analysis monitoring removed from startup path - coordinator will stay idle until explicitly invoked"
+            )
 
             # Mark initialization complete immediately (monitoring loop will run in background)
             self._initialization_complete = True

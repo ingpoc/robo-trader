@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Faustina:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -88,15 +88,17 @@
     background-color: rgb(var(--background));
     color: rgb(var(--foreground));
     color-scheme: light;
-    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-size: 1rem;
     line-height: 1.5;
     min-height: 100vh;
     background-image:
-      radial-gradient(circle at top left, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 28rem),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(245, 243, 240, 0.92));
+      linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0)),
+      linear-gradient(90deg, rgba(184, 115, 51, 0.05), transparent 18%, transparent 82%, rgba(184, 115, 51, 0.04)),
+      repeating-linear-gradient(180deg, rgba(58, 57, 53, 0.025) 0, rgba(58, 57, 53, 0.025) 1px, transparent 1px, transparent 48px);
+    background-attachment: fixed;
   }
 
   html,
@@ -112,7 +114,7 @@
 
   /* Elegant typography */
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Faustina', Georgia, serif;
+    font-family: 'Newsreader', Georgia, serif;
     font-weight: 600;
     line-height: 1.2;
     letter-spacing: -0.02em;
@@ -449,15 +451,16 @@
 }
 
 .page-header {
-  @apply flex flex-col gap-4 rounded-2xl border border-border/80 bg-card/85 p-6 shadow-sm backdrop-blur-sm;
+  @apply flex flex-col gap-4 rounded-3xl border border-border/70 p-6 shadow-sm backdrop-blur-sm;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .page-title {
-  @apply font-serif text-4xl font-bold tracking-tight text-foreground lg:text-5xl;
+  @apply font-serif text-4xl font-bold tracking-tight text-foreground lg:text-[3.6rem];
 }
 
 .page-subtitle {
-  @apply mt-2 text-base text-muted-foreground lg:text-lg;
+  @apply mt-2 max-w-3xl text-base text-muted-foreground lg:text-lg;
 }
 
 .page-grid {
@@ -465,7 +468,8 @@
 }
 
 .surface-panel {
-  @apply rounded-2xl border border-border/80 bg-card/90 shadow-sm backdrop-blur-sm;
+  @apply rounded-2xl border border-border/80 shadow-sm backdrop-blur-sm;
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .surface-panel-muted {
@@ -474,6 +478,108 @@
 
 .section-stack {
   @apply flex flex-col gap-4;
+}
+
+.paper-trading-shell {
+  @apply gap-5 lg:gap-6;
+}
+
+.desk-panel {
+  @apply rounded-3xl border border-border/70 px-6 py-5 shadow-sm backdrop-blur-sm;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.desk-panel--featured {
+  background: linear-gradient(180deg, rgba(255,255,255,0.84) 0%, rgba(255,255,255,0.72) 100%);
+  box-shadow: 0 14px 32px rgba(58, 57, 53, 0.06);
+}
+
+.desk-stage-row {
+  @apply grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)];
+}
+
+.desk-stage-row--active {
+  @apply rounded-[2rem] border border-copper-400/70 p-4 shadow-md;
+  background: linear-gradient(180deg, rgba(191, 120, 58, 0.08) 0%, rgba(255, 248, 240, 0.72) 100%);
+  box-shadow: 0 16px 34px rgba(191, 120, 58, 0.12);
+}
+
+.desk-panel-header {
+  @apply flex flex-col gap-4 border-b border-border/70 pb-5 xl:flex-row xl:items-start xl:justify-between;
+}
+
+.desk-kicker {
+  @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground;
+}
+
+.desk-heading {
+  @apply font-serif text-2xl font-semibold tracking-tight text-foreground;
+}
+
+.desk-copy {
+  @apply text-sm leading-6 text-muted-foreground lg:text-[15px];
+}
+
+.desk-strip {
+  @apply grid gap-0 overflow-hidden rounded-3xl border border-border/70 shadow-sm md:grid-cols-2 xl:grid-cols-4;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.desk-strip-cell {
+  @apply border-t border-border/70 px-5 py-5 first:border-t-0 md:border-t-0 md:border-l md:first:border-l-0;
+}
+
+.desk-metric {
+  @apply text-[2rem] font-semibold tracking-tight text-foreground;
+}
+
+.desk-meta-row {
+  @apply mt-5 grid gap-4 border-b border-border/70 pb-5 sm:grid-cols-2 xl:grid-cols-4;
+}
+
+.desk-list {
+  @apply space-y-2 text-sm leading-6;
+}
+
+.desk-error {
+  @apply rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700;
+}
+
+.desk-footnote {
+  @apply mt-5 flex items-center gap-2 border-t border-border/70 pt-4 text-xs uppercase tracking-[0.18em] text-muted-foreground;
+}
+
+.desk-criteria-panel {
+  @apply space-y-5 rounded-3xl border border-border/70 px-5 py-5 shadow-sm backdrop-blur-sm;
+  background: rgba(250, 247, 241, 0.88);
+}
+
+.desk-autonomy-panel {
+  @apply space-y-5 rounded-3xl border border-border/70 px-6 py-5 shadow-sm backdrop-blur-sm;
+  background: rgba(255, 251, 245, 0.82);
+}
+
+.desk-select {
+  @apply h-11 min-w-[240px] rounded-full border border-border/80 bg-card px-4 text-sm text-foreground shadow-sm outline-none transition-colors focus:border-copper-500 focus:ring-2 focus:ring-ring;
+}
+
+.candidate-row {
+  @apply grid gap-4 rounded-2xl border border-border/70 px-4 py-4 xl:grid-cols-[0.82fr_1.1fr_0.9fr_auto];
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.candidate-row--header {
+  @apply rounded-none border-x-0 border-t-0 border-b bg-transparent px-1 py-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground;
+}
+
+.candidate-row--selected {
+  border-color: rgba(184, 115, 51, 0.45);
+  background: linear-gradient(180deg, rgba(184, 115, 51, 0.06) 0%, rgba(255,255,255,0.82) 100%);
+}
+
+.desk-candidate-group {
+  @apply space-y-3 rounded-[1.75rem] border border-border/60 px-4 py-4;
+  background: rgba(255, 252, 248, 0.56);
 }
 
 /* ===================================================================

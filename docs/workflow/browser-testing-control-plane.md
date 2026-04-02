@@ -29,7 +29,7 @@ Do not conclude that the product is broken when the browser or auth context is i
 ## Robo Trader Standard
 
 - Treat backend health and API correctness as prerequisites for meaningful browser testing.
-- Use `tests/validator/UI_FUNCTIONAL_TESTING_REFERENCE.md` as the application-specific reference for expected UI-to-API-to-database behavior.
+- Use `tests/validator/README.md` as the application-specific reference for active UI validation endpoints and browser surfaces.
 - For UI state mismatches, verify the backend response and persisted state before classifying the problem as purely frontend.
 
 ## Evidence Capture

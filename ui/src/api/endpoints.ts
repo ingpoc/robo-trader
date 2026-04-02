@@ -18,11 +18,18 @@ import type {
   Alert,
   SymbolData,
   AIAgentConfig,
+  AccountPolicy,
+  ConfigurationStatus,
   GlobalConfig,
 } from '@/types/api'
+import type { PaperTradingOperatorSnapshot, RuntimeHealthResponse } from '@/features/paper-trading/types'
 
 export const dashboardAPI = {
   getDashboardData: () => api.get<DashboardData>('/api/dashboard'),
+}
+
+export const runtimeAPI = {
+  getHealth: () => api.get<RuntimeHealthResponse>('/api/health'),
 }
 
 export const aiAPI = {
@@ -46,28 +53,6 @@ export const recommendationsAPI = {
     api.post<{ status: string; recommendation_id: string }>(
       `/api/recommendations/discuss/${id}`
     ),
-}
-
-export const monitoringAPI = {
-  getSystemStatus: () =>
-    api.get<{
-      status: string
-      timestamp: string
-      blockers: string[]
-      initialization: {
-        orchestrator_initialized: boolean
-        bootstrap_completed: boolean
-        initialization_errors: string[]
-        last_error: string | null
-      }
-      components: {
-        orchestrator?: Record<string, unknown>
-        database?: Record<string, unknown>
-        event_bus?: Record<string, unknown>
-        background_scheduler?: Record<string, unknown>
-        websocket?: Record<string, unknown>
-      }
-    }>('/api/monitoring/status'),
 }
 
 export const alertsAPI = {
@@ -97,7 +82,18 @@ export const configurationAPI = {
     api.put<{ status: string }>('/api/configuration/global-settings', settings),
 
   getStatus: () =>
-    api.get<{ configuration_status: Record<string, unknown> }>('/api/configuration/status'),
+    api.get<{ configuration_status: ConfigurationStatus }>('/api/configuration/status'),
+
+  getAccountPolicy: (accountId: string) =>
+    api.get<{ success: boolean; account_id: string; policy: AccountPolicy }>(`/api/paper-trading/accounts/${accountId}/policy`),
+
+  updateAccountPolicy: (accountId: string, policy: Partial<AccountPolicy>) =>
+    api.put<{ success: boolean; account_id: string; policy: AccountPolicy }>(`/api/paper-trading/accounts/${accountId}/policy`, policy),
+}
+
+export const operatorAPI = {
+  getOperatorSnapshot: (accountId: string) =>
+    api.get<PaperTradingOperatorSnapshot>(`/api/paper-trading/accounts/${accountId}/operator-snapshot`),
 }
 
 export const newsEarningsAPI = {
@@ -245,11 +241,4 @@ export const queueAPI = {
   clearCompletedTasks: (queueType?: QueueType) =>
     api.post<{ status: string; cleared_count: number }>('/api/queues/clear-completed', { queue_type: queueType }),
 
-  // Get queue health status
-  getHealthStatus: () =>
-    api.get<{
-      overall_health: 'healthy' | 'warning' | 'critical';
-      queue_health: Record<QueueType, 'healthy' | 'warning' | 'critical'>;
-      issues: string[];
-    }>('/api/queues/health'),
 }

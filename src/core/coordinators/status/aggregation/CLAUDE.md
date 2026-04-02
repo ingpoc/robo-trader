@@ -1,31 +1,10 @@
-# Status Aggregation Coordinator - status/aggregation/
+# Local Context - src/core/coordinators/status/aggregation/
 
-Focused coordinator. Aggregates system components from status coordinators.
+## Inheritance Contract
 
-## Responsibilities
-Aggregate status from focused coordinators, transform formats, handle queue delegation, combine into unified structure.
+- Canonical local policy: repo-local `AGENTS.md` at `/Users/gurusharan/Documents/remote-claude/active/apps/robo-trader/AGENTS.md`
+- Policy mode: `defer_to_agents`
+- Allowed content here: local runtime or implementation context only
+- Forbidden here: parallel policy, workflow doctrine, or owner rules
 
-## Pattern
-```python
-scheduler, database, websocket = await asyncio.gather(
-    self.system_coord.get_scheduler_status(),
-    self.system_coord.get_database_status(),
-    return_exceptions=True
-)
-return {
-    "scheduler": scheduler if not isinstance(scheduler, Exception) else {"status": "error"}
-}
-```
-
-## Rules
-| DO | DON'T |
-|----|-------|
-| Inherit BaseCoordinator | Mix concerns (no broadcast) |
-| asyncio.gather() | Direct service access |
-| Handle errors gracefully | Block on aggregation |
-| Consistent format | Exceed 150 lines |
-| Delegate queue ops | Return raw data |
-
-## Dependencies
-BaseCoordinator, SystemStatusCoordinator, AIStatusCoordinator, PortfolioStatusCoordinator, Container (optional)
-
+Follow repo-local `AGENTS.md` first.

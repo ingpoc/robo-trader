@@ -215,38 +215,20 @@ The test script can be integrated into CI/CD pipelines:
 - Run backend and wait for initialization
 - Check startup logs for database creation
 
-## UI Functional Testing Reference
+## UI Validation
 
-For comprehensive UI functional testing, use the definitive reference document:
+For UI validation:
 
-**📋 [UI_FUNCTIONAL_TESTING_REFERENCE.md](./UI_FUNCTIONAL_TESTING_REFERENCE.md)**
-
-This document maps every UI interaction to:
-- Expected database table updates (INSERT/UPDATE operations)
-- Which API endpoints are called
-- Which UI sections should reflect the changes
-- WebSocket events that trigger real-time updates
-- Complete data flows from UI action → Database → UI display
-
-**Use this document for**:
-- Manual browser testing workflows
-- Creating automated test cases
-- Debugging UI-backend mismatches
-- Verifying data persistence
-- Understanding complete system architecture
-
-**Covers**:
-- Configuration Tab (AI Agents, Schedulers, Prompts)
-- System Health Page (Queue monitoring, Scheduler tracking)
-- AI Transparency Page (Recommendations, Sessions, Trades)
-- Paper Trading Page (Trade execution, Positions)
-- News & Earnings Page (News display, Sentiment)
-- Dashboard Page (Portfolio overview, Performance metrics)
+- use `docs/workflow/browser-testing-control-plane.md` for method and evidence rules
+- use `tests/validator/README.md` for the repo-local endpoint and browser surface reference
+- verify state against the live operator endpoints instead of relying on archived UI journey maps
 
 ## Additional Documentation
 
-- **Comprehensive Testing Report**: `FUNCTIONAL_TESTING_REPORT_20251104.md`
-- **Backend Documentation**: `src/CLAUDE.md`, `src/web/CLAUDE.md`, `src/core/CLAUDE.md`
+- **Validator Reference**: `tests/validator/README.md`
+- **Browser Testing Control Plane**: `docs/workflow/browser-testing-control-plane.md`
+- **Broker Control Plane**: `docs/workflow/zerodha-broker-control-plane.md`
+- **Codex Runtime Control Plane**: `docs/workflow/codex-runtime-control-plane.md`
 
 ## Last Updated
 

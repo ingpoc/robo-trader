@@ -252,6 +252,41 @@ async def test_market_data_service_seeds_zerodha_cache_from_broker_quote_on_subs
 
 
 @pytest.mark.asyncio
+async def test_market_data_service_resolves_legacy_aliases_on_read(tmp_path: Path):
+    config = Config(
+        state_dir=tmp_path / "state",
+        logs_dir=tmp_path / "logs",
+        project_dir=tmp_path,
+    )
+    event_bus = EventBus(config)
+    await event_bus.initialize()
+
+    adapter = _FakeKiteQuoteStreamAdapter()
+    broker = _FakeAuthenticatedKiteBroker()
+    service = MarketDataService(
+        config,
+        event_bus,
+        broker=broker,
+        quote_stream_adapter=adapter,
+        default_provider=MarketDataProvider.ZERODHA_KITE,
+    )
+    await service.initialize()
+
+    try:
+        await service.subscribe_market_data("HDFC", mode=SubscriptionMode.LTP)
+
+        single = await service.get_market_data("HDFC")
+        multiple = await service.get_multiple_market_data(["HDFC"])
+
+        assert single is not None
+        assert single.ltp == 744.15
+        assert "HDFC" in multiple
+        assert multiple["HDFC"].ltp == 744.15
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
 async def test_market_data_service_emits_unique_event_ids_for_rapid_updates(tmp_path: Path):
     config = Config(
         state_dir=tmp_path / "state",

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { dashboardAPI } from '@/api/endpoints'
 
 export function usePortfolio() {
-  const { data, isLoading, error } = useQuery(
+  const { data, isLoading, error, refetch } = useQuery(
     ['dashboard'],
     dashboardAPI.getDashboardData,
     {
@@ -19,5 +19,6 @@ export function usePortfolio() {
     intents: data?.intents || [],
     isLoading,
     error,
+    refetch,
   }
 }

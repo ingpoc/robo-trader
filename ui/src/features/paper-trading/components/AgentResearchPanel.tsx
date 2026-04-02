@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
+import { BookText, Clock3, DatabaseZap, Sparkles } from 'lucide-react'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import type { AgentCandidate, ResearchEnvelope } from '../types'
@@ -22,183 +22,221 @@ export function AgentResearchPanel({
   canRun = false,
   onRun,
 }: AgentResearchPanelProps) {
-  if (isLoading && !envelope) {
-    return <Card><CardContent className="p-6 text-sm text-muted-foreground">Generating focused research…</CardContent></Card>
-  }
-
-  if (error) {
-    return <Card><CardContent className="p-6 text-sm text-destructive">{error}</CardContent></Card>
-  }
-
-  if (!envelope) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-sm text-muted-foreground">
-          {selectedCandidate
-            ? `Select "Run Research" to create a focused packet for ${selectedCandidate.symbol}.`
-            : 'Choose a discovery candidate before generating research.'}
-        </CardContent>
-      </Card>
-    )
-  }
+  const research = envelope?.research
+  const loopSummary = envelope?.loop_summary
+  const renderedSymbol = research?.symbol || selectedCandidate?.symbol || 'No candidate selected'
+  const renderedSector = research?.source_summary.find(source => source.source_type === 'screening')?.label || selectedCandidate?.sector
+  const packetMatchesSelection = Boolean(
+    !selectedCandidate ||
+      !research ||
+      research.candidate_id === selectedCandidate.candidate_id ||
+      research.symbol === selectedCandidate.symbol,
+  )
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-lg">Research</CardTitle>
-              <CardDescription>
-                Research is generated one candidate at a time so the agent only receives the minimum context needed for a real thesis.
-              </CardDescription>
-            </div>
-            {onRun ? (
-              <Button variant="tertiary" size="sm" onClick={onRun} disabled={!canRun || isLoading}>
-                {isLoading ? 'Running...' : 'Run Research'}
-              </Button>
-            ) : null}
+    <section className="desk-panel desk-panel--featured">
+      <header className="desk-panel-header">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <BookText className="h-4 w-4 text-primary" />
+            <p className="desk-kicker">Focused Research</p>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <div>Status: <span className="font-medium text-foreground">{envelope.status}</span></div>
-          <div>Context mode: <span className="font-medium text-foreground">{envelope.context_mode}</span></div>
-          {selectedCandidate ? (
-            <div>
-              Candidate: <span className="font-medium text-foreground">{selectedCandidate.symbol}</span>
-            </div>
-          ) : null}
-          {envelope.blockers.length > 0 && (
-            <ul className="list-disc pl-5 text-destructive">
-              {envelope.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+          <h2 className="desk-heading">Research runs only when you ask for it</h2>
+          <p className="desk-copy max-w-2xl">
+            The loop keeps advancing through the fresh queue until it finds one actionable buy candidate or exhausts the eligible list. Weak packets should stop fast and move into memory instead of burning more context.
+          </p>
+        </div>
 
-      {envelope.research ? (
-        <Card variant="compact">
-          <CardContent className="space-y-5 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-base font-semibold text-foreground">{envelope.research.symbol}</div>
-                <div className="text-sm text-muted-foreground">
-                  Generated {new Date(envelope.research.generated_at).toLocaleString()}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={actionabilityVariant(envelope.research.actionability)}>
-                  {formatLabel(envelope.research.actionability)}
-                </Badge>
-                <Badge variant={analysisModeVariant(envelope.research.analysis_mode)}>
-                  {formatLabel(envelope.research.analysis_mode)}
-                </Badge>
-                <Badge variant="outline">
-                  Thesis {Math.round(envelope.research.thesis_confidence * 100)}%
-                </Badge>
-                <Badge variant="secondary">
-                  Screening {Math.round(envelope.research.screening_confidence * 100)}%
-                </Badge>
-              </div>
-            </div>
+        {onRun ? (
+          <Button variant="primary" size="sm" onClick={onRun} disabled={!canRun || isLoading}>
+            {isLoading ? 'Running research...' : selectedCandidate ? 'Run Research' : 'Run Loop'}
+          </Button>
+        ) : null}
+      </header>
 
-            <section className="grid gap-3 md:grid-cols-2">
-              <SignalCard
-                title="Why Now"
-                body={envelope.research.why_now || 'No explicit why-now context was produced.'}
-              />
-              <SignalCard
-                title="Market Data Freshness"
-                body={envelope.research.market_data_freshness.summary || 'Market data freshness was not reported.'}
-                meta={
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={freshnessVariant(envelope.research.market_data_freshness.status)}>
-                      {formatLabel(envelope.research.market_data_freshness.status)}
-                    </Badge>
-                    {envelope.research.market_data_freshness.provider ? (
-                      <Badge variant="outline">{envelope.research.market_data_freshness.provider}</Badge>
-                    ) : null}
-                  </div>
-                }
-              />
-            </section>
+      <div className="desk-meta-row">
+        <MetaItem label="Candidate" value={renderedSymbol} />
+        <MetaItem label="Sector" value={renderedSector || 'Unspecified'} />
+        <MetaItem label="Status" value={envelope?.status || 'idle'} />
+        <MetaItem label="Generated" value={research ? new Date(research.generated_at).toLocaleString() : 'Not run yet'} />
+      </div>
 
-            <section className="space-y-2">
-              <h4 className="text-sm font-semibold text-foreground">Thesis</h4>
-              <p className="text-sm text-foreground">{envelope.research.thesis}</p>
-            </section>
-
-            <ArtifactList title="Evidence" items={envelope.research.evidence} tone="info" />
-            <ArtifactList title="Risks" items={envelope.research.risks} tone="warning" />
-
-            <section className="space-y-2">
-              <h4 className="text-sm font-semibold text-foreground">Invalidation</h4>
-              <p className="text-sm text-foreground">{envelope.research.invalidation}</p>
-            </section>
-
-            <section className="space-y-2">
-              <h4 className="text-sm font-semibold text-foreground">Next Step</h4>
-              <p className="text-sm text-muted-foreground">{envelope.research.next_step}</p>
-            </section>
-
-            <section className="space-y-2">
-              <h4 className="text-sm font-semibold text-foreground">Evidence Provenance</h4>
-              {envelope.research.source_summary.length > 0 ? (
-                <div className="space-y-2">
-                  {envelope.research.source_summary.map(source => (
-                    <div
-                      key={`${source.source_type}-${source.label}-${source.timestamp}`}
-                      className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-sm font-medium text-foreground">{source.label}</div>
-                        <Badge variant={freshnessVariant(source.freshness)} size="xs">
-                          {formatLabel(source.freshness)}
-                        </Badge>
-                      </div>
-                      {source.detail ? (
-                        <div className="mt-1 text-sm text-muted-foreground">{source.detail}</div>
-                      ) : null}
-                      {source.timestamp ? (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {new Date(source.timestamp).toLocaleString()}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No source provenance was captured.</p>
-              )}
-            </section>
-
-            <section className="space-y-2">
-              <h4 className="text-sm font-semibold text-foreground">Evidence Citations</h4>
-              {envelope.research.evidence_citations.length > 0 ? (
-                <ul className="space-y-2">
-                  {envelope.research.evidence_citations.map(citation => (
-                    <li
-                      key={`${citation.reference}-${citation.label}`}
-                      className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-sm"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-foreground">{citation.label}</span>
-                        <Badge variant={freshnessVariant(citation.freshness)} size="xs">
-                          {formatLabel(citation.freshness)}
-                        </Badge>
-                      </div>
-                      <div className="mt-1 text-muted-foreground">{citation.reference}</div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No structured citations were emitted.</p>
-              )}
-            </section>
-          </CardContent>
-        </Card>
+      {loopSummary ? (
+        <div className="mt-4 rounded-2xl border border-border/70 bg-muted/15 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Attempts {loopSummary.research_attempt_count}</Badge>
+            <Badge variant={loopSummary.actionable_found_count > 0 ? 'success' : 'secondary'}>
+              Actionable {loopSummary.actionable_found_count}/{loopSummary.target_actionable_count}
+            </Badge>
+            {loopSummary.current_candidate_symbol ? (
+              <Badge variant="outline">Current {loopSummary.current_candidate_symbol}</Badge>
+            ) : null}
+            <Badge variant={loopSummary.queue_exhausted ? 'warning' : 'info'}>
+              {loopSummary.queue_exhausted ? 'Queue exhausted' : 'Loop active'}
+            </Badge>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {formatLabel(loopSummary.termination_reason)}
+            {loopSummary.latest_transition_reason ? ` Latest move: ${formatLabel(loopSummary.latest_transition_reason)}.` : ''}
+          </p>
+        </div>
       ) : null}
-    </div>
+
+      {selectedCandidate ? (
+        <div className="rounded-2xl border border-border/70 bg-muted/15 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">Staged candidate</span>
+            <Badge variant="subtle">{selectedCandidate.symbol}</Badge>
+            {selectedCandidate.sector ? <Badge variant="outline">{selectedCandidate.sector}</Badge> : null}
+          </div>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedCandidate.rationale}</p>
+        </div>
+      ) : (
+        <EmptyState
+          title="No candidate staged"
+          body="Run discovery first, then stage a candidate before spending tokens on research."
+        />
+      )}
+
+      {error ? <p className="desk-error mt-5">{error}</p> : null}
+
+      {envelope?.blockers.length ? (
+        <ul className="desk-list mt-5 text-rose-700">
+          {envelope.blockers.map(blocker => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!research ? (
+        selectedCandidate ? (
+          <EmptyState
+            title="Research is idle"
+            body={`The system is staged for ${selectedCandidate.symbol}. Run research to produce a single thesis packet with evidence, risks, invalidation, and next step.`}
+          />
+        ) : null
+      ) : (
+        <div className="mt-6 space-y-6">
+          {!packetMatchesSelection ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Displayed packet is for {research.symbol}, but the currently staged candidate is {selectedCandidate?.symbol}. Run research again to replace it.
+            </p>
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <SignalBlock
+              icon={Sparkles}
+              title="Why now"
+              body={research.why_now}
+              meta={(
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={analysisModeVariant(research.analysis_mode)}>{formatLabel(research.analysis_mode)}</Badge>
+                  <Badge variant={actionabilityVariant(research.actionability)}>{formatLabel(research.actionability)}</Badge>
+                  {research.classification ? (
+                    <Badge variant={classificationVariant(research.classification)}>{formatLabel(research.classification)}</Badge>
+                  ) : null}
+                </div>
+              )}
+            />
+            <SignalBlock
+              icon={DatabaseZap}
+              title="Thesis"
+              body={research.thesis}
+              meta={(
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Screening {Math.round(research.screening_confidence * 100)}%</span>
+                  <span>·</span>
+                  <span>Thesis {Math.round(research.thesis_confidence * 100)}%</span>
+                </div>
+              )}
+            />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+            <div className="space-y-5">
+              <SignalBlock title="Next step" body={research.next_step} />
+              {research.what_changed_since_last_research ? (
+                <SignalBlock title="What changed since last research" body={research.what_changed_since_last_research} />
+              ) : null}
+              <SignalBlock title="Invalidation" body={research.invalidation} />
+              <ArtifactList title="Evidence" items={research.evidence} tone="info" />
+              <ArtifactList title="Risks" items={research.risks} tone="warning" />
+            </div>
+
+            <div className="space-y-5">
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Clock3 className="h-4 w-4 text-primary" />
+                  <h3 className="text-base font-semibold text-foreground">Evidence Provenance</h3>
+                </div>
+                {research.source_summary.length ? (
+                  <div className="divide-y divide-border/70 rounded-2xl border border-border/70 bg-white/75 dark:bg-warmgray-800/75">
+                    {research.source_summary.map(source => (
+                      <div key={`${source.source_type}-${source.label}-${source.timestamp}`} className="grid gap-2 px-4 py-3 sm:grid-cols-[0.8fr_0.8fr_1.4fr]">
+                        <div>
+                          <p className="desk-kicker">{source.source_type}</p>
+                          <p className="text-sm font-medium text-foreground">{source.label}</p>
+                        </div>
+                        <div>
+                          <Badge variant={freshnessVariant(source.freshness)} size="xs">
+                            {formatLabel(source.freshness)}
+                          </Badge>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {new Date(source.timestamp).toLocaleString()}
+                          </p>
+                        </div>
+                        <p className="text-sm leading-6 text-muted-foreground">{source.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No source summary was emitted.</p>
+                )}
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-base font-semibold text-foreground">Evidence Citations</h3>
+                {research.evidence_citations.length ? (
+                  <div className="space-y-2">
+                    {research.evidence_citations.map(citation => (
+                      <div key={`${citation.reference}-${citation.label}`} className="rounded-2xl border border-border/70 bg-muted/15 px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">{citation.label}</span>
+                          <Badge variant={freshnessVariant(citation.freshness)} size="xs">
+                            {formatLabel(citation.freshness)}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(citation.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{citation.reference}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No structured citations were emitted.</p>
+                )}
+              </section>
+
+              <section className="rounded-2xl border border-border/70 bg-white/75 px-4 py-4 dark:bg-warmgray-800/75">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-semibold text-foreground">Market Data Freshness</h3>
+                  <Badge variant={freshnessVariant(research.market_data_freshness.status)} size="xs">
+                    {formatLabel(research.market_data_freshness.status)}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {research.market_data_freshness.summary}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Provider: {research.market_data_freshness.provider} · Intraday quote: {research.market_data_freshness.has_intraday_quote ? 'yes' : 'no'} · Historical data: {research.market_data_freshness.has_historical_data ? 'yes' : 'no'}
+                </p>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -214,13 +252,15 @@ function ArtifactList({
   if (!items.length) return null
 
   return (
-    <section className="space-y-2">
-      <h4 className="text-sm font-semibold text-foreground">{title}</h4>
-      <ul className="space-y-2">
+    <section className="space-y-3">
+      <h3 className="text-base font-semibold text-foreground">{title}</h3>
+      <ul className="desk-list">
         {items.map(item => (
-          <li key={item} className="flex items-start gap-2 text-sm text-foreground">
-            <Badge variant={tone} size="xs">{title.slice(0, 1)}</Badge>
-            <span>{item}</span>
+          <li key={item} className="flex items-start gap-3">
+            <Badge variant={tone === 'info' ? 'info' : 'warning'} size="xs">
+              {title.slice(0, 1)}
+            </Badge>
+            <span className="text-sm leading-6 text-foreground">{item}</span>
           </li>
         ))}
       </ul>
@@ -228,23 +268,46 @@ function ArtifactList({
   )
 }
 
-function SignalCard({
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="mt-5 rounded-2xl border border-dashed border-border/80 bg-muted/20 px-5 py-6">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p>
+    </div>
+  )
+}
+
+function MetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="space-y-1">
+      <p className="desk-kicker">{label}</p>
+      <p className="text-sm text-foreground">{value}</p>
+    </div>
+  )
+}
+
+function SignalBlock({
+  icon: Icon,
   title,
   body,
   meta,
 }: {
+  icon?: React.ComponentType<{ className?: string }>
   title: string
   body: string
   meta?: ReactNode
 }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+    <section className="rounded-2xl border border-border/70 bg-white/75 px-4 py-4 dark:bg-warmgray-800/75">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {Icon ? <Icon className="h-4 w-4 text-primary" /> : null}
+          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        </div>
         {meta}
       </div>
-      <p className="mt-2 text-sm text-muted-foreground">{body}</p>
-    </div>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">{body}</p>
+    </section>
   )
 }
 
@@ -255,6 +318,12 @@ function formatLabel(value: string) {
 function actionabilityVariant(actionability: string) {
   if (actionability === 'actionable') return 'success'
   if (actionability === 'blocked') return 'error'
+  return 'warning'
+}
+
+function classificationVariant(classification: string) {
+  if (classification === 'actionable_buy_candidate') return 'success'
+  if (classification === 'rejected') return 'error'
   return 'warning'
 }
 

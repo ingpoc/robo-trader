@@ -220,23 +220,74 @@ export interface AIAgentConfig {
 }
 
 export interface GlobalConfig {
-  claudeUsage: {
-    enabled: boolean
-    dailyTokenLimit: number
-    costAlerts: boolean
-    costThreshold: number
-  }
-  schedulerDefaults: {
-    defaultFrequency: number
-    defaultFrequencyUnit: 'minutes' | 'hours'
-    marketHoursOnly: boolean
-    retryAttempts: number
-    retryDelayMinutes: number
-  }
-  maxTurns: number
-  riskTolerance: number
-  dailyApiLimit: number
+  claudeEnabled?: boolean
+  claudeDailyTokenLimit?: number
+  claudeCostAlerts?: boolean
+  claudeCostThreshold?: number
   quoteStreamProvider?: 'upstox' | 'zerodha_kite' | 'none'
   quoteStreamMode?: 'ltpc' | 'full'
   quoteStreamSymbolLimit?: number
+  dailyApiLimit?: number
+  discoveryMinConfidence?: number
+  researchActionableConfidence?: number
+}
+
+export interface AccountPolicy {
+  account_id: string
+  execution_mode: 'operator_confirmed_execution' | 'manual_only'
+  max_open_positions: number
+  max_new_entries_per_day: number
+  max_deployed_capital_pct: number
+  default_stop_loss_pct: number
+  default_target_pct: number
+  per_trade_exposure_pct: number
+  max_portfolio_risk_pct: number
+  risk_level: 'conservative' | 'moderate' | 'aggressive'
+  updated_at: string
+  created_at: string
+}
+
+export interface ConfigurationStatus {
+  status: string
+  manualOnly: boolean
+  backgroundSchedulers?: {
+    status: string
+    active: number
+    message?: string
+  }
+  aiAgents?: {
+    configured: number
+    enabled: number
+  }
+  aiRuntime?: {
+    provider?: string | null
+    authenticated?: boolean
+    ready?: boolean
+    checkedAt?: string | null
+    lastSuccessfulValidationAt?: string | null
+    readinessTtlSeconds?: number | null
+    error?: string | null
+  }
+  globalSettings?: GlobalConfig
+  effectiveQuoteStream?: {
+    provider: string
+    mode: string
+    symbolLimit: number
+  }
+  effectiveExecutionPosture?: {
+    mode: string
+    account_id?: string | null
+    source: string
+  }
+  persistence?: {
+    source: string
+    global_settings_loaded: boolean
+    ai_agents_loaded: boolean
+    checkedAt?: string | null
+  }
+  runtimeIdentityLink?: {
+    source: string
+    field: string
+  }
+  checkedAt: string
 }

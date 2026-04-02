@@ -28,6 +28,19 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
 
     container._register_singleton("paper_trading_store", create_paper_trading_store)
 
+    async def create_paper_trading_automation_service():
+        from src.services.paper_trading_automation_service import PaperTradingAutomationService
+
+        store = await container.get("paper_trading_store")
+        service = PaperTradingAutomationService(
+            store,
+            project_dir=str(container.config.project_dir),
+        )
+        await service.initialize()
+        return service
+
+    container._register_singleton("paper_trading_automation_service", create_paper_trading_automation_service)
+
     # Paper Trading Price Monitor
     async def create_paper_trading_price_monitor():
         from src.services.paper_trading.price_monitor import PaperTradingPriceMonitor
@@ -195,19 +208,36 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
 
     container._register_singleton("paper_trading_improvement_service", create_paper_trading_improvement_service)
 
-    async def create_claude_market_research_service():
-        from src.services.claude_agent.claude_market_research_service import ClaudeMarketResearchService
+    async def create_ai_market_research_service():
+        from src.services.ai_market_research_service import AIMarketResearchService
 
-        return ClaudeMarketResearchService()
+        runtime_client = await container.get("codex_runtime_client")
+        runtime_config = container.config.ai_runtime
+        return AIMarketResearchService(
+            runtime_client,
+            default_model=runtime_config.codex_model,
+            reasoning=runtime_config.codex_reasoning_light,
+            timeout_seconds=float(runtime_config.timeout_seconds),
+            discovery_timeout_seconds=max(float(runtime_config.timeout_seconds), 300.0),
+            supports_compact_models=str(getattr(runtime_config, "mode", "")).strip().lower() != "local_runtime_service",
+        )
 
-    container._register_singleton("claude_market_research_service", create_claude_market_research_service)
+    container._register_singleton("ai_market_research_service", create_ai_market_research_service)
+    container._register_singleton("claude_market_research_service", create_ai_market_research_service)
 
     # Feature Extractor (LLM-powered structured feature extraction)
     async def create_feature_extractor():
         from src.services.recommendation_engine.feature_extractor import FeatureExtractor
-        extractor = FeatureExtractor()
+        runtime_client = await container.get("codex_runtime_client")
+        runtime_config = container.config.ai_runtime
+        extractor = FeatureExtractor(
+            runtime_client=runtime_client,
+            model=runtime_config.codex_model,
+            reasoning=runtime_config.codex_reasoning_light,
+            working_directory=str(container.config.project_dir),
+        )
         await extractor.initialize()
-        logger.info("FeatureExtractor initialized with Claude SDK")
+        logger.info("FeatureExtractor initialized with Codex runtime")
         return extractor
 
     container._register_singleton("feature_extractor", create_feature_extractor)
@@ -227,9 +257,11 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
         state_manager = await container.get("state_manager")
         event_bus = await container.get("event_bus")
         config = container.config
-        market_research_service = await container.get("claude_market_research_service")
+        market_research_service = await container.get("ai_market_research_service")
         feature_extractor = await container.get("feature_extractor")
         deterministic_scorer = await container.get("deterministic_scorer")
+        learning_service = await container.get("paper_trading_learning_service")
+        account_manager = await container.get("paper_trading_account_manager")
 
         # Create and initialize service
         discovery_service = StockDiscoveryService(
@@ -239,6 +271,8 @@ async def register_paper_trading_services(container: 'DependencyContainer') -> N
             config=config,
             feature_extractor=feature_extractor,
             deterministic_scorer=deterministic_scorer,
+            learning_service=learning_service,
+            account_manager=account_manager,
         )
         await discovery_service.initialize()
 

@@ -79,7 +79,11 @@ class QueueExecutionCoordinator(BaseCoordinator):
             else:
                 self._log_warning("SequentialQueueManager not available, using fallback execution")
                 results = {}
-                execution_order = [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]
+                execution_order = [
+                    QueueName.PORTFOLIO_SYNC,
+                    QueueName.DATA_FETCHER,
+                    QueueName.PAPER_TRADING_EXECUTION,
+                ]
 
                 for queue_name in execution_order:
                     self._log_info(f"Executing queue: {queue_name.value}")
@@ -119,7 +123,11 @@ class QueueExecutionCoordinator(BaseCoordinator):
 
         try:
             semaphore = asyncio.Semaphore(max_concurrent)
-            queue_names = [QueueName.PORTFOLIO_SYNC, QueueName.DATA_FETCHER, QueueName.AI_ANALYSIS]
+            queue_names = [
+                QueueName.PORTFOLIO_SYNC,
+                QueueName.DATA_FETCHER,
+                QueueName.PAPER_TRADING_EXECUTION,
+            ]
 
             async def execute_with_semaphore(queue_name: QueueName):
                 async with semaphore:
@@ -177,4 +185,3 @@ class QueueExecutionCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         """Cleanup queue execution coordinator resources."""
         self._log_info("QueueExecutionCoordinator cleanup complete")
-

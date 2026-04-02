@@ -1,33 +1,10 @@
-# Background Scheduler Stores - src/core/background_scheduler/stores/
+# Local Context - src/core/background_scheduler/stores/
 
-Async file persistence stores for tasks, stock state, strategy logs. Max 350 lines per store.
+## Inheritance Contract
 
-## Stores
-| Store | Persists |
-|-------|----------|
-| task_store.py | Task data |
-| stock_state_store.py | Stock state |
-| strategy_log_store.py | Strategy logs |
-| fundamental_store.py | Fundamentals |
+- Canonical local policy: repo-local `AGENTS.md` at `/Users/gurusharan/Documents/remote-claude/active/apps/robo-trader/AGENTS.md`
+- Policy mode: `defer_to_agents`
+- Allowed content here: local runtime or implementation context only
+- Forbidden here: parallel policy, workflow doctrine, or owner rules
 
-## Pattern
-```python
-# Atomic writes: temp → replace
-async with aiofiles.open(temp, 'w') as f:
-    await f.write(data)
-os.replace(temp, final)  # Atomic
-```
-
-## Rules
-| DO | DON'T |
-|----|-------|
-| Keep < 350 lines | Exceed line limits |
-| Use aiofiles | Blocking I/O |
-| Atomic writes | Direct file access |
-| Lock operations | Skip locks |
-| Cache in memory | No error handling |
-| Use TradingError | Use generic errors |
-
-## Dependencies
-aiofiles, asyncio.Lock, Domain models
-
+Follow repo-local `AGENTS.md` first.

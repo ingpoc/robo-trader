@@ -15,7 +15,7 @@ async def test_dashboard_uses_paper_trading_truth_instead_of_legacy_portfolio_st
     container = MagicMock()
     account_manager = AsyncMock()
     capability_service = AsyncMock()
-    config = SimpleNamespace(claude_agent=SimpleNamespace(daily_token_budget=15000))
+    config = SimpleNamespace(ai_runtime=SimpleNamespace(daily_token_budget=15000))
 
     account_manager.get_all_accounts.return_value = [
         SimpleNamespace(
@@ -49,10 +49,10 @@ async def test_dashboard_uses_paper_trading_truth_instead_of_legacy_portfolio_st
         mode="paper_only",
         checks=[
             CapabilityCheck(
-                key="claude_runtime",
-                label="Claude Runtime",
+                key="ai_runtime",
+                label="AI Runtime",
                 status=CapabilityStatus.READY,
-                summary="Claude runtime is authenticated.",
+                summary="AI runtime is authenticated.",
             ),
             CapabilityCheck(
                 key="market_data",

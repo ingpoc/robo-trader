@@ -18,6 +18,22 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
   trades,
   isLoading = false
 }) => {
+  const formatDate = (value: string) => {
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return 'Unavailable'
+    }
+
+    return parsed.toLocaleDateString('en-IN', {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const formatCurrency = (value: number) => `₹${Number(value ?? 0).toFixed(2)}`
+
   if (isLoading) {
     return (
       <Card>
@@ -72,19 +88,11 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
             </thead>
             <tbody>
               {trades.map((trade) => {
-                const pnlIsPositive = trade.pnl >= 0
-                const entryDate = new Date(trade.entry_time).toLocaleDateString('en-IN', {
-                  month: 'short',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-                const exitDate = new Date(trade.exit_time).toLocaleDateString('en-IN', {
-                  month: 'short',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
+                const pnl = Number(trade.pnl ?? 0)
+                const pnlPct = Number(trade.pnl_pct ?? 0)
+                const pnlIsPositive = pnl >= 0
+                const entryDate = formatDate(trade.entry_time)
+                const exitDate = formatDate(trade.exit_time)
 
                 return (
                   <tr
@@ -93,8 +101,8 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
                   >
                     <td className="py-3 px-2 font-medium">{trade.symbol}</td>
                     <td className="text-right py-3 px-2">{trade.quantity}</td>
-                    <td className="text-right py-3 px-2">₹{trade.entry_price.toFixed(2)}</td>
-                    <td className="text-right py-3 px-2">₹{trade.exit_price.toFixed(2)}</td>
+                    <td className="text-right py-3 px-2">{formatCurrency(trade.entry_price)}</td>
+                    <td className="text-right py-3 px-2">{formatCurrency(trade.exit_price)}</td>
                     <td
                       className={`text-right py-3 px-2 font-semibold ${
                         pnlIsPositive ? 'text-emerald-600' : 'text-red-600'
@@ -107,8 +115,8 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
                           <TrendingDown className="w-4 h-4" />
                         )}
                         <span>
-                          {pnlIsPositive ? '+' : ''}₹{Math.abs(trade.pnl).toLocaleString('en-IN')} (
-                          {trade.pnl_pct.toFixed(2)}%)
+                          {pnlIsPositive ? '+' : ''}₹{Math.abs(pnl).toLocaleString('en-IN')} (
+                          {pnlPct.toFixed(2)}%)
                         </span>
                       </div>
                     </td>

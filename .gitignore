@@ -76,3 +76,5 @@ config/backups/
 ui/.claude/settings.local.json
 .claude/tsc-cache/
 .serena/
+.backend_pid
+.frontend_pid

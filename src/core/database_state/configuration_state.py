@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 
 from src.core.database_state.base import DatabaseConnection
+from src.auth.ai_runtime_auth import get_ai_runtime_status
 from src.core.database_state.config_storage import (
     BackgroundTasksStore,
     AIAgentsStore,
@@ -213,6 +214,43 @@ class ConfigurationState:
         if result:
             await self.backup_manager.create_backup("global_settings")
         return result
+
+    async def get_system_status(self) -> Dict[str, Any]:
+        """Return configuration status for the active manual-only runtime."""
+        ai_agents = await self.get_all_ai_agents_config()
+        global_settings = await self.get_global_settings_config()
+        runtime_status = await get_ai_runtime_status()
+
+        agents = ai_agents.get("ai_agents", {})
+        enabled_agents = sum(1 for agent in agents.values() if agent.get("enabled"))
+
+        return {
+            "status": "manual_only",
+            "manualOnly": True,
+            "backgroundSchedulers": {
+                "status": "removed",
+                "active": 0,
+                "message": (
+                    "Legacy background schedulers are removed from the active runtime. "
+                    "All executions must be operator-triggered."
+                ),
+            },
+            "aiAgents": {
+                "configured": len(agents),
+                "enabled": enabled_agents,
+            },
+            "aiRuntime": {
+                "provider": runtime_status.provider,
+                "authenticated": runtime_status.authenticated,
+                "ready": runtime_status.is_valid,
+                "checkedAt": runtime_status.checked_at,
+                "lastSuccessfulValidationAt": runtime_status.metadata.get("last_successful_validation_at"),
+                "readinessTtlSeconds": runtime_status.metadata.get("readiness_ttl_seconds"),
+                "error": runtime_status.error,
+            },
+            "globalSettings": global_settings.get("global_settings", {}),
+            "checkedAt": datetime.now(timezone.utc).isoformat(),
+        }
 
     # ===== AI Prompts Configuration =====
     async def get_prompt_config(self, prompt_name: str) -> Dict[str, Any]:

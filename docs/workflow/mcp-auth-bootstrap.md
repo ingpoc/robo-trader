@@ -1,21 +1,31 @@
 # MCP And Auth Bootstrap
 
-This repo depends on local tooling and credentials that must be explicit.
+Use this document for machine bootstrap only.
 
-## Current Repo Surfaces
+Ongoing Zerodha behavior belongs in `docs/workflow/zerodha-broker-control-plane.md`.
+Ongoing Codex runtime behavior belongs in `docs/workflow/codex-runtime-control-plane.md`.
+
+## Owns
+
+- initial repo auth and MCP setup
+- required local credential surfaces
+- first-run verification before deeper workflow work starts
+- pointers to the long-lived owner docs after bootstrap is complete
+
+## Required Surfaces
 
 - Codex MCP server definitions live in `~/.codex/config.toml`.
-- Governance-critical remote MCP servers are:
+- Required governance MCP servers:
   - `notion` -> `https://mcp.notion.com/mcp`
   - `linear` -> `https://mcp.linear.app/mcp`
-- `.env.example` defines repo runtime credentials such as broker and research integrations.
-- Claude auth is expected to come from the local Claude CLI session, not from an `ANTHROPIC_API_KEY` in `.env.example`.
+- Repo runtime credentials live in `.env`.
+- The active paper-trading AI path uses the local Codex runtime sidecar, not a direct SDK session.
 
 ## Baseline Bootstrap
 
 1. Copy `.env.example` to `.env`.
 2. Fill in required repo runtime credentials for the mode you need.
-3. Authenticate Claude CLI with `claude auth`.
+3. Authenticate Codex with `codex login`.
 4. Ensure Codex has the required governance MCP servers configured:
    - `codex mcp add notion --url https://mcp.notion.com/mcp`
    - `codex mcp add linear --url https://mcp.linear.app/mcp`
@@ -23,55 +33,36 @@ This repo depends on local tooling and credentials that must be explicit.
    - `codex mcp login notion`
    - `codex mcp login linear`
 6. Start a new Codex session after adding or authenticating a new MCP server so the tool surface is reloaded.
-7. Start the backend and frontend using the repo's documented commands.
-8. Verify health before depending on UI or automation results.
+7. Start the local runtime sidecar with `./scripts/start_codex_runtime.sh`.
+8. Start the backend and frontend with the repo's normal commands.
+9. Run high-level verification before trusting UI or automation output.
 
-## Credentials And Auth Expectations
+## First-Run Verification
 
-### Claude
+- `GET /api/health`
+- `GET /api/auth/zerodha/status`
+- `POST /api/paper-trading/runtime/validate-ai?account_id=paper_swing_main`
 
-- Source: Claude CLI auth session
-- Do not add duplicate Anthropic key instructions to repo docs unless the runtime truly changes
+If any of these fail, fix bootstrap before diagnosing product behavior.
 
-### Notion
+## Authentication Rules
 
-- Source: Codex remote MCP OAuth session
-- Do not try to bootstrap Notion governance work through raw API keys in repo config
+- Notion source: Codex remote MCP OAuth session
+- Do not try to bootstrap Notion governance work through raw API keys in repo config.
+- Linear source: Codex remote MCP OAuth session
+- Do not use personal API keys as a substitute for the Codex MCP login path when the goal is Codex-side project management.
+- Zerodha bootstrap requires `.env` credentials plus interactive OAuth when broker-backed flows are needed.
+- External research bootstrap follows the local Codex runtime path; legacy provider env vars are not the primary path.
 
-### Linear
+## Hand-Off
 
-- Source: Codex remote MCP OAuth session
-- Do not use personal API keys as a substitute for the Codex MCP login path when the goal is Codex-side project management
+After bootstrap:
 
-### Zerodha
+- use `docs/workflow/zerodha-broker-control-plane.md` for broker auth, callback, quote-stream, and live market-data truth
+- use `docs/workflow/codex-runtime-control-plane.md` for sidecar lifecycle, `codex login`, and runtime readiness semantics
 
-- Source: `.env`
-- Required for real broker integration and OAuth callback flow
-- Account context must resolve from `PAPER_TRADING_ACCOUNT_ID`, `ZERODHA_ACCOUNT_ID`, or `ZERODHA_USER_ID`
-
-### External research providers
-
-- Active source for paper-trading research and discovery: Claude CLI auth session via Claude Agent SDK
-- Legacy `PERPLEXITY_API_KEYS` env vars may still exist for older modules, but they are no longer required for the primary paper-trading research path
-
-## Verification Rules
+## Verification Notes
 
 - Prefer a direct MCP tool call over CLI metadata when checking whether Notion or Linear is usable in-session.
 - Do not rely on `codex mcp list` as the only auth signal; loaded tool availability is the meaningful check.
 - If a newly configured MCP server does not appear in the current session, start a new Codex session before declaring setup broken.
-
-## Failure Modes
-
-- Missing Claude auth: AI features may degrade or fail; do not assume local auth exists on another machine.
-- Missing Notion or Linear OAuth in Codex: governance workflows are blocked; fix the MCP auth path before claiming project management is ready.
-- Missing Zerodha credentials: broker-backed flows remain unavailable; paper trading should remain the default path.
-- Missing Zerodha account context: env tokens may load but session restore and broker-bound market-data flows can still fail.
-- Missing MCP server setup: local developer automation may not behave like CI or another engineer's machine.
-
-## Change Rule
-
-If MCP or auth behavior changes:
-
-- update this file
-- update `.env.example` if credential expectations changed
-- link the corresponding Linear issue and durable note if the change affects multiple workflows

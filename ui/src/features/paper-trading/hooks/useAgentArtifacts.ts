@@ -9,6 +9,18 @@ import type {
 } from '../types'
 
 export type ArtifactTab = 'discovery' | 'research' | 'decisions' | 'review'
+export const PAPER_TRADING_ARTIFACT_EVENT = 'paper-trading-artifact-update'
+
+type ArtifactEnvelope = DiscoveryEnvelope | ResearchEnvelope | DecisionEnvelope | ReviewEnvelope
+
+interface ArtifactUpdateDetail {
+  tab: ArtifactTab
+  payload: ArtifactEnvelope
+}
+
+interface UseAgentArtifactsOptions {
+  onRunComplete?: () => Promise<void> | void
+}
 
 interface AgentArtifactsState {
   discovery: DiscoveryEnvelope | null
@@ -16,6 +28,7 @@ interface AgentArtifactsState {
   decisions: DecisionEnvelope | null
   review: ReviewEnvelope | null
   isLoading: boolean
+  activeRequest: ArtifactTab | null
   error: string | null
 }
 
@@ -24,39 +37,76 @@ interface CandidateSelection {
   symbol?: string
 }
 
+const tabEndpointSuffix: Record<ArtifactTab, string> = {
+  discovery: 'discovery',
+  research: 'research',
+  decisions: 'decisions',
+  review: 'review',
+}
+
+export function publishPaperTradingArtifactUpdate(tab: ArtifactTab, payload: ArtifactEnvelope) {
+  if (typeof window === 'undefined') return
+
+  window.dispatchEvent(
+    new CustomEvent<ArtifactUpdateDetail>(PAPER_TRADING_ARTIFACT_EVENT, {
+      detail: { tab, payload },
+    }),
+  )
+}
+
 const emptyDiscovery: DiscoveryEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before loading discovery artifacts.'],
-  context_mode: 'watchlist_only',
+  context_mode: 'stateful_watchlist',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'blocked_by_runtime',
   candidates: [],
 }
 
 const emptyResearch: ResearchEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account and candidate before generating research.'],
   context_mode: 'single_candidate_research',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'requires_selection',
   research: null,
 }
 
 const emptyDecisions: DecisionEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before generating decision packets.'],
   context_mode: 'delta_position_review',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'blocked_by_runtime',
   decisions: [],
 }
 
 const emptyReview: ReviewEnvelope = {
   status: 'blocked',
   generated_at: new Date(0).toISOString(),
+  last_generated_at: new Date(0).toISOString(),
   blockers: ['Select a paper trading account before generating a review report.'],
   context_mode: 'delta_daily_review',
   artifact_count: 0,
+  criteria: [],
+  considered: [],
+  freshness_state: 'unknown',
+  empty_reason: 'blocked_by_runtime',
   review: null,
 }
 
@@ -85,7 +135,7 @@ async function readErrorMessage(response: Response, fallback: string) {
       if (body.trim()) return body
     }
   } catch {
-    // Fall back to the generic message when the error payload cannot be parsed.
+    // Use the fallback when the error payload cannot be parsed.
   }
 
   return fallback
@@ -93,8 +143,8 @@ async function readErrorMessage(response: Response, fallback: string) {
 
 export function useAgentArtifacts(
   accountId?: string,
-  activeTab?: ArtifactTab,
   selectedCandidate?: AgentCandidate | null,
+  options?: UseAgentArtifactsOptions,
 ) {
   const [state, setState] = useState<AgentArtifactsState>({
     discovery: null,
@@ -102,6 +152,7 @@ export function useAgentArtifacts(
     decisions: null,
     review: null,
     isLoading: false,
+    activeRequest: null,
     error: null,
   })
 
@@ -120,9 +171,111 @@ export function useAgentArtifacts(
       decisions: null,
       review: null,
       isLoading: false,
+      activeRequest: null,
       error: null,
     })
   }, [accountId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleArtifactUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<ArtifactUpdateDetail>).detail
+      if (!detail || typeof detail !== 'object') return
+
+      setState(prev => ({
+        ...prev,
+        discovery: detail.tab === 'discovery' ? (detail.payload as DiscoveryEnvelope) : prev.discovery,
+        research: detail.tab === 'research' ? (detail.payload as ResearchEnvelope) : prev.research,
+        decisions: detail.tab === 'decisions' ? (detail.payload as DecisionEnvelope) : prev.decisions,
+        review: detail.tab === 'review' ? (detail.payload as ReviewEnvelope) : prev.review,
+        isLoading: false,
+        activeRequest: null,
+        error: null,
+      }))
+    }
+
+    window.addEventListener(PAPER_TRADING_ARTIFACT_EVENT, handleArtifactUpdate as EventListener)
+    return () => {
+      window.removeEventListener(PAPER_TRADING_ARTIFACT_EVENT, handleArtifactUpdate as EventListener)
+    }
+  }, [])
+
+  const clearTab = useCallback((tab: ArtifactTab) => {
+    setState(prev => ({
+      ...prev,
+      discovery: tab === 'discovery' ? null : prev.discovery,
+      research: tab === 'research' ? null : prev.research,
+      decisions: tab === 'decisions' ? null : prev.decisions,
+      review: tab === 'review' ? null : prev.review,
+      activeRequest: prev.activeRequest === tab ? null : prev.activeRequest,
+      error: null,
+    }))
+  }, [])
+
+  const fetchEnvelope = useCallback(async (
+    tab: ArtifactTab,
+    selection?: CandidateSelection,
+  ): Promise<ArtifactEnvelope> => {
+    if (!accountId) {
+      throw new Error('No paper trading account selected.')
+    }
+
+    const endpoint = tab === 'research'
+      ? `/api/paper-trading/accounts/${accountId}/research${buildResearchQuery(selection)}`
+      : `/api/paper-trading/accounts/${accountId}/${tabEndpointSuffix[tab]}`
+
+    const response = await fetch(endpoint)
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `Failed to fetch ${tab}`))
+    }
+
+    return await response.json() as ArtifactEnvelope
+  }, [accountId])
+
+  useEffect(() => {
+    if (!accountId) return
+
+    let cancelled = false
+
+    void (async () => {
+      setState(prev => ({ ...prev, isLoading: true, activeRequest: null, error: null }))
+
+      try {
+        const [discovery, research, decisions, review] = await Promise.all([
+          fetchEnvelope('discovery'),
+          fetchEnvelope('research', researchSelection),
+          fetchEnvelope('decisions'),
+          fetchEnvelope('review'),
+        ])
+
+        if (cancelled) return
+
+        setState({
+          discovery: discovery as DiscoveryEnvelope,
+          research: research as ResearchEnvelope,
+          decisions: decisions as DecisionEnvelope,
+          review: review as ReviewEnvelope,
+          isLoading: false,
+          activeRequest: null,
+          error: null,
+        })
+      } catch (error) {
+        if (cancelled) return
+
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          activeRequest: null,
+          error: error instanceof Error ? error.message : 'Failed to load artifact stages',
+        }))
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [accountId, fetchEnvelope, researchSelection])
 
   const requestTab = useCallback(async (
     tab: ArtifactTab,
@@ -137,26 +290,13 @@ export function useAgentArtifacts(
         decisions: prev.decisions ?? emptyDecisions,
         review: prev.review ?? emptyReview,
         isLoading: false,
+        activeRequest: null,
         error: null,
       }))
       return
     }
 
-    if (tab === 'research' && !selection?.candidate_id && !selection?.symbol) {
-      setState(prev => ({
-        ...prev,
-        research: {
-          ...emptyResearch,
-          blockers: ['Choose a discovery candidate before generating research.'],
-          status: 'empty',
-        },
-        isLoading: false,
-        error: null,
-      }))
-      return
-    }
-
-    setState(prev => ({ ...prev, isLoading: true, error: null }))
+    setState(prev => ({ ...prev, isLoading: true, activeRequest: tab, error: null }))
 
     try {
       let endpoint = ''
@@ -190,44 +330,39 @@ export function useAgentArtifacts(
           ),
         )
       }
-      const payload = await response.json()
 
+      const payload = await response.json()
+      const refreshedDiscovery = method === 'POST' && tab === 'research'
+        ? await fetchEnvelope('discovery')
+        : null
       setState(prev => ({
         ...prev,
-        discovery: tab === 'discovery' ? payload : prev.discovery,
+        discovery: refreshedDiscovery ?? (tab === 'discovery' ? payload : prev.discovery),
         research: tab === 'research' ? payload : prev.research,
         decisions: tab === 'decisions' ? payload : prev.decisions,
         review: tab === 'review' ? payload : prev.review,
         isLoading: false,
+        activeRequest: null,
         error: null,
       }))
+      if (method === 'POST') {
+        await options?.onRunComplete?.()
+      }
     } catch (error) {
       setState(prev => ({
         ...prev,
         isLoading: false,
+        activeRequest: null,
         error: error instanceof Error ? error.message : `Failed to fetch ${tab}`,
       }))
     }
-  }, [accountId])
-
-  useEffect(() => {
-    if (!activeTab) return
-    if (activeTab === 'research') return
-    if (activeTab === 'discovery' && state.discovery) return
-    if (activeTab === 'decisions' && state.decisions) return
-    if (activeTab === 'review' && state.review) return
-    void requestTab(activeTab, 'GET')
-  }, [
-    activeTab,
-    requestTab,
-    state.decisions,
-    state.discovery,
-    state.review,
-  ])
+  }, [accountId, options, researchSelection])
 
   return {
     ...state,
+    clearTab,
     refreshTab: (tab: ArtifactTab, selection?: CandidateSelection) => requestTab(tab, 'GET', selection),
-    runTab: (tab: ArtifactTab, selection?: CandidateSelection) => requestTab(tab, 'POST', selection),
+    runTab: (tab: ArtifactTab, selection?: CandidateSelection) =>
+      requestTab(tab, 'POST', selection ?? (tab === 'research' ? researchSelection : undefined)),
   }
 }

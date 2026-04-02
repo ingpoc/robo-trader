@@ -406,7 +406,7 @@ class UpstoxQuoteStreamAdapter(QuoteStreamAdapter):
             normalized = self._normalize_feed(symbol, feed, payload.get("currentTs"))
             if normalized is None:
                 continue
-            if self._loop is not None:
+            if self._loop is not None and not self._loop.is_closed():
                 asyncio.run_coroutine_threadsafe(self._on_quote_update(normalized), self._loop)
 
     def _normalize_feed(
@@ -849,7 +849,7 @@ class KiteTickerQuoteStreamAdapter(QuoteStreamAdapter):
             if normalized is None:
                 continue
 
-            if self._loop is not None:
+            if self._loop is not None and not self._loop.is_closed():
                 asyncio.run_coroutine_threadsafe(self._on_quote_update(normalized), self._loop)
 
     def _normalize_tick(self, symbol: str, tick: object) -> Optional[MarketData]:

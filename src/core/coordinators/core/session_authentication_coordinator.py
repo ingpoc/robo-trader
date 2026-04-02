@@ -1,7 +1,7 @@
 """
 Session Authentication Coordinator
 
-Focused coordinator for authentication logic.
+Focused coordinator for active AI runtime authentication logic.
 Extracted from SessionCoordinator for single responsibility.
 """
 
@@ -10,16 +10,16 @@ from typing import Optional
 from loguru import logger
 
 from src.config import Config
-from src.auth.claude_auth import ClaudeAuthStatus, validate_claude_sdk_auth
+from src.auth.claude_auth import ClaudeAuthStatus, get_claude_sdk_status
 from ..base_coordinator import BaseCoordinator
 
 
 class SessionAuthenticationCoordinator(BaseCoordinator):
     """
-    Coordinates Claude SDK authentication.
+    Coordinates active AI runtime authentication.
     
     Responsibilities:
-    - Validate Claude SDK authentication
+    - Validate active AI runtime authentication
     - Track authentication status
     - Handle authentication errors gracefully
     """
@@ -35,7 +35,7 @@ class SessionAuthenticationCoordinator(BaseCoordinator):
 
     async def validate_authentication(self) -> ClaudeAuthStatus:
         """
-        Validate Claude Agent SDK authentication (non-blocking, graceful degradation).
+        Validate active AI runtime authentication (non-blocking, graceful degradation).
 
         Returns:
             ClaudeAuthStatus with validation results
@@ -43,20 +43,23 @@ class SessionAuthenticationCoordinator(BaseCoordinator):
         Note: This method does NOT raise exceptions on auth failure.
               It logs warnings and allows the system to continue in degraded mode.
         """
-        self.claude_sdk_status = await validate_claude_sdk_auth()
+        # Route through the runtime-aware status helper so Codex-backed sessions
+        # do not keep probing the legacy Claude CLI path in the background.
+        self.claude_sdk_status = await get_claude_sdk_status()
         if not self.claude_sdk_status.is_valid:
-            error_msg = f"Claude Agent SDK authentication unavailable: {self.claude_sdk_status.error}"
+            error_msg = f"AI runtime authentication unavailable: {self.claude_sdk_status.error}"
             self._log_warning(error_msg)
             self._log_warning("System will continue in paper trading mode without AI features")
             # DO NOT RAISE - allow system to continue with degraded functionality
         else:
             auth_method = self.claude_sdk_status.account_info.get('auth_method', 'unknown')
-            self._log_info(f"Claude Agent SDK authenticated successfully via {auth_method}")
+            provider = self.claude_sdk_status.account_info.get("provider", "ai_runtime")
+            self._log_info(f"{provider} runtime authenticated successfully via {auth_method}")
 
         return self.claude_sdk_status
 
     def is_authenticated(self) -> bool:
-        """Check if Claude SDK authentication is valid and ready."""
+        """Check if active AI runtime authentication is valid and ready."""
         return (
             self.claude_sdk_status is not None
             and self.claude_sdk_status.is_valid
@@ -69,4 +72,3 @@ class SessionAuthenticationCoordinator(BaseCoordinator):
     async def cleanup(self) -> None:
         """Cleanup session authentication coordinator resources."""
         self._log_info("SessionAuthenticationCoordinator cleanup complete")
-

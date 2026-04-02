@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -5,9 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src.core.errors import ErrorCategory, ErrorSeverity, TradingError
-from src.models.agent_artifacts import ResearchPacket, ReviewReport, StrategyProposal
+from src.models.agent_artifacts import Candidate, DecisionPacket, ResearchPacket, ReviewReport, StrategyProposal
 from src.models.trading_capabilities import CapabilityCheck, CapabilityStatus, TradingCapabilitySnapshot
 from src.services.claude_agent.agent_artifact_service import AgentArtifactService
+from src.services.codex_runtime_client import CodexRuntimeError
 
 
 class _Container:
@@ -65,7 +67,154 @@ async def test_discovery_view_uses_watchlist_and_excludes_held_symbols():
 
 
 @pytest.mark.asyncio
-async def test_decision_view_blocks_when_claude_runtime_is_invalid(monkeypatch):
+async def test_discovery_view_ignores_stale_watchlist_candidates():
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
+    account_manager.get_open_positions.return_value = []
+
+    discovery_service = AsyncMock()
+    discovery_service.get_watchlist.return_value = [
+        {
+            "id": "cand-1",
+            "symbol": "RELIANCE",
+            "company_name": "Reliance Industries",
+            "sector": "Energy",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.72,
+            "discovery_reason": "Old stale discovery row",
+            "last_analyzed": "2025-12-23T17:09:21.514794+00:00",
+        }
+    ]
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "stock_discovery_service": discovery_service,
+            }
+        )
+    )
+
+    envelope = await service.get_discovery_view("paper_main")
+
+    assert envelope.status == "empty"
+    assert envelope.artifact_count == 0
+    assert envelope.candidates == []
+    assert envelope.blockers == ["No active discovery candidates cleared the confidence threshold in the watchlist."]
+
+
+@pytest.mark.asyncio
+async def test_discovery_view_keeps_low_confidence_candidates_out_of_auto_research_promotion():
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
+    account_manager.get_open_positions.return_value = []
+
+    discovery_service = AsyncMock()
+    discovery_service.get_watchlist.return_value = [
+        {
+            "id": "cand-1",
+            "symbol": "SBIN",
+            "company_name": "State Bank of India",
+            "sector": "Financials",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.55,
+            "discovery_reason": "Setup is emerging, but confirmation remains incomplete.",
+        }
+    ]
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "stock_discovery_service": discovery_service,
+            }
+        )
+    )
+
+    discovery = await service.get_discovery_view("paper_main")
+
+    assert discovery.status == "ready"
+    assert discovery.candidates[0].symbol == "SBIN"
+    assert "promotion confidence threshold" in discovery.blockers[0]
+    assert discovery.candidates[0].lifecycle_state == "fresh_queue"
+    assert (
+        service._resolve_research_candidate(
+            discovery=discovery,
+            candidate_id=None,
+            symbol=None,
+        ).symbol
+        == "SBIN"
+    )
+
+
+@pytest.mark.asyncio
+async def test_discovery_view_surfaces_latest_research_memory_from_learning_store():
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
+    account_manager.get_open_positions.return_value = []
+
+    discovery_service = AsyncMock()
+    discovery_service.get_watchlist.return_value = [
+        {
+            "id": "cand-1",
+            "symbol": "KAYNES",
+            "company_name": "Kaynes Technology",
+            "sector": "Industrials",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.78,
+            "discovery_reason": "Automation tailwind and earnings momentum.",
+        }
+    ]
+    learning_store = SimpleNamespace(
+        get_latest_research_memory=AsyncMock(
+            return_value={
+                "symbol": "KAYNES",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "actionability": "watch_only",
+                "thesis_confidence": 0.31,
+                "analysis_mode": "stale_evidence",
+                "evidence": ["Fresh filing was reviewed in the latest packet."],
+                "source_summary": [
+                    {"source_type": "research_ledger", "label": "Stored packet", "tier": "primary", "freshness": "fresh"},
+                    {"source_type": "technical_context", "label": "Technical context", "tier": "derived", "freshness": "fresh"},
+                ],
+                "market_data_freshness": {"status": "fresh"},
+            }
+        )
+    )
+    learning_service = SimpleNamespace(learning_store=learning_store)
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "stock_discovery_service": discovery_service,
+                "paper_trading_learning_service": learning_service,
+            }
+        )
+    )
+
+    envelope = await service.get_discovery_view("paper_main")
+
+    candidate = envelope.candidates[0]
+    assert candidate.symbol == "KAYNES"
+    assert candidate.last_researched_at
+    assert candidate.last_actionability == "watch_only"
+    assert candidate.last_thesis_confidence == 0.31
+    assert candidate.last_analysis_mode == "stale_evidence"
+    assert candidate.research_freshness == "fresh"
+    assert candidate.fresh_primary_source_count == 1
+    assert candidate.fresh_external_source_count == 0
+    assert candidate.technical_context_available is True
+    assert candidate.market_data_freshness == "fresh"
+    assert candidate.evidence_mode == "stale_evidence"
+    assert candidate.lifecycle_state == "keep_watch"
+    assert candidate.reentry_reason is None
+    assert candidate.last_trigger_type is None
+
+
+@pytest.mark.asyncio
+async def test_decision_view_blocks_when_ai_runtime_is_invalid(monkeypatch):
     account_manager = AsyncMock()
     account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
 
@@ -88,11 +237,120 @@ async def test_decision_view_blocks_when_claude_runtime_is_invalid(monkeypatch):
     envelope = await service.get_decision_view("paper_main")
 
     assert envelope.status == "blocked"
-    assert "Claude runtime" in envelope.blockers[0]
+    assert "AI runtime" in envelope.blockers[0]
 
 
 @pytest.mark.asyncio
-async def test_research_view_blocks_when_claude_runtime_is_invalid(monkeypatch):
+async def test_decision_view_blocks_when_position_marks_are_stale(monkeypatch):
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
+    account_manager.get_open_positions.return_value = [
+        SimpleNamespace(
+            symbol="INFY",
+            market_price_status="stale_entry",
+            market_price_timestamp="2026-03-28T00:00:00+00:00",
+        )
+    ]
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+            }
+        )
+    )
+
+    async def _valid_status():
+        return SimpleNamespace(is_valid=True, rate_limit_info={})
+
+    monkeypatch.setattr(
+        "src.services.claude_agent.agent_artifact_service.get_claude_status",
+        _valid_status,
+    )
+
+    envelope = await service.get_decision_view("paper_main", refresh=True)
+
+    assert envelope.status == "blocked"
+    assert "fresh" in envelope.blockers[0].lower()
+    assert "INFY" in envelope.blockers[0]
+
+
+@pytest.mark.asyncio
+async def test_decision_view_downgrades_low_confidence_packets(monkeypatch):
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
+    account_manager.get_open_positions.return_value = [
+        SimpleNamespace(
+            symbol="INFY",
+            market_price_status="live",
+            market_price_timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+    ]
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+            }
+        )
+    )
+
+    async def _valid_status():
+        return SimpleNamespace(is_valid=True, rate_limit_info={})
+
+    monkeypatch.setattr(
+        "src.services.claude_agent.agent_artifact_service.get_claude_status",
+        _valid_status,
+    )
+    monkeypatch.setattr(
+        service,
+        "_build_prompt_context",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                model_dump=lambda mode="json": {},
+                positions=[],
+                recent_trades=[],
+                capability_summary={},
+                learning_summary={},
+                improvement_report={},
+                account_summary={},
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_run_structured_role",
+        AsyncMock(
+                return_value=(
+                    SimpleNamespace(
+                        decisions=[
+                            DecisionPacket(
+                                decision_id="decision-1",
+                                symbol="INFY",
+                                action="tighten_stop",
+                                confidence=0.52,
+                                thesis="Momentum remains positive.",
+                                invalidation="Close below support.",
+                                next_step="Tighten the stop today.",
+                                risk_note="Fresh quote is available.",
+                            )
+                        ]
+                    ),
+                    {"provider": "codex"},
+            )
+        ),
+    )
+
+    envelope = await service.get_decision_view("paper_main", refresh=True)
+
+    assert envelope.status == "blocked"
+    assert envelope.decisions[0].action == "review_exit"
+    assert "deterministic promotion threshold" in envelope.blockers[0]
+    assert "operator review is required" in envelope.decisions[0].risk_note.lower()
+
+
+@pytest.mark.asyncio
+async def test_research_view_blocks_when_ai_runtime_is_invalid(monkeypatch):
     account_manager = AsyncMock()
     account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
 
@@ -125,11 +383,11 @@ async def test_research_view_blocks_when_claude_runtime_is_invalid(monkeypatch):
         _invalid_status,
     )
 
-    envelope = await service.get_research_view("paper_main")
+    envelope = await service.get_research_view("paper_main", refresh=True)
 
     assert envelope.status == "blocked"
     assert envelope.research is None
-    assert "Claude runtime" in envelope.blockers[0]
+    assert "AI runtime" in envelope.blockers[0]
 
 
 @pytest.mark.asyncio
@@ -163,10 +421,10 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
         mode="paper_only",
         checks=[
             CapabilityCheck(
-                key="claude_runtime",
-                label="Claude Runtime",
+                key="ai_runtime",
+                label="AI Runtime",
                 status=CapabilityStatus.READY,
-                summary="Claude runtime is ready.",
+                summary="AI runtime is ready.",
             )
         ],
         account_id="paper_main",
@@ -206,34 +464,18 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
         assert "recent_lessons" in kwargs["prompt"]
         assert "top_lessons" in kwargs["prompt"]
         assert kwargs["allowed_tools"] == []
-        assert kwargs["model"] == "haiku"
-        return kwargs["output_model"](
-            research_id="research-1",
-            symbol="TCS",
-            thesis="Trend and post-earnings momentum remain constructive.",
-            evidence=["Relative strength is holding above sector peers."],
-            risks=["Breakout could fail if volume dries up."],
-            invalidation="Daily close below the recent base low.",
-            confidence=0.74,
-            source_summary=[
-                {
-                    "source_type": "claude_web_news",
-                    "label": "Fresh external news",
-                    "timestamp": "2026-03-23T09:05:00+00:00",
-                    "freshness": "fresh",
-                    "detail": "Claude web research found a fresh catalyst update.",
-                }
-            ],
-            evidence_citations=[
-                {
-                    "source_type": "claude_web_news",
-                    "label": "Fresh external news",
-                    "reference": "https://example.com/tcs-news",
-                    "freshness": "fresh",
-                    "timestamp": "2026-03-23T09:05:00+00:00",
-                }
-            ],
-            next_step="Promote to a decision packet only if the breakout holds.",
+        assert kwargs["model"] == service.MODEL_ROUTE_RESEARCH
+        assert kwargs["timeout_seconds"] == service.FOCUSED_RESEARCH_SYNTHESIS_TIMEOUT_SECONDS
+        return (
+            kwargs["output_model"](
+                thesis="Trend and post-earnings momentum remain constructive.",
+                evidence=["Relative strength is holding above sector peers."],
+                risks=["Breakout could fail if volume dries up."],
+                invalidation="Daily close below the recent base low.",
+                confidence=0.74,
+                next_step="Promote to a decision packet only if the breakout holds.",
+            ),
+            {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium"},
         )
 
     monkeypatch.setattr(
@@ -272,6 +514,13 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
                         "freshness": "fresh",
                         "detail": "TCS is trending higher with strong volume support.",
                     },
+                    {
+                        "source_type": "codex_web_research",
+                        "label": "Fresh external news",
+                        "timestamp": "2026-03-23T09:05:00+00:00",
+                        "freshness": "fresh",
+                        "detail": "Codex web research found a fresh catalyst update.",
+                    },
                 ],
                 "evidence_citations": [
                     {
@@ -280,6 +529,13 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
                         "reference": "ledger:entry-1",
                         "freshness": "fresh",
                         "timestamp": "2026-03-23T09:00:00+00:00",
+                    },
+                    {
+                        "source_type": "codex_web_research",
+                        "label": "Fresh external news",
+                        "reference": "https://example.com/tcs-news",
+                        "freshness": "fresh",
+                        "timestamp": "2026-03-23T09:05:00+00:00",
                     }
                 ],
                 "market_data_freshness": {
@@ -303,14 +559,206 @@ async def test_research_view_uses_top_candidate_when_no_candidate_id_is_provided
     assert envelope.research.candidate_id == "cand-1"
     assert envelope.research.account_id == "paper_main"
     assert envelope.research.analysis_mode == "fresh_evidence"
-    assert envelope.research.actionability == "actionable"
+    assert envelope.research.actionability == "watch_only"
+    assert envelope.research.classification == "keep_watch"
+    assert envelope.research.external_evidence_status == "fresh"
     assert envelope.research.screening_confidence == 0.82
-    assert envelope.research.thesis_confidence == 0.74
+    assert envelope.research.thesis_confidence == 0.57
     assert envelope.research.source_summary[0].source_type == "research_ledger"
-    assert any(item.source_type == "claude_web_news" for item in envelope.research.source_summary)
+    assert any(item.source_type == "codex_web_research" for item in envelope.research.source_summary)
     assert any(item.reference == "ledger:entry-1" for item in envelope.research.evidence_citations)
     assert any(item.reference == "https://example.com/tcs-news" for item in envelope.research.evidence_citations)
+    assert envelope.loop_summary is not None
+    assert envelope.loop_summary.research_attempt_count == 1
+    assert envelope.loop_summary.queue_exhausted is True
     learning_service.record_research_packet.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_research_view_continues_until_actionable_candidate(monkeypatch):
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(
+        account_id="paper_main",
+        current_balance=100000.0,
+        buying_power=100000.0,
+        monthly_pnl=0.0,
+    )
+    account_manager.get_open_positions.return_value = []
+    account_manager.get_closed_trades.return_value = []
+    account_manager.get_performance_metrics.return_value = {"win_rate": 0.0, "profit_factor": 0.0}
+
+    discovery_service = AsyncMock()
+    discovery_service.get_watchlist.return_value = [
+        {
+            "id": "cand-1",
+            "symbol": "TCS",
+            "company_name": "TCS",
+            "sector": "Technology",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.81,
+            "discovery_reason": "Trend remains constructive.",
+        },
+        {
+            "id": "cand-2",
+            "symbol": "KPITTECH",
+            "company_name": "KPIT Technologies",
+            "sector": "Technology",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.79,
+            "discovery_reason": "Fresh trigger and relative strength improved.",
+        },
+    ]
+
+    capability_service = AsyncMock()
+    capability_service.get_snapshot.return_value = TradingCapabilitySnapshot.build(
+        mode="paper_only",
+        checks=[
+            CapabilityCheck(
+                key="ai_runtime",
+                label="AI Runtime",
+                status=CapabilityStatus.READY,
+                summary="AI runtime is ready.",
+            )
+        ],
+        account_id="paper_main",
+    )
+    learning_service = AsyncMock()
+    learning_service.get_learning_summary.return_value = SimpleNamespace(model_dump=lambda mode="json": {})
+    learning_service.get_symbol_learning_context.return_value = {}
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "stock_discovery_service": discovery_service,
+                "trading_capability_service": capability_service,
+                "paper_trading_learning_service": learning_service,
+            }
+        )
+    )
+
+    async def _valid_status():
+        return SimpleNamespace(is_valid=True)
+
+    monkeypatch.setattr(
+        "src.services.claude_agent.agent_artifact_service.get_claude_status",
+        _valid_status,
+    )
+
+    async def _fake_inputs(*, candidate, **kwargs):
+        source_summary = [
+            {
+                "source_type": "screening",
+                "label": candidate.sector or "Unknown",
+                "timestamp": "2026-03-23T09:00:00+00:00",
+                "freshness": "fresh",
+                "detail": candidate.rationale,
+            },
+            {
+                "source_type": "technical_context",
+                "label": "Recent OHLCV state",
+                "timestamp": "2026-03-23T09:06:00+00:00",
+                "freshness": "fresh",
+                "detail": "Momentum and structure remain available for review.",
+            },
+        ]
+        evidence_citations = []
+        if candidate.symbol == "KPITTECH":
+            source_summary.append(
+                {
+                    "source_type": "company_filing",
+                    "label": "Fresh exchange filing",
+                    "timestamp": "2026-03-23T09:05:00+00:00",
+                    "freshness": "fresh",
+                    "detail": "A fresh catalyst confirms the reentry case.",
+                }
+            )
+            evidence_citations.append(
+                {
+                    "source_type": "company_filing",
+                    "label": "Fresh exchange filing",
+                    "reference": "https://example.com/kpittech-filing",
+                    "freshness": "fresh",
+                    "timestamp": "2026-03-23T09:05:00+00:00",
+                }
+            )
+
+        return {
+            "screening_snapshot": {
+                "candidate_confidence": candidate.confidence,
+                "candidate_priority": candidate.priority,
+                "candidate_rationale": candidate.rationale,
+                "watchlist": {"id": candidate.candidate_id, "symbol": candidate.symbol},
+                "research_ledger": {"symbol": candidate.symbol},
+            },
+            "source_summary": source_summary,
+            "evidence_citations": evidence_citations,
+            "market_data_freshness": {
+                "status": "fresh",
+                "summary": "Quotes are current.",
+                "timestamp": "2026-03-23T09:10:00+00:00",
+                "age_seconds": 45.0,
+                "provider": "zerodha_kite",
+                "has_intraday_quote": True,
+                "has_historical_data": True,
+            },
+        }
+
+    monkeypatch.setattr(service, "_build_focused_research_inputs", AsyncMock(side_effect=_fake_inputs))
+
+    async def _fake_run(**kwargs):
+        symbol = "KPITTECH" if "KPITTECH" in kwargs["prompt"] else "TCS"
+        if symbol == "TCS":
+            return (
+                kwargs["output_model"](
+                    thesis="Interesting but evidence is still thin.",
+                    evidence=["Trend is constructive."],
+                    risks=["Catalyst confirmation is missing."],
+                    invalidation="Break below recent pivot.",
+                    confidence=0.52,
+                    screening_confidence=0.81,
+                    thesis_confidence=0.48,
+                    actionability="watch_only",
+                    analysis_mode="fresh_evidence",
+                    external_evidence_status="partial",
+                    why_now="Screening signal improved but not enough to buy.",
+                    next_step="Keep on watch.",
+                ),
+                {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium", "usage": {"input_tokens": 200, "output_tokens": 120}},
+            )
+        return (
+            kwargs["output_model"](
+                thesis="Fresh trigger and follow-through make the setup actionable.",
+                evidence=["New trigger confirmed.", "Relative strength improved."],
+                risks=["Breakout can still fail."],
+                invalidation="Close back into the base.",
+                confidence=0.78,
+                screening_confidence=0.79,
+                thesis_confidence=0.72,
+                actionability="actionable",
+                analysis_mode="fresh_evidence",
+                external_evidence_status="fresh",
+                why_now="A new trigger improved the probability of follow-through.",
+                next_step="Promote to decision packet.",
+            ),
+            {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium", "usage": {"input_tokens": 240, "output_tokens": 160}},
+        )
+
+    monkeypatch.setattr(service, "_run_structured_role", AsyncMock(side_effect=_fake_run))
+
+    envelope = await service.get_research_view("paper_main", refresh=True)
+
+    assert envelope.status == "ready"
+    assert envelope.research is not None
+    assert envelope.research.symbol == "KPITTECH"
+    assert envelope.research.classification == "actionable_buy_candidate"
+    assert envelope.loop_summary is not None
+    assert envelope.loop_summary.attempted_candidates == ["TCS", "KPITTECH"]
+    assert envelope.loop_summary.research_attempt_count == 2
+    assert envelope.loop_summary.actionable_found_count == 1
+    assert envelope.loop_summary.queue_exhausted is False
+    assert envelope.loop_summary.termination_reason == "actionable_found"
+    assert learning_service.record_research_packet.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -346,7 +794,7 @@ async def test_research_view_returns_empty_when_no_candidates_exist(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_research_view_blocks_when_claude_runtime_is_usage_limited(monkeypatch):
+async def test_research_view_blocks_when_ai_runtime_is_usage_limited(monkeypatch):
     account_manager = AsyncMock()
     account_manager.get_account.return_value = SimpleNamespace(account_id="paper_main")
 
@@ -361,12 +809,14 @@ async def test_research_view_blocks_when_claude_runtime_is_usage_limited(monkeyp
             "discovery_reason": "Momentum remains intact.",
         }
     ]
+    learning_service = AsyncMock()
 
     service = AgentArtifactService(
         _Container(
             {
                 "paper_trading_account_manager": account_manager,
                 "stock_discovery_service": discovery_service,
+                "paper_trading_learning_service": learning_service,
             }
         )
     )
@@ -397,9 +847,12 @@ async def test_research_view_blocks_when_claude_runtime_is_usage_limited(monkeyp
     assert envelope.status == "blocked"
     assert envelope.research is None
     assert envelope.blockers == [
-        "Claude runtime is usage-limited for research generation. You're out of extra usage · resets 5:30pm (Asia/Calcutta)"
+        "AI runtime is usage-limited for research generation. You're out of extra usage · resets 5:30pm (Asia/Calcutta)"
     ]
     run_structured_role.assert_not_awaited()
+    learning_service.record_research_packet.assert_awaited_once()
+    assert learning_service.record_research_packet.await_args.args[2].actionability == "blocked"
+    assert learning_service.record_research_packet.await_args.args[2].symbol == "TCS"
 
 
 @pytest.mark.asyncio
@@ -489,8 +942,11 @@ async def test_research_view_degrades_when_sdk_rate_limit_hits_mid_run(monkeypat
     assert envelope.status == "blocked"
     assert envelope.research is None
     assert envelope.blockers == [
-        "Claude runtime is usage-limited for research generation. You're out of extra usage · resets 6:30pm (Asia/Calcutta)"
+        "AI runtime is usage-limited for research generation. You're out of extra usage · resets 6:30pm (Asia/Calcutta)"
     ]
+    learning_service.record_research_packet.assert_awaited_once()
+    assert learning_service.record_research_packet.await_args.args[2].actionability == "blocked"
+    assert learning_service.record_research_packet.await_args.args[2].symbol == "TCS"
 
 
 @pytest.mark.asyncio
@@ -576,8 +1032,104 @@ async def test_research_view_degrades_when_sdk_spending_cap_hits_mid_run(monkeyp
     assert envelope.status == "blocked"
     assert envelope.research is None
     assert envelope.blockers == [
-        "Claude runtime is usage-limited for research generation. Spending cap reached resets 11:30pm"
+        "AI runtime is usage-limited for research generation. Spending cap reached resets 11:30pm"
     ]
+    learning_service.record_research_packet.assert_awaited_once()
+    assert learning_service.record_research_packet.await_args.args[2].actionability == "blocked"
+    assert learning_service.record_research_packet.await_args.args[2].symbol == "INFY"
+
+
+@pytest.mark.asyncio
+async def test_research_view_blocks_when_runtime_times_out_mid_run(monkeypatch):
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(
+        account_id="paper_main",
+        current_balance=100000.0,
+        buying_power=100000.0,
+        monthly_pnl=0.0,
+    )
+    account_manager.get_open_positions.return_value = []
+    account_manager.get_closed_trades.return_value = []
+    account_manager.get_performance_metrics.return_value = {"win_rate": 0.0, "profit_factor": 0.0}
+
+    discovery_service = AsyncMock()
+    discovery_service.get_watchlist.return_value = [
+        {
+            "id": "cand-1",
+            "symbol": "INFY",
+            "company_name": "Infosys",
+            "discovery_source": "watchlist",
+            "confidence_score": 0.8,
+            "discovery_reason": "Momentum remains intact.",
+        }
+    ]
+
+    capability_service = AsyncMock()
+    capability_service.get_snapshot.return_value = TradingCapabilitySnapshot.build(
+        mode="paper_only",
+        checks=[],
+        account_id="paper_main",
+    )
+    learning_service = AsyncMock()
+    learning_service.get_learning_summary.return_value = SimpleNamespace(model_dump=lambda mode="json": {})
+    learning_service.get_symbol_learning_context.return_value = {}
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "stock_discovery_service": discovery_service,
+                "trading_capability_service": capability_service,
+                "paper_trading_learning_service": learning_service,
+            }
+        )
+    )
+
+    async def _valid_status():
+        return SimpleNamespace(is_valid=True)
+
+    monkeypatch.setattr(
+        "src.services.claude_agent.agent_artifact_service.get_claude_status",
+        _valid_status,
+    )
+    monkeypatch.setattr(
+        service,
+        "_build_focused_research_inputs",
+        AsyncMock(
+            return_value={
+                "screening_snapshot": {"candidate_confidence": 0.8, "watchlist": {"id": "cand-1"}},
+                "source_summary": [],
+                "evidence_citations": [],
+                "market_data_freshness": {},
+                "fresh_external_research": {},
+            }
+        ),
+    )
+
+    async def _timed_out_run(**kwargs):
+        raise TradingError(
+            "AI runtime timed out during research generation.",
+            category=ErrorCategory.SYSTEM,
+            severity=ErrorSeverity.MEDIUM,
+            recoverable=True,
+            metadata={
+                "runtime_state": "timed_out",
+                "provider_error": "Codex runtime timed out after 45.0s.",
+            },
+        )
+
+    monkeypatch.setattr(service, "_run_structured_role", _timed_out_run)
+
+    envelope = await service.get_research_view("paper_main", refresh=True)
+
+    assert envelope.status == "blocked"
+    assert envelope.research is None
+    assert envelope.blockers == [
+        "AI runtime timed out during research generation. Codex runtime timed out after 45.0s."
+    ]
+    learning_service.record_research_packet.assert_awaited_once()
+    assert learning_service.record_research_packet.await_args.args[2].actionability == "blocked"
+    assert learning_service.record_research_packet.await_args.args[2].symbol == "INFY"
 
 
 @pytest.mark.asyncio
@@ -638,14 +1190,17 @@ async def test_research_view_degrades_when_evidence_is_stale(monkeypatch):
         return SimpleNamespace(is_valid=True)
 
     async def _fake_run(**kwargs):
-        return kwargs["output_model"](
-            research_id="research-2",
-            symbol="INFY",
-            thesis="The setup remains interesting, but current confirmation is weak.",
-            evidence=["Stored discovery context remains constructive."],
-            risks=[],
-            invalidation="Close below support.",
-            confidence=0.88,
+        return (
+            kwargs["output_model"](
+                research_id="research-2",
+                symbol="INFY",
+                thesis="The setup remains interesting, but current confirmation is weak.",
+                evidence=["Stored discovery context remains constructive."],
+                risks=[],
+                invalidation="Close below support.",
+                confidence=0.88,
+            ),
+            {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium"},
         )
 
     monkeypatch.setattr(
@@ -710,6 +1265,45 @@ async def test_research_view_degrades_when_evidence_is_stale(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_collect_focused_research_runtime_inputs_degrades_external_timeout():
+    service = AgentArtifactService(_Container({}))
+    service.FOCUSED_RESEARCH_EXTERNAL_TIMEOUT_SECONDS = 0.01
+    service.FOCUSED_RESEARCH_MARKET_CONTEXT_TIMEOUT_SECONDS = 0.05
+
+    async def _slow_external(symbol: str, *, company_name=None):
+        del symbol, company_name
+        await asyncio.sleep(0.05)
+        return {"evidence": ["should not arrive"]}
+
+    async def _fast_market(symbol: str):
+        return {
+            "market_data": {"ltp": 100.0, "provider": "zerodha_kite"},
+            "market_data_freshness": {
+                "status": "fresh",
+                "summary": "Intraday quote is current enough for operator review.",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "age_seconds": 1.0,
+                "provider": "zerodha_kite",
+                "has_intraday_quote": True,
+                "has_historical_data": True,
+            },
+            "technical_state": {},
+            "historical_data": [],
+        }
+
+    service._load_fresh_external_research = _slow_external
+    service._load_market_context = _fast_market
+
+    runtime_inputs = await service._collect_focused_research_runtime_inputs(
+        symbol="INFY",
+        company_name="Infosys",
+    )
+
+    assert runtime_inputs["external_research"]["errors"] == ["Codex runtime timed out after 0.0s."]
+    assert runtime_inputs["market_context"]["market_data"]["ltp"] == 100.0
+
+
+@pytest.mark.asyncio
 async def test_load_market_context_fetches_fresh_broker_quote_when_cache_is_missing():
     market_data_service = AsyncMock()
     market_data_service.get_market_data.return_value = None
@@ -743,7 +1337,137 @@ async def test_load_market_context_fetches_fresh_broker_quote_when_cache_is_miss
     assert market_context["market_data"]["provider"] == "zerodha_kite"
     assert market_context["market_data_freshness"]["status"] == "fresh"
     assert market_context["market_data_freshness"]["has_intraday_quote"] is True
+    market_data_service.subscribe_market_data.assert_awaited_once_with("INFY")
     kite_service.get_quotes.assert_awaited_once_with(["INFY"])
+
+
+@pytest.mark.asyncio
+async def test_load_market_context_uses_quote_prefight_subscription_before_broker_fallback():
+    stale_market_data = SimpleNamespace(
+        ltp=428.75,
+        open_price=430.0,
+        high_price=432.0,
+        low_price=425.0,
+        close_price=429.5,
+        volume=100000,
+        timestamp="2026-03-27T09:15:00+05:30",
+        provider="zerodha_kite",
+    )
+    fresh_market_data = SimpleNamespace(
+        ltp=431.2,
+        open_price=430.0,
+        high_price=433.5,
+        low_price=429.0,
+        close_price=429.5,
+        volume=165000,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        provider="zerodha_kite",
+    )
+
+    market_data_service = AsyncMock()
+    market_data_service.get_market_data = AsyncMock(side_effect=[stale_market_data, fresh_market_data])
+    market_data_service.subscribe_market_data = AsyncMock(return_value=True)
+
+    kite_service = AsyncMock()
+    kite_service.get_quotes.return_value = {}
+    kite_service.get_historical_data.return_value = [
+        {"date": "2026-03-28T00:00:00+00:00", "close": 429.5, "volume": 120000}
+    ]
+
+    service = AgentArtifactService(
+        _Container(
+            {
+                "market_data_service": market_data_service,
+                "kite_connect_service": kite_service,
+            }
+        )
+    )
+    service.RESEARCH_QUOTE_PREFLIGHT_WAIT_SECONDS = 0.01
+    service.RESEARCH_QUOTE_PREFLIGHT_POLL_SECONDS = 0.0
+
+    market_context = await service._load_market_context("DELHIVERY")
+
+    assert market_context["market_data"]["ltp"] == 431.2
+    assert market_context["market_data_freshness"]["status"] == "fresh"
+    market_data_service.subscribe_market_data.assert_awaited_once_with("DELHIVERY")
+    kite_service.get_quotes.assert_not_awaited()
+
+
+def test_finalize_research_packet_ignores_account_level_market_data_blocker_when_symbol_quote_is_fresh():
+    service = AgentArtifactService(_Container({}))
+    candidate = SimpleNamespace(
+        candidate_id="cand-1",
+        symbol="DELHIVERY",
+        confidence=0.78,
+        rationale="Fresh logistics candidate.",
+    )
+    research = ResearchPacket(
+        research_id="research-1",
+        candidate_id="cand-1",
+        account_id="paper_main",
+        symbol="DELHIVERY",
+        thesis="Fresh quote exists, but external evidence is still missing.",
+        evidence=["Quote is fresh."],
+        risks=[],
+        invalidation="Break support.",
+        confidence=0.6,
+        thesis_confidence=0.6,
+        actionability="watch_only",
+    )
+    research_inputs = {
+        "source_summary": [
+            {
+                "source_type": "discovery_watchlist",
+                "label": "Discovery watchlist entry",
+                "timestamp": "2026-03-29T06:00:00+00:00",
+                "freshness": "fresh",
+                "detail": "WATCH",
+            },
+            {
+                "source_type": "market_quote",
+                "label": "Current market quote",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "freshness": "fresh",
+                "detail": "Intraday quote is current enough for operator review.",
+            },
+            {
+                "source_type": "technical_context",
+                "label": "OHLCV technical state",
+                "timestamp": "2026-03-29T06:00:00+00:00",
+                "freshness": "fresh",
+                "detail": "Mixed trend.",
+            },
+        ],
+        "evidence_citations": [],
+        "market_data_freshness": {
+            "status": "fresh",
+            "summary": "Intraday quote is current enough for operator review.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "provider": "zerodha_kite",
+            "has_intraday_quote": True,
+            "has_historical_data": True,
+        },
+        "fresh_external_research": {
+            "errors": ["Codex runtime timed out after 30.0s."],
+        },
+        "screening_snapshot": {
+            "watchlist": {"id": "cand-1"},
+        },
+    }
+
+    finalized = service._finalize_research_packet(
+        research,
+        candidate=candidate,
+        account_id="paper_main",
+        research_inputs=research_inputs,
+        capability_summary={
+            "blockers": ["Market data cache is stale for active paper-trading symbols."],
+        },
+    )
+
+    normalized_risks = [risk.lower() for risk in finalized.risks]
+    assert "market data cache is stale for active paper-trading symbols." not in normalized_risks
+    assert finalized.market_data_freshness.status == "fresh"
 
 
 @pytest.mark.asyncio
@@ -764,10 +1488,10 @@ async def test_review_view_returns_empty_without_positions_or_trades(monkeypatch
         mode="paper_only",
         checks=[
             CapabilityCheck(
-                key="claude_runtime",
-                label="Claude Runtime",
+                key="ai_runtime",
+                label="AI Runtime",
                 status=CapabilityStatus.READY,
-                summary="Claude runtime is ready.",
+                summary="AI runtime is ready.",
             )
         ],
         account_id="paper_main",
@@ -827,10 +1551,10 @@ async def test_review_view_uses_only_benchmarked_strategy_proposals(monkeypatch)
         mode="paper_only",
         checks=[
             CapabilityCheck(
-                key="claude_runtime",
-                label="Claude Runtime",
+                key="ai_runtime",
+                label="AI Runtime",
                 status=CapabilityStatus.READY,
-                summary="Claude runtime is ready.",
+                summary="AI runtime is ready.",
             )
         ],
         account_id="paper_main",
@@ -872,22 +1596,25 @@ async def test_review_view_uses_only_benchmarked_strategy_proposals(monkeypatch)
         service,
         "_run_structured_role",
         AsyncMock(
-            return_value=ReviewReport(
-                review_id="review-1",
-                summary="Bounded review.",
-                strengths=["Risk was contained."],
-                weaknesses=["Sample remains small."],
-                risk_flags=[],
-                top_lessons=["Wait for stronger setups."],
-                strategy_proposals=[
-                    StrategyProposal(
-                        proposal_id="freeform",
-                        title="Unverified idea",
-                        recommendation="Invented by Claude",
-                        rationale="Should be overwritten.",
-                        guardrail="None",
-                    )
-                ],
+            return_value=(
+                ReviewReport(
+                    review_id="review-1",
+                    summary="Bounded review.",
+                    strengths=["Risk was contained."],
+                    weaknesses=["Sample remains small."],
+                    risk_flags=[],
+                    top_lessons=["Wait for stronger setups."],
+                    strategy_proposals=[
+                        StrategyProposal(
+                            proposal_id="freeform",
+                            title="Unverified idea",
+                            recommendation="Invented by Claude",
+                            rationale="Should be overwritten.",
+                            guardrail="None",
+                        )
+                    ],
+                ),
+                {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium"},
             )
         ),
     )
@@ -901,46 +1628,123 @@ async def test_review_view_uses_only_benchmarked_strategy_proposals(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_run_structured_role_recreates_and_cleans_up_client(monkeypatch):
-    service = AgentArtifactService(_Container({}))
+async def test_review_view_marks_thin_samples_as_low_confidence(monkeypatch):
+    account_manager = AsyncMock()
+    account_manager.get_account.return_value = SimpleNamespace(
+        account_id="paper_main",
+        current_balance=100000.0,
+        buying_power=98000.0,
+        monthly_pnl=0.0,
+    )
+    account_manager.get_open_positions.return_value = [
+        SimpleNamespace(
+            symbol="INFY",
+            quantity=10,
+            entry_price=100.0,
+            current_price=101.0,
+            unrealized_pnl=10.0,
+            unrealized_pnl_pct=1.0,
+            days_held=1,
+            stop_loss=95.0,
+            target_price=110.0,
+            market_price_status="live",
+        )
+    ]
+    account_manager.get_closed_trades.return_value = []
+    account_manager.get_performance_metrics.return_value = {"win_rate": 0.0, "profit_factor": 0.0}
 
-    manager = AsyncMock()
-    manager.get_client.return_value = object()
-    manager.cleanup_client = AsyncMock()
+    capability_service = AsyncMock()
+    capability_service.get_snapshot.return_value = TradingCapabilitySnapshot.build(
+        mode="paper_only",
+        checks=[
+            CapabilityCheck(
+                key="ai_runtime",
+                label="AI Runtime",
+                status=CapabilityStatus.READY,
+                summary="AI runtime is ready.",
+            )
+        ],
+        account_id="paper_main",
+    )
 
-    async def _query_only(client, prompt, timeout):
-        return None
-
-    async def _receive(client, timeout):
-        yield SimpleNamespace(
-            structured_output={
-                "research_id": "r-1",
-                "candidate_id": "cand-1",
-                "account_id": "paper_main",
-                "symbol": "TCS",
-                "thesis": "test",
-                "evidence": [],
-                "risks": [],
-                "invalidation": "x",
-                "confidence": 0.5,
-                "next_step": "y",
+    service = AgentArtifactService(
+        _Container(
+            {
+                "paper_trading_account_manager": account_manager,
+                "trading_capability_service": capability_service,
             }
         )
-
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.ClaudeSDKClientManager.get_instance",
-        AsyncMock(return_value=manager),
-    )
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.query_only_with_timeout",
-        _query_only,
-    )
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.receive_response_with_timeout",
-        _receive,
     )
 
-    result = await service._run_structured_role(
+    async def _valid_status():
+        return SimpleNamespace(is_valid=True)
+
+    monkeypatch.setattr(
+        "src.services.claude_agent.agent_artifact_service.get_claude_status",
+        _valid_status,
+    )
+    monkeypatch.setattr(
+        service,
+        "_run_structured_role",
+        AsyncMock(
+            return_value=(
+                ReviewReport(
+                    review_id="review-2",
+                    summary="Too little realized data to draw strong conclusions.",
+                    strengths=["Risk stayed bounded."],
+                    weaknesses=["No realized trades yet."],
+                    risk_flags=[],
+                    top_lessons=[],
+                    strategy_proposals=[],
+                ),
+                {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium"},
+            )
+        ),
+    )
+
+    envelope = await service.get_review_view("paper_main", refresh=True)
+
+    assert envelope.status == "ready"
+    assert envelope.review.confidence < service.REVIEW_READY_CONFIDENCE
+    assert envelope.blockers
+    assert "observational" in envelope.blockers[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_run_structured_role_recreates_and_cleans_up_client(monkeypatch):
+    runtime_client = AsyncMock()
+    runtime_client.run_focused_research.return_value = {
+        "research": {
+            "research_id": "r-1",
+            "candidate_id": "cand-1",
+            "account_id": "paper_main",
+            "symbol": "TCS",
+            "thesis": "test",
+            "evidence": [],
+            "risks": [],
+            "invalidation": "x",
+            "confidence": 0.5,
+            "next_step": "y",
+        },
+        "provider_metadata": {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium"},
+    }
+    service = AgentArtifactService(
+        _Container(
+            {
+                "codex_runtime_client": runtime_client,
+            }
+        )
+    )
+    service.container.config = SimpleNamespace(
+        ai_runtime=SimpleNamespace(
+            codex_model="gpt-5.4",
+            codex_reasoning_light="low",
+            codex_reasoning_deep="medium",
+        ),
+        project_dir="/tmp",
+    )
+
+    result, provider_metadata = await service._run_structured_role(
         client_type="agent_research_paper_main",
         role_name="research",
         system_prompt="system",
@@ -951,58 +1755,47 @@ async def test_run_structured_role_recreates_and_cleans_up_client(monkeypatch):
     )
 
     assert result.symbol == "TCS"
-    manager.get_client.assert_awaited_once()
-    _, kwargs = manager.get_client.await_args
-    assert kwargs["force_recreate"] is True
-    manager.cleanup_client.assert_awaited_once_with("agent_research_paper_main")
+    assert provider_metadata["provider"] == "codex"
+    runtime_client.run_focused_research.assert_awaited_once()
+    payload = runtime_client.run_focused_research.await_args.args[0]
+    assert payload["reasoning"] == "medium"
+    assert payload["model"] == "gpt-5.4"
+    assert payload["prompt_cache_key"] == "paper-trading:research:research"
+    assert "The JSON must validate against this schema" not in payload["prompt"]
+    assert payload["output_schema"]["additionalProperties"] is False
+    assert "required" in payload["output_schema"]
+    assert payload["output_schema"]["properties"]["provider_metadata"]["additionalProperties"] is False
 
 
 @pytest.mark.asyncio
 async def test_run_structured_role_parses_fenced_json_when_sdk_appends_rate_limit_event(monkeypatch):
-    service = AgentArtifactService(_Container({}))
-
-    manager = AsyncMock()
-    manager.get_client.return_value = object()
-    manager.cleanup_client = AsyncMock()
-
-    async def _query_only(client, prompt, timeout):
-        return None
-
-    async def _receive(client, timeout):
-        yield SimpleNamespace(
-            result=(
-                "```json\n"
-                "{\n"
-                '  "research_id":"r-1",\n'
-                '  "candidate_id":"cand-1",\n'
-                '  "account_id":"paper_main",\n'
-                '  "symbol":"INFY",\n'
-                '  "thesis":"test",\n'
-                '  "evidence":[],\n'
-                '  "risks":[],\n'
-                '  "invalidation":"x",\n'
-                '  "confidence":0.5,\n'
-                '  "next_step":"y"\n'
-                "}\n"
-                "```\n"
-                "RateLimitEvent(rate_limit_info=RateLimitInfo(status='allowed'))"
-            )
-        )
-
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.ClaudeSDKClientManager.get_instance",
-        AsyncMock(return_value=manager),
-    )
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.query_only_with_timeout",
-        _query_only,
-    )
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.receive_response_with_timeout",
-        _receive,
+    runtime_client = AsyncMock()
+    runtime_client.run_focused_research.return_value = {
+        "research": {
+            "research_id": "r-1",
+            "candidate_id": "cand-1",
+            "account_id": "paper_main",
+            "symbol": "INFY",
+            "thesis": "test",
+            "evidence": [],
+            "risks": [],
+            "invalidation": "x",
+            "confidence": 0.5,
+            "next_step": "y",
+        },
+        "provider_metadata": {"provider": "codex", "model": "gpt-5.4", "reasoning": "medium"},
+    }
+    service = AgentArtifactService(_Container({"codex_runtime_client": runtime_client}))
+    service.container.config = SimpleNamespace(
+        ai_runtime=SimpleNamespace(
+            codex_model="gpt-5.4",
+            codex_reasoning_light="low",
+            codex_reasoning_deep="medium",
+        ),
+        project_dir="/tmp",
     )
 
-    result = await service._run_structured_role(
+    result, provider_metadata = await service._run_structured_role(
         client_type="agent_research_paper_main",
         role_name="research",
         system_prompt="system",
@@ -1013,32 +1806,21 @@ async def test_run_structured_role_parses_fenced_json_when_sdk_appends_rate_limi
     )
 
     assert result.symbol == "INFY"
-    manager.cleanup_client.assert_awaited_once_with("agent_research_paper_main")
+    assert provider_metadata["provider"] == "codex"
 
 
 @pytest.mark.asyncio
 async def test_run_structured_role_cleans_up_client_after_sdk_error(monkeypatch):
-    service = AgentArtifactService(_Container({}))
-
-    manager = AsyncMock()
-    manager.get_client.return_value = object()
-    manager.cleanup_client = AsyncMock()
-
-    async def _query_only(client, prompt, timeout):
-        raise TradingError(
-            "Claude SDK error: Claude SDK session ended with error",
-            category=ErrorCategory.SYSTEM,
-            severity=ErrorSeverity.HIGH,
-            recoverable=True,
-        )
-
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.ClaudeSDKClientManager.get_instance",
-        AsyncMock(return_value=manager),
-    )
-    monkeypatch.setattr(
-        "src.services.claude_agent.agent_artifact_service.query_only_with_timeout",
-        _query_only,
+    runtime_client = AsyncMock()
+    runtime_client.run_focused_research.side_effect = CodexRuntimeError("runtime exploded")
+    service = AgentArtifactService(_Container({"codex_runtime_client": runtime_client}))
+    service.container.config = SimpleNamespace(
+        ai_runtime=SimpleNamespace(
+            codex_model="gpt-5.4",
+            codex_reasoning_light="low",
+            codex_reasoning_deep="medium",
+        ),
+        project_dir="/tmp",
     )
 
     with pytest.raises(TradingError):
@@ -1052,4 +1834,69 @@ async def test_run_structured_role_cleans_up_client_after_sdk_error(monkeypatch)
             session_id="research:paper_main",
         )
 
-    manager.cleanup_client.assert_awaited_once_with("agent_research_paper_main")
+
+def test_finalize_research_packet_marks_partial_external_evidence_and_caps_confidence():
+    service = AgentArtifactService(_Container({}))
+    candidate = Candidate(
+        candidate_id="cand-1",
+        symbol="INFY",
+        source="stateful_watchlist",
+        priority="high",
+        confidence=0.82,
+        rationale="Fresh setup",
+        next_step="Research it",
+    )
+    research = ResearchPacket(
+        research_id="research-1",
+        candidate_id="cand-1",
+        account_id="paper_main",
+        symbol="INFY",
+        thesis="Fresh thesis",
+        evidence=["Press coverage exists."],
+        risks=[],
+        invalidation="Break support",
+        confidence=0.9,
+        thesis_confidence=0.9,
+    )
+
+    finalized = service._finalize_research_packet(
+        research,
+        candidate=candidate,
+        account_id="paper_main",
+        research_inputs={
+            "source_summary": [
+                {
+                    "source_type": "reputable_financial_news",
+                    "label": "Financial daily",
+                    "timestamp": "2026-03-25T15:00:00+00:00",
+                    "freshness": "fresh",
+                    "detail": "Coverage",
+                }
+            ],
+            "evidence_citations": [
+                {
+                    "source_type": "reputable_financial_news",
+                    "label": "Financial daily",
+                    "reference": "https://example.com/news",
+                    "freshness": "fresh",
+                    "timestamp": "2026-03-25T15:00:00+00:00",
+                }
+            ],
+            "market_data_freshness": {
+                "status": "stale",
+                "summary": "Live quote is stale.",
+                "timestamp": "2026-03-25T09:00:00+00:00",
+                "provider": "zerodha_kite",
+                "has_intraday_quote": True,
+                "has_historical_data": True,
+            },
+            "fresh_external_research": {"errors": ["optional_enrichment: timeout"]},
+            "screening_snapshot": {"watchlist": {"id": "cand-1"}},
+        },
+        capability_summary={"blockers": []},
+    )
+
+    assert finalized.external_evidence_status == "partial"
+    assert finalized.source_summary[0].tier == "secondary"
+    assert finalized.evidence_citations[0].tier == "secondary"
+    assert finalized.confidence <= 0.49

@@ -20,8 +20,15 @@ if [ -f "$PROJECT_ROOT/.frontend_pid" ]; then
     rm -f "$PROJECT_ROOT/.frontend_pid"
 fi
 
-# Kill any processes using ports 8000 and 3000
-echo "Checking for processes on ports 8000 and 3000..."
+if [ -f "$PROJECT_ROOT/.codex_runtime_pid" ]; then
+    CODEX_RUNTIME_PID=$(cat "$PROJECT_ROOT/.codex_runtime_pid")
+    echo "Killing Codex runtime sidecar (PID: $CODEX_RUNTIME_PID)..."
+    kill $CODEX_RUNTIME_PID 2>/dev/null || echo "Codex runtime process not found"
+    rm -f "$PROJECT_ROOT/.codex_runtime_pid"
+fi
+
+# Kill any processes using ports 8000, 3000, and 8765
+echo "Checking for processes on ports 8000, 3000, and 8765..."
 
 # Port 8000 (backend)
 BACKEND_PORT_PID=$(lsof -ti:8000 2>/dev/null || echo "")
@@ -35,6 +42,13 @@ FRONTEND_PORT_PID=$(lsof -ti:3000 2>/dev/null || echo "")
 if [ ! -z "$FRONTEND_PORT_PID" ]; then
     echo "Killing process on port 3000 (PID: $FRONTEND_PORT_PID)..."
     kill -9 $FRONTEND_PORT_PID
+fi
+
+# Port 8765 (Codex runtime)
+CODEX_RUNTIME_PORT_PID=$(lsof -ti:8765 2>/dev/null || echo "")
+if [ ! -z "$CODEX_RUNTIME_PORT_PID" ]; then
+    echo "Killing process on port 8765 (PID: $CODEX_RUNTIME_PORT_PID)..."
+    kill -9 $CODEX_RUNTIME_PORT_PID
 fi
 
 echo "✅ All servers stopped"

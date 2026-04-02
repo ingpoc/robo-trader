@@ -1,6 +1,6 @@
 """Morning Research Coordinator.
 
-Executes batch stock research using Claude Agent SDK web research.
+Executes batch stock research using the active AI runtime.
 """
 
 from datetime import datetime, timezone
@@ -12,33 +12,33 @@ from src.core.event_bus import EventBus
 
 if TYPE_CHECKING:
     from src.core.di import DependencyContainer
-    from src.services.claude_agent.claude_market_research_service import ClaudeMarketResearchService
+    from src.services.ai_market_research_service import AIMarketResearchService
 
 
 class MorningResearchCoordinator(BaseCoordinator):
-    """Researches stocks using Claude web research in batched concurrent runs."""
+    """Researches stocks using AI-runtime web research in batched concurrent runs."""
 
     def __init__(self, config: Config, event_bus: EventBus, container: "DependencyContainer"):
         super().__init__(config, event_bus)
         self.container = container
-        self.market_research_service: Optional["ClaudeMarketResearchService"] = None
+        self.market_research_service: Optional["AIMarketResearchService"] = None
 
     async def initialize(self) -> None:
-        """Initialize with the Claude market research service from DI."""
+        """Initialize with the AI market research service from DI."""
         try:
-            self.market_research_service = await self.container.get("claude_market_research_service")
+            self.market_research_service = await self.container.get("ai_market_research_service")
         except ValueError:
-            self._log_warning("claude_market_research_service not registered - research disabled")
+            self._log_warning("ai_market_research_service not registered - research disabled")
             self.market_research_service = None
         self._initialized = True
 
     async def research_stocks(self, stocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Research selected stocks with Claude web tools."""
+        """Research selected stocks with the active AI runtime."""
         if not stocks:
             return []
 
         if not self.market_research_service:
-            self._log_warning("Claude market research service not available - skipping research")
+            self._log_warning("AI market research service not available - skipping research")
             return [
                 {
                     "symbol": stock["symbol"],
@@ -94,7 +94,7 @@ class MorningResearchCoordinator(BaseCoordinator):
                         "evidence": research.get("evidence", []),
                         "risks": research.get("risks", []),
                         "source_summary": research.get("source_summary", []),
-                        "note": "Claude web research completed successfully",
+                        "note": "AI runtime web research completed successfully",
                         "errors": research.get("errors", []),
                     },
                     "timestamp": research.get(

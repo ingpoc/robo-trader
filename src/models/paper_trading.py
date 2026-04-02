@@ -17,6 +17,7 @@ class TradeStatus(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
     STOPPED_OUT = "stopped_out"
+    CANCELLED = "cancelled"
 
 
 class AccountType(str, Enum):
@@ -75,6 +76,33 @@ class PaperTradingAccount:
 
 
 @dataclass
+class PaperTradingAccountPolicy:
+    """Operator policy for a selected paper-trading account."""
+
+    account_id: str
+    execution_mode: str
+    max_open_positions: int
+    max_new_entries_per_day: int
+    max_deployed_capital_pct: float
+    default_stop_loss_pct: float
+    default_target_pct: float
+    per_trade_exposure_pct: float
+    max_portfolio_risk_pct: float
+    risk_level: str
+    updated_at: str
+    created_at: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "PaperTradingAccountPolicy":
+        """Create from dictionary."""
+        return PaperTradingAccountPolicy(**data)
+
+
+@dataclass
 class PaperTrade:
     """Individual paper trade record."""
     trade_id: str
@@ -89,6 +117,7 @@ class PaperTrade:
     exit_price: Optional[float] = None
     exit_timestamp: Optional[str] = None
     realized_pnl: Optional[float] = None
+    realized_pnl_pct: Optional[float] = None
     unrealized_pnl: Optional[float] = None
     status: TradeStatus = TradeStatus.OPEN
     stop_loss: Optional[float] = None
@@ -107,8 +136,8 @@ class PaperTrade:
     def from_dict(data: Dict[str, Any]) -> 'PaperTrade':
         """Create from dictionary."""
         data = data.copy()
-        data['trade_type'] = TradeType(data['trade_type'])
-        data['status'] = TradeStatus(data['status'])
+        data['trade_type'] = TradeType(str(data['trade_type']).lower())
+        data['status'] = TradeStatus(str(data['status']).lower())
         return PaperTrade(**data)
 
     def calculate_pnl(self, current_price: float) -> tuple[float, float]:

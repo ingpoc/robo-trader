@@ -73,7 +73,7 @@ class ResearchLedgerEntry(BaseModel):
 
     # Metadata
     sources: List[str] = Field(default_factory=list, description="Data sources used for extraction")
-    extraction_model: str = Field(default="claude-sonnet-4-20250514", description="Model used for extraction")
+    extraction_model: str = Field(default="gpt-5.4", description="Model used for extraction")
     extraction_duration_ms: Optional[int] = Field(None, description="Total extraction time in ms")
 
     # Scoring (filled by DeterministicScorer, not by LLM)

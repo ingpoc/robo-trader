@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from src.auth.claude_auth import get_claude_status
+from src.auth.ai_runtime_auth import get_ai_runtime_status
 from src.models.trading_capabilities import (
     CapabilityCheck,
     CapabilityStatus,
@@ -19,13 +19,15 @@ logger = logging.getLogger(__name__)
 class TradingCapabilityService:
     """Build a truthful readiness snapshot for autonomous paper trading."""
 
+    MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS = 5 * 60
+
     def __init__(self, container: "DependencyContainer"):
         self.container = container
 
     async def get_snapshot(self, account_id: Optional[str] = None) -> TradingCapabilitySnapshot:
         """Collect capability checks for the current operating mode."""
         checks = [
-            await self._check_claude_runtime(),
+            await self._check_ai_runtime(),
             await self._check_quote_stream(),
             await self._check_market_data_pipeline(),
             await self._check_broker_auth(),
@@ -37,46 +39,68 @@ class TradingCapabilityService:
             account_id=account_id,
         )
 
-    async def _check_claude_runtime(self) -> CapabilityCheck:
-        """Verify Claude Agent SDK runtime/auth state."""
-        status = await get_claude_status()
+    async def _check_ai_runtime(self) -> CapabilityCheck:
+        """Verify active AI runtime state."""
+        status = await get_ai_runtime_status()
         rate_limit_info = getattr(status, "rate_limit_info", {}) or {}
         if status.is_valid:
             if rate_limit_info.get("status") == "exhausted":
                 return CapabilityCheck(
-                    key="claude_runtime",
-                    label="Claude Runtime",
+                    key="ai_runtime",
+                    label="AI Runtime",
                     status=CapabilityStatus.DEGRADED,
-                    summary="Claude Agent SDK is authenticated but currently usage-limited.",
+                    summary="AI runtime is authenticated but currently usage-limited.",
                     detail=rate_limit_info.get("message")
-                    or "Claude research runs are temporarily unavailable until usage resets.",
+                    or "AI research runs are temporarily unavailable until usage resets.",
                     metadata={
+                        "provider": getattr(status, "provider", "codex"),
                         "checked_at": status.checked_at,
                         "auth_method": status.account_info.get("auth_method"),
+                        "model": getattr(status, "model", None),
+                        "mode": status.metadata.get("mode") if getattr(status, "metadata", None) else None,
                         "rate_limit_info": rate_limit_info,
+                        "last_successful_validation_at": status.metadata.get("last_successful_validation_at"),
+                        "last_successful_validation_age_seconds": status.metadata.get("last_successful_validation_age_seconds"),
+                        "readiness_ttl_seconds": status.metadata.get("readiness_ttl_seconds"),
                     },
                 )
             return CapabilityCheck(
-                key="claude_runtime",
-                label="Claude Runtime",
+                key="ai_runtime",
+                label="AI Runtime",
                 status=CapabilityStatus.READY,
-                summary="Claude Agent SDK authentication is valid.",
+                summary=f"{getattr(status, 'provider', 'codex').title()} runtime is authenticated and reachable.",
+                detail=(
+                    f"Last successful validation: {status.metadata.get('last_successful_validation_at') or status.checked_at}."
+                ),
                 metadata={
+                    "provider": getattr(status, "provider", "codex"),
                     "checked_at": status.checked_at,
                     "auth_method": status.account_info.get("auth_method"),
+                    "model": getattr(status, "model", None),
+                    "mode": status.metadata.get("mode") if getattr(status, "metadata", None) else None,
                     "rate_limit_info": rate_limit_info,
+                    "last_successful_validation_at": status.metadata.get("last_successful_validation_at"),
+                    "last_successful_validation_age_seconds": status.metadata.get("last_successful_validation_age_seconds"),
+                    "readiness_ttl_seconds": status.metadata.get("readiness_ttl_seconds"),
                 },
             )
 
         return CapabilityCheck(
-            key="claude_runtime",
-            label="Claude Runtime",
+            key="ai_runtime",
+            label="AI Runtime",
             status=CapabilityStatus.BLOCKED,
-            summary="Claude Agent SDK authentication is invalid.",
-            detail=status.error or "Claude runtime must authenticate before autonomous workflows can run.",
+            summary="AI runtime is not ready.",
+            detail=status.error or "AI runtime must authenticate before autonomous workflows can run.",
             metadata={
+                "provider": getattr(status, "provider", "codex"),
                 "checked_at": status.checked_at,
+                "auth_method": status.account_info.get("auth_method"),
+                "model": getattr(status, "model", None),
+                "mode": status.metadata.get("mode") if getattr(status, "metadata", None) else None,
                 "rate_limit_info": rate_limit_info,
+                "last_successful_validation_at": status.metadata.get("last_successful_validation_at"),
+                "last_successful_validation_age_seconds": status.metadata.get("last_successful_validation_age_seconds"),
+                "readiness_ttl_seconds": status.metadata.get("readiness_ttl_seconds"),
             },
         )
 
@@ -181,17 +205,22 @@ class TradingCapabilityService:
                 continue
             freshest_age_seconds = age_seconds if freshest_age_seconds is None else min(freshest_age_seconds, age_seconds)
 
-        if freshest_age_seconds is None or freshest_age_seconds > 120:
+        if freshest_age_seconds is None or freshest_age_seconds > self.MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS:
             return CapabilityCheck(
                 key="market_data",
                 label="Market Data",
                 status=CapabilityStatus.BLOCKED,
                 summary="Market data cache is stale for active paper-trading symbols.",
-                detail="Fresh live marks are required before autonomous position management can rely on unrealized P&L.",
+                detail=(
+                    "Fresh live marks are required before position management can rely on unrealized P&L. "
+                    f"Manual decision review blocks when the freshest mark is older than "
+                    f"{self.MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS}s."
+                ),
                 metadata={
                     "active_subscriptions": len(subscriptions),
                     "cached_symbols": len(market_data),
                     "freshest_age_seconds": round(freshest_age_seconds or 0.0, 2),
+                    "freshness_threshold_seconds": self.MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS,
                 },
             )
 
@@ -207,6 +236,7 @@ class TradingCapabilityService:
                 "cached_symbols": len(market_data),
                 "freshest_age_seconds": round(freshest_age_seconds or 0.0, 2),
                 "providers": providers,
+                "freshness_threshold_seconds": self.MARKET_DATA_FRESHNESS_THRESHOLD_SECONDS,
             },
         )
 

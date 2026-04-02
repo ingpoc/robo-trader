@@ -76,6 +76,21 @@ class IntegrationConfig(BaseModel):
     perplexity_api_keys: List[str] = Field(default_factory=list, description="Perplexity API keys (with automatic failover)")
 
 
+class AIRuntimeConfig(BaseModel):
+    """AI runtime configuration."""
+
+    provider: str = Field(default="codex", description="Active AI runtime provider")
+    mode: str = Field(default="local_runtime_service", description="Runtime operating mode")
+    codex_runtime_url: str = Field(
+        default="http://127.0.0.1:8765",
+        description="Base URL for the local Codex runtime service",
+    )
+    codex_model: str = Field(default="gpt-5.4", description="Default Codex model")
+    codex_reasoning_light: str = Field(default="low", description="Reasoning effort for lightweight requests")
+    codex_reasoning_deep: str = Field(default="medium", description="Reasoning effort for deeper requests")
+    timeout_seconds: float = Field(default=90.0, description="Default timeout for runtime requests")
+
+
 class AgentFeatureConfig(BaseModel):
     """Configuration for a specific agent feature."""
     enabled: bool = Field(default=True, description="Enable/disable this feature")
@@ -252,6 +267,7 @@ class Config(BaseModel):
     screening: ScreeningConfig = Field(default_factory=ScreeningConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     integration: IntegrationConfig = Field(default_factory=IntegrationConfig)
+    ai_runtime: AIRuntimeConfig = Field(default_factory=AIRuntimeConfig)
     scheduling: SchedulingConfig = Field(default_factory=SchedulingConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
 
@@ -331,6 +347,22 @@ class Config(BaseModel):
         if perplexity_keys:
             self.integration.perplexity_api_keys = perplexity_keys
 
+        self.ai_runtime.provider = os.getenv("AI_RUNTIME_PROVIDER", self.ai_runtime.provider)
+        self.ai_runtime.mode = os.getenv("AI_RUNTIME_MODE", self.ai_runtime.mode)
+        self.ai_runtime.codex_runtime_url = os.getenv("CODEX_RUNTIME_URL", self.ai_runtime.codex_runtime_url)
+        self.ai_runtime.codex_model = os.getenv("CODEX_MODEL", self.ai_runtime.codex_model)
+        self.ai_runtime.codex_reasoning_light = os.getenv(
+            "CODEX_REASONING_LIGHT",
+            self.ai_runtime.codex_reasoning_light,
+        )
+        self.ai_runtime.codex_reasoning_deep = os.getenv(
+            "CODEX_REASONING_DEEP",
+            self.ai_runtime.codex_reasoning_deep,
+        )
+        timeout_override = os.getenv("AI_RUNTIME_TIMEOUT_SECONDS")
+        if timeout_override:
+            self.ai_runtime.timeout_seconds = float(timeout_override)
+
     def validate_environment(self) -> None:
         """Validate that required API keys are set for the current environment."""
         from loguru import logger
@@ -362,9 +394,12 @@ class Config(BaseModel):
         else:
             raise ValueError(f"Unknown environment: {self.environment}. Must be 'live', 'paper', or 'dry-run'")
 
-        # Claude Agent SDK handles authentication through Claude Code CLI
-        # No API key configuration needed - SDK uses authenticated CLI session
-        logger.info("✓ Claude Agent SDK authentication configured")
+        if self.ai_runtime.provider == "codex":
+            logger.info(
+                f"✓ AI runtime configured for Codex local runtime service at {self.ai_runtime.codex_runtime_url}"
+            )
+        else:
+            logger.info(f"✓ AI runtime provider configured: {self.ai_runtime.provider}")
 
 
 def load_config(config_path: Optional[Path] = None) -> Config:

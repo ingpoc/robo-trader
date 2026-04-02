@@ -10,7 +10,7 @@ export function Card({ className, children, variant = 'base', ...props }: CardPr
   const variantStyles = {
     base: 'border-border bg-card text-card-foreground shadow-sm',
     featured: 'border-border bg-gradient-to-br from-card to-muted/35 text-card-foreground shadow-md ring-1 ring-copper-500/15',
-    compact: 'border-border/70 bg-card/90 text-card-foreground shadow-sm',
+    compact: 'border-border/70 bg-white/90 text-card-foreground shadow-sm dark:bg-warmgray-800/90',
     interactive: 'border-border bg-card text-card-foreground shadow-sm hover:-translate-y-0.5 hover:border-copper-300 hover:shadow-md',
   }
 
