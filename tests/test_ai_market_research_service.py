@@ -39,7 +39,7 @@ async def test_collect_symbol_research_normalizes_sidecar_payload():
     assert result["provider_metadata"]["provider"] == "codex"
     payload = runtime_client.collect_batch_research.await_args.args[0]
     assert payload["timeout_seconds"] == 35.0
-    assert payload["reasoning"] == "low"
+    assert payload["reasoning"] == "minimal"
     assert payload["symbols"] == ["INFY"]
     assert "freshest swing-trading evidence" in payload["research_brief"]
     assert "Infosys (INFY)" in payload["research_brief"]

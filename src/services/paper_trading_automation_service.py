@@ -283,7 +283,7 @@ class PaperTradingAutomationService:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         path = self.run_dir / f"{job_type}-{timestamp}.md"
         lines = [
-            f"# Automation Run Artifact",
+            "# Automation Run Artifact",
             "",
             f"- Run ID: `{run_id}`",
             f"- Job Type: `{job_type}`",

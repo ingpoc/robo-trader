@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,23 +9,16 @@ from src.core.coordinators.paper_trading.evening_performance_coordinator import 
 
 
 @pytest.mark.asyncio
-async def test_evening_performance_generates_claude_insights(monkeypatch):
-    manager = AsyncMock()
-    manager.get_client.return_value = object()
-    manager.cleanup_client = AsyncMock()
-
-    async def _query_with_timeout(client, prompt, timeout):
-        return '{"insights":["Cut losers faster when confirmation fails.","Momentum setup quality was strongest in one strategy bucket."]}'
-
-    monkeypatch.setattr(
-        "src.core.coordinators.paper_trading.evening_performance_coordinator.ClaudeSDKClientManager.get_instance",
-        AsyncMock(return_value=manager),
-    )
-    monkeypatch.setattr(
-        "src.core.coordinators.paper_trading.evening_performance_coordinator.query_with_timeout",
-        _query_with_timeout,
-    )
-
+async def test_evening_performance_generates_claude_insights(tmp_path):
+    runtime_client = AsyncMock()
+    runtime_client.run_structured.return_value = {
+        "output": {
+            "insights": [
+                "Cut losers faster when confirmation fails.",
+                "Momentum setup quality was strongest in one strategy bucket.",
+            ]
+        }
+    }
     state_manager = MagicMock()
     state_manager.paper_trading = AsyncMock()
     container = MagicMock()
@@ -34,12 +28,21 @@ async def test_evening_performance_generates_claude_insights(monkeypatch):
             return state_manager
         if name == "autonomous_trading_safeguards":
             return AsyncMock()
+        if name == "codex_runtime_client":
+            return runtime_client
         raise ValueError(name)
 
     container.get = AsyncMock(side_effect=_get)
+    config = SimpleNamespace(
+        ai_runtime=SimpleNamespace(
+            codex_model="gpt-5.4",
+            codex_reasoning_deep="medium",
+        ),
+        project_dir=tmp_path,
+    )
 
     coordinator = EveningPerformanceCoordinator(
-        config=MagicMock(), event_bus=AsyncMock(), container=container
+        config=config, event_bus=AsyncMock(), container=container
     )
     await coordinator.initialize()
     insights = await coordinator.generate_trading_insights(
@@ -59,4 +62,4 @@ async def test_evening_performance_generates_claude_insights(monkeypatch):
         "Cut losers faster when confirmation fails.",
         "Momentum setup quality was strongest in one strategy bucket.",
     ]
-    manager.cleanup_client.assert_awaited_once()
+    runtime_client.run_structured.assert_awaited_once()

@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -47,6 +48,7 @@ def _build_service(*, learning_service=None, account_manager=None):
 
 @pytest.mark.asyncio
 async def test_screen_market_skips_recent_symbols_and_prioritizes_dark_horses():
+    recent_research_timestamp = (datetime.now(timezone.utc) - timedelta(hours=4)).isoformat()
     learning_service = AsyncMock()
     learning_service.get_learning_summary.return_value = SimpleNamespace(top_lessons=["Technology breakouts were crowded and late."])
     learning_service.get_discovery_memory.return_value = {
@@ -54,7 +56,7 @@ async def test_screen_market_skips_recent_symbols_and_prioritizes_dark_horses():
             {
                 "symbol": "TCS",
                 "sector": "Technology",
-                "generated_at": "2026-03-26T07:00:00+00:00",
+                "generated_at": recent_research_timestamp,
                 "actionability": "watch_only",
                 "analysis_mode": "stale_evidence",
                 "risks": ["Fresh evidence was missing."],

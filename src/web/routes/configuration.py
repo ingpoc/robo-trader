@@ -78,8 +78,6 @@ async def _build_configuration_status_payload(
     config_state = await container.get("configuration_state")
     status = await config_state.get_system_status()
     settings = dict(status.get("globalSettings", {}))
-    ai_runtime = dict(status.get("aiRuntime", {}))
-
     effective_execution_mode = "operator_confirmed_execution"
     if account_id:
         try:
