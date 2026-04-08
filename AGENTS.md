@@ -51,6 +51,8 @@ Global entrypoint: `/Users/gurusharan/.codex/AGENTS.md`
 ## Trigger Lines
 
 - Trigger lines and skill references are retrieval aids after state inspection, not a substitute for inspecting the live codebase, runtime, logs, or data first.
+- BEFORE claiming backend tests are green or debugging a failing backend PR check: run `./scripts/test_backend_ci.sh` from the repo root.
+- BEFORE pushing changes that touch DI, app lifespan, schedulers, Docker boot, or runtime startup: run `./scripts/integration_startup_smoke.sh` from the repo root.
 - BEFORE changing delivery workflow or issue hygiene: read `docs/workflow/linear-issue-control-plane.md`.
 - BEFORE storing or superseding durable decisions or research: read `docs/workflow/notion-memory-control-plane.md`.
 - BEFORE changing MCP server bootstrap, auth setup, or credential onboarding: read `docs/workflow/mcp-auth-bootstrap.md`.

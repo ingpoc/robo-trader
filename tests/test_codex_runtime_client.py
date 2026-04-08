@@ -73,6 +73,18 @@ def test_drop_none_removes_null_fields_from_request_payloads():
     }
 
 
+def test_normalize_output_schema_rejects_excessive_recursion_depth():
+    schema = {"type": "object", "properties": {"level_0": {"type": "string"}}}
+    cursor = schema["properties"]["level_0"] = {"type": "object", "properties": {}}
+    for index in range(1, 70):
+        next_node = {"type": "object", "properties": {}}
+        cursor["properties"][f"level_{index}"] = next_node
+        cursor = next_node
+
+    with pytest.raises(ValueError, match="maximum normalization depth"):
+        _normalize_output_schema(schema)
+
+
 @pytest.mark.asyncio
 async def test_codex_runtime_client_marks_timeouts_as_timed_out(monkeypatch):
     class _TimeoutAsyncClient:

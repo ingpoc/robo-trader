@@ -49,6 +49,9 @@ jobs:
       - name: Lint with ruff
         run: ruff check src/ tests/ --output-format=github
 
+      - name: Check test portability
+        run: ./scripts/check_test_portability.sh
+
       - name: Type checking with mypy
         run: mypy src/ --install-types --non-interactive --ignore-missing-imports || echo "::warning::Type checking found issues"
 
@@ -140,7 +143,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest tests/ \
+          ./scripts/test_backend_ci.sh tests/ \
             --cov=src \
             --cov-report=xml \
             --cov-report=term \

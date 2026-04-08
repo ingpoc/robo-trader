@@ -113,6 +113,11 @@ function toNullableNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function toOptionalNumber(value: unknown): number | undefined {
+  const parsed = toNullableNumber(value)
+  return parsed == null ? undefined : parsed
+}
+
 function normalizePositionsPayload(data: unknown): OpenPositionResponse[] {
   const positions = Array.isArray((data as JsonRecord | null)?.positions)
     ? ((data as JsonRecord).positions as Array<Record<string, unknown>>)
@@ -126,8 +131,12 @@ function normalizePositionsPayload(data: unknown): OpenPositionResponse[] {
     quantity: Number(position.quantity ?? 0),
     entry_price: Number(position.entry_price ?? position.entryPrice ?? position.avgPrice ?? 0),
     current_price: toNullableNumber(position.current_price ?? position.currentPrice ?? position.ltp),
-    stop_loss: position.stop_loss == null ? Number(position.stopLoss ?? NaN) || undefined : Number(position.stop_loss),
-    target: position.target == null ? Number(position.target_price ?? position.target ?? NaN) || undefined : Number(position.target),
+    stop_loss: position.stop_loss == null
+      ? toOptionalNumber(position.stopLoss)
+      : toOptionalNumber(position.stop_loss),
+    target: position.target == null
+      ? toOptionalNumber(position.target_price ?? position.target)
+      : toOptionalNumber(position.target),
     unrealized_pnl: toNullableNumber(position.unrealized_pnl ?? position.pnl),
     unrealized_pnl_pct: toNullableNumber(position.unrealized_pnl_pct ?? position.pnlPercent),
     entry_time: String(position.entry_time ?? position.entryDate ?? position.entry_date ?? ''),
@@ -267,21 +276,13 @@ function PaperTradingFeatureWrapper() {
 
     try {
       void (async () => {
-        try {
-          const capabilityResponse = await fetch(`/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`)
-          if (requestSequenceRef.current !== requestId) {
-            return
-          }
-          if (capabilityResponse.ok) {
-            setCapabilitySnapshot(await capabilityResponse.json())
-          } else {
-            setCapabilitySnapshot(null)
-          }
-        } catch {
-          if (requestSequenceRef.current === requestId) {
-            setCapabilitySnapshot(null)
-          }
+        const capabilityResult = await fetchJsonResult<TradingCapabilitySnapshot>(
+          `/api/paper-trading/capabilities?account_id=${encodeURIComponent(accountId)}`,
+        )
+        if (requestSequenceRef.current !== requestId) {
+          return
         }
+        setCapabilitySnapshot(capabilityResult.ok ? capabilityResult.payload : null)
       })()
 
       const [overviewResult, positionsResult, tradesResult, performanceResult] = await Promise.all([

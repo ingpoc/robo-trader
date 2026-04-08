@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any, Dict, Optional
 
@@ -158,7 +159,7 @@ class CodexRuntimeClient:
         payload: Dict[str, Any]
         try:
             payload = response.json()
-        except ValueError:
+        except json.JSONDecodeError:
             payload = {}
 
         if response.status_code >= 400:
@@ -181,6 +182,9 @@ class CodexRuntimeClient:
         return payload
 
 
+MAX_SCHEMA_NORMALIZATION_DEPTH = 64
+
+
 def _normalize_output_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     """Tighten JSON Schema for Codex/OpenAI structured output constraints.
 
@@ -188,21 +192,29 @@ def _normalize_output_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     - explicitly set ``additionalProperties`` to ``false``
     - provide ``required`` listing every key in ``properties``
     """
-    return _normalize_schema_node(deepcopy(schema))
+    return _normalize_schema_node(deepcopy(schema), depth=0)
 
 
-def _normalize_schema_node(node: Any) -> Any:
+def _normalize_schema_node(node: Any, *, depth: int) -> Any:
+    if depth > MAX_SCHEMA_NORMALIZATION_DEPTH:
+        raise ValueError(
+            f"Output schema exceeds maximum normalization depth of {MAX_SCHEMA_NORMALIZATION_DEPTH}"
+        )
+
     if isinstance(node, list):
-        return [_normalize_schema_node(item) for item in node]
+        return [_normalize_schema_node(item, depth=depth + 1) for item in node]
 
     if not isinstance(node, dict):
         return node
 
-    normalized = {key: _normalize_schema_node(value) for key, value in node.items()}
+    normalized = {
+        key: _normalize_schema_node(value, depth=depth + 1)
+        for key, value in node.items()
+    }
 
     if "$defs" in normalized and isinstance(normalized["$defs"], dict):
         normalized["$defs"] = {
-            key: _normalize_schema_node(value)
+            key: _normalize_schema_node(value, depth=depth + 1)
             for key, value in normalized["$defs"].items()
         }
 
@@ -217,20 +229,20 @@ def _normalize_schema_node(node: Any) -> Any:
             properties = {}
         normalized["type"] = "object"
         normalized["properties"] = {
-            key: _normalize_schema_node(value)
+            key: _normalize_schema_node(value, depth=depth + 1)
             for key, value in properties.items()
         }
         normalized["additionalProperties"] = False
         normalized["required"] = list(normalized["properties"].keys())
 
     if "items" in normalized:
-        normalized["items"] = _normalize_schema_node(normalized["items"])
+        normalized["items"] = _normalize_schema_node(normalized["items"], depth=depth + 1)
     if "anyOf" in normalized and isinstance(normalized["anyOf"], list):
-        normalized["anyOf"] = [_normalize_schema_node(item) for item in normalized["anyOf"]]
+        normalized["anyOf"] = [_normalize_schema_node(item, depth=depth + 1) for item in normalized["anyOf"]]
     if "allOf" in normalized and isinstance(normalized["allOf"], list):
-        normalized["allOf"] = [_normalize_schema_node(item) for item in normalized["allOf"]]
+        normalized["allOf"] = [_normalize_schema_node(item, depth=depth + 1) for item in normalized["allOf"]]
     if "oneOf" in normalized and isinstance(normalized["oneOf"], list):
-        normalized["oneOf"] = [_normalize_schema_node(item) for item in normalized["oneOf"]]
+        normalized["oneOf"] = [_normalize_schema_node(item, depth=depth + 1) for item in normalized["oneOf"]]
 
     return normalized
 

@@ -3,7 +3,8 @@
 import asyncio
 import logging
 import os
-from typing import Dict, Any, Optional
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Dict, Any, Optional, Set
 
 from fastapi import APIRouter, Request, Depends
 from slowapi import Limiter
@@ -16,8 +17,23 @@ from ..utils.error_handlers import (
 )
 
 logger = logging.getLogger(__name__)
+_runtime_quote_stream_tasks: Set[asyncio.Task[None]] = set()
 
-router = APIRouter(prefix="/api", tags=["configuration"])
+
+@asynccontextmanager
+async def _configuration_router_lifespan(_: APIRouter) -> AsyncIterator[None]:
+    try:
+        yield
+    finally:
+        pending = [task for task in _runtime_quote_stream_tasks if not task.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        _runtime_quote_stream_tasks.clear()
+
+
+router = APIRouter(prefix="/api", tags=["configuration"], lifespan=_configuration_router_lifespan)
 limiter = Limiter(key_func=get_remote_address)
 
 config_limit = os.getenv("RATE_LIMIT_CONFIG", "30/minute")
@@ -42,6 +58,17 @@ async def _apply_runtime_quote_stream_preferences(
         )
 
 
+def _schedule_runtime_quote_stream_refresh(market_data_service, settings_data: Dict[str, Any]) -> None:
+    task = asyncio.create_task(
+        _apply_runtime_quote_stream_preferences(
+            market_data_service,
+            settings_data.copy(),
+        )
+    )
+    _runtime_quote_stream_tasks.add(task)
+    task.add_done_callback(_runtime_quote_stream_tasks.discard)
+
+
 async def _build_configuration_status_payload(
     *,
     container: DependencyContainer,
@@ -51,8 +78,6 @@ async def _build_configuration_status_payload(
     config_state = await container.get("configuration_state")
     status = await config_state.get_system_status()
     settings = dict(status.get("globalSettings", {}))
-    ai_runtime = dict(status.get("aiRuntime", {}))
-
     effective_execution_mode = "operator_confirmed_execution"
     if account_id:
         try:
@@ -174,12 +199,7 @@ async def update_global_settings(
             try:
                 market_data_service = await container.get("market_data_service")
                 if market_data_service is not None:
-                    asyncio.create_task(
-                        _apply_runtime_quote_stream_preferences(
-                            market_data_service,
-                            settings_data.copy(),
-                        )
-                    )
+                    _schedule_runtime_quote_stream_refresh(market_data_service, settings_data)
             except Exception as runtime_error:
                 logger.warning(
                     "Global settings were saved, but runtime quote-stream preferences could not be "
