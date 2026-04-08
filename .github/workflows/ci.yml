@@ -52,6 +52,9 @@ jobs:
       - name: Check test portability
         run: ./scripts/check_test_portability.sh
 
+      - name: Validate workflow YAML
+        run: ./scripts/check_workflow_yaml.py
+
       - name: Type checking with mypy
         run: mypy src/ --install-types --non-interactive --ignore-missing-imports || echo "::warning::Type checking found issues"
 

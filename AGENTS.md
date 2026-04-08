@@ -51,6 +51,7 @@ Global entrypoint: `/Users/gurusharan/.codex/AGENTS.md`
 ## Trigger Lines
 
 - Trigger lines and skill references are retrieval aids after state inspection, not a substitute for inspecting the live codebase, runtime, logs, or data first.
+- BEFORE changing GitHub Actions workflows or CI wiring: run `./scripts/check_workflow_yaml.py` from the repo root.
 - BEFORE claiming backend tests are green or debugging a failing backend PR check: run `./scripts/test_backend_ci.sh` from the repo root.
 - BEFORE pushing changes that touch DI, app lifespan, schedulers, Docker boot, or runtime startup: run `./scripts/integration_startup_smoke.sh` from the repo root.
 - BEFORE changing delivery workflow or issue hygiene: read `docs/workflow/linear-issue-control-plane.md`.
