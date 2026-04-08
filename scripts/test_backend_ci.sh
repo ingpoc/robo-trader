@@ -9,7 +9,7 @@ cd "$PROJECT_ROOT"
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 
 if [ "$#" -gt 0 ]; then
-    python -m pytest -p pytest_asyncio.plugin "$@"
+    python -m pytest -p pytest_asyncio.plugin -p pytest_cov "$@"
 else
-    python -m pytest -p pytest_asyncio.plugin tests/ --tb=short
+    python -m pytest -p pytest_asyncio.plugin -p pytest_cov tests/ --tb=short
 fi
