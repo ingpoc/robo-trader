@@ -1,3 +1,4 @@
+import sqlite3
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -35,6 +36,12 @@ class _FakeDB:
         self.committed = True
 
 
+class _MissingQueueTableDB(_FakeDB):
+    async def execute(self, query: str):
+        self.executed.append(query)
+        raise sqlite3.OperationalError("no such table: queue_tasks")
+
+
 @pytest.mark.asyncio
 async def test_manual_only_scheduler_reports_disabled_runtime():
     scheduler = ManualOnlyScheduler()
@@ -58,6 +65,16 @@ async def test_manual_only_scheduler_clears_stale_non_terminal_tasks():
     assert any("SELECT COUNT(*) FROM queue_tasks" in query for query in db.executed)
     assert any("DELETE FROM queue_tasks" in query for query in db.executed)
     assert db.committed is True
+
+
+@pytest.mark.asyncio
+async def test_manual_only_scheduler_ignores_missing_legacy_queue_table():
+    db = _MissingQueueTableDB(queued=0)
+    scheduler = ManualOnlyScheduler(db)
+
+    await scheduler.initialize()
+
+    assert db.committed is False
 
 
 @pytest.mark.asyncio

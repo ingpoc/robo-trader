@@ -7,6 +7,7 @@ workflow directly.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -24,11 +25,20 @@ class ManualOnlyScheduler:
         if self._db_connection is None:
             return
 
-        cursor = await self._db_connection.execute(
-            "SELECT COUNT(*) FROM queue_tasks WHERE status IN ('pending', 'running')"
-        )
-        row = await cursor.fetchone()
-        pending_or_running = int(row[0]) if row else 0
+        try:
+            cursor = await self._db_connection.execute(
+                "SELECT COUNT(*) FROM queue_tasks WHERE status IN ('pending', 'running')"
+            )
+            row = await cursor.fetchone()
+            pending_or_running = int(row[0]) if row else 0
+        except sqlite3.OperationalError as exc:
+            if "no such table: queue_tasks" in str(exc).lower():
+                logger.info(
+                    "Manual-only runtime found no legacy queue_tasks table; "
+                    "startup cleanup was skipped."
+                )
+                return
+            raise
 
         if pending_or_running == 0:
             return
