@@ -31,6 +31,7 @@ export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }
   const { overviewSummary, accountPolicy, error, isLoading, refetch } = useDashboardData({
     accountId: selectedAccount?.account_id ?? null,
   })
+  const errorMessage = error instanceof Error ? error.message : String(error)
 
   const stageOutputs = overviewSummary?.recent_stage_outputs ?? []
   const workQueueRows = useMemo(() => ([
@@ -39,7 +40,7 @@ export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }
     { label: 'Pending decisions', value: String(overviewSummary?.queue.decision_pending_improvements ?? 0) },
     { label: 'Ready-now promotions', value: String(overviewSummary?.queue.ready_now_promotions ?? 0) },
     { label: 'Recent runs', value: String(overviewSummary?.queue.recent_runs ?? 0) },
-  ]), [overviewSummary])
+  ]), [overviewSummary?.queue])
 
   if (isLoading || isAccountsLoading) {
     return (
@@ -98,7 +99,7 @@ export const DashboardFeature: React.FC<DashboardFeatureProps> = ({ onNavigate }
         <Card className="border-red-300 bg-red-50/80 text-red-900">
           <CardContent className="space-y-4 p-5">
             <p className="text-base font-semibold">Operator overview unavailable</p>
-            <p className="text-sm leading-6">{error.message}</p>
+            <p className="text-sm leading-6">{errorMessage}</p>
             <div className="flex flex-wrap gap-3">
               <Button variant="outline" onClick={() => void refetch()}>Retry overview</Button>
               <Button variant="primary" onClick={() => (onNavigate || navigate)('/health')}>

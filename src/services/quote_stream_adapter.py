@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Dict, Iterable, Optional
 
+import aiofiles
 import httpx
 
 # KiteTicker import for Zerodha streaming
@@ -162,14 +163,23 @@ class UpstoxInstrumentResolver:
             if self._cache_path.exists():
                 age = datetime.now(timezone.utc) - datetime.fromtimestamp(self._cache_path.stat().st_mtime, tz=timezone.utc)
                 if age < timedelta(hours=24):
-                    payload = self._cache_path.read_bytes()
+                    try:
+                        async with aiofiles.open(self._cache_path, "rb") as handle:
+                            payload = await handle.read()
+                    except OSError as exc:
+                        logger.warning("Failed to read Upstox instrument cache %s: %s", self._cache_path, exc)
+                        payload = None
 
             if payload is None:
                 async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
                     response = await client.get(self.NSE_INSTRUMENTS_URL)
                     response.raise_for_status()
                     payload = response.content
-                self._cache_path.write_bytes(payload)
+                try:
+                    async with aiofiles.open(self._cache_path, "wb") as handle:
+                        await handle.write(payload)
+                except OSError as exc:
+                    logger.warning("Failed to write Upstox instrument cache %s: %s", self._cache_path, exc)
 
             records = json.loads(gzip.decompress(payload).decode("utf-8"))
             self._symbol_map = {
@@ -403,11 +413,19 @@ class UpstoxQuoteStreamAdapter(QuoteStreamAdapter):
             if not symbol:
                 continue
 
-            normalized = self._normalize_feed(symbol, feed, payload.get("currentTs"))
-            if normalized is None:
-                continue
-            if self._loop is not None and not self._loop.is_closed():
-                asyncio.run_coroutine_threadsafe(self._on_quote_update(normalized), self._loop)
+            try:
+                normalized = self._normalize_feed(symbol, feed, payload.get("currentTs"))
+                if normalized is None:
+                    continue
+                if self._loop is not None and not self._loop.is_closed():
+                    asyncio.run_coroutine_threadsafe(self._on_quote_update(normalized), self._loop)
+            except Exception as exc:
+                logger.warning(
+                    "Ignoring malformed Upstox feed for %s (%s): %s",
+                    symbol,
+                    instrument_key,
+                    exc,
+                )
 
     def _normalize_feed(
         self,
@@ -478,7 +496,12 @@ class KiteInstrumentResolver:
             if self._cache_path.exists():
                 age = datetime.now(timezone.utc) - datetime.fromtimestamp(self._cache_path.stat().st_mtime, tz=timezone.utc)
                 if age < timedelta(hours=24):
-                    payload = self._cache_path.read_text()
+                    try:
+                        async with aiofiles.open(self._cache_path, "r", encoding="utf-8") as handle:
+                            payload = await handle.read()
+                    except OSError as exc:
+                        logger.warning("Failed to read Kite instrument cache %s: %s", self._cache_path, exc)
+                        payload = None
 
             if payload is None:
                 async with httpx.AsyncClient(timeout=30.0) as client:
@@ -487,7 +510,11 @@ class KiteInstrumentResolver:
                     response = await client.get(url)
                     response.raise_for_status()
                     payload = response.text
-                self._cache_path.write_text(payload)
+                try:
+                    async with aiofiles.open(self._cache_path, "w", encoding="utf-8") as handle:
+                        await handle.write(payload)
+                except OSError as exc:
+                    logger.warning("Failed to write Kite instrument cache %s: %s", self._cache_path, exc)
 
             # Parse CSV format: instrument_token,exchange,tradingsymbol,...
             lines = payload.strip().split("\n")

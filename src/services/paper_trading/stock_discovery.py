@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import aiofiles
 from loguru import logger
 
 from ...auth.ai_runtime_auth import get_ai_runtime_status
@@ -259,7 +260,8 @@ class StockDiscoveryService(EventHandler):
         """Load the deterministic universe and apply coarse filters without AI."""
         try:
             universe_path = Path(__file__).parents[3] / "data" / "nse_universe.json"
-            payload = json.loads(universe_path.read_text())
+            async with aiofiles.open(universe_path, "r", encoding="utf-8") as handle:
+                payload = json.loads(await handle.read())
             market_stocks = payload.get("universe", [])
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to load NSE universe: %s", exc)
